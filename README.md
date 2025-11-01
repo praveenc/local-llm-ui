@@ -1,6 +1,6 @@
-# Chat Vite Cloudscape
+# Local LLM UI
 
-A modern, responsive chat application built with React, TypeScript, Vite, and AWS Cloudscape Design System. This application provides a beautiful interface for interacting with local AI models through Ollama or LM Studio.
+A modern, responsive UI for interacting with local Large Language Models (LLMs). Built with React, TypeScript, Vite, and AWS Cloudscape Design System, this application provides a beautiful interface for chatting with local AI models through Ollama, LM Studio, and other providers.
 
 ## Features
 
@@ -27,8 +27,8 @@ Before running this application, ensure you have the following installed:
 1. Clone the repository:
 
    ```bash
-   git clone <repository-url>
-   cd chat-vite-cloudscape
+   git clone https://github.com/YOUR_USERNAME/local-llm-ui.git
+   cd local-llm-ui
    ```
 
 2. Install dependencies:
@@ -143,7 +143,7 @@ Adjust model parameters in the expandable settings panel:
 ## Project Structure
 
 ```text
-chat-vite-cloudscape/
+local-llm-ui/
 ├── src/
 │   ├── components/
 │   │   ├── chat/              # Chat-related components
@@ -277,6 +277,6 @@ For issues or questions:
 
 ## Acknowledgments
 
-- Built with [AWS Cloudscape Design System](https://cloudscape.design/)
-- Powered by [Ollama](https://ollama.ai) and [LM Studio](https://lmstudio.ai)
-- Created with [Vite](https://vitejs.dev/)
+- UI built with [AWS Cloudscape Design System](https://cloudscape.design/)
+- Supports [Ollama](https://ollama.ai) and [LM Studio](https://lmstudio.ai)
+- Powered by [Vite](https://vitejs.dev/) and [React](https://react.dev/)
