@@ -2,6 +2,8 @@
 
 A modern, responsive UI for interacting with local Large Language Models (LLMs). Built with React, TypeScript, Vite, and AWS Cloudscape Design System, this application provides a beautiful interface for chatting with local AI models through Ollama, LM Studio, and other providers.
 
+![Local LLM UI Screenshot](.github/images/local-llm-ui-ex1.png)
+
 ## Features
 
 - **Modern UI**: Built with AWS Cloudscape Design System for a professional, accessible interface
@@ -27,7 +29,7 @@ Before running this application, ensure you have the following installed:
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/YOUR_USERNAME/local-llm-ui.git
+   git clone https://github.com/praveenc/local-llm-ui.git
    cd local-llm-ui
    ```
 
@@ -41,12 +43,16 @@ Before running this application, ensure you have the following installed:
 
 ### Option 1: Ollama (Recommended)
 
-1. Download and install Ollama from [ollama.ai](https://ollama.ai)
+1. Download and install Ollama from [ollama.com](https://ollama.com)
 
-2. Pull a model (e.g., llama2):
+2. Pull a model (e.g., llama3.2):
 
    ```bash
-   ollama pull llama2
+   ollama pull llama3.2:latest
+   ```
+
+   ```bash
+   ollama pull minimax-m2:cloud
    ```
 
 3. Verify Ollama is running:
@@ -253,6 +259,21 @@ This project uses:
 2. Use Cloudscape components for consistency
 3. Maintain TypeScript types
 4. Test with both Ollama and LM Studio
+
+## Screenshots
+
+### Main Interface
+![Local LLM UI Main Interface](.github/images/local-llm-ui-ex1.png)
+
+*Chat interface with model selection, settings, and real-time streaming responses*
+
+<!-- Add more screenshots here as you create them:
+### Settings Panel
+![Settings Panel](.github/images/screenshot-settings.png)
+
+### Chat in Action
+![Chat Example](.github/images/screenshot-chat.png)
+-->
 
 ## Technologies Used
 

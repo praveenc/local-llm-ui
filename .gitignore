@@ -172,6 +172,9 @@ sketch
 docs/
 .kiro/
 
+# GitHub assets (images, workflows, etc.) are tracked
+# !.github/
+
 # Vite
 dist
 dist-ssr
