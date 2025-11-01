@@ -1,5 +1,11 @@
 # Local LLM UI
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-7-646cff.svg)](https://vitejs.dev/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 A modern, responsive UI for interacting with local Large Language Models (LLMs). Built with React, TypeScript, Vite, and AWS Cloudscape Design System, this application provides a beautiful interface for chatting with local AI models through Ollama, LM Studio, and other providers.
 
 ![Local LLM UI Screenshot](.github/images/local-llm-ui-ex1.png)
@@ -10,7 +16,7 @@ A modern, responsive UI for interacting with local Large Language Models (LLMs).
 - **Multiple AI Providers**: Support for Ollama and LM Studio
 - **Real-time Streaming**: Stream responses from AI models in real-time
 - **Model Configuration**: Adjust temperature, top-p, and max tokens for fine-tuned responses
-- **Chat History**: Manage multiple chat sessions with automatic history tracking
+- **Chat History**: Manage multiple chat sessions with automatic history tracking *(Coming soon)*
 - **Responsive Design**: Works seamlessly across desktop and mobile devices
 - **Dark/Light Mode**: Automatic theme support through Cloudscape
 

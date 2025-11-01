@@ -1,0 +1,36 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+build
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.*
+
+# IDE
+.vscode
+.idea
+
+# Git
+.git
+
+# Package manager
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Documentation (generated)
+docs/
+
+# Coverage
+coverage
+
+# Misc
+.DS_Store
+*.md
