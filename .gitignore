@@ -171,3 +171,47 @@ sketch
 # Custom excludes
 docs/
 .kiro/
+
+# Vite
+dist
+dist-ssr
+*.local
+.vite
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Testing
+coverage
+*.lcov
+.nyc_output
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+.loadpath
+.externalToolBuilders/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~.nib
+
+# AWS
+.aws-sam/
+samconfig.toml
+
+# Environment variables (additional patterns)
+.env*.local
+.env.*.local
