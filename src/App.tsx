@@ -17,7 +17,6 @@ import {
   ColumnLayout,
 } from '@cloudscape-design/components';
 import PromptInput from '@cloudscape-design/components/prompt-input';
-import ChatBubble from '@cloudscape-design/chat-components/chat-bubble';
 import { apiService, type Provider } from './services';
 
 // Layout containers
@@ -376,7 +375,7 @@ function App() {
                               onChange={({ detail }) =>
                                 setModelSettings({
                                   ...modelSettings,
-                                  provider: detail.selectedOption,
+                                  provider: detail.selectedOption as { label: string; value: Provider },
                                   model: { label: 'Select a model', value: '' }
                                 })
                               }
@@ -390,7 +389,7 @@ function App() {
                               onChange={({ detail }) =>
                                 setModelSettings({
                                   ...modelSettings,
-                                  model: detail.selectedOption,
+                                  model: detail.selectedOption as { label: string; value: string },
                                 })
                               }
                               options={availableModels}
@@ -456,9 +455,6 @@ function App() {
                       onChange={({ detail }) => setInputValue(detail.value)}
                       onAction={() => sendMessage()}
                       placeholder="Type your message..."
-                      actionButtonIconName="upload"
-                      actionButtonAriaLabel="Upload file"
-                      onActionButtonClick={() => console.log('Upload clicked')}
                     />
                   </SpaceBetween>
                 </Box>
@@ -479,11 +475,11 @@ function App() {
                   ) : (
                     <SpaceBetween size="m">
                       {currentSession?.messages.map((msg) => (
-                        <ChatBubble
-                          key={msg.id}
-                          type={msg.role === 'user' ? 'user' : 'ai'}
-                          content={msg.content}
-                        />
+                        <Box key={msg.id} padding={{ bottom: 's' }}>
+                          <Box variant={msg.role === 'user' ? 'p' : 'p'}>
+                            <strong>{msg.role === 'user' ? 'You' : 'AI'}:</strong> {msg.content}
+                          </Box>
+                        </Box>
                       ))}
                     </SpaceBetween>
                   )}
@@ -525,7 +521,7 @@ function App() {
               onChange={({ detail }) =>
                 setStorageSettings({
                   ...storageSettings,
-                  chatStorage: detail.selectedOption,
+                  chatStorage: detail.selectedOption as { label: string; value: string },
                 })
               }
               options={storageOptions}
@@ -538,7 +534,7 @@ function App() {
               onChange={({ detail }) =>
                 setStorageSettings({
                   ...storageSettings,
-                  fileStorage: detail.selectedOption,
+                  fileStorage: detail.selectedOption as { label: string; value: string },
                 })
               }
               options={storageOptions}

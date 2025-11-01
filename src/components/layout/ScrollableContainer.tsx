@@ -1,4 +1,5 @@
-import React, { forwardRef, ReactNode } from 'react';
+import { forwardRef } from 'react';
+import type { ReactNode } from 'react';
 
 interface ScrollableContainerProps {
   children: ReactNode;

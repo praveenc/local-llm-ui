@@ -180,7 +180,7 @@ const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, se
 
       // Stream the response
       for await (const chunk of apiService.chat(provider, {
-        model: selectedModel.value,
+        model: selectedModel.value || '',
         messages: chatMessages,
         temperature,
         max_tokens: maxTokens,
@@ -361,7 +361,7 @@ const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, se
         </Container>
       </FittedContainer>
 
-      <style jsx="true">{`
+      <style>{`
         .inline-code {
           background-color: var(--color-background-code-inline);
           border-radius: 3px;

@@ -1,8 +1,30 @@
 {
   "name": "chat-vite-cloudscape",
-  "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "A modern chat application built with React, TypeScript, Vite, and AWS Cloudscape Design System for interacting with local AI models through Ollama or LM Studio",
   "type": "module",
+  "author": "Chat Vite Cloudscape Contributors",
+  "license": "MIT",
+  "keywords": [
+    "chat",
+    "ai",
+    "ollama",
+    "lm-studio",
+    "cloudscape",
+    "react",
+    "typescript",
+    "vite",
+    "llm",
+    "local-ai"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/chat-vite-cloudscape.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YOUR_USERNAME/chat-vite-cloudscape/issues"
+  },
+  "homepage": "https://github.com/YOUR_USERNAME/chat-vite-cloudscape#readme",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

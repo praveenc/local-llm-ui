@@ -1,5 +1,4 @@
 'use client';
-import React from 'react';
 import Avatar from '@cloudscape-design/chat-components/avatar';
 
 interface ChatAvatarProps {

@@ -125,7 +125,8 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
                       <ExpandableSection headerText="Thinking Process">
                         <ReactMarkdown
                           components={{
-                            code: ({ node, inline, className, children, ...props }) => {
+                            code: ({ node, className, children, ...props }: any) => {
+                              const inline = !className;
                               const match = /language-(\w+)/.exec(className || '');
                               const language = match ? match[1] : undefined;
                               const codeString = String(children).replace(/\n$/, '');
@@ -155,7 +156,8 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
                     )}
                     <ReactMarkdown
                       components={{
-                        code: ({ node, inline, className, children, ...props }) => {
+                        code: ({ node, className, children, ...props }: any) => {
+                          const inline = !className;
                           const match = /language-(\w+)/.exec(className || '');
                           const language = match ? match[1] : undefined;
                           const codeString = String(children).replace(/\n$/, '');
@@ -187,7 +189,8 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
             ) : (
               <ReactMarkdown
                 components={{
-                  code: ({ node, inline, className, children, ...props }) => {
+                  code: ({ node, className, children, ...props }: any) => {
+                    const inline = !className;
                     const match = /language-(\w+)/.exec(className || '');
                     const language = match ? match[1] : undefined;
                     const codeString = String(children).replace(/\n$/, '');
@@ -242,7 +245,8 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
                     <ExpandableSection headerText="Thinking Process">
                       <ReactMarkdown
                         components={{
-                          code: ({ node, inline, className, children, ...props }) => {
+                          code: ({ node, className, children, ...props }: any) => {
+                            const inline = !className;
                             const match = /language-(\w+)/.exec(className || '');
                             const language = match ? match[1] : undefined;
                             const codeString = String(children).replace(/\n$/, '');
@@ -277,8 +281,8 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
                           <pre {...props} />
                         </div>
                       ),
-                      code: ({ node, inline, ...props }) =>
-                        inline ? (
+                      code: ({ node, ...props }: any) =>
+                        !props.className ? (
                           <code className="inline-code" {...props} />
                         ) : (
                           <code className="code-block" {...props} />
