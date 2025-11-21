@@ -8,8 +8,6 @@
 
 A modern, responsive UI for interacting with Large Language Models (LLMs). Built with React, TypeScript, Vite, and AWS Cloudscape Design System, this application provides a beautiful interface for chatting with AI models through Ollama, LM Studio, and Amazon Bedrock.
 
-![Local LLM UI Screenshot](.github/images/local-llm-ui-ex1.png)
-
 ## Features
 
 - **Modern UI**: Built with AWS Cloudscape Design System for a professional, accessible interface
@@ -364,6 +362,17 @@ This project uses:
 - **Cloudscape Design System**: AWS UI component library
 - **AWS SDK**: Bedrock integration (@aws-sdk/client-bedrock, @aws-sdk/client-bedrock-runtime)
 - **React Markdown**: Markdown rendering in chat
+
+## Screenshots
+
+### Ollama, LMStudio Support
+
+![Local LLM UI Screenshot](.github/images/local-llm-ui-ex1.png)
+
+### Amazon Bedrock features
+
+![Local LLM UI Amazon Bedrock Features](.github/images/local-llm-ui-ex2.png)
+
 
 ## License
 
