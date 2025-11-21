@@ -6,8 +6,10 @@ import {
   Alert,
   Box,
   Button,
+  CollectionPreferences,
   FormField,
   Icon,
+  Input,
   RadioGroup,
   Select,
   SideNavigation,
@@ -15,21 +17,53 @@ import {
 } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 
+import { loadPreferences, savePreferences, validateInitials } from '../utils/preferences';
+import type { UserPreferences } from '../utils/preferences';
+
 interface SideBarProps {
   selectedModel: SelectProps.Option | null;
   setSelectedModel: (model: SelectProps.Option | null) => void;
   onNewChat?: () => void;
+  onPreferencesChange?: (preferences: UserPreferences) => void;
 }
 
 type LoadingStatus = 'pending' | 'loading' | 'error' | 'finished';
 type Provider = 'lmstudio' | 'ollama' | 'bedrock';
 
-export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: SideBarProps) {
+export default function SideBar({
+  selectedModel,
+  setSelectedModel,
+  onNewChat,
+  onPreferencesChange,
+}: SideBarProps) {
   const [activeHref, setActiveHref] = useState('#/page1');
   const [modelOptions, setModelOptions] = useState<SelectProps.Option[]>([]);
   const [modelsLoadingStatus, setModelsLoadingStatus] = useState<LoadingStatus>('pending');
   const [modelErrorText, setModelErrorText] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<Provider>('ollama');
+
+  // Preferences state
+  const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+
+  // Load preferences on mount and apply preferred provider
+  useEffect(() => {
+    const prefs = loadPreferences();
+    setPreferences(prefs);
+    setSelectedProvider(prefs.preferredProvider);
+  }, []);
+
+  const handlePreferencesConfirm = (detail: { custom?: UserPreferences }) => {
+    if (detail.custom) {
+      savePreferences(detail.custom);
+      setPreferences(detail.custom);
+      setSelectedProvider(detail.custom.preferredProvider);
+      setShowSuccessAlert(true);
+      if (onPreferencesChange) {
+        onPreferencesChange(detail.custom);
+      }
+    }
+  };
 
   useEffect(() => {
     const fetchModels = async () => {
@@ -282,7 +316,7 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
                     label: (
                       <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <img
-                          src="/bedrock-color.svg"
+                          src="/bedrock_bw.svg"
                           alt="Amazon Bedrock"
                           style={{ width: '16px', height: '16px' }}
                         />
@@ -330,6 +364,75 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
         }
         items={[]}
       />
+
+      {/* Success Alert */}
+      {showSuccessAlert && (
+        <Box padding={{ horizontal: 's' }}>
+          <Alert type="success" dismissible onDismiss={() => setShowSuccessAlert(false)}>
+            Preferences saved successfully
+          </Alert>
+        </Box>
+      )}
+
+      {/* Preferences Section at Bottom */}
+      <Box padding={{ horizontal: 's', bottom: 's' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Icon name="settings" size="medium" />
+          <span style={{ flex: 1, fontWeight: 600 }}>Preferences</span>
+          <CollectionPreferences
+            title="User Preferences"
+            confirmLabel="Save"
+            cancelLabel="Cancel"
+            preferences={{ custom: preferences }}
+            onConfirm={({ detail }) => handlePreferencesConfirm(detail)}
+            customPreference={(customValue, setCustomValue) => (
+              <SpaceBetween size="l">
+                <FormField label="Preferred Provider" stretch={true}>
+                  <Select
+                    selectedOption={{
+                      label:
+                        customValue.preferredProvider === 'ollama'
+                          ? 'Ollama'
+                          : customValue.preferredProvider === 'lmstudio'
+                            ? 'LM Studio'
+                            : 'Amazon Bedrock',
+                      value: customValue.preferredProvider,
+                    }}
+                    onChange={({ detail }) =>
+                      setCustomValue({
+                        ...customValue,
+                        preferredProvider: detail.selectedOption.value as Provider,
+                      })
+                    }
+                    options={[
+                      { label: 'Ollama', value: 'ollama' },
+                      { label: 'LM Studio', value: 'lmstudio' },
+                      { label: 'Amazon Bedrock', value: 'bedrock' },
+                    ]}
+                  />
+                </FormField>
+
+                <FormField
+                  label="Avatar Initials"
+                  description="Max 2 alphanumeric characters"
+                  stretch={true}
+                >
+                  <Input
+                    value={customValue.avatarInitials}
+                    onChange={({ detail }) =>
+                      setCustomValue({
+                        ...customValue,
+                        avatarInitials: validateInitials(detail.value),
+                      })
+                    }
+                    placeholder="PC"
+                  />
+                </FormField>
+              </SpaceBetween>
+            )}
+          />
+        </div>
+      </Box>
     </SpaceBetween>
   );
 }

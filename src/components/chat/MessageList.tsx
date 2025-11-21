@@ -1,14 +1,16 @@
 import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+
+import Avatar from '@cloudscape-design/chat-components/avatar';
+import ChatBubble from '@cloudscape-design/chat-components/chat-bubble';
 import {
   Box,
-  SpaceBetween,
   ButtonGroup,
-  ExpandableSection,
   CopyToClipboard,
+  ExpandableSection,
+  SpaceBetween,
 } from '@cloudscape-design/components';
-import ChatBubble from '@cloudscape-design/chat-components/chat-bubble';
-import Avatar from '@cloudscape-design/chat-components/avatar';
-import ReactMarkdown from 'react-markdown';
+
 import CodeBlock from './CodeBlock';
 
 interface Message {
@@ -20,9 +22,10 @@ interface Message {
 interface MessageListProps {
   messages: Message[];
   streamingMessage?: Message | null;
+  avatarInitials?: string;
 }
 
-const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
+const MessageList = ({ messages, streamingMessage, avatarInitials = 'PC' }: MessageListProps) => {
   const [messageFeedback, setMessageFeedback] = useState<Record<number, string>>({});
 
   const parseThinkingContent = (content: string) => {
@@ -39,65 +42,73 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
   };
 
   const handleFeedback = (messageId: number, feedbackType: string) => {
-    setMessageFeedback(prev => ({
+    setMessageFeedback((prev) => ({
       ...prev,
-      [messageId]: feedbackType
+      [messageId]: feedbackType,
     }));
   };
 
-
-
   return (
     <SpaceBetween size="s">
-      {messages.map(message => (
+      {messages.map((message) => (
         <ChatBubble
           key={message.id}
           type={message.role === 'assistant' ? 'incoming' : 'outgoing'}
           ariaLabel={message.role === 'assistant' ? 'AI Assistant' : 'You'}
-          actions={message.role === 'assistant' ? (
-            <SpaceBetween direction="horizontal" size="xs">
-              <ButtonGroup
-                ariaLabel="Chat bubble actions"
-                variant="icon"
-                items={[
-                  {
-                    type: 'group',
-                    text: 'Feedback',
-                    items: [
-                      {
-                        type: 'icon-button',
-                        id: `helpful-${message.id}`,
-                        iconName: messageFeedback[message.id] === 'helpful' ? 'thumbs-up-filled' : 'thumbs-up',
-                        text: 'Helpful',
-                        disabled: messageFeedback[message.id] === 'helpful',
-                      },
-                      {
-                        type: 'icon-button',
-                        id: `not-helpful-${message.id}`,
-                        iconName: messageFeedback[message.id] === 'not-helpful' ? 'thumbs-down-filled' : 'thumbs-down',
-                        text: 'Not helpful',
-                        disabled: messageFeedback[message.id] === 'not-helpful' || messageFeedback[message.id] === 'helpful',
-                      }
-                    ]
-                  }
-                ]}
-                onItemClick={(e) => {
-                  if (e.detail.id.startsWith('helpful-')) {
-                    handleFeedback(message.id, 'helpful');
-                  } else if (e.detail.id.startsWith('not-helpful-')) {
-                    handleFeedback(message.id, 'not-helpful');
-                  }
-                }}
-              />
-              <CopyToClipboard
-                copyButtonAriaLabel="Copy message"
-                copyErrorText="Message failed to copy"
-                copySuccessText="Message copied"
-                textToCopy={message.content}
-                variant="icon"
-              />
-            </SpaceBetween>
-          ) : undefined}
+          actions={
+            message.role === 'assistant' ? (
+              <SpaceBetween direction="horizontal" size="xs">
+                <ButtonGroup
+                  ariaLabel="Chat bubble actions"
+                  variant="icon"
+                  items={[
+                    {
+                      type: 'group',
+                      text: 'Feedback',
+                      items: [
+                        {
+                          type: 'icon-button',
+                          id: `helpful-${message.id}`,
+                          iconName:
+                            messageFeedback[message.id] === 'helpful'
+                              ? 'thumbs-up-filled'
+                              : 'thumbs-up',
+                          text: 'Helpful',
+                          disabled: messageFeedback[message.id] === 'helpful',
+                        },
+                        {
+                          type: 'icon-button',
+                          id: `not-helpful-${message.id}`,
+                          iconName:
+                            messageFeedback[message.id] === 'not-helpful'
+                              ? 'thumbs-down-filled'
+                              : 'thumbs-down',
+                          text: 'Not helpful',
+                          disabled:
+                            messageFeedback[message.id] === 'not-helpful' ||
+                            messageFeedback[message.id] === 'helpful',
+                        },
+                      ],
+                    },
+                  ]}
+                  onItemClick={(e) => {
+                    if (e.detail.id.startsWith('helpful-')) {
+                      handleFeedback(message.id, 'helpful');
+                    } else if (e.detail.id.startsWith('not-helpful-')) {
+                      handleFeedback(message.id, 'not-helpful');
+                    }
+                  }}
+                />
+                <CopyToClipboard
+                  copyButtonAriaLabel="Copy message"
+                  copyErrorText="Message failed to copy"
+                  copySuccessText="Message copied"
+                  textToCopy={message.content}
+                  variant="icon"
+                />
+              </SpaceBetween>
+            ) : undefined
+          }
           avatar={
             message.role === 'assistant' ? (
               <Avatar
@@ -108,9 +119,9 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
               />
             ) : (
               <Avatar
-                initials="PC"
-                ariaLabel="PC"
-                tooltipText="PC"
+                initials={avatarInitials}
+                ariaLabel={avatarInitials}
+                tooltipText={avatarInitials}
               />
             )
           }
@@ -125,7 +136,7 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
                       <ExpandableSection headerText="Thinking Process">
                         <ReactMarkdown
                           components={{
-                            code: ({ node, className, children, ...props }: any) => {
+                            code: ({ className, children, ...props }) => {
                               const inline = !className;
                               const match = /language-(\w+)/.exec(className || '');
                               const language = match ? match[1] : undefined;
@@ -140,7 +151,7 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
                                     padding: '0.2em 0.4em',
                                     borderRadius: '3px',
                                     fontFamily: 'monospace',
-                                    fontSize: '0.9em'
+                                    fontSize: '0.9em',
                                   }}
                                   {...props}
                                 >
@@ -156,7 +167,7 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
                     )}
                     <ReactMarkdown
                       components={{
-                        code: ({ node, className, children, ...props }: any) => {
+                        code: ({ className, children, ...props }) => {
                           const inline = !className;
                           const match = /language-(\w+)/.exec(className || '');
                           const language = match ? match[1] : undefined;
@@ -171,7 +182,7 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
                                 padding: '0.2em 0.4em',
                                 borderRadius: '3px',
                                 fontFamily: 'monospace',
-                                fontSize: '0.9em'
+                                fontSize: '0.9em',
                               }}
                               {...props}
                             >
@@ -189,7 +200,7 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
             ) : (
               <ReactMarkdown
                 components={{
-                  code: ({ node, className, children, ...props }: any) => {
+                  code: ({ className, children, ...props }) => {
                     const inline = !className;
                     const match = /language-(\w+)/.exec(className || '');
                     const language = match ? match[1] : undefined;
@@ -204,7 +215,7 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
                           padding: '0.2em 0.4em',
                           borderRadius: '3px',
                           fontFamily: 'monospace',
-                          fontSize: '0.9em'
+                          fontSize: '0.9em',
                         }}
                         {...props}
                       >
@@ -238,14 +249,16 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
         >
           <Box padding={{ top: 'xs', bottom: 'xs' }}>
             {(() => {
-              const { thinkingContent, mainContent } = parseThinkingContent(streamingMessage.content);
+              const { thinkingContent, mainContent } = parseThinkingContent(
+                streamingMessage.content
+              );
               return (
                 <SpaceBetween size="s">
                   {thinkingContent && (
                     <ExpandableSection headerText="Thinking Process">
                       <ReactMarkdown
                         components={{
-                          code: ({ node, className, children, ...props }: any) => {
+                          code: ({ className, children, ...props }) => {
                             const inline = !className;
                             const match = /language-(\w+)/.exec(className || '');
                             const language = match ? match[1] : undefined;
@@ -260,7 +273,7 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
                                   padding: '0.2em 0.4em',
                                   borderRadius: '3px',
                                   fontFamily: 'monospace',
-                                  fontSize: '0.9em'
+                                  fontSize: '0.9em',
                                 }}
                                 {...props}
                               >
@@ -276,12 +289,12 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
                   )}
                   <ReactMarkdown
                     components={{
-                      pre: ({ node, ...props }) => (
+                      pre: ({ ...props }) => (
                         <div className="code-block-container">
                           <pre {...props} />
                         </div>
                       ),
-                      code: ({ node, ...props }: any) =>
+                      code: ({ ...props }) =>
                         !props.className ? (
                           <code className="inline-code" {...props} />
                         ) : (
@@ -294,8 +307,7 @@ const MessageList = ({ messages, streamingMessage }: MessageListProps) => {
                   <span className="cursor">|</span>
                 </SpaceBetween>
               );
-            })()
-            }
+            })()}
           </Box>
         </ChatBubble>
       )}

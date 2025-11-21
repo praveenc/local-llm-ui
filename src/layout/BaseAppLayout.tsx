@@ -8,6 +8,8 @@ import { I18nProvider } from '@cloudscape-design/components/i18n';
 import messages from '@cloudscape-design/components/i18n/messages/all.en';
 
 import { ChatContainer } from '../components/chat';
+import { loadPreferences } from '../utils/preferences';
+import type { UserPreferences } from '../utils/preferences';
 import SideBar from './SideBar';
 
 const LOCALE = 'en';
@@ -30,10 +32,17 @@ export default function BaseAppLayout() {
   });
   const clearHistoryRef = React.useRef<(() => void) | null>(null);
 
+  // Load user preferences
+  const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => loadPreferences());
+
   const handleNewChat = () => {
     if (clearHistoryRef.current) {
       clearHistoryRef.current();
     }
+  };
+
+  const handlePreferencesChange = (preferences: UserPreferences) => {
+    setUserPreferences(preferences);
   };
 
   // Check connections on mount
@@ -64,6 +73,7 @@ export default function BaseAppLayout() {
             selectedModel={selectedModel}
             setSelectedModel={setSelectedModel}
             onNewChat={handleNewChat}
+            onPreferencesChange={handlePreferencesChange}
           />
         }
         toolsOpen={toolsOpen}
@@ -165,6 +175,7 @@ export default function BaseAppLayout() {
               topP={topP}
               setTopP={setTopP}
               onClearHistoryRef={clearHistoryRef}
+              avatarInitials={userPreferences.avatarInitials}
             />
           </div>
         }

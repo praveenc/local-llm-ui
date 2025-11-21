@@ -39,6 +39,7 @@ interface ChatContainerProps {
   topP: number;
   setTopP: (topP: number) => void;
   onClearHistoryRef?: React.MutableRefObject<(() => void) | null>;
+  avatarInitials?: string;
 }
 
 const ChatContainer = ({
@@ -50,6 +51,7 @@ const ChatContainer = ({
   topP,
   setTopP,
   onClearHistoryRef,
+  avatarInitials = 'PC',
 }: ChatContainerProps) => {
   const [inputValue, setInputValue] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -396,7 +398,7 @@ const ChatContainer = ({
                         )}
                         {selectedModel.description?.toLowerCase().includes('bedrock') && (
                           <img
-                            src="/bedrock-color.svg"
+                            src="/bedrock_bw.svg"
                             alt="Amazon Bedrock"
                             style={{ width: '48px', height: '48px' }}
                           />
@@ -414,7 +416,11 @@ const ChatContainer = ({
                   )}
                 </Box>
               ) : (
-                <MessageList messages={messages} streamingMessage={streamingMessage} />
+                <MessageList
+                  messages={messages}
+                  streamingMessage={streamingMessage}
+                  avatarInitials={avatarInitials}
+                />
               )}
             </Box>
           </ScrollableContainer>
