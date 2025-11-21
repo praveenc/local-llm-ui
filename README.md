@@ -6,16 +6,19 @@
 [![Vite](https://img.shields.io/badge/Vite-7-646cff.svg)](https://vitejs.dev/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-A modern, responsive UI for interacting with local Large Language Models (LLMs). Built with React, TypeScript, Vite, and AWS Cloudscape Design System, this application provides a beautiful interface for chatting with local AI models through Ollama, LM Studio, and other providers.
+A modern, responsive UI for interacting with Large Language Models (LLMs). Built with React, TypeScript, Vite, and AWS Cloudscape Design System, this application provides a beautiful interface for chatting with AI models through Ollama, LM Studio, and Amazon Bedrock.
 
 ![Local LLM UI Screenshot](.github/images/local-llm-ui-ex1.png)
 
 ## Features
 
 - **Modern UI**: Built with AWS Cloudscape Design System for a professional, accessible interface
-- **Multiple AI Providers**: Support for Ollama and LM Studio
+- **Multiple AI Providers**: Support for Ollama, LM Studio, and Amazon Bedrock
 - **Real-time Streaming**: Stream responses from AI models in real-time
 - **Model Configuration**: Adjust temperature, top-p, and max tokens for fine-tuned responses
+- **Visual Provider Indicators**: Clear icons showing which AI provider is active
+- **Document Upload**: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) with Bedrock models
+- **Usage Metrics**: View token usage and latency for Bedrock requests
 - **Chat History**: Manage multiple chat sessions with automatic history tracking *(Coming soon)*
 - **Responsive Design**: Works seamlessly across desktop and mobile devices
 - **Dark/Light Mode**: Automatic theme support through Cloudscape
@@ -29,6 +32,7 @@ Before running this application, ensure you have the following installed:
 - **AI Provider** (at least one):
   - [Ollama](https://ollama.ai) - Local AI models (recommended)
   - [LM Studio](https://lmstudio.ai) - Alternative local AI platform
+  - [Amazon Bedrock](https://aws.amazon.com/bedrock/) - AWS cloud AI service (requires AWS credentials)
 
 ## Installation
 
@@ -85,6 +89,44 @@ Before running this application, ensure you have the following installed:
    - Go to Developer → Server Settings
    - Enable "JIT Loading" to load models on-demand
 
+### Option 3: Amazon Bedrock
+
+1. **Set up AWS credentials** using one of these methods:
+
+   **Option A: Environment Variables**
+   ```bash
+   export AWS_ACCESS_KEY_ID=your_access_key_id
+   export AWS_SECRET_ACCESS_KEY=your_secret_access_key
+   export AWS_REGION=us-west-2  # or your preferred region
+   ```
+
+   **Option B: AWS CLI**
+   ```bash
+   aws configure
+   ```
+
+   **Option C: AWS Credentials File**
+   Create `~/.aws/credentials`:
+   ```ini
+   [default]
+   aws_access_key_id = your_access_key_id
+   aws_secret_access_key = your_secret_access_key
+   ```
+
+2. **Ensure IAM Permissions**: Your AWS user/role needs these permissions:
+   - `bedrock:ListInferenceProfiles`
+   - `bedrock:InvokeModel` or `bedrock:InvokeModelWithResponseStream`
+
+3. **Request Model Access** (if needed):
+   - Go to AWS Bedrock console
+   - Navigate to "Model access"
+   - Request access to desired models (e.g., Claude, Llama)
+
+4. **Verify Setup**:
+   ```bash
+   aws bedrock list-foundation-models --region us-west-2
+   ```
+
 ## Running the Application
 
 ### Development Mode
@@ -119,7 +161,7 @@ npm run preview
 
 2. **Select AI Provider**:
    - Open the sidebar (Model Settings)
-   - Choose between Ollama or LM Studio
+   - Choose between Ollama, LM Studio, or Amazon Bedrock
    - The app will automatically detect available models
 
 3. **Select a Model**:
@@ -152,6 +194,26 @@ Adjust model parameters in the expandable settings panel:
 - **New Chat**: Click the "New Chat" button in the sidebar to start fresh
 - **Clear History**: Clears the current conversation while keeping the session
 
+### Document Upload (Bedrock Only)
+
+When using Amazon Bedrock models, you can upload documents:
+
+1. Click the attachment icon in the chat input
+2. Select up to 5 files (max 4.5 MB each)
+3. Supported formats: PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX
+4. Send your message with the attached documents
+5. The AI will analyze and respond based on the document content
+
+### Usage Metrics (Bedrock Only)
+
+For Bedrock models, view detailed usage metrics:
+- **Input Tokens**: Tokens in your prompt
+- **Output Tokens**: Tokens in the AI response
+- **Total Tokens**: Combined token count
+- **Latency**: Response time in milliseconds
+
+Metrics appear in an expandable section below the chat input.
+
 ## Project Structure
 
 ```text
@@ -171,10 +233,12 @@ local-llm-ui/
 │   │   ├── api.ts             # API service orchestrator
 │   │   ├── ollama.ts          # Ollama integration
 │   │   ├── lmstudio.ts        # LM Studio integration
+│   │   ├── bedrock.ts         # Amazon Bedrock integration
 │   │   └── types.ts           # TypeScript types
 │   ├── utils/                 # Utility functions
 │   └── main.tsx               # Application entry point
-├── server/                    # Server-side code (disabled)
+├── server/
+│   └── bedrock-proxy.ts       # Bedrock proxy server
 ├── public/                    # Static assets
 ├── vite.config.ts             # Vite configuration
 └── package.json               # Dependencies and scripts
@@ -192,16 +256,22 @@ VITE_OLLAMA_URL=http://localhost:11434
 
 # Optional: Custom LM Studio URL
 VITE_LMSTUDIO_URL=http://localhost:1234
+
+# Optional: AWS Configuration (if not using AWS CLI or credentials file)
+AWS_ACCESS_KEY_ID=your_access_key_id
+AWS_SECRET_ACCESS_KEY=your_secret_access_key
+AWS_REGION=us-west-2
 ```
 
 ### Proxy Configuration
 
-The Vite development server proxies requests to local AI services:
+The Vite development server proxies requests to AI services:
 
 - `/api/ollama` → `http://localhost:11434`
 - `/api/lmstudio` → `http://localhost:1234`
+- `/api/bedrock` → Handled by server-side proxy (AWS SDK)
 
-This configuration is in `vite.config.ts` and handles CORS automatically.
+This configuration is in `vite.config.ts` and handles CORS automatically. The Bedrock proxy runs server-side to securely handle AWS credentials.
 
 ## Troubleshooting
 
@@ -212,7 +282,7 @@ This configuration is in `vite.config.ts` and handles CORS automatically.
 **Solutions**:
 
 - **Ollama**: Ensure Ollama is running and you've pulled at least one model
-  
+
   ```bash
   ollama list
   ollama pull llama2
@@ -220,16 +290,21 @@ This configuration is in `vite.config.ts` and handles CORS automatically.
 
 - **LM Studio**: Ensure the server is running and a model is loaded or JIT Loading is enabled
 
+- **Amazon Bedrock**: Verify AWS credentials are configured and you have model access
+
 ### Connection Failed
 
 **Problem**: "Cannot connect" error messages
 
 **Solutions**:
 
-- Verify the AI service is running on the correct port
-- Check firewall settings
-- Ensure no other application is using the port
-- Restart the AI service
+- **Ollama/LM Studio**: Verify the AI service is running on the correct port
+- **Ollama/LM Studio**: Check firewall settings
+- **Ollama/LM Studio**: Ensure no other application is using the port
+- **Ollama/LM Studio**: Restart the AI service
+- **Bedrock**: Verify AWS credentials are configured correctly
+- **Bedrock**: Check IAM permissions for Bedrock access
+- **Bedrock**: Ensure you have requested model access in AWS console
 
 ### Slow Responses
 
@@ -264,7 +339,7 @@ This project uses:
 1. Follow the existing component structure
 2. Use Cloudscape components for consistency
 3. Maintain TypeScript types
-4. Test with both Ollama and LM Studio
+4. Test with Ollama, LM Studio, and Bedrock (if applicable)
 
 ## Screenshots
 
@@ -287,6 +362,7 @@ This project uses:
 - **TypeScript**: Type safety
 - **Vite**: Build tool and dev server
 - **Cloudscape Design System**: AWS UI component library
+- **AWS SDK**: Bedrock integration (@aws-sdk/client-bedrock, @aws-sdk/client-bedrock-runtime)
 - **React Markdown**: Markdown rendering in chat
 
 ## License
@@ -305,5 +381,5 @@ For issues or questions:
 ## Acknowledgments
 
 - UI built with [AWS Cloudscape Design System](https://cloudscape.design/)
-- Supports [Ollama](https://ollama.ai) and [LM Studio](https://lmstudio.ai)
+- Supports [Ollama](https://ollama.ai), [LM Studio](https://lmstudio.ai), and [Amazon Bedrock](https://aws.amazon.com/bedrock/)
 - Powered by [Vite](https://vitejs.dev/) and [React](https://react.dev/)
