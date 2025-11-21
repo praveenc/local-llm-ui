@@ -1,16 +1,11 @@
-import type { IncomingMessage, ServerResponse } from 'http';
 import {
   BedrockClient,
-  ListInferenceProfilesCommand,
   InferenceProfileType,
+  ListInferenceProfilesCommand,
   type ListInferenceProfilesCommandInput,
 } from '@aws-sdk/client-bedrock';
-import {
-  BedrockRuntimeClient,
-  ConverseStreamCommand,
-} from '@aws-sdk/client-bedrock-runtime';
-
-
+import { BedrockRuntimeClient, ConverseStreamCommand } from '@aws-sdk/client-bedrock-runtime';
+import type { IncomingMessage, ServerResponse } from 'http';
 
 interface InferenceProfileModel {
   modelArn?: string;
@@ -114,30 +109,26 @@ async function handleListModels(res: ServerResponse): Promise<void> {
     nextToken = response.nextToken;
   } while (nextToken);
 
-  console.log(
-    `Bedrock: Found ${allProfiles.length} total inference profiles`
-  );
+  console.log(`Bedrock: Found ${allProfiles.length} total inference profiles`);
 
-  const filteredProfiles = allProfiles.filter(
-    (profile: InferenceProfileSummary) => {
-      if (!profile.models || profile.models.length === 0) {
-        return false;
-      }
-
-      const modelArn = profile.models[0].modelArn || '';
-
-      // Only exclude embedding models and image models
-      if (
-        modelArn.toLowerCase().includes('embed') ||
-        modelArn.toLowerCase().includes('stable-image') ||
-        modelArn.toLowerCase().includes('twelvelabs')
-      ) {
-        return false;
-      }
-
-      return true;
+  const filteredProfiles = allProfiles.filter((profile: InferenceProfileSummary) => {
+    if (!profile.models || profile.models.length === 0) {
+      return false;
     }
-  );
+
+    const modelArn = profile.models[0].modelArn || '';
+
+    // Only exclude embedding models and image models
+    if (
+      modelArn.toLowerCase().includes('embed') ||
+      modelArn.toLowerCase().includes('stable-image') ||
+      modelArn.toLowerCase().includes('twelvelabs')
+    ) {
+      return false;
+    }
+
+    return true;
+  });
 
   const mappedModels = filteredProfiles.map((profile: InferenceProfileSummary) => {
     const displayName = profile.inferenceProfileName || profile.inferenceProfileId || '';
@@ -164,8 +155,12 @@ async function handleListModels(res: ServerResponse): Promise<void> {
 
   // Sort models: Anthropic first, then alphabetically by name
   allModels.sort((a, b) => {
-    const aIsAnthropic = a.modelName.toLowerCase().includes('anthropic') || a.modelName.toLowerCase().includes('claude');
-    const bIsAnthropic = b.modelName.toLowerCase().includes('anthropic') || b.modelName.toLowerCase().includes('claude');
+    const aIsAnthropic =
+      a.modelName.toLowerCase().includes('anthropic') ||
+      a.modelName.toLowerCase().includes('claude');
+    const bIsAnthropic =
+      b.modelName.toLowerCase().includes('anthropic') ||
+      b.modelName.toLowerCase().includes('claude');
 
     // Anthropic models first
     if (aIsAnthropic && !bIsAnthropic) return -1;
@@ -175,7 +170,9 @@ async function handleListModels(res: ServerResponse): Promise<void> {
     return a.modelName.localeCompare(b.modelName);
   });
 
-  console.log(`Bedrock: Returning ${allModels.length} unique models (sorted, including ${hardcodedModels.length} hardcoded)`);
+  console.log(
+    `Bedrock: Returning ${allModels.length} unique models (sorted, including ${hardcodedModels.length} hardcoded)`
+  );
 
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({ models: allModels }));
@@ -191,6 +188,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
 
   console.log(`Bedrock: Chat request for model: ${model}`);
   console.log(`Bedrock: Messages count: ${messages?.length || 0}`);
+  console.log(`Bedrock: Messages:`, JSON.stringify(messages, null, 2));
 
   // Claude Sonnet 4.5 and Haiku 4.5 don't support both temperature and topP simultaneously
   // Check if model contains 'sonnet-4-5' or 'haiku-4-5' in the ID
@@ -211,40 +209,101 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
   }
 
   // Transform messages to support documents
-  const transformedMessages = messages.map((msg: any) => {
-    const role = msg.role === 'user' ? 'user' : 'assistant';
+  const transformedMessages = messages.map(
+    (msg: {
+      role: string;
+      content: string | unknown[];
+      files?: Array<{ name: string; format: string; bytes: string }>;
+    }) => {
+      const role = msg.role === 'user' ? 'user' : 'assistant';
 
-    // Build content blocks
-    const contentBlocks: any[] = [];
+      // Build content blocks
+      const contentBlocks: Array<{
+        text?: string;
+        document?: {
+          name: string;
+          format: string;
+          source: { bytes: Buffer };
+        };
+      }> = [];
 
-    // Add text content
-    if (typeof msg.content === 'string') {
-      contentBlocks.push({ text: msg.content });
-    } else if (Array.isArray(msg.content)) {
-      // Content is already in ContentBlock format
-      contentBlocks.push(...msg.content);
-    }
-
-    // Add document blocks if files are present
-    if (msg.files && Array.isArray(msg.files)) {
-      for (const file of msg.files) {
-        contentBlocks.push({
-          document: {
-            name: file.name,
-            format: file.format,
-            source: {
-              bytes: Buffer.from(file.bytes, 'base64'),
-            },
-          },
-        });
+      // Add text content
+      if (typeof msg.content === 'string') {
+        contentBlocks.push({ text: msg.content });
+      } else if (Array.isArray(msg.content)) {
+        // Content is already in ContentBlock format - cast to proper type
+        contentBlocks.push(
+          ...(msg.content as Array<{
+            text?: string;
+            document?: { name: string; format: string; source: { bytes: Buffer } };
+          }>)
+        );
       }
-    }
 
-    return {
-      role,
-      content: contentBlocks,
-    };
-  });
+      // Add document blocks if files are present
+      if (msg.files && Array.isArray(msg.files)) {
+        console.log(`Bedrock: Processing ${msg.files.length} files for message`);
+        for (const file of msg.files) {
+          // Additional sanitization on server side to ensure compliance
+          let sanitizedName = file.name || 'document';
+
+          // Remove any characters that aren't alphanumeric, space, hyphen, parentheses, or square brackets
+          sanitizedName = sanitizedName.replace(/[^a-zA-Z0-9 \-()[\]]/g, '');
+
+          // Replace multiple consecutive spaces with single space
+          sanitizedName = sanitizedName.replace(/\s+/g, ' ');
+
+          // Trim whitespace
+          sanitizedName = sanitizedName.trim();
+
+          // Ensure we have a valid name
+          if (!sanitizedName || sanitizedName.length === 0) {
+            sanitizedName = 'document';
+          }
+
+          // Enforce max length
+          if (sanitizedName.length > 200) {
+            sanitizedName = sanitizedName.substring(0, 200).trim();
+          }
+
+          console.log(
+            `Bedrock: Original name: "${file.name}", Sanitized name: "${sanitizedName}", format: ${file.format}, bytes length: ${file.bytes?.length || 0}`
+          );
+
+          contentBlocks.push({
+            document: {
+              name: sanitizedName,
+              format: file.format,
+              source: {
+                bytes: Buffer.from(file.bytes, 'base64'),
+              },
+            },
+          });
+        }
+      }
+
+      return {
+        role,
+        content: contentBlocks,
+      };
+    }
+  );
+
+  console.log(
+    `Bedrock: Transformed messages:`,
+    JSON.stringify(
+      transformedMessages.map(
+        (m: { role: string; content: Array<{ text?: string; document?: { name?: string } }> }) => ({
+          role: m.role,
+          contentBlocks: m.content.map((c: { text?: string; document?: { name?: string } }) =>
+            'text' in c ? 'text' : 'document' in c ? `document(${c.document?.name})` : 'unknown'
+          ),
+        })
+      ),
+      null,
+      2
+    )
+  );
 
   const command = new ConverseStreamCommand({
     modelId: model,

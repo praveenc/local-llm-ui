@@ -15,7 +15,7 @@ const SUPPORTED_FORMATS = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
 } as const;
 
-type SupportedFormat = typeof SUPPORTED_FORMATS[keyof typeof SUPPORTED_FORMATS];
+type SupportedFormat = (typeof SUPPORTED_FORMATS)[keyof typeof SUPPORTED_FORMATS];
 
 export interface FileValidationError {
   file: File;
@@ -36,6 +36,10 @@ export interface ProcessedFile {
  * - Hyphens
  * - Parentheses
  * - Square brackets
+ * - Maximum length of 200 characters
+ * - Minimum length of 1 character
+ *
+ * Note: This field is vulnerable to prompt injections, so we use neutral names.
  */
 export function sanitizeFilename(filename: string): string {
   // Remove file extension
@@ -45,7 +49,7 @@ export function sanitizeFilename(filename: string): string {
   let sanitized = nameWithoutExt.replace(/\s+/g, ' ');
 
   // Keep only allowed characters: alphanumeric, space, hyphen, parentheses, square brackets
-  sanitized = sanitized.replace(/[^a-zA-Z0-9 \-\(\)\[\]]/g, '');
+  sanitized = sanitized.replace(/[^a-zA-Z0-9 \-()[\]]/g, '');
 
   // Trim whitespace
   sanitized = sanitized.trim();
@@ -53,6 +57,11 @@ export function sanitizeFilename(filename: string): string {
   // If empty after sanitization, use a default name
   if (!sanitized) {
     sanitized = 'document';
+  }
+
+  // Enforce maximum length of 200 characters
+  if (sanitized.length > 200) {
+    sanitized = sanitized.substring(0, 200).trim();
   }
 
   return sanitized;

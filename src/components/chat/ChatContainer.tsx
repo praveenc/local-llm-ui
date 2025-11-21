@@ -180,17 +180,34 @@ const ChatContainer = ({
       }
 
       // Build chat history
-      const chatMessages = [
+      const chatMessages: Array<{
+        role: 'user' | 'assistant';
+        content: string;
+        files?: Array<{
+          name: string;
+          format: string;
+          bytes: string;
+        }>;
+      }> = [
         ...messages.map((m) => ({
           role: m.role === 'user' ? ('user' as const) : ('assistant' as const),
           content: m.content,
         })),
-        {
+      ];
+
+      // Add current message with files if present
+      if (processedFiles.length > 0) {
+        chatMessages.push({
           role: 'user' as const,
           content: userMessage.content,
-          files: processedFiles.length > 0 ? processedFiles : undefined,
-        },
-      ];
+          files: processedFiles,
+        });
+      } else {
+        chatMessages.push({
+          role: 'user' as const,
+          content: userMessage.content,
+        });
+      }
 
       let fullContent = '';
 

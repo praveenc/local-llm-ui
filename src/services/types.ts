@@ -20,6 +20,11 @@ export interface ContentBlock {
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string | ContentBlock[];
+  files?: Array<{
+    name: string;
+    format: string;
+    bytes: string;
+  }>;
 }
 
 export interface ChatRequest {
