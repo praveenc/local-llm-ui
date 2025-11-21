@@ -322,7 +322,7 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
                 placeholder={modelsLoadingStatus === 'loading' ? 'Loading...' : 'Choose a model'}
                 filteringType="auto"
                 ariaLabel="Model selection"
-                disabled={modelsLoadingStatus === 'loading' || modelsLoadingStatus === 'error'}
+                disabled={modelsLoadingStatus === 'error'}
                 renderHighlightedAriaLive={(item) => item.label || ''}
               />
             </FormField>
