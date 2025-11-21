@@ -55,11 +55,47 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
         const models = await service.getModels();
         console.log(`Received ${models.length} models from ${selectedProvider}:`, models);
 
-        const formattedOptions = models.map((model) => ({
-          label: model.modelName,
-          value: model.modelId,
-          description: `Provider: ${model.provider}`,
-        }));
+        let formattedOptions: SelectProps.Option[];
+
+        // Group Bedrock models by model family
+        if (selectedProvider === 'bedrock') {
+          // Group models by family
+          const modelsByFamily = models.reduce(
+            (acc, model) => {
+              const family = model.modelFamily || 'Other';
+              if (!acc[family]) {
+                acc[family] = [];
+              }
+              acc[family].push({
+                label: model.modelName,
+                value: model.modelId,
+                description: `Provider: ${model.provider}`,
+              });
+              return acc;
+            },
+            {} as Record<string, SelectProps.Option[]>
+          );
+
+          // Convert to grouped options format
+          // Sort families: Anthropic Claude first, then alphabetically
+          const sortedFamilies = Object.keys(modelsByFamily).sort((a, b) => {
+            if (a === 'Anthropic Claude') return -1;
+            if (b === 'Anthropic Claude') return 1;
+            return a.localeCompare(b);
+          });
+
+          formattedOptions = sortedFamilies.map((family) => ({
+            label: family,
+            options: modelsByFamily[family],
+          }));
+        } else {
+          // For non-Bedrock providers, use flat list
+          formattedOptions = models.map((model) => ({
+            label: model.modelName,
+            value: model.modelId,
+            description: `Provider: ${model.provider}`,
+          }));
+        }
 
         console.log('Formatted options:', formattedOptions);
 
@@ -67,13 +103,47 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
         setModelsLoadingStatus('finished');
 
         // Auto-select first model if available and no model is currently selected
+        // Handle both flat and grouped options
+        const getFirstOption = (options: SelectProps.Option[]): SelectProps.Option | null => {
+          if (options.length === 0) return null;
+          const first = options[0];
+          // If it's a group (has options property), get the first option from the group
+          if ('options' in first && Array.isArray(first.options) && first.options.length > 0) {
+            return first.options[0];
+          }
+          // Otherwise it's a flat option
+          return first;
+        };
+
+        const isOptionValid = (options: SelectProps.Option[], value: string): boolean => {
+          for (const opt of options) {
+            // Check if it's a group (has options property)
+            if ('options' in opt && Array.isArray(opt.options)) {
+              // It's a group, check nested options
+              if (opt.options.some((o: SelectProps.Option) => o.value === value)) {
+                return true;
+              }
+            } else if (opt.value === value) {
+              // It's a flat option
+              return true;
+            }
+          }
+          return false;
+        };
+
         if (formattedOptions.length > 0 && !selectedModel) {
-          setSelectedModel(formattedOptions[0]);
+          const firstOption = getFirstOption(formattedOptions);
+          if (firstOption) {
+            setSelectedModel(firstOption);
+          }
         } else if (formattedOptions.length > 0 && selectedModel) {
           // Check if current selection is still valid
-          const stillValid = formattedOptions.some((opt) => opt.value === selectedModel.value);
+          const stillValid = isOptionValid(formattedOptions, selectedModel.value || '');
           if (!stillValid) {
-            setSelectedModel(formattedOptions[0]);
+            const firstOption = getFirstOption(formattedOptions);
+            if (firstOption) {
+              setSelectedModel(firstOption);
+            }
           }
         } else {
           setSelectedModel(null);

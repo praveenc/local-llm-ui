@@ -133,11 +133,37 @@ async function handleListModels(res: ServerResponse): Promise<void> {
   const mappedModels = filteredProfiles.map((profile: InferenceProfileSummary) => {
     const displayName = profile.inferenceProfileName || profile.inferenceProfileId || '';
     const modelId = profile.inferenceProfileId || '';
+    const profileType = profile.type || 'UNKNOWN';
+
+    // Extract model family from the model name or ARN
+    let modelFamily = 'Other';
+    const lowerName = displayName.toLowerCase();
+    const modelArn = profile.models?.[0]?.modelArn?.toLowerCase() || '';
+
+    if (
+      lowerName.includes('claude') ||
+      lowerName.includes('anthropic') ||
+      modelArn.includes('anthropic')
+    ) {
+      modelFamily = 'Anthropic Claude';
+    } else if (lowerName.includes('llama') || modelArn.includes('meta')) {
+      modelFamily = 'Meta Llama';
+    } else if (lowerName.includes('mistral') || modelArn.includes('mistral')) {
+      modelFamily = 'Mistral AI';
+    } else if (lowerName.includes('titan') || modelArn.includes('amazon')) {
+      modelFamily = 'Amazon Titan';
+    } else if (lowerName.includes('jamba') || modelArn.includes('ai21')) {
+      modelFamily = 'AI21 Labs';
+    } else if (lowerName.includes('command') || modelArn.includes('cohere')) {
+      modelFamily = 'Cohere';
+    }
 
     return {
       modelId,
       modelName: displayName,
       provider: 'bedrock',
+      profileType, // SYSTEM_DEFINED type (can be used to determine global vs regional)
+      modelFamily,
     };
   });
 
