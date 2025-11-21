@@ -14,6 +14,7 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 - **Multiple AI Providers**: Support for Ollama, LM Studio, and Amazon Bedrock
 - **Real-time Streaming**: Stream responses from AI models in real-time
 - **Model Configuration**: Adjust temperature, top-p, and max tokens for fine-tuned responses
+- **User Preferences**: Persistent settings for preferred AI provider and custom avatar initials
 - **Visual Provider Indicators**: Clear icons showing which AI provider is active
 - **Document Upload**: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) with Bedrock models
 - **Usage Metrics**: View token usage and latency for Bedrock requests
@@ -53,13 +54,14 @@ Before running this application, ensure you have the following installed:
 
 1. Download and install Ollama from [ollama.com](https://ollama.com)
 
-2. Pull a model (e.g., llama3.2):
+2. Pull a model (e.g., qwen3-8b):
 
    ```bash
-   ollama pull llama3.2:latest
+   ollama pull qwen3-8b-8k:latest
    ```
 
    ```bash
+   # or an ollama cloud model
    ollama pull minimax-m2:cloud
    ```
 
@@ -192,6 +194,20 @@ Adjust model parameters in the expandable settings panel:
 - **New Chat**: Click the "New Chat" button in the sidebar to start fresh
 - **Clear History**: Clears the current conversation while keeping the session
 
+### User Preferences
+
+Customize your experience with persistent preferences:
+
+1. **Access Preferences**: Click the settings icon at the bottom of the sidebar
+2. **Preferred Provider**: Set your default AI provider (Ollama, LM Studio, or Bedrock)
+   - The app will automatically select this provider on startup
+3. **Avatar Initials**: Customize your chat avatar with 2 alphanumeric characters
+   - Automatically converted to uppercase
+   - Appears next to your messages in the chat
+4. **Save**: Click "Save" to persist your preferences
+   - Settings are stored in browser localStorage
+   - Preferences persist across sessions
+
 ### Document Upload (Bedrock Only)
 
 When using Amazon Bedrock models, you can upload documents:
@@ -233,7 +249,9 @@ local-llm-ui/
 │   │   ├── lmstudio.ts        # LM Studio integration
 │   │   ├── bedrock.ts         # Amazon Bedrock integration
 │   │   └── types.ts           # TypeScript types
-│   ├── utils/                 # Utility functions
+│   ├── utils/
+│   │   ├── preferences.ts     # User preferences management
+│   │   └── ...                # Other utility functions
 │   └── main.tsx               # Application entry point
 ├── server/
 │   └── bedrock-proxy.ts       # Bedrock proxy server
