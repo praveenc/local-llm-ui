@@ -36,7 +36,7 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
       setModelErrorText('');
 
       try {
-        const { lmstudioService, ollamaService } = await import('../services');
+        const { lmstudioService, ollamaService, bedrockService } = await import('../services');
 
         // Fetch models from the selected provider
         let service;
@@ -44,6 +44,8 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
           service = lmstudioService;
         } else if (selectedProvider === 'ollama') {
           service = ollamaService;
+        } else if (selectedProvider === 'bedrock') {
+          service = bedrockService;
         } else {
           throw new Error('Invalid provider');
         }
@@ -84,6 +86,13 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
             'Cannot connect to LMStudio (port 1234). Please ensure LMStudio is running.';
         } else if (selectedProvider === 'ollama') {
           errorMessage = 'Cannot connect to Ollama (port 11434). Please ensure Ollama is running.';
+        } else if (selectedProvider === 'bedrock') {
+          const err = error as Error;
+          if (err.message?.includes('credentials') || err.message?.includes('AWS')) {
+            errorMessage = err.message;
+          } else {
+            errorMessage = 'Cannot connect to Amazon Bedrock. Please configure AWS credentials.';
+          }
         } else {
           errorMessage = 'Invalid provider selected.';
         }
@@ -122,7 +131,11 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
               <Alert
                 type="warning"
                 header={
-                  selectedProvider === 'lmstudio' ? 'LM Studio not running' : 'Ollama not running'
+                  selectedProvider === 'lmstudio'
+                    ? 'LM Studio not running'
+                    : selectedProvider === 'ollama'
+                      ? 'Ollama not running'
+                      : 'Amazon Bedrock connection failed'
                 }
               >
                 {selectedProvider === 'lmstudio' && (
@@ -130,6 +143,9 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
                 )}
                 {selectedProvider === 'ollama' && (
                   <>Please start Ollama and ensure it's running on port 11434.</>
+                )}
+                {selectedProvider === 'bedrock' && (
+                  <>{modelErrorText || 'Please configure AWS credentials to use Amazon Bedrock.'}</>
                 )}
               </Alert>
             )}
@@ -145,6 +161,12 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
                 {selectedProvider === 'ollama' && (
                   <>
                     Pull a model using: <code>ollama pull llama2</code>
+                  </>
+                )}
+                {selectedProvider === 'bedrock' && (
+                  <>
+                    No models found. Please check your AWS credentials and IAM permissions for
+                    Amazon Bedrock.
                   </>
                 )}
               </Alert>
@@ -195,8 +217,7 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
                         <span>Amazon Bedrock</span>
                       </span>
                     ),
-                    description: 'Coming soon',
-                    disabled: true,
+                    description: 'AWS cloud AI models',
                   },
                 ]}
               />

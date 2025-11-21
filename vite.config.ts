@@ -1,24 +1,25 @@
-import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-// import { handleBedrockRequest } from './server/bedrock-proxy';
+import { defineConfig } from 'vite';
+
+import { handleBedrockRequest } from './server/bedrock-proxy';
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
-    // Bedrock proxy disabled
-    // {
-    //   name: 'bedrock-proxy',
-    //   configureServer(server) {
-    //     server.middlewares.use(async (req, res, next) => {
-    //       if (req.url?.startsWith('/api/bedrock')) {
-    //         await handleBedrockRequest(req, res);
-    //       } else {
-    //         next();
-    //       }
-    //     });
-    //   },
-    // },
+    // Bedrock proxy for AWS SDK integration
+    {
+      name: 'bedrock-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (req.url?.startsWith('/api/bedrock')) {
+            await handleBedrockRequest(req, res);
+          } else {
+            next();
+          }
+        });
+      },
+    },
   ],
   server: {
     proxy: {

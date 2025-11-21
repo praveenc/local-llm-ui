@@ -1,6 +1,6 @@
+import { bedrockService } from './bedrock';
 import { lmstudioService } from './lmstudio';
 import { ollamaService } from './ollama';
-import { bedrockService } from './bedrock';
 import type { ChatRequest, ModelInfo } from './types';
 
 export type Provider = 'lmstudio' | 'ollama' | 'bedrock';
@@ -25,25 +25,24 @@ class APIService {
       console.log('Ollama not available');
     }
 
-    // Bedrock disabled
-    // try {
-    //   const bedrockModels = await bedrockService.getModels();
-    //   models.push(...bedrockModels);
-    // } catch {
-    //   console.log('Bedrock not available');
-    // }
+    // Try Bedrock
+    try {
+      const bedrockModels = await bedrockService.getModels();
+      models.push(...bedrockModels);
+    } catch {
+      console.log('Bedrock not available');
+    }
 
     if (models.length === 0) {
-      throw new Error('No AI services available. Please start LMStudio or Ollama.');
+      throw new Error(
+        'No AI services available. Please start LMStudio, Ollama, or configure AWS credentials for Bedrock.'
+      );
     }
 
     return models;
   }
 
-  async *chat(
-    provider: Provider,
-    request: ChatRequest
-  ): AsyncGenerator<string, void, unknown> {
+  async *chat(provider: Provider, request: ChatRequest): AsyncGenerator<string, void, unknown> {
     let service;
     if (provider === 'lmstudio') {
       service = lmstudioService;
@@ -56,12 +55,13 @@ class APIService {
   }
 
   async checkConnections(): Promise<{ lmstudio: boolean; ollama: boolean; bedrock: boolean }> {
-    const [lmstudio, ollama] = await Promise.all([
+    const [lmstudio, ollama, bedrock] = await Promise.all([
       lmstudioService.checkConnection(),
       ollamaService.checkConnection(),
+      bedrockService.checkConnection(),
     ]);
 
-    return { lmstudio, ollama, bedrock: false };
+    return { lmstudio, ollama, bedrock };
   }
 }
 

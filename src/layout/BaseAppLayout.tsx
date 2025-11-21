@@ -1,15 +1,14 @@
 'use client';
+
 import React, { useState } from 'react';
-import {
-  AppLayoutToolbar,
-  HelpPanel,
-  SpaceBetween,
-} from '@cloudscape-design/components';
+
+import { AppLayoutToolbar, HelpPanel, SpaceBetween } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 import { I18nProvider } from '@cloudscape-design/components/i18n';
 import messages from '@cloudscape-design/components/i18n/messages/all.en';
-import SideBar from "./SideBar";
-import { ChatContainer } from "../components/chat";
+
+import { ChatContainer } from '../components/chat';
+import SideBar from './SideBar';
 
 const LOCALE = 'en';
 
@@ -20,9 +19,14 @@ export default function BaseAppLayout() {
   const [topP, setTopP] = useState<number>(0.9);
   const [navigationOpen, setNavigationOpen] = useState<boolean>(true);
   const [toolsOpen, setToolsOpen] = useState<boolean>(false);
-  const [connectionStatus, setConnectionStatus] = useState<{ lmstudio: boolean; ollama: boolean }>({
+  const [connectionStatus, setConnectionStatus] = useState<{
+    lmstudio: boolean;
+    ollama: boolean;
+    bedrock: boolean;
+  }>({
     lmstudio: false,
-    ollama: false
+    ollama: false,
+    bedrock: false,
   });
   const clearHistoryRef = React.useRef<(() => void) | null>(null);
 
@@ -83,8 +87,24 @@ export default function BaseAppLayout() {
                   <span style={{ color: 'red' }}>✗ Not connected</span>
                 )}
               </div>
+              <div>
+                <strong>Amazon Bedrock:</strong>{' '}
+                {connectionStatus.bedrock ? (
+                  <span style={{ color: 'green' }}>✓ Connected</span>
+                ) : (
+                  <span style={{ color: 'red' }}>✗ Not connected</span>
+                )}
+              </div>
 
-              <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f0f8ff', borderRadius: '4px', fontSize: '0.85em' }}>
+              <div
+                style={{
+                  marginTop: '1rem',
+                  padding: '0.75rem',
+                  backgroundColor: '#f0f8ff',
+                  borderRadius: '4px',
+                  fontSize: '0.85em',
+                }}
+              >
                 <strong>💡 LMStudio Setup:</strong>
                 <p style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
                   If LMStudio is connected but no models appear:
@@ -98,9 +118,38 @@ export default function BaseAppLayout() {
                 </p>
               </div>
 
+              <div
+                style={{
+                  marginTop: '1rem',
+                  padding: '0.75rem',
+                  backgroundColor: '#fff3cd',
+                  borderRadius: '4px',
+                  fontSize: '0.85em',
+                }}
+              >
+                <strong>🔐 Amazon Bedrock Setup:</strong>
+                <p style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+                  To use Amazon Bedrock, configure AWS credentials:
+                </p>
+                <ol style={{ marginLeft: '1.2rem', marginTop: '0.5rem' }}>
+                  <li>Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY</li>
+                  <li>
+                    Or use AWS CLI: <code>aws configure</code>
+                  </li>
+                  <li>Ensure IAM permissions for Bedrock</li>
+                </ol>
+              </div>
+
               <div style={{ marginTop: '1rem', fontSize: '0.9em', color: '#666' }}>
-                <p><strong>LMStudio:</strong> Download from lmstudio.ai</p>
-                <p><strong>Ollama:</strong> Download from ollama.ai</p>
+                <p>
+                  <strong>LMStudio:</strong> Download from lmstudio.ai
+                </p>
+                <p>
+                  <strong>Ollama:</strong> Download from ollama.ai
+                </p>
+                <p>
+                  <strong>Bedrock:</strong> AWS cloud service
+                </p>
               </div>
             </SpaceBetween>
           </HelpPanel>
