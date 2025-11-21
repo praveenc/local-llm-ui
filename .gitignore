@@ -169,7 +169,7 @@ sketch
 *.sw?
 
 # Custom excludes
-docs/
+docs/tmp_docs/
 .kiro/
 
 # GitHub assets (images, workflows, etc.) are tracked

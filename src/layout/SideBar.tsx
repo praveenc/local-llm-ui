@@ -1,16 +1,18 @@
 'use client';
-import { useState, useEffect } from "react";
+
+import { useEffect, useState } from 'react';
+
 import {
-    SideNavigation,
-    Select,
-    FormField,
-    SpaceBetween,
-    RadioGroup,
-    Alert,
-    Box,
-    Button,
-}   from "@cloudscape-design/components";
-import type { SelectProps } from "@cloudscape-design/components";
+  Alert,
+  Box,
+  Button,
+  FormField,
+  RadioGroup,
+  Select,
+  SideNavigation,
+  SpaceBetween,
+} from '@cloudscape-design/components';
+import type { SelectProps } from '@cloudscape-design/components';
 
 interface SideBarProps {
   selectedModel: SelectProps.Option | null;
@@ -19,14 +21,10 @@ interface SideBarProps {
 }
 
 type LoadingStatus = 'pending' | 'loading' | 'error' | 'finished';
-type Provider = 'lmstudio' | 'ollama';
+type Provider = 'lmstudio' | 'ollama' | 'bedrock';
 
-export default function SideBar({
-  selectedModel,
-  setSelectedModel,
-  onNewChat,
-}: SideBarProps) {
-  const [activeHref, setActiveHref] = useState("#/page1");
+export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: SideBarProps) {
+  const [activeHref, setActiveHref] = useState('#/page1');
   const [modelOptions, setModelOptions] = useState<SelectProps.Option[]>([]);
   const [modelsLoadingStatus, setModelsLoadingStatus] = useState<LoadingStatus>('pending');
   const [modelErrorText, setModelErrorText] = useState('');
@@ -70,20 +68,20 @@ export default function SideBar({
           setSelectedModel(formattedOptions[0]);
         } else if (formattedOptions.length > 0 && selectedModel) {
           // Check if current selection is still valid
-          const stillValid = formattedOptions.some(opt => opt.value === selectedModel.value);
+          const stillValid = formattedOptions.some((opt) => opt.value === selectedModel.value);
           if (!stillValid) {
             setSelectedModel(formattedOptions[0]);
           }
         } else {
           setSelectedModel(null);
         }
-
       } catch (error) {
         console.error(`Failed to fetch ${selectedProvider} models:`, error);
 
         let errorMessage = '';
         if (selectedProvider === 'lmstudio') {
-          errorMessage = 'Cannot connect to LMStudio (port 1234). Please ensure LMStudio is running.';
+          errorMessage =
+            'Cannot connect to LMStudio (port 1234). Please ensure LMStudio is running.';
         } else if (selectedProvider === 'ollama') {
           errorMessage = 'Cannot connect to Ollama (port 11434). Please ensure Ollama is running.';
         } else {
@@ -104,34 +102,27 @@ export default function SideBar({
     <SpaceBetween direction="vertical" size="m">
       {onNewChat && (
         <Box padding={{ top: 'm', horizontal: 's' }}>
-          <Button
-            onClick={onNewChat}
-            variant="primary"
-            iconName="add-plus"
-            fullWidth
-          >
+          <Button onClick={onNewChat} variant="primary" iconName="add-plus" fullWidth>
             New Chat
           </Button>
         </Box>
       )}
       <SideNavigation
         activeHref={activeHref}
-        header={{ href: "#/", text: "⚙️ Model Settings" }}
-        onFollow={event => {
-        if (!event.detail.external) {
-          event.preventDefault();
-          setActiveHref(event.detail.href);
-        }
-      }}
+        header={{ href: '#/', text: 'Model Settings' }}
+        onFollow={(event) => {
+          if (!event.detail.external) {
+            event.preventDefault();
+            setActiveHref(event.detail.href);
+          }
+        }}
         itemsControl={
           <SpaceBetween size="l">
             {modelsLoadingStatus === 'error' && (
               <Alert
                 type="warning"
                 header={
-                  selectedProvider === 'lmstudio'
-                    ? 'LM Studio not running'
-                    : 'Ollama not running'
+                  selectedProvider === 'lmstudio' ? 'LM Studio not running' : 'Ollama not running'
                 }
               >
                 {selectedProvider === 'lmstudio' && (
@@ -144,47 +135,88 @@ export default function SideBar({
             )}
 
             {modelsLoadingStatus === 'finished' && modelOptions.length === 0 && (
-              <Alert
-                type="info"
-                header="No models available"
-              >
+              <Alert type="info" header="No models available">
                 {selectedProvider === 'lmstudio' && (
-                  <>Load a model in LM Studio or enable JIT Loading in Developer &gt; Server Settings.</>
+                  <>
+                    Load a model in LM Studio or enable JIT Loading in Developer &gt; Server
+                    Settings.
+                  </>
                 )}
                 {selectedProvider === 'ollama' && (
-                  <>Pull a model using: <code>ollama pull llama2</code></>
+                  <>
+                    Pull a model using: <code>ollama pull llama2</code>
+                  </>
                 )}
               </Alert>
             )}
 
-            <FormField label="🔌 AI Provider" stretch={true}>
+            <FormField label="AI Provider" stretch={true}>
               <RadioGroup
                 value={selectedProvider}
                 onChange={({ detail }) => setSelectedProvider(detail.value as Provider)}
                 items={[
                   {
                     value: 'ollama',
-                    label: '🦙 Ollama',
-                    description: 'Local AI models (port 11434)'
+                    label: (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <img
+                          src="/ollama_icon.svg"
+                          alt="Ollama"
+                          style={{ width: '16px', height: '16px' }}
+                        />
+                        <span>Ollama</span>
+                      </span>
+                    ),
+                    description: 'Local AI models (port 11434)',
                   },
                   {
                     value: 'lmstudio',
-                    label: '🖥️ LM Studio',
-                    description: 'LM Studio server (port 1234)'
-                  }
+                    label: (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <img
+                          src="/lmstudio_icon.svg"
+                          alt="LM Studio"
+                          style={{ width: '16px', height: '16px' }}
+                        />
+                        <span>LM Studio</span>
+                      </span>
+                    ),
+                    description: 'LM Studio server (port 1234)',
+                  },
+                  {
+                    value: 'bedrock',
+                    label: (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <img
+                          src="/bedrock-color.svg"
+                          alt="Amazon Bedrock"
+                          style={{ width: '16px', height: '16px' }}
+                        />
+                        <span>Amazon Bedrock</span>
+                      </span>
+                    ),
+                    description: 'Coming soon',
+                    disabled: true,
+                  },
                 ]}
               />
             </FormField>
 
-            <FormField label="🤖 Select Model" stretch={true}>
+            <FormField label="Select Model" stretch={true}>
               <Select
                 selectedOption={selectedModel}
                 onChange={({ detail }) => setSelectedModel(detail.selectedOption)}
                 options={modelOptions}
-                statusType={modelsLoadingStatus === 'error' ? 'error' : modelsLoadingStatus === 'loading' ? 'loading' : 'finished'}
+                statusType={
+                  modelsLoadingStatus === 'error'
+                    ? 'error'
+                    : modelsLoadingStatus === 'loading'
+                      ? 'loading'
+                      : 'finished'
+                }
                 loadingText="Loading models..."
                 errorText={modelErrorText}
-                placeholder={modelsLoadingStatus === 'loading' ? "Loading..." : "Choose a model"}
+                placeholder={modelsLoadingStatus === 'loading' ? 'Loading...' : 'Choose a model'}
                 filteringType="auto"
                 ariaLabel="Model selection"
                 disabled={modelsLoadingStatus === 'loading' || modelsLoadingStatus === 'error'}
@@ -192,8 +224,8 @@ export default function SideBar({
             </FormField>
           </SpaceBetween>
         }
-      items={[]}
-    />
+        items={[]}
+      />
     </SpaceBetween>
   );
 }
