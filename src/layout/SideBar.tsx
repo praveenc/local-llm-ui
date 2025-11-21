@@ -7,6 +7,7 @@ import {
   Box,
   Button,
   FormField,
+  Icon,
   RadioGroup,
   Select,
   SideNavigation,
@@ -105,6 +106,7 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
     };
 
     fetchModels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProvider]);
 
   return (
@@ -223,7 +225,17 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
               />
             </FormField>
 
-            <FormField label="Select Model" stretch={true}>
+            <FormField
+              label={
+                <Box>
+                  <SpaceBetween direction="horizontal" size="xs">
+                    <Icon name="gen-ai" size="small" />
+                    <span>Select Model</span>
+                  </SpaceBetween>
+                </Box>
+              }
+              stretch={true}
+            >
               <Select
                 selectedOption={selectedModel}
                 onChange={({ detail }) => setSelectedModel(detail.selectedOption)}
@@ -241,6 +253,7 @@ export default function SideBar({ selectedModel, setSelectedModel, onNewChat }: 
                 filteringType="auto"
                 ariaLabel="Model selection"
                 disabled={modelsLoadingStatus === 'loading' || modelsLoadingStatus === 'error'}
+                renderHighlightedAriaLive={(item) => item.label || ''}
               />
             </FormField>
           </SpaceBetween>

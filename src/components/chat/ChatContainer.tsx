@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+
 import {
-  Container,
-  Header,
-  Box,
   Alert,
-  KeyValuePairs,
-  ExpandableSection,
-  SpaceBetween,
   Badge,
+  Box,
+  Container,
+  ExpandableSection,
+  Header,
+  KeyValuePairs,
+  SpaceBetween,
 } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 
@@ -40,14 +41,25 @@ interface ChatContainerProps {
   onClearHistoryRef?: React.MutableRefObject<(() => void) | null>;
 }
 
-const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, setTemperature, topP, setTopP, onClearHistoryRef }: ChatContainerProps) => {
+const ChatContainer = ({
+  selectedModel,
+  maxTokens,
+  setMaxTokens,
+  temperature,
+  setTemperature,
+  topP,
+  setTopP,
+  onClearHistoryRef,
+}: ChatContainerProps) => {
   const [inputValue, setInputValue] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
   const [error, setError] = useState<ErrorState | null>(null);
   const [files, setFiles] = useState<File[]>([]);
-  const [sessionId] = useState<string>(() => `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  const [sessionId] = useState<string>(
+    () => `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  );
   const [bedrockMetadata, setBedrockMetadata] = useState<{
     inputTokens?: number;
     outputTokens?: number;
@@ -56,7 +68,7 @@ const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, se
   } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  const handleClearHistory = async () => {
+  const handleClearHistory = React.useCallback(async () => {
     try {
       await fetch('/api/clear-history', {
         method: 'POST',
@@ -70,14 +82,14 @@ const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, se
     } catch (error) {
       console.error('Error clearing history:', error);
     }
-  };
+  }, [sessionId]);
 
   // Expose clear history function to parent
   useEffect(() => {
     if (onClearHistoryRef) {
       onClearHistoryRef.current = handleClearHistory;
     }
-  }, [onClearHistoryRef]);
+  }, [onClearHistoryRef, handleClearHistory]);
 
   // Auto-scroll to bottom when messages change
   const lastMessageContent = streamingMessage?.content || messages[messages.length - 1]?.content;
@@ -113,7 +125,7 @@ const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, se
       content: inputValue,
     };
 
-    setMessages(prevMessages => [...prevMessages, userMessage]);
+    setMessages((prevMessages) => [...prevMessages, userMessage]);
     setInputValue('');
     setIsLoading(true);
 
@@ -140,13 +152,17 @@ const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, se
       }
 
       // Process files if any (only for Bedrock)
-      let processedFiles: any[] = [];
+      let processedFiles: Array<{
+        name: string;
+        format: string;
+        bytes: string;
+      }> = [];
       if (files.length > 0 && provider === 'bedrock') {
         const { processedFiles: processed, errors } = await processFilesForBedrock(files);
 
         if (errors.length > 0) {
           // Show error for file validation failures
-          const errorMessages = errors.map(e => e.error).join('\n');
+          const errorMessages = errors.map((e) => e.error).join('\n');
           setError({
             type: 'error',
             title: 'File Upload Error',
@@ -165,8 +181,8 @@ const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, se
 
       // Build chat history
       const chatMessages = [
-        ...messages.map(m => ({
-          role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+        ...messages.map((m) => ({
+          role: m.role === 'user' ? ('user' as const) : ('assistant' as const),
           content: m.content,
         })),
         {
@@ -216,17 +232,16 @@ const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, se
         });
       }
 
-      setMessages(prevMessages => [
+      setMessages((prevMessages) => [
         ...prevMessages,
         {
           id: streamingId,
           role: 'assistant',
           content: fullContent,
-        }
+        },
       ]);
 
       setStreamingMessage(null);
-
     } catch (error) {
       console.error('Error sending message or fetching bot response:', error);
 
@@ -236,13 +251,14 @@ const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, se
         content: `Error: ${(error as Error).message || 'Could not connect to the AI service. Make sure LMStudio or Ollama is running.'}`,
       };
 
-      setMessages(prevMessages => [...prevMessages, errorMessage]);
+      setMessages((prevMessages) => [...prevMessages, errorMessage]);
       setStreamingMessage(null);
 
       setError({
         type: 'error',
         title: 'Connection Error',
-        content: 'Failed to connect to the chat service. Please ensure LMStudio (port 1234) or Ollama (port 11434) is running.',
+        content:
+          'Failed to connect to the chat service. Please ensure LMStudio (port 1234) or Ollama (port 11434) is running.',
       });
     } finally {
       setIsLoading(false);
@@ -253,25 +269,14 @@ const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, se
   return (
     <>
       {error && (
-        <Alert
-          type={error.type}
-          dismissible
-          onDismiss={() => setError(null)}
-          header={error.title}
-        >
+        <Alert type={error.type} dismissible onDismiss={() => setError(null)} header={error.title}>
           {error.content || 'An error occurred'}
         </Alert>
       )}
 
       <FittedContainer>
         <Container
-          header={
-            <Header
-              variant="h2"
-            >
-              Chat 💬
-            </Header>
-          }
+          header={<Header variant="h2">Chat 💬</Header>}
           fitHeight
           disableContentPaddings={false}
           footer={
@@ -293,49 +298,60 @@ const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, se
               <SpaceBetween size="s">
                 <Box fontSize="body-s" color="text-body-secondary">
                   <SpaceBetween direction="horizontal" size="l">
-                    <span>🌡️ Temperature: <strong>{temperature.toFixed(1)}</strong></span>
-                    <span>🎯 Top P: <strong>{topP.toFixed(1)}</strong></span>
-                    <span>📊 Max Tokens: <strong>{maxTokens.toLocaleString()}</strong></span>
+                    <span>
+                      🌡️ Temperature: <strong>{temperature.toFixed(1)}</strong>
+                    </span>
+                    <span>
+                      🎯 Top P: <strong>{topP.toFixed(1)}</strong>
+                    </span>
+                    <span>
+                      📊 Max Tokens: <strong>{maxTokens.toLocaleString()}</strong>
+                    </span>
                   </SpaceBetween>
                 </Box>
 
-                {bedrockMetadata && selectedModel?.description?.toLowerCase().includes('bedrock') && (
-                  <ExpandableSection
-                    variant="footer"
-                    headerText={
-                      <Box fontSize="body-s">
-                        <SpaceBetween direction="horizontal" size="xs">
-                          <span>📈 Usage Metrics</span>
-                          <Badge color="green">💎 Total tokens: {bedrockMetadata.totalTokens?.toLocaleString() || 0}</Badge>
-                        </SpaceBetween>
+                {bedrockMetadata &&
+                  selectedModel?.description?.toLowerCase().includes('bedrock') && (
+                    <ExpandableSection
+                      variant="footer"
+                      headerText={
+                        <Box fontSize="body-s">
+                          <SpaceBetween direction="horizontal" size="xs">
+                            <span>📈 Usage Metrics</span>
+                            <Badge color="green">
+                              💎 Total tokens: {bedrockMetadata.totalTokens?.toLocaleString() || 0}
+                            </Badge>
+                          </SpaceBetween>
+                        </Box>
+                      }
+                    >
+                      <Box padding={{ top: 'xs' }}>
+                        <KeyValuePairs
+                          columns={4}
+                          items={[
+                            {
+                              label: '⬇️ Input',
+                              value: bedrockMetadata.inputTokens?.toLocaleString() || '0',
+                            },
+                            {
+                              label: '⬆️ Output',
+                              value: bedrockMetadata.outputTokens?.toLocaleString() || '0',
+                            },
+                            {
+                              label: '💎 Total',
+                              value: bedrockMetadata.totalTokens?.toLocaleString() || '0',
+                            },
+                            {
+                              label: '⚡ Latency',
+                              value: bedrockMetadata.latencyMs
+                                ? `${bedrockMetadata.latencyMs}ms`
+                                : 'N/A',
+                            },
+                          ]}
+                        />
                       </Box>
-                    }
-                  >
-                    <Box padding={{ top: 'xs' }}>
-                      <KeyValuePairs
-                        columns={4}
-                        items={[
-                          {
-                            label: "⬇️ Input",
-                            value: bedrockMetadata.inputTokens?.toLocaleString() || '0'
-                          },
-                          {
-                            label: "⬆️ Output",
-                            value: bedrockMetadata.outputTokens?.toLocaleString() || '0'
-                          },
-                          {
-                            label: "💎 Total",
-                            value: bedrockMetadata.totalTokens?.toLocaleString() || '0'
-                          },
-                          {
-                            label: "⚡ Latency",
-                            value: bedrockMetadata.latencyMs ? `${bedrockMetadata.latencyMs}ms` : 'N/A'
-                          }
-                        ]}
-                      />
-                    </Box>
-                  </ExpandableSection>
-                )}
+                    </ExpandableSection>
+                  )}
               </SpaceBetween>
             </Box>
           }
@@ -345,16 +361,43 @@ const ChatContainer = ({ selectedModel, maxTokens, setMaxTokens, temperature, se
               {messages.length === 0 ? (
                 <Box color="text-body-secondary" textAlign="center" padding="l">
                   {selectedModel ? (
-                    "Send a message to start chatting with the AI."
+                    <SpaceBetween size="m" alignItems="center">
+                      <Box fontSize="display-l">
+                        {selectedModel.description?.toLowerCase().includes('ollama') && (
+                          <img
+                            src="/ollama_icon.svg"
+                            alt="Ollama"
+                            style={{ width: '48px', height: '48px' }}
+                          />
+                        )}
+                        {selectedModel.description?.toLowerCase().includes('lmstudio') && (
+                          <img
+                            src="/lmstudio_icon.svg"
+                            alt="LM Studio"
+                            style={{ width: '48px', height: '48px' }}
+                          />
+                        )}
+                        {selectedModel.description?.toLowerCase().includes('bedrock') && (
+                          <img
+                            src="/bedrock-color.svg"
+                            alt="Amazon Bedrock"
+                            style={{ width: '48px', height: '48px' }}
+                          />
+                        )}
+                      </Box>
+                      <Box variant="p">
+                        Send a message to start chatting with <strong>{selectedModel.label}</strong>
+                      </Box>
+                      <Box variant="small" color="text-body-secondary">
+                        Provider: {selectedModel.description?.replace('Provider: ', '')}
+                      </Box>
+                    </SpaceBetween>
                   ) : (
-                    "Please select a model from the sidebar to start chatting."
+                    'Please select a model from the sidebar to start chatting.'
                   )}
                 </Box>
               ) : (
-                <MessageList
-                  messages={messages}
-                  streamingMessage={streamingMessage}
-                />
+                <MessageList messages={messages} streamingMessage={streamingMessage} />
               )}
             </Box>
           </ScrollableContainer>
