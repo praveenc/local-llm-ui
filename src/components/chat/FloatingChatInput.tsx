@@ -1,0 +1,319 @@
+import { useRef, useState } from 'react';
+
+import {
+  Badge,
+  Box,
+  Button,
+  ExpandableSection,
+  FileDropzone,
+  FileInput,
+  FileTokenGroup,
+  FormField,
+  Icon,
+  KeyValuePairs,
+  Modal,
+  PromptInput,
+  Slider,
+  SpaceBetween,
+} from '@cloudscape-design/components';
+import type { SelectProps } from '@cloudscape-design/components';
+
+import useFilesDragging from '../../hooks/useFilesDragging';
+import '../../styles/FloatingChatInput.scss';
+import { fileTokenGroupI18nStrings } from '../../utils/i18nStrings';
+
+interface FloatingChatInputProps {
+  inputValue: string;
+  onInputValueChange: (value: string) => void;
+  onSendMessage: () => void;
+  isLoading: boolean;
+  selectedModel: SelectProps.Option | null;
+  onFilesChange?: (files: File[]) => void;
+  maxTokens: number;
+  setMaxTokens: (tokens: number) => void;
+  temperature: number;
+  setTemperature: (temp: number) => void;
+  topP: number;
+  setTopP: (topP: number) => void;
+  bedrockMetadata?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    latencyMs?: number;
+  } | null;
+}
+
+const FloatingChatInput = ({
+  inputValue,
+  onInputValueChange,
+  onSendMessage,
+  isLoading,
+  selectedModel,
+  onFilesChange = () => {},
+  maxTokens,
+  setMaxTokens,
+  temperature,
+  setTemperature,
+  topP,
+  setTopP,
+  bedrockMetadata,
+}: FloatingChatInputProps) => {
+  const [files, setFiles] = useState<File[]>([]);
+  const { areFilesDragging } = useFilesDragging();
+  const promptInputRef = useRef<HTMLTextAreaElement>(null);
+  const [settingsVisible, setSettingsVisible] = useState<boolean>(false);
+
+  const isBedrockModel = selectedModel?.description?.toLowerCase().includes('bedrock') ?? false;
+
+  const handleFileChange = (newFiles: File[]) => {
+    setFiles((prev) => {
+      const updatedFiles = [...prev, ...newFiles];
+      onFilesChange(updatedFiles);
+      return updatedFiles;
+    });
+  };
+
+  const handleFileDismiss = (fileIndex: number) => {
+    setFiles((files) => {
+      const updatedFiles = files.filter((_, index) => index !== fileIndex);
+      onFilesChange(updatedFiles);
+      return updatedFiles;
+    });
+
+    if (files.length === 1) {
+      promptInputRef.current?.focus();
+    }
+  };
+
+  return (
+    <>
+      <div className="floating-chat-input">
+        <Box padding={{ horizontal: 'l', vertical: 'm' }}>
+          <SpaceBetween size="s">
+            {/* Model Badge and Usage Metrics */}
+            {selectedModel && (
+              <SpaceBetween size="xs">
+                <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                  {/* Provider Icon */}
+                  {selectedModel.description?.toLowerCase().includes('ollama') && (
+                    <img
+                      src="/ollama_icon.svg"
+                      alt="Ollama"
+                      style={{ width: '20px', height: '20px' }}
+                    />
+                  )}
+                  {selectedModel.description?.toLowerCase().includes('lmstudio') && (
+                    <img
+                      src="/lmstudio_icon.svg"
+                      alt="LM Studio"
+                      style={{ width: '20px', height: '20px' }}
+                    />
+                  )}
+                  {selectedModel.description?.toLowerCase().includes('bedrock') && (
+                    <img
+                      src="/bedrock_bw.svg"
+                      alt="Amazon Bedrock"
+                      style={{ width: '20px', height: '20px' }}
+                    />
+                  )}
+                  <Badge color="blue">{selectedModel.label}</Badge>
+                  <SpaceBetween direction="horizontal" size="l">
+                    <Box fontSize="body-s" color="text-body-secondary">
+                      🌡️ Temperature: <strong>{temperature.toFixed(1)}</strong>
+                    </Box>
+                    <Box fontSize="body-s" color="text-body-secondary">
+                      🎯 Top P: <strong>{topP.toFixed(1)}</strong>
+                    </Box>
+                    <Box fontSize="body-s" color="text-body-secondary">
+                      📊 Max Tokens: <strong>{maxTokens.toLocaleString()}</strong>
+                    </Box>
+                  </SpaceBetween>
+                </SpaceBetween>
+
+                {/* Bedrock Usage Metrics */}
+                {bedrockMetadata &&
+                  selectedModel?.description?.toLowerCase().includes('bedrock') && (
+                    <ExpandableSection
+                      variant="footer"
+                      headerText={
+                        <Box fontSize="body-s">
+                          <SpaceBetween direction="horizontal" size="xs">
+                            <span>📈 Usage</span>
+                            <Badge color="green">
+                              {bedrockMetadata.totalTokens?.toLocaleString() || 0} tokens
+                            </Badge>
+                          </SpaceBetween>
+                        </Box>
+                      }
+                    >
+                      <Box padding={{ top: 'xs' }}>
+                        <KeyValuePairs
+                          columns={4}
+                          items={[
+                            {
+                              label: '⬇️ Input',
+                              value: bedrockMetadata.inputTokens?.toLocaleString() || '0',
+                            },
+                            {
+                              label: '⬆️ Output',
+                              value: bedrockMetadata.outputTokens?.toLocaleString() || '0',
+                            },
+                            {
+                              label: '💎 Total',
+                              value: bedrockMetadata.totalTokens?.toLocaleString() || '0',
+                            },
+                            {
+                              label: '⚡ Latency',
+                              value: bedrockMetadata.latencyMs
+                                ? `${bedrockMetadata.latencyMs}ms`
+                                : 'N/A',
+                            },
+                          ]}
+                        />
+                      </Box>
+                    </ExpandableSection>
+                  )}
+              </SpaceBetween>
+            )}
+
+            {/* Input Field */}
+            <FormField
+              stretch={true}
+              description={
+                isBedrockModel && files.length === 0
+                  ? '💡 Tip: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) up to 4.5 MB'
+                  : undefined
+              }
+            >
+              <PromptInput
+                ref={promptInputRef}
+                value={inputValue}
+                onChange={({ detail }) => onInputValueChange(detail.value)}
+                onAction={onSendMessage}
+                placeholder={
+                  selectedModel ? 'Send a message...' : 'Select a model to start chatting'
+                }
+                disabled={isLoading || !selectedModel}
+                actionButtonAriaLabel={
+                  isLoading ? 'Send message button - suppressed' : 'Send message'
+                }
+                actionButtonIconName="send"
+                ariaLabel={isLoading ? 'Prompt input - suppressed' : 'Chat input'}
+                maxRows={8}
+                minRows={3}
+                disableSecondaryActionsPaddings
+                secondaryActions={
+                  <SpaceBetween direction="horizontal" size="xs">
+                    {isBedrockModel && (
+                      <Box padding={{ left: 'xxs', top: 'xs' }}>
+                        <FileInput
+                          ariaLabel="Chat file input - Max 4.5MB per file"
+                          variant="icon"
+                          multiple={true}
+                          value={files}
+                          onChange={({ detail }) => handleFileChange(detail.value)}
+                        />
+                      </Box>
+                    )}
+                    <Box padding={{ top: 'xs' }}>
+                      <Button
+                        variant="icon"
+                        iconName="settings"
+                        ariaLabel="Model settings"
+                        onClick={() => setSettingsVisible(true)}
+                      />
+                    </Box>
+                  </SpaceBetween>
+                }
+                secondaryContent={
+                  <>
+                    {isBedrockModel && areFilesDragging ? (
+                      <FileDropzone onChange={({ detail }) => handleFileChange(detail.value)}>
+                        <SpaceBetween size="xs" alignItems="center">
+                          <Icon name="upload" />
+                          <Box>Drop files here</Box>
+                        </SpaceBetween>
+                      </FileDropzone>
+                    ) : (
+                      files.length > 0 && (
+                        <SpaceBetween size="xs">
+                          <FileTokenGroup
+                            items={files.map((file) => ({ file }))}
+                            onDismiss={({ detail }) => handleFileDismiss(detail.fileIndex)}
+                            limit={3}
+                            alignment="horizontal"
+                            showFileThumbnail={true}
+                            i18nStrings={fileTokenGroupI18nStrings}
+                          />
+                          {isBedrockModel && (
+                            <Box fontSize="body-s" color="text-body-secondary">
+                              📎 Max 5 files, 4.5 MB each
+                            </Box>
+                          )}
+                        </SpaceBetween>
+                      )
+                    )}
+                  </>
+                }
+              />
+            </FormField>
+          </SpaceBetween>
+        </Box>
+      </div>
+
+      {/* Settings Modal */}
+      <Modal
+        onDismiss={() => setSettingsVisible(false)}
+        visible={settingsVisible}
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={() => setSettingsVisible(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={() => setSettingsVisible(false)}>
+                OK
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+        header="⚙️ Model Parameters"
+      >
+        <SpaceBetween size="l">
+          <FormField label={`📊 Max Tokens: ${maxTokens.toLocaleString()}`}>
+            <Slider
+              onChange={({ detail }) => setMaxTokens(detail.value)}
+              value={maxTokens}
+              min={1024}
+              max={10240}
+              step={1024}
+              ariaLabel="Max Tokens Slider"
+            />
+          </FormField>
+          <FormField label={`🌡️ Temperature: ${temperature.toFixed(1)}`}>
+            <Slider
+              onChange={({ detail }) => setTemperature(detail.value)}
+              value={temperature}
+              min={0}
+              max={1.0}
+              step={0.1}
+              ariaLabel="Temperature Slider"
+            />
+          </FormField>
+          <FormField label={`🎯 Top P: ${topP.toFixed(1)}`}>
+            <Slider
+              onChange={({ detail }) => setTopP(detail.value)}
+              value={topP}
+              min={0}
+              max={1.0}
+              step={0.1}
+              ariaLabel="Top P Slider"
+            />
+          </FormField>
+        </SpaceBetween>
+      </Modal>
+    </>
+  );
+};
+
+export default FloatingChatInput;

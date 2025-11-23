@@ -236,8 +236,9 @@ local-llm-ui/
 │   ├── components/
 │   │   ├── chat/              # Chat-related components
 │   │   │   ├── ChatContainer.tsx
-│   │   │   ├── ChatInputPanel.tsx
+│   │   │   ├── FloatingChatInput.tsx
 │   │   │   ├── MessageList.tsx
+│   │   │   ├── CodeBlock.tsx
 │   │   │   └── ...
 │   │   └── layout/            # Layout components
 │   ├── layout/
