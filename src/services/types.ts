@@ -34,6 +34,7 @@ export interface ChatRequest {
   max_tokens?: number;
   top_p?: number;
   stream?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface ModelInfo {

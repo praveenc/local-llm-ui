@@ -40,23 +40,26 @@ export default function SideBar({
   const [modelOptions, setModelOptions] = useState<SelectProps.Option[]>([]);
   const [modelsLoadingStatus, setModelsLoadingStatus] = useState<LoadingStatus>('pending');
   const [modelErrorText, setModelErrorText] = useState('');
-  const [selectedProvider, setSelectedProvider] = useState<Provider>('ollama');
 
-  // Preferences state
+  // Preferences state - load immediately to avoid double fetch
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
-  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
-
-  // Load preferences on mount and apply preferred provider
-  useEffect(() => {
+  const [selectedProvider, setSelectedProvider] = useState<Provider>(() => {
     const prefs = loadPreferences();
-    setPreferences(prefs);
-    setSelectedProvider(prefs.preferredProvider);
-  }, []);
+    return prefs.preferredProvider;
+  });
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
 
   const handlePreferencesConfirm = (detail: { custom?: UserPreferences }) => {
     if (detail.custom) {
       savePreferences(detail.custom);
       setPreferences(detail.custom);
+
+      // Clear selected model if provider is changing
+      if (detail.custom.preferredProvider !== selectedProvider) {
+        setSelectedModel(null);
+        setModelOptions([]);
+      }
+
       setSelectedProvider(detail.custom.preferredProvider);
       setShowSuccessAlert(true);
       if (onPreferencesChange) {
@@ -171,9 +174,13 @@ export default function SideBar({
             setSelectedModel(firstOption);
           }
         } else if (formattedOptions.length > 0 && selectedModel) {
-          // Check if current selection is still valid
+          // Check if current selection is still valid AND belongs to current provider
           const stillValid = isOptionValid(formattedOptions, selectedModel.value || '');
-          if (!stillValid) {
+          const belongsToCurrentProvider = selectedModel.description
+            ?.toLowerCase()
+            .includes(selectedProvider.toLowerCase());
+
+          if (!stillValid || !belongsToCurrentProvider) {
             const firstOption = getFirstOption(formattedOptions);
             if (firstOption) {
               setSelectedModel(firstOption);
