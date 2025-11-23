@@ -2,20 +2,11 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 
-import {
-  Alert,
-  Badge,
-  Box,
-  Container,
-  ExpandableSection,
-  Header,
-  KeyValuePairs,
-  SpaceBetween,
-} from '@cloudscape-design/components';
+import { Alert, Box, Header, SpaceBetween } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 
 import { FittedContainer, ScrollableContainer } from '../../components/layout';
-import ChatInputPanel from './ChatInputPanel';
+import FloatingChatInput from './FloatingChatInput';
 import MessageList from './MessageList';
 
 interface Message {
@@ -293,90 +284,18 @@ const ChatContainer = ({
         </Alert>
       )}
 
-      <FittedContainer>
-        <Container
-          header={<Header variant="h2">Chat 💬</Header>}
-          fitHeight
-          disableContentPaddings={false}
-          footer={
-            <Box padding="m">
-              <ChatInputPanel
-                inputValue={inputValue}
-                onInputValueChange={setInputValue}
-                onSendMessage={handleSendMessage}
-                isLoading={isLoading}
-                selectedModel={selectedModel}
-                onFilesChange={setFiles}
-                maxTokens={maxTokens}
-                setMaxTokens={setMaxTokens}
-                temperature={temperature}
-                setTemperature={setTemperature}
-                topP={topP}
-                setTopP={setTopP}
-              />
-              <SpaceBetween size="s">
-                <Box fontSize="body-s" color="text-body-secondary">
-                  <SpaceBetween direction="horizontal" size="l">
-                    <span>
-                      🌡️ Temperature: <strong>{temperature.toFixed(1)}</strong>
-                    </span>
-                    <span>
-                      🎯 Top P: <strong>{topP.toFixed(1)}</strong>
-                    </span>
-                    <span>
-                      📊 Max Tokens: <strong>{maxTokens.toLocaleString()}</strong>
-                    </span>
-                  </SpaceBetween>
-                </Box>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {/* Header */}
+        <div style={{ borderBottom: '1px solid var(--color-border-divider-default)' }}>
+          <Box padding={{ horizontal: 'l', vertical: 'm' }}>
+            <Header variant="h2">Chat 💬</Header>
+          </Box>
+        </div>
 
-                {bedrockMetadata &&
-                  selectedModel?.description?.toLowerCase().includes('bedrock') && (
-                    <ExpandableSection
-                      variant="footer"
-                      headerText={
-                        <Box fontSize="body-s">
-                          <SpaceBetween direction="horizontal" size="xs">
-                            <span>📈 Usage Metrics</span>
-                            <Badge color="green">
-                              💎 Total tokens: {bedrockMetadata.totalTokens?.toLocaleString() || 0}
-                            </Badge>
-                          </SpaceBetween>
-                        </Box>
-                      }
-                    >
-                      <Box padding={{ top: 'xs' }}>
-                        <KeyValuePairs
-                          columns={4}
-                          items={[
-                            {
-                              label: '⬇️ Input',
-                              value: bedrockMetadata.inputTokens?.toLocaleString() || '0',
-                            },
-                            {
-                              label: '⬆️ Output',
-                              value: bedrockMetadata.outputTokens?.toLocaleString() || '0',
-                            },
-                            {
-                              label: '💎 Total',
-                              value: bedrockMetadata.totalTokens?.toLocaleString() || '0',
-                            },
-                            {
-                              label: '⚡ Latency',
-                              value: bedrockMetadata.latencyMs
-                                ? `${bedrockMetadata.latencyMs}ms`
-                                : 'N/A',
-                            },
-                          ]}
-                        />
-                      </Box>
-                    </ExpandableSection>
-                  )}
-              </SpaceBetween>
-            </Box>
-          }
-        >
+        {/* Messages Area */}
+        <FittedContainer>
           <ScrollableContainer ref={scrollContainerRef}>
-            <Box padding="s">
+            <div style={{ paddingBottom: '200px' }}>
               {messages.length === 0 ? (
                 <Box color="text-body-secondary" textAlign="center" padding="l">
                   {selectedModel ? (
@@ -416,16 +335,35 @@ const ChatContainer = ({
                   )}
                 </Box>
               ) : (
-                <MessageList
-                  messages={messages}
-                  streamingMessage={streamingMessage}
-                  avatarInitials={avatarInitials}
-                />
+                <Box padding="s">
+                  <MessageList
+                    messages={messages}
+                    streamingMessage={streamingMessage}
+                    avatarInitials={avatarInitials}
+                  />
+                </Box>
               )}
-            </Box>
+            </div>
           </ScrollableContainer>
-        </Container>
-      </FittedContainer>
+        </FittedContainer>
+      </div>
+
+      {/* Floating Input Panel */}
+      <FloatingChatInput
+        inputValue={inputValue}
+        onInputValueChange={setInputValue}
+        onSendMessage={handleSendMessage}
+        isLoading={isLoading}
+        selectedModel={selectedModel}
+        onFilesChange={setFiles}
+        maxTokens={maxTokens}
+        setMaxTokens={setMaxTokens}
+        temperature={temperature}
+        setTemperature={setTemperature}
+        topP={topP}
+        setTopP={setTopP}
+        bedrockMetadata={bedrockMetadata}
+      />
 
       <style>{`
         .inline-code {
