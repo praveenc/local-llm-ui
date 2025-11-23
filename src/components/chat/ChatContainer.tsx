@@ -50,6 +50,7 @@ const ChatContainer = ({
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
   const [error, setError] = useState<ErrorState | null>(null);
   const [files, setFiles] = useState<File[]>([]);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [sessionId] = useState<string>(
     () => `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
   );
@@ -58,6 +59,11 @@ const ChatContainer = ({
     outputTokens?: number;
     totalTokens?: number;
     latencyMs?: number;
+  } | null>(null);
+  const [lmstudioMetadata, setLmstudioMetadata] = useState<{
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
   } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -109,6 +115,15 @@ const ChatContainer = ({
     setStreamingMessage(null);
   }, [selectedModel]);
 
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+      setStreamingMessage(null);
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !selectedModel || isLoading) return;
 
@@ -121,6 +136,9 @@ const ChatContainer = ({
     setMessages((prevMessages) => [...prevMessages, userMessage]);
     setInputValue('');
     setIsLoading(true);
+
+    // Create new AbortController for this request
+    abortControllerRef.current = new AbortController();
 
     const streamingId = Date.now() + 1;
     setStreamingMessage({
@@ -212,6 +230,7 @@ const ChatContainer = ({
         max_tokens: maxTokens,
         top_p: topP,
         stream: true,
+        signal: abortControllerRef.current?.signal,
       })) {
         // Check if this is Bedrock metadata
         if (chunk.startsWith('__BEDROCK_METADATA__')) {
@@ -230,6 +249,26 @@ const ChatContainer = ({
             }
           } catch (e) {
             console.error('Failed to parse Bedrock metadata:', e);
+          }
+          continue;
+        }
+
+        // Check if this is LM Studio metadata
+        if (chunk.startsWith('__LMSTUDIO_METADATA__')) {
+          try {
+            const metadataJson = chunk.replace('__LMSTUDIO_METADATA__', '');
+            const metadata = JSON.parse(metadataJson);
+
+            // Extract usage information
+            if (metadata.usage) {
+              setLmstudioMetadata({
+                promptTokens: metadata.usage.promptTokens,
+                completionTokens: metadata.usage.completionTokens,
+                totalTokens: metadata.usage.totalTokens,
+              });
+            }
+          } catch (e) {
+            console.error('Failed to parse LM Studio metadata:', e);
           }
           continue;
         }
@@ -253,6 +292,17 @@ const ChatContainer = ({
 
       setStreamingMessage(null);
     } catch (error) {
+      // Check if error was due to abort
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Generation stopped by user');
+        // Keep the partial message if any
+        if (streamingMessage && streamingMessage.content) {
+          setMessages((prevMessages) => [...prevMessages, streamingMessage]);
+        }
+        setStreamingMessage(null);
+        return;
+      }
+
       console.error('Error sending message or fetching bot response:', error);
 
       const errorMessage: Message = {
@@ -273,6 +323,7 @@ const ChatContainer = ({
     } finally {
       setIsLoading(false);
       setFiles([]);
+      abortControllerRef.current = null;
     }
   };
 
@@ -353,6 +404,7 @@ const ChatContainer = ({
         inputValue={inputValue}
         onInputValueChange={setInputValue}
         onSendMessage={handleSendMessage}
+        onStopGeneration={handleStopGeneration}
         isLoading={isLoading}
         selectedModel={selectedModel}
         onFilesChange={setFiles}
@@ -363,6 +415,7 @@ const ChatContainer = ({
         topP={topP}
         setTopP={setTopP}
         bedrockMetadata={bedrockMetadata}
+        lmstudioMetadata={lmstudioMetadata}
       />
 
       <style>{`

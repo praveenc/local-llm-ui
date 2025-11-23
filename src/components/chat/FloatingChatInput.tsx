@@ -26,6 +26,7 @@ interface FloatingChatInputProps {
   inputValue: string;
   onInputValueChange: (value: string) => void;
   onSendMessage: () => void;
+  onStopGeneration: () => void;
   isLoading: boolean;
   selectedModel: SelectProps.Option | null;
   onFilesChange?: (files: File[]) => void;
@@ -41,12 +42,18 @@ interface FloatingChatInputProps {
     totalTokens?: number;
     latencyMs?: number;
   } | null;
+  lmstudioMetadata?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  } | null;
 }
 
 const FloatingChatInput = ({
   inputValue,
   onInputValueChange,
   onSendMessage,
+  onStopGeneration,
   isLoading,
   selectedModel,
   onFilesChange = () => {},
@@ -57,6 +64,7 @@ const FloatingChatInput = ({
   topP,
   setTopP,
   bedrockMetadata,
+  lmstudioMetadata,
 }: FloatingChatInputProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const { areFilesDragging } = useFilesDragging();
@@ -64,6 +72,17 @@ const FloatingChatInput = ({
   const [settingsVisible, setSettingsVisible] = useState<boolean>(false);
 
   const isBedrockModel = selectedModel?.description?.toLowerCase().includes('bedrock') ?? false;
+  const isLMStudioModel = selectedModel?.description?.toLowerCase().includes('lmstudio') ?? false;
+  const isOllamaModel = selectedModel?.description?.toLowerCase().includes('ollama') ?? false;
+
+  // Determine provider icon to show
+  const providerIcon = isBedrockModel
+    ? '/bedrock_bw.svg'
+    : isLMStudioModel
+      ? '/lmstudio_icon.svg'
+      : isOllamaModel
+        ? '/ollama_icon.svg'
+        : null;
 
   const handleFileChange = (newFiles: File[]) => {
     setFiles((prev) => {
@@ -95,24 +114,12 @@ const FloatingChatInput = ({
               <SpaceBetween size="xs">
                 <SpaceBetween direction="horizontal" size="xs" alignItems="center">
                   {/* Provider Icon */}
-                  {selectedModel.description?.toLowerCase().includes('ollama') && (
+                  {providerIcon && (
                     <img
-                      src="/ollama_icon.svg"
-                      alt="Ollama"
-                      style={{ width: '20px', height: '20px' }}
-                    />
-                  )}
-                  {selectedModel.description?.toLowerCase().includes('lmstudio') && (
-                    <img
-                      src="/lmstudio_icon.svg"
-                      alt="LM Studio"
-                      style={{ width: '20px', height: '20px' }}
-                    />
-                  )}
-                  {selectedModel.description?.toLowerCase().includes('bedrock') && (
-                    <img
-                      src="/bedrock_bw.svg"
-                      alt="Amazon Bedrock"
+                      src={providerIcon}
+                      alt={
+                        isBedrockModel ? 'Amazon Bedrock' : isLMStudioModel ? 'LM Studio' : 'Ollama'
+                      }
                       style={{ width: '20px', height: '20px' }}
                     />
                   )}
@@ -173,6 +180,44 @@ const FloatingChatInput = ({
                       </Box>
                     </ExpandableSection>
                   )}
+
+                {/* LM Studio Usage Metrics */}
+                {lmstudioMetadata &&
+                  selectedModel?.description?.toLowerCase().includes('lmstudio') && (
+                    <ExpandableSection
+                      variant="footer"
+                      headerText={
+                        <Box fontSize="body-s">
+                          <SpaceBetween direction="horizontal" size="xs">
+                            <span>📈 Usage</span>
+                            <Badge color="blue">
+                              {lmstudioMetadata.totalTokens?.toLocaleString() || 0} tokens
+                            </Badge>
+                          </SpaceBetween>
+                        </Box>
+                      }
+                    >
+                      <Box padding={{ top: 'xs' }}>
+                        <KeyValuePairs
+                          columns={3}
+                          items={[
+                            {
+                              label: '⬇️ Prompt',
+                              value: lmstudioMetadata.promptTokens?.toLocaleString() || '0',
+                            },
+                            {
+                              label: '⬆️ Completion',
+                              value: lmstudioMetadata.completionTokens?.toLocaleString() || '0',
+                            },
+                            {
+                              label: '💎 Total',
+                              value: lmstudioMetadata.totalTokens?.toLocaleString() || '0',
+                            },
+                          ]}
+                        />
+                      </Box>
+                    </ExpandableSection>
+                  )}
               </SpaceBetween>
             )}
 
@@ -212,6 +257,16 @@ const FloatingChatInput = ({
                           multiple={true}
                           value={files}
                           onChange={({ detail }) => handleFileChange(detail.value)}
+                        />
+                      </Box>
+                    )}
+                    {isLMStudioModel && isLoading && (
+                      <Box padding={{ top: 'xs' }}>
+                        <Button
+                          variant="icon"
+                          iconName="stop-circle"
+                          ariaLabel="Stop generation"
+                          onClick={onStopGeneration}
                         />
                       </Box>
                     )}
