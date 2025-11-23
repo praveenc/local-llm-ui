@@ -126,45 +126,12 @@ const MessageList = ({ messages, streamingMessage, avatarInitials = 'PC' }: Mess
             )
           }
         >
-          <Box padding={{ top: 'xs', bottom: 'xs' }}>
-            {message.role === 'assistant' ? (
-              (() => {
-                const { thinkingContent, mainContent } = parseThinkingContent(message.content);
-                return (
-                  <SpaceBetween size="s">
-                    {thinkingContent && (
-                      <ExpandableSection headerText="Thinking Process">
-                        <ReactMarkdown
-                          components={{
-                            code: ({ className, children, ...props }) => {
-                              const inline = !className;
-                              const match = /language-(\w+)/.exec(className || '');
-                              const language = match ? match[1] : undefined;
-                              const codeString = String(children).replace(/\n$/, '');
-
-                              return !inline ? (
-                                <CodeBlock code={codeString} language={language} />
-                              ) : (
-                                <code
-                                  style={{
-                                    backgroundColor: 'var(--color-background-code-inline, #f4f4f4)',
-                                    padding: '0.2em 0.4em',
-                                    borderRadius: '3px',
-                                    fontFamily: 'monospace',
-                                    fontSize: '0.9em',
-                                  }}
-                                  {...props}
-                                >
-                                  {children}
-                                </code>
-                              );
-                            },
-                          }}
-                        >
-                          {thinkingContent}
-                        </ReactMarkdown>
-                      </ExpandableSection>
-                    )}
+          {message.role === 'assistant' ? (
+            (() => {
+              const { thinkingContent, mainContent } = parseThinkingContent(message.content);
+              return thinkingContent ? (
+                <SpaceBetween size="s">
+                  <ExpandableSection headerText="Thinking Process">
                     <ReactMarkdown
                       components={{
                         code: ({ className, children, ...props }) => {
@@ -192,43 +159,103 @@ const MessageList = ({ messages, streamingMessage, avatarInitials = 'PC' }: Mess
                         },
                       }}
                     >
-                      {mainContent}
+                      {thinkingContent}
                     </ReactMarkdown>
-                  </SpaceBetween>
-                );
-              })()
-            ) : (
-              <ReactMarkdown
-                components={{
-                  code: ({ className, children, ...props }) => {
-                    const inline = !className;
-                    const match = /language-(\w+)/.exec(className || '');
-                    const language = match ? match[1] : undefined;
-                    const codeString = String(children).replace(/\n$/, '');
+                  </ExpandableSection>
+                  <ReactMarkdown
+                    components={{
+                      code: ({ className, children, ...props }) => {
+                        const inline = !className;
+                        const match = /language-(\w+)/.exec(className || '');
+                        const language = match ? match[1] : undefined;
+                        const codeString = String(children).replace(/\n$/, '');
 
-                    return !inline ? (
-                      <CodeBlock code={codeString} language={language} />
-                    ) : (
-                      <code
-                        style={{
-                          backgroundColor: 'var(--color-background-code-inline, #f4f4f4)',
-                          padding: '0.2em 0.4em',
-                          borderRadius: '3px',
-                          fontFamily: 'monospace',
-                          fontSize: '0.9em',
-                        }}
-                        {...props}
-                      >
-                        {children}
-                      </code>
-                    );
-                  },
-                }}
-              >
-                {message.content}
-              </ReactMarkdown>
-            )}
-          </Box>
+                        return !inline ? (
+                          <CodeBlock code={codeString} language={language} />
+                        ) : (
+                          <code
+                            style={{
+                              backgroundColor: 'var(--color-background-code-inline, #f4f4f4)',
+                              padding: '0.2em 0.4em',
+                              borderRadius: '3px',
+                              fontFamily: 'monospace',
+                              fontSize: '0.9em',
+                            }}
+                            {...props}
+                          >
+                            {children}
+                          </code>
+                        );
+                      },
+                    }}
+                  >
+                    {mainContent}
+                  </ReactMarkdown>
+                </SpaceBetween>
+              ) : (
+                <ReactMarkdown
+                  components={{
+                    code: ({ className, children, ...props }) => {
+                      const inline = !className;
+                      const match = /language-(\w+)/.exec(className || '');
+                      const language = match ? match[1] : undefined;
+                      const codeString = String(children).replace(/\n$/, '');
+
+                      return !inline ? (
+                        <CodeBlock code={codeString} language={language} />
+                      ) : (
+                        <code
+                          style={{
+                            backgroundColor: 'var(--color-background-code-inline, #f4f4f4)',
+                            padding: '0.2em 0.4em',
+                            borderRadius: '3px',
+                            fontFamily: 'monospace',
+                            fontSize: '0.9em',
+                          }}
+                          {...props}
+                        >
+                          {children}
+                        </code>
+                      );
+                    },
+                  }}
+                >
+                  {mainContent}
+                </ReactMarkdown>
+              );
+            })()
+          ) : (
+            <ReactMarkdown
+              components={{
+                p: ({ children }) => <>{children}</>,
+                code: ({ className, children, ...props }) => {
+                  const inline = !className;
+                  const match = /language-(\w+)/.exec(className || '');
+                  const language = match ? match[1] : undefined;
+                  const codeString = String(children).replace(/\n$/, '');
+
+                  return !inline ? (
+                    <CodeBlock code={codeString} language={language} />
+                  ) : (
+                    <code
+                      style={{
+                        backgroundColor: 'var(--color-background-code-inline, #f4f4f4)',
+                        padding: '0.2em 0.4em',
+                        borderRadius: '3px',
+                        fontFamily: 'monospace',
+                        fontSize: '0.9em',
+                      }}
+                      {...props}
+                    >
+                      {children}
+                    </code>
+                  );
+                },
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          )}
         </ChatBubble>
       ))}
 
