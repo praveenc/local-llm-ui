@@ -75,6 +75,11 @@ const FloatingChatInput = ({
   const isLMStudioModel = selectedModel?.description?.toLowerCase().includes('lmstudio') ?? false;
   const isOllamaModel = selectedModel?.description?.toLowerCase().includes('ollama') ?? false;
 
+  // Claude 4.5 models don't support both temperature and topP simultaneously
+  const modelId = selectedModel?.value?.toLowerCase() ?? '';
+  const isClaude45Model =
+    modelId.includes('sonnet-4-5') || modelId.includes('haiku-4-5') || modelId.includes('opus-4-5');
+
   // Determine provider icon to show
   const providerIcon = isBedrockModel
     ? '/bedrock_bw.svg'
@@ -129,7 +134,7 @@ const FloatingChatInput = ({
                       🌡️ Temperature: <strong>{temperature.toFixed(1)}</strong>
                     </Box>
                     <Box fontSize="body-s" color="text-body-secondary">
-                      🎯 Top P: <strong>{topP.toFixed(1)}</strong>
+                      🎯 Top P: <strong>{isClaude45Model ? 'N/A' : topP.toFixed(1)}</strong>
                     </Box>
                     <Box fontSize="body-s" color="text-body-secondary">
                       📊 Max Tokens: <strong>{maxTokens.toLocaleString()}</strong>
@@ -355,7 +360,14 @@ const FloatingChatInput = ({
               ariaLabel="Temperature Slider"
             />
           </FormField>
-          <FormField label={`🎯 Top P: ${topP.toFixed(1)}`}>
+          <FormField
+            label={`🎯 Top P: ${isClaude45Model ? 'N/A' : topP.toFixed(1)}`}
+            description={
+              isClaude45Model
+                ? 'Claude 4.5 models do not support both temperature and topP simultaneously'
+                : undefined
+            }
+          >
             <Slider
               onChange={({ detail }) => setTopP(detail.value)}
               value={topP}
@@ -363,6 +375,7 @@ const FloatingChatInput = ({
               max={1.0}
               step={0.1}
               ariaLabel="Top P Slider"
+              disabled={isClaude45Model}
             />
           </FormField>
         </SpaceBetween>
