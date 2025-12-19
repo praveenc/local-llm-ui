@@ -3,3 +3,5 @@ export * from './api';
 export { lmstudioService } from './lmstudio';
 export { ollamaService } from './ollama';
 export { bedrockService } from './bedrock';
+export { promptOptimizerService, optimizePrompt } from './promptOptimizer';
+export type { OptimizePromptResult } from './promptOptimizer';
