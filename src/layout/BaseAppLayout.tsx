@@ -6,11 +6,13 @@ import {
   Alert,
   AppLayoutToolbar,
   Box,
+  Flashbar,
   HelpPanel,
   Link,
   SpaceBetween,
   StatusIndicator,
 } from '@cloudscape-design/components';
+import type { FlashbarProps } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 import { I18nProvider } from '@cloudscape-design/components/i18n';
 import messages from '@cloudscape-design/components/i18n/messages/all.en';
@@ -51,6 +53,9 @@ export default function BaseAppLayout() {
     () => loadPreferences().preferredProvider
   );
 
+  // Flashbar notifications
+  const [flashbarItems, setFlashbarItems] = useState<FlashbarProps.MessageDefinition[]>([]);
+
   const handleNewChat = () => {
     if (clearHistoryRef.current) {
       clearHistoryRef.current();
@@ -59,6 +64,25 @@ export default function BaseAppLayout() {
 
   const handlePreferencesChange = (preferences: UserPreferences) => {
     setUserPreferences(preferences);
+  };
+
+  const handlePreferencesSaved = () => {
+    const id = `preferences-saved-${Date.now()}`;
+    setFlashbarItems((prev) => [
+      ...prev,
+      {
+        type: 'success',
+        dismissible: true,
+        dismissLabel: 'Dismiss message',
+        content: 'Preferences saved successfully',
+        id,
+        onDismiss: () => setFlashbarItems((items) => items.filter((item) => item.id !== id)),
+      },
+    ]);
+    // Auto-dismiss after 3 seconds
+    setTimeout(() => {
+      setFlashbarItems((items) => items.filter((item) => item.id !== id));
+    }, 3000);
   };
 
   // Check connection only for the selected provider
@@ -87,12 +111,14 @@ export default function BaseAppLayout() {
       <AppLayoutToolbar
         navigationOpen={navigationOpen}
         onNavigationChange={({ detail }) => setNavigationOpen(detail.open)}
+        notifications={<Flashbar items={flashbarItems} />}
         navigation={
           <SideBar
             selectedModel={selectedModel}
             setSelectedModel={setSelectedModel}
             onNewChat={handleNewChat}
             onPreferencesChange={handlePreferencesChange}
+            onPreferencesSaved={handlePreferencesSaved}
             selectedProvider={selectedProvider}
             onProviderChange={setSelectedProvider}
           />

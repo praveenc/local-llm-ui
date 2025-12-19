@@ -28,6 +28,7 @@ interface SideBarProps {
   setSelectedModel: (model: SelectProps.Option | null) => void;
   onNewChat?: () => void;
   onPreferencesChange?: (preferences: UserPreferences) => void;
+  onPreferencesSaved?: () => void;
   selectedProvider: Provider;
   onProviderChange: (provider: Provider) => void;
 }
@@ -37,6 +38,7 @@ export default function SideBar({
   setSelectedModel,
   onNewChat,
   onPreferencesChange,
+  onPreferencesSaved,
   selectedProvider,
   onProviderChange,
 }: SideBarProps) {
@@ -47,7 +49,6 @@ export default function SideBar({
 
   // Preferences state - load immediately to avoid double fetch
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
-  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
 
   const handlePreferencesConfirm = (detail: { custom?: UserPreferences }) => {
     if (detail.custom) {
@@ -61,7 +62,12 @@ export default function SideBar({
       }
 
       onProviderChange(detail.custom.preferredProvider);
-      setShowSuccessAlert(true);
+
+      // Notify parent for page-level flashbar notification
+      if (onPreferencesSaved) {
+        onPreferencesSaved();
+      }
+
       if (onPreferencesChange) {
         onPreferencesChange(detail.custom);
       }
@@ -371,15 +377,6 @@ export default function SideBar({
         }
         items={[]}
       />
-
-      {/* Success Alert */}
-      {showSuccessAlert && (
-        <Box padding={{ horizontal: 's' }}>
-          <Alert type="success" dismissible onDismiss={() => setShowSuccessAlert(false)}>
-            Preferences saved successfully
-          </Alert>
-        </Box>
-      )}
 
       {/* Preferences Section at Bottom */}
       <Box padding={{ horizontal: 's', bottom: 's' }}>
