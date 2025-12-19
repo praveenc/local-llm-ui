@@ -21,6 +21,8 @@ interface ErrorState {
   content: string;
 }
 
+type SamplingParameter = 'temperature' | 'topP';
+
 interface ChatContainerProps {
   selectedModel: SelectProps.Option | null;
   maxTokens: number;
@@ -29,6 +31,8 @@ interface ChatContainerProps {
   setTemperature: (temp: number) => void;
   topP: number;
   setTopP: (topP: number) => void;
+  samplingParameter: SamplingParameter;
+  setSamplingParameter: (param: SamplingParameter) => void;
   onClearHistoryRef?: React.MutableRefObject<(() => void) | null>;
   avatarInitials?: string;
 }
@@ -41,6 +45,8 @@ const ChatContainer = ({
   setTemperature,
   topP,
   setTopP,
+  samplingParameter,
+  setSamplingParameter,
   onClearHistoryRef,
   avatarInitials = 'PC',
 }: ChatContainerProps) => {
@@ -222,16 +228,29 @@ const ChatContainer = ({
 
       let fullContent = '';
 
-      // Stream the response
-      for await (const chunk of apiService.chat(provider, {
+      // For Claude 4.5 models, only send the selected sampling parameter
+      const modelIdLower = (selectedModel.value || '').toLowerCase();
+      const isClaude45 =
+        modelIdLower.includes('sonnet-4-5') ||
+        modelIdLower.includes('haiku-4-5') ||
+        modelIdLower.includes('opus-4-5');
+
+      const chatRequest = {
         model: selectedModel.value || '',
         messages: chatMessages,
-        temperature,
         max_tokens: maxTokens,
-        top_p: topP,
         stream: true,
         signal: abortControllerRef.current?.signal,
-      })) {
+        // For Claude 4.5, only send the selected parameter; for others, send both
+        ...(isClaude45
+          ? samplingParameter === 'temperature'
+            ? { temperature }
+            : { top_p: topP }
+          : { temperature, top_p: topP }),
+      };
+
+      // Stream the response
+      for await (const chunk of apiService.chat(provider, chatRequest)) {
         // Check if this is Bedrock metadata
         if (chunk.startsWith('__BEDROCK_METADATA__')) {
           try {
@@ -414,6 +433,8 @@ const ChatContainer = ({
         setTemperature={setTemperature}
         topP={topP}
         setTopP={setTopP}
+        samplingParameter={samplingParameter}
+        setSamplingParameter={setSamplingParameter}
         bedrockMetadata={bedrockMetadata}
         lmstudioMetadata={lmstudioMetadata}
       />

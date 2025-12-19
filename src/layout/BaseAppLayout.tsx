@@ -21,6 +21,7 @@ export default function BaseAppLayout() {
   const [maxTokens, setMaxTokens] = useState<number>(4096);
   const [temperature, setTemperature] = useState<number>(0.5);
   const [topP, setTopP] = useState<number>(0.9);
+  const [samplingParameter, setSamplingParameter] = useState<'temperature' | 'topP'>('temperature');
   const [navigationOpen, setNavigationOpen] = useState<boolean>(true);
   const [toolsOpen, setToolsOpen] = useState<boolean>(false);
   const [connectionStatus, setConnectionStatus] = useState<{
@@ -186,6 +187,8 @@ export default function BaseAppLayout() {
               setTemperature={setTemperature}
               topP={topP}
               setTopP={setTopP}
+              samplingParameter={samplingParameter}
+              setSamplingParameter={setSamplingParameter}
               onClearHistoryRef={clearHistoryRef}
               avatarInitials={userPreferences.avatarInitials}
             />

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   Badge,
@@ -13,6 +13,7 @@ import {
   KeyValuePairs,
   Modal,
   PromptInput,
+  RadioGroup,
   Slider,
   SpaceBetween,
 } from '@cloudscape-design/components';
@@ -21,6 +22,8 @@ import type { SelectProps } from '@cloudscape-design/components';
 import useFilesDragging from '../../hooks/useFilesDragging';
 import '../../styles/FloatingChatInput.scss';
 import { fileTokenGroupI18nStrings } from '../../utils/i18nStrings';
+
+type SamplingParameter = 'temperature' | 'topP';
 
 interface FloatingChatInputProps {
   inputValue: string;
@@ -36,6 +39,8 @@ interface FloatingChatInputProps {
   setTemperature: (temp: number) => void;
   topP: number;
   setTopP: (topP: number) => void;
+  samplingParameter: SamplingParameter;
+  setSamplingParameter: (param: SamplingParameter) => void;
   bedrockMetadata?: {
     inputTokens?: number;
     outputTokens?: number;
@@ -63,6 +68,8 @@ const FloatingChatInput = ({
   setTemperature,
   topP,
   setTopP,
+  samplingParameter,
+  setSamplingParameter,
   bedrockMetadata,
   lmstudioMetadata,
 }: FloatingChatInputProps) => {
@@ -79,6 +86,13 @@ const FloatingChatInput = ({
   const modelId = selectedModel?.value?.toLowerCase() ?? '';
   const isClaude45Model =
     modelId.includes('sonnet-4-5') || modelId.includes('haiku-4-5') || modelId.includes('opus-4-5');
+
+  // Reset to temperature when switching away from Claude 4.5 models
+  useEffect(() => {
+    if (!isClaude45Model) {
+      setSamplingParameter('temperature');
+    }
+  }, [isClaude45Model, setSamplingParameter]);
 
   // Determine provider icon to show
   const providerIcon = isBedrockModel
@@ -131,10 +145,18 @@ const FloatingChatInput = ({
                   <Badge color="blue">{selectedModel.label}</Badge>
                   <SpaceBetween direction="horizontal" size="l">
                     <Box fontSize="body-s" color="text-body-secondary">
-                      🌡️ Temperature: <strong>{temperature.toFixed(1)}</strong>
+                      🌡️ Temperature:{' '}
+                      <strong>
+                        {isClaude45Model && samplingParameter !== 'temperature'
+                          ? 'N/A'
+                          : temperature.toFixed(1)}
+                      </strong>
                     </Box>
                     <Box fontSize="body-s" color="text-body-secondary">
-                      🎯 Top P: <strong>{isClaude45Model ? 'N/A' : topP.toFixed(1)}</strong>
+                      🎯 Top P:{' '}
+                      <strong>
+                        {isClaude45Model && samplingParameter !== 'topP' ? 'N/A' : topP.toFixed(1)}
+                      </strong>
                     </Box>
                     <Box fontSize="body-s" color="text-body-secondary">
                       📊 Max Tokens: <strong>{maxTokens.toLocaleString()}</strong>
@@ -350,7 +372,26 @@ const FloatingChatInput = ({
               ariaLabel="Max Tokens Slider"
             />
           </FormField>
-          <FormField label={`🌡️ Temperature: ${temperature.toFixed(1)}`}>
+
+          {isClaude45Model && (
+            <FormField
+              label="🔀 Sampling Parameter"
+              description="Claude 4.5 models support either temperature or topP, but not both"
+            >
+              <RadioGroup
+                value={samplingParameter}
+                onChange={({ detail }) => setSamplingParameter(detail.value as SamplingParameter)}
+                items={[
+                  { value: 'temperature', label: 'Temperature' },
+                  { value: 'topP', label: 'Top P' },
+                ]}
+              />
+            </FormField>
+          )}
+
+          <FormField
+            label={`🌡️ Temperature: ${isClaude45Model && samplingParameter !== 'temperature' ? 'N/A' : temperature.toFixed(1)}`}
+          >
             <Slider
               onChange={({ detail }) => setTemperature(detail.value)}
               value={temperature}
@@ -358,15 +399,12 @@ const FloatingChatInput = ({
               max={1.0}
               step={0.1}
               ariaLabel="Temperature Slider"
+              disabled={isClaude45Model && samplingParameter !== 'temperature'}
             />
           </FormField>
+
           <FormField
-            label={`🎯 Top P: ${isClaude45Model ? 'N/A' : topP.toFixed(1)}`}
-            description={
-              isClaude45Model
-                ? 'Claude 4.5 models do not support both temperature and topP simultaneously'
-                : undefined
-            }
+            label={`🎯 Top P: ${isClaude45Model && samplingParameter !== 'topP' ? 'N/A' : topP.toFixed(1)}`}
           >
             <Slider
               onChange={({ detail }) => setTopP(detail.value)}
@@ -375,7 +413,7 @@ const FloatingChatInput = ({
               max={1.0}
               step={0.1}
               ariaLabel="Top P Slider"
-              disabled={isClaude45Model}
+              disabled={isClaude45Model && samplingParameter !== 'topP'}
             />
           </FormField>
         </SpaceBetween>

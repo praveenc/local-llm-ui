@@ -214,25 +214,40 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
 
   console.log(`Bedrock: Chat request for model: ${model}`);
   console.log(`Bedrock: Messages count: ${messages?.length || 0}`);
-  console.log(`Bedrock: Messages:`, JSON.stringify(messages, null, 2));
+  // console.log(`Bedrock: Messages:`, JSON.stringify(messages, null, 2));
 
-  // Claude Sonnet 4.5 and Haiku 4.5 don't support both temperature and topP simultaneously
-  // Check if model contains 'sonnet-4-5' or 'haiku-4-5' in the ID
-  const shouldOmitTopP = model.includes('sonnet-4-5') || model.includes('haiku-4-5');
+  // Claude Sonnet 4.5, Haiku 4.5 and Opus 4.5 don't support both temperature and topP simultaneously
+  // The client sends only one of them based on user's choice
+  const isClaude45 =
+    model.includes('sonnet-4-5') || model.includes('haiku-4-5') || model.includes('opus-4-5');
 
   const inferenceConfig: {
     temperature?: number;
     maxTokens?: number;
     topP?: number;
   } = {
-    temperature: temperature ?? 0.7,
     maxTokens: max_tokens ?? 2048,
   };
 
-  // Only include topP for models that support it alongside temperature
-  if (!shouldOmitTopP) {
-    inferenceConfig.topP = top_p ?? 0.9;
+  if (isClaude45) {
+    // For Claude 4.5, use whichever parameter was sent by the client
+    if (temperature !== undefined) {
+      inferenceConfig.temperature = temperature;
+    } else if (top_p !== undefined) {
+      inferenceConfig.topP = top_p;
+    } else {
+      // Default to temperature if neither was sent
+      inferenceConfig.temperature = 0.3;
+    }
+  } else {
+    // For other models, use both parameters
+    inferenceConfig.temperature = temperature ?? 0.3;
+    inferenceConfig.topP = top_p ?? 0.95;
   }
+
+  console.log(
+    `Bedrock: Temperature = ${inferenceConfig.temperature ?? 'None'}; topP = ${inferenceConfig.topP ?? 'None'}`
+  );
 
   // Transform messages to support documents
   const transformedMessages = messages.map(
