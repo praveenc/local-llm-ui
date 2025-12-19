@@ -18,7 +18,7 @@ import {
 import type { SelectProps } from '@cloudscape-design/components';
 
 import { loadPreferences, savePreferences, validateInitials } from '../utils/preferences';
-import type { UserPreferences } from '../utils/preferences';
+import type { ContentDensity, UserPreferences, VisualMode } from '../utils/preferences';
 
 type LoadingStatus = 'pending' | 'loading' | 'error' | 'finished';
 type Provider = 'lmstudio' | 'ollama' | 'bedrock';
@@ -430,6 +430,54 @@ export default function SideBar({
                       })
                     }
                     placeholder="PC"
+                  />
+                </FormField>
+
+                <FormField label="Visual Mode" stretch={true}>
+                  <RadioGroup
+                    value={customValue.visualMode}
+                    onChange={({ detail }) =>
+                      setCustomValue({
+                        ...customValue,
+                        visualMode: detail.value as VisualMode,
+                      })
+                    }
+                    items={[
+                      {
+                        value: 'light',
+                        label: 'Light mode',
+                        description: 'Optimal for well-lit environments',
+                      },
+                      {
+                        value: 'dark',
+                        label: 'Dark mode',
+                        description: 'Reduces eye strain in low light',
+                      },
+                    ]}
+                  />
+                </FormField>
+
+                <FormField label="Content Density" stretch={true}>
+                  <RadioGroup
+                    value={customValue.contentDensity}
+                    onChange={({ detail }) =>
+                      setCustomValue({
+                        ...customValue,
+                        contentDensity: detail.value as ContentDensity,
+                      })
+                    }
+                    items={[
+                      {
+                        value: 'comfortable',
+                        label: 'Comfortable',
+                        description: 'Default spacing for readability',
+                      },
+                      {
+                        value: 'compact',
+                        label: 'Compact',
+                        description: 'Denser layout for more content',
+                      },
+                    ]}
                   />
                 </FormField>
               </SpaceBetween>

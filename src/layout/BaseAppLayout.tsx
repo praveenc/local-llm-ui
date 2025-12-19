@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import {
   Alert,
@@ -16,6 +16,7 @@ import type { FlashbarProps } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 import { I18nProvider } from '@cloudscape-design/components/i18n';
 import messages from '@cloudscape-design/components/i18n/messages/all.en';
+import { Density, Mode, applyDensity, applyMode } from '@cloudscape-design/global-styles';
 
 import { ChatContainer } from '../components/chat';
 import { loadPreferences } from '../utils/preferences';
@@ -55,6 +56,14 @@ export default function BaseAppLayout() {
 
   // Flashbar notifications
   const [flashbarItems, setFlashbarItems] = useState<FlashbarProps.MessageDefinition[]>([]);
+
+  // Apply visual mode and content density on mount and when preferences change
+  useEffect(() => {
+    applyMode(userPreferences.visualMode === 'dark' ? Mode.Dark : Mode.Light);
+    applyDensity(
+      userPreferences.contentDensity === 'compact' ? Density.Compact : Density.Comfortable
+    );
+  }, [userPreferences.visualMode, userPreferences.contentDensity]);
 
   const handleNewChat = () => {
     if (clearHistoryRef.current) {

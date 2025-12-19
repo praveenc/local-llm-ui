@@ -6,6 +6,7 @@ import { Alert, Box, Header, Icon, SpaceBetween } from '@cloudscape-design/compo
 import type { SelectProps } from '@cloudscape-design/components';
 
 import { FittedContainer, ScrollableContainer } from '../../components/layout';
+import '../../styles/chatContainer.scss';
 import FloatingChatInput from './FloatingChatInput';
 import MessageList from './MessageList';
 
@@ -354,47 +355,56 @@ const ChatContainer = ({
         </Alert>
       )}
 
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div className="chat-content-wrapper">
         {/* Header */}
-        <div style={{ borderBottom: '1px solid var(--color-border-divider-default)' }}>
-          <Box padding={{ horizontal: 'l', vertical: 'm' }}>
-            <Header variant="h2">
-              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                <Icon name="contact" size="medium" />
-                <span>Chat</span>
-              </SpaceBetween>
-            </Header>
+        <div className="chat-header">
+          <Box padding={{ horizontal: 'l', vertical: 's' }}>
+            <SpaceBetween size="xxs">
+              <Header variant="h2">
+                <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                  <Icon name="contact" size="medium" />
+                  <span>Chat</span>
+                </SpaceBetween>
+              </Header>
+              {selectedModel && (
+                <Box variant="small" color="text-body-secondary">
+                  <SpaceBetween direction="horizontal" size="xs">
+                    <span>{selectedModel.label}</span>
+                    <span>·</span>
+                    <span>
+                      {samplingParameter === 'temperature'
+                        ? `temp ${temperature}`
+                        : `top-p ${topP}`}
+                    </span>
+                    <span>·</span>
+                    <span>{maxTokens.toLocaleString()} tokens</span>
+                  </SpaceBetween>
+                </Box>
+              )}
+            </SpaceBetween>
           </Box>
         </div>
 
         {/* Messages Area */}
         <FittedContainer>
           <ScrollableContainer ref={scrollContainerRef}>
-            <div style={{ paddingBottom: '200px' }}>
+            <div className="chat-messages-padding">
               {messages.length === 0 ? (
                 <Box color="text-body-secondary" textAlign="center" padding="l">
                   {selectedModel ? (
                     <SpaceBetween size="m" alignItems="center">
                       <Box fontSize="display-l">
                         {selectedModel.description?.toLowerCase().includes('ollama') && (
-                          <img
-                            src="/ollama_icon.svg"
-                            alt="Ollama"
-                            style={{ width: '48px', height: '48px' }}
-                          />
+                          <img src="/ollama_icon.svg" alt="Ollama" className="provider-icon" />
                         )}
                         {selectedModel.description?.toLowerCase().includes('lmstudio') && (
-                          <img
-                            src="/lmstudio_icon.svg"
-                            alt="LM Studio"
-                            style={{ width: '48px', height: '48px' }}
-                          />
+                          <img src="/lmstudio_icon.svg" alt="LM Studio" className="provider-icon" />
                         )}
                         {selectedModel.description?.toLowerCase().includes('bedrock') && (
                           <img
                             src="/bedrock_bw.svg"
                             alt="Amazon Bedrock"
-                            style={{ width: '48px', height: '48px' }}
+                            className="provider-icon"
                           />
                         )}
                       </Box>
@@ -443,45 +453,6 @@ const ChatContainer = ({
         bedrockMetadata={bedrockMetadata}
         lmstudioMetadata={lmstudioMetadata}
       />
-
-      <style>{`
-        .inline-code {
-          background-color: var(--color-background-code-inline);
-          border-radius: 3px;
-          padding: 0.2em 0.4em;
-          font-family: monospace;
-          font-size: 85%;
-        }
-
-        .code-block-container {
-          position: relative;
-          margin: 1em 0;
-        }
-
-        .code-block {
-          display: block;
-          overflow-x: auto;
-          padding: 1em;
-          background-color: var(--color-background-code-block);
-          border-radius: 4px;
-          font-family: monospace;
-          white-space: pre;
-          color: var(--color-text-body-default);
-        }
-
-        .cursor {
-          display: inline-block;
-          width: 0.5em;
-          height: 1em;
-          background-color: var(--color-text-body-default);
-          animation: blink 1s step-end infinite;
-        }
-
-        @keyframes blink {
-          from, to { opacity: 1; }
-          50% { opacity: 0; }
-        }
-      `}</style>
     </>
   );
 };
