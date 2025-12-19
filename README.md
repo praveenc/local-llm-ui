@@ -94,6 +94,7 @@ Before running this application, ensure you have the following installed:
 1. **Set up AWS credentials** using one of these methods:
 
    **Option A: Environment Variables**
+
    ```bash
    export AWS_ACCESS_KEY_ID=your_access_key_id
    export AWS_SECRET_ACCESS_KEY=your_secret_access_key
@@ -101,12 +102,14 @@ Before running this application, ensure you have the following installed:
    ```
 
    **Option B: AWS CLI**
+
    ```bash
    aws configure
    ```
 
    **Option C: AWS Credentials File**
    Create `~/.aws/credentials`:
+
    ```ini
    [default]
    aws_access_key_id = your_access_key_id
@@ -123,6 +126,7 @@ Before running this application, ensure you have the following installed:
    - Request access to desired models (e.g., Claude, Llama)
 
 4. **Verify Setup**:
+
    ```bash
    aws bedrock list-foundation-models --region us-west-2
    ```
@@ -177,9 +181,9 @@ npm run preview
 
 Adjust model parameters in the expandable settings panel:
 
-- **Temperature** (0.0 - 2.0): Controls randomness
-  - Lower values (0.1-0.5): More focused and deterministic
-  - Higher values (0.8-1.5): More creative and varied
+- **Temperature** (0.0 - 1.0): Controls randomness
+  - Lower values (0.1-0.3): More focused and deterministic
+  - Higher values (0.7-1.0): More creative and varied
 
 - **Top P** (0.0 - 1.0): Controls diversity via nucleus sampling
   - Lower values: More focused responses
@@ -188,6 +192,8 @@ Adjust model parameters in the expandable settings panel:
 - **Max Tokens**: Maximum length of the response
   - Default: 4096 tokens
   - Adjust based on your needs and model capabilities
+
+> **Note for Claude 4.5 Models**: Claude 4.5 models (Sonnet, Haiku, Opus) don't support both temperature and topP simultaneously. When using these models, a radio button appears allowing you to choose which sampling parameter to use.
 
 ### Managing Chats
 
@@ -221,6 +227,7 @@ When using Amazon Bedrock models, you can upload documents:
 ### Usage Metrics (Bedrock Only)
 
 For Bedrock models, view detailed usage metrics:
+
 - **Input Tokens**: Tokens in your prompt
 - **Output Tokens**: Tokens in the AI response
 - **Total Tokens**: Combined token count
@@ -361,6 +368,7 @@ This project uses:
 ## Screenshots
 
 ### Main Interface
+
 ![Local LLM UI Main Interface](.github/images/local-llm-ui-ex1.png)
 
 *Chat interface with model selection, settings, and real-time streaming responses*
@@ -391,7 +399,6 @@ This project uses:
 ### Amazon Bedrock features
 
 ![Local LLM UI Amazon Bedrock Features](.github/images/local-llm-ui-ex2.png)
-
 
 ## License
 
