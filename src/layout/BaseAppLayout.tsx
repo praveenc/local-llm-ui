@@ -2,7 +2,15 @@
 
 import React, { useState } from 'react';
 
-import { AppLayoutToolbar, HelpPanel, SpaceBetween } from '@cloudscape-design/components';
+import {
+  Alert,
+  AppLayoutToolbar,
+  Box,
+  HelpPanel,
+  Link,
+  SpaceBetween,
+  StatusIndicator,
+} from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 import { I18nProvider } from '@cloudscape-design/components/i18n';
 import messages from '@cloudscape-design/components/i18n/messages/all.en';
@@ -94,86 +102,94 @@ export default function BaseAppLayout() {
         tools={
           <HelpPanel header={<h2>Connection Status</h2>}>
             <SpaceBetween size="m">
-              <div>
-                <strong>LMStudio:</strong>{' '}
-                {connectionStatus.lmstudio ? (
-                  <span style={{ color: 'green' }}>✓ Connected (port 1234)</span>
-                ) : (
-                  <span style={{ color: 'red' }}>✗ Not connected</span>
-                )}
-              </div>
-              <div>
-                <strong>Ollama:</strong>{' '}
-                {connectionStatus.ollama ? (
-                  <span style={{ color: 'green' }}>✓ Connected (port 11434)</span>
-                ) : (
-                  <span style={{ color: 'red' }}>✗ Not connected</span>
-                )}
-              </div>
-              <div>
-                <strong>Amazon Bedrock:</strong>{' '}
-                {connectionStatus.bedrock ? (
-                  <span style={{ color: 'green' }}>✓ Connected</span>
-                ) : (
-                  <span style={{ color: 'red' }}>✗ Not connected</span>
-                )}
-              </div>
+              <SpaceBetween size="xs">
+                <Box>
+                  <SpaceBetween direction="horizontal" size="xs">
+                    <Box fontWeight="bold">LMStudio:</Box>
+                    {connectionStatus.lmstudio ? (
+                      <StatusIndicator type="success">Connected (port 1234)</StatusIndicator>
+                    ) : (
+                      <StatusIndicator type="error">Not connected</StatusIndicator>
+                    )}
+                  </SpaceBetween>
+                </Box>
+                <Box>
+                  <SpaceBetween direction="horizontal" size="xs">
+                    <Box fontWeight="bold">Ollama:</Box>
+                    {connectionStatus.ollama ? (
+                      <StatusIndicator type="success">Connected (port 11434)</StatusIndicator>
+                    ) : (
+                      <StatusIndicator type="error">Not connected</StatusIndicator>
+                    )}
+                  </SpaceBetween>
+                </Box>
+                <Box>
+                  <SpaceBetween direction="horizontal" size="xs">
+                    <Box fontWeight="bold">Amazon Bedrock:</Box>
+                    {connectionStatus.bedrock ? (
+                      <StatusIndicator type="success">Connected</StatusIndicator>
+                    ) : (
+                      <StatusIndicator type="error">Not connected</StatusIndicator>
+                    )}
+                  </SpaceBetween>
+                </Box>
+              </SpaceBetween>
 
-              <div
-                style={{
-                  marginTop: '1rem',
-                  padding: '0.75rem',
-                  backgroundColor: '#f0f8ff',
-                  borderRadius: '4px',
-                  fontSize: '0.85em',
-                }}
-              >
-                <strong>💡 LMStudio Setup:</strong>
-                <p style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
-                  If LMStudio is connected but no models appear:
-                </p>
-                <ol style={{ marginLeft: '1.2rem', marginTop: '0.5rem' }}>
-                  <li>Load a model in LMStudio (Chat or Developer tab)</li>
-                  <li>OR enable "JIT Loading" in Developer → Server Settings</li>
-                </ol>
-                <p style={{ marginTop: '0.5rem', fontSize: '0.9em', color: '#666' }}>
-                  LMStudio only shows loaded models, not all downloaded ones.
-                </p>
-              </div>
+              <Alert type="info" header="LMStudio Setup">
+                <SpaceBetween size="xs">
+                  <Box variant="p">If LMStudio is connected but no models appear:</Box>
+                  <Box variant="small">
+                    1. Load a model in LMStudio (Chat or Developer tab)
+                    <br />
+                    2. OR enable "JIT Loading" in Developer → Server Settings
+                  </Box>
+                  <Box variant="small" color="text-body-secondary">
+                    LMStudio only shows loaded models, not all downloaded ones.
+                  </Box>
+                </SpaceBetween>
+              </Alert>
 
-              <div
-                style={{
-                  marginTop: '1rem',
-                  padding: '0.75rem',
-                  backgroundColor: '#fff3cd',
-                  borderRadius: '4px',
-                  fontSize: '0.85em',
-                }}
-              >
-                <strong>🔐 Amazon Bedrock Setup:</strong>
-                <p style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
-                  To use Amazon Bedrock, configure AWS credentials:
-                </p>
-                <ol style={{ marginLeft: '1.2rem', marginTop: '0.5rem' }}>
-                  <li>Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY</li>
-                  <li>
-                    Or use AWS CLI: <code>aws configure</code>
-                  </li>
-                  <li>Ensure IAM permissions for Bedrock</li>
-                </ol>
-              </div>
+              <Alert type="warning" header="Amazon Bedrock Setup">
+                <SpaceBetween size="xs">
+                  <Box variant="p">To use Amazon Bedrock, configure AWS credentials:</Box>
+                  <Box variant="small">
+                    1. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+                    <br />
+                    2. Or use AWS CLI: <Box variant="code">aws configure</Box>
+                    <br />
+                    3. Ensure IAM permissions for Bedrock
+                  </Box>
+                </SpaceBetween>
+              </Alert>
 
-              <div style={{ marginTop: '1rem', fontSize: '0.9em', color: '#666' }}>
-                <p>
-                  <strong>LMStudio:</strong> Download from lmstudio.ai
-                </p>
-                <p>
-                  <strong>Ollama:</strong> Download from ollama.ai
-                </p>
-                <p>
-                  <strong>Bedrock:</strong> AWS cloud service
-                </p>
-              </div>
+              <Box variant="small" color="text-body-secondary">
+                <SpaceBetween size="xxs">
+                  <Box>
+                    <Box fontWeight="bold" display="inline">
+                      LMStudio:
+                    </Box>{' '}
+                    <Link href="https://lmstudio.ai" external>
+                      lmstudio.ai
+                    </Link>
+                  </Box>
+                  <Box>
+                    <Box fontWeight="bold" display="inline">
+                      Ollama:
+                    </Box>{' '}
+                    <Link href="https://ollama.ai" external>
+                      ollama.ai
+                    </Link>
+                  </Box>
+                  <Box>
+                    <Box fontWeight="bold" display="inline">
+                      Bedrock:
+                    </Box>{' '}
+                    <Link href="https://aws.amazon.com/bedrock" external>
+                      AWS cloud service
+                    </Link>
+                  </Box>
+                </SpaceBetween>
+              </Box>
             </SpaceBetween>
           </HelpPanel>
         }
