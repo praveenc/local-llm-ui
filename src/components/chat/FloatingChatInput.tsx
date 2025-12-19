@@ -4,13 +4,11 @@ import {
   Badge,
   Box,
   Button,
-  ExpandableSection,
   FileDropzone,
   FileInput,
   FileTokenGroup,
   FormField,
   Icon,
-  KeyValuePairs,
   Modal,
   PromptInput,
   RadioGroup,
@@ -41,17 +39,6 @@ interface FloatingChatInputProps {
   setTopP: (topP: number) => void;
   samplingParameter: SamplingParameter;
   setSamplingParameter: (param: SamplingParameter) => void;
-  bedrockMetadata?: {
-    inputTokens?: number;
-    outputTokens?: number;
-    totalTokens?: number;
-    latencyMs?: number;
-  } | null;
-  lmstudioMetadata?: {
-    promptTokens?: number;
-    completionTokens?: number;
-    totalTokens?: number;
-  } | null;
   showOptimizeButton?: boolean;
   onOptimizePrompt?: () => void;
   isOptimizing?: boolean;
@@ -73,8 +60,6 @@ const FloatingChatInput = ({
   setTopP,
   samplingParameter,
   setSamplingParameter,
-  bedrockMetadata,
-  lmstudioMetadata,
   showOptimizeButton = false,
   onOptimizePrompt,
   isOptimizing = false,
@@ -134,137 +119,49 @@ const FloatingChatInput = ({
       <div className="floating-chat-input">
         <Box padding={{ horizontal: 'l', vertical: 'm' }}>
           <SpaceBetween size="s">
-            {/* Model Badge and Usage Metrics */}
+            {/* Model Badge and Settings */}
             {selectedModel && (
-              <SpaceBetween size="xs">
-                <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                  {/* Provider Icon */}
-                  {providerIcon && (
-                    <img
-                      src={providerIcon}
-                      alt={
-                        isBedrockModel ? 'Amazon Bedrock' : isLMStudioModel ? 'LM Studio' : 'Ollama'
-                      }
-                      style={{ width: '20px', height: '20px' }}
-                    />
-                  )}
-                  <Badge color="blue">{selectedModel.label}</Badge>
-                  <SpaceBetween direction="horizontal" size="l">
-                    <Box fontSize="body-s" color="text-body-secondary">
-                      <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
-                        <Icon name="status-info" size="small" />
-                        <span>Temperature:</span>
-                        <Box fontWeight="bold">
-                          {isClaude45Model && samplingParameter !== 'temperature'
-                            ? 'N/A'
-                            : temperature.toFixed(1)}
-                        </Box>
-                      </SpaceBetween>
-                    </Box>
-                    <Box fontSize="body-s" color="text-body-secondary">
-                      <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
-                        <Icon name="settings" size="small" />
-                        <span>Top P:</span>
-                        <Box fontWeight="bold">
-                          {isClaude45Model && samplingParameter !== 'topP'
-                            ? 'N/A'
-                            : topP.toFixed(1)}
-                        </Box>
-                      </SpaceBetween>
-                    </Box>
-                    <Box fontSize="body-s" color="text-body-secondary">
-                      <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
-                        <Icon name="status-positive" size="small" />
-                        <span>Max Tokens:</span>
-                        <Box fontWeight="bold">{maxTokens.toLocaleString()}</Box>
-                      </SpaceBetween>
-                    </Box>
-                  </SpaceBetween>
+              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                {/* Provider Icon */}
+                {providerIcon && (
+                  <img
+                    src={providerIcon}
+                    alt={
+                      isBedrockModel ? 'Amazon Bedrock' : isLMStudioModel ? 'LM Studio' : 'Ollama'
+                    }
+                    style={{ width: '20px', height: '20px' }}
+                  />
+                )}
+                <Badge color="blue">{selectedModel.label}</Badge>
+                <SpaceBetween direction="horizontal" size="l">
+                  <Box fontSize="body-s" color="text-body-secondary">
+                    <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+                      <Icon name="status-info" size="small" />
+                      <span>Temperature:</span>
+                      <Box fontWeight="bold">
+                        {isClaude45Model && samplingParameter !== 'temperature'
+                          ? 'N/A'
+                          : temperature.toFixed(1)}
+                      </Box>
+                    </SpaceBetween>
+                  </Box>
+                  <Box fontSize="body-s" color="text-body-secondary">
+                    <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+                      <Icon name="settings" size="small" />
+                      <span>Top P:</span>
+                      <Box fontWeight="bold">
+                        {isClaude45Model && samplingParameter !== 'topP' ? 'N/A' : topP.toFixed(1)}
+                      </Box>
+                    </SpaceBetween>
+                  </Box>
+                  <Box fontSize="body-s" color="text-body-secondary">
+                    <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+                      <Icon name="status-positive" size="small" />
+                      <span>Max Tokens:</span>
+                      <Box fontWeight="bold">{maxTokens.toLocaleString()}</Box>
+                    </SpaceBetween>
+                  </Box>
                 </SpaceBetween>
-
-                {/* Bedrock Usage Metrics */}
-                {bedrockMetadata &&
-                  selectedModel?.description?.toLowerCase().includes('bedrock') && (
-                    <ExpandableSection
-                      variant="footer"
-                      headerText={
-                        <Box fontSize="body-s">
-                          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                            <Icon name="status-in-progress" size="small" />
-                            <span>Usage</span>
-                            <Badge color="green">
-                              {bedrockMetadata.totalTokens?.toLocaleString() || 0} tokens
-                            </Badge>
-                          </SpaceBetween>
-                        </Box>
-                      }
-                    >
-                      <Box padding={{ top: 'xs' }}>
-                        <KeyValuePairs
-                          columns={4}
-                          items={[
-                            {
-                              label: 'Input',
-                              value: bedrockMetadata.inputTokens?.toLocaleString() || '0',
-                            },
-                            {
-                              label: 'Output',
-                              value: bedrockMetadata.outputTokens?.toLocaleString() || '0',
-                            },
-                            {
-                              label: 'Total',
-                              value: bedrockMetadata.totalTokens?.toLocaleString() || '0',
-                            },
-                            {
-                              label: 'Latency',
-                              value: bedrockMetadata.latencyMs
-                                ? `${bedrockMetadata.latencyMs}ms`
-                                : 'N/A',
-                            },
-                          ]}
-                        />
-                      </Box>
-                    </ExpandableSection>
-                  )}
-
-                {/* LM Studio Usage Metrics */}
-                {lmstudioMetadata &&
-                  selectedModel?.description?.toLowerCase().includes('lmstudio') && (
-                    <ExpandableSection
-                      variant="footer"
-                      headerText={
-                        <Box fontSize="body-s">
-                          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                            <Icon name="status-in-progress" size="small" />
-                            <span>Usage</span>
-                            <Badge color="blue">
-                              {lmstudioMetadata.totalTokens?.toLocaleString() || 0} tokens
-                            </Badge>
-                          </SpaceBetween>
-                        </Box>
-                      }
-                    >
-                      <Box padding={{ top: 'xs' }}>
-                        <KeyValuePairs
-                          columns={3}
-                          items={[
-                            {
-                              label: 'Prompt',
-                              value: lmstudioMetadata.promptTokens?.toLocaleString() || '0',
-                            },
-                            {
-                              label: 'Completion',
-                              value: lmstudioMetadata.completionTokens?.toLocaleString() || '0',
-                            },
-                            {
-                              label: 'Total',
-                              value: lmstudioMetadata.totalTokens?.toLocaleString() || '0',
-                            },
-                          ]}
-                        />
-                      </Box>
-                    </ExpandableSection>
-                  )}
               </SpaceBetween>
             )}
 

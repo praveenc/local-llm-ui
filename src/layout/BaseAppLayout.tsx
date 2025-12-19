@@ -94,6 +94,26 @@ export default function BaseAppLayout() {
     }, 3000);
   };
 
+  const handleConnectionError = (error: { title: string; content: string }) => {
+    const id = `connection-error-${Date.now()}`;
+    setFlashbarItems((prev) => [
+      ...prev,
+      {
+        type: 'error',
+        dismissible: true,
+        dismissLabel: 'Dismiss message',
+        header: error.title,
+        content: error.content,
+        id,
+        onDismiss: () => setFlashbarItems((items) => items.filter((item) => item.id !== id)),
+      },
+    ]);
+    // Auto-dismiss after 10 seconds for errors
+    setTimeout(() => {
+      setFlashbarItems((items) => items.filter((item) => item.id !== id));
+    }, 10000);
+  };
+
   // Check connection only for the selected provider
   React.useEffect(() => {
     const checkConnection = async () => {
@@ -242,6 +262,7 @@ export default function BaseAppLayout() {
               setSamplingParameter={setSamplingParameter}
               onClearHistoryRef={clearHistoryRef}
               avatarInitials={userPreferences.avatarInitials}
+              onConnectionError={handleConnectionError}
             />
           </div>
         }
