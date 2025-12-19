@@ -12,15 +12,17 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 
 - **Modern UI**: Built with AWS Cloudscape Design System for a professional, accessible interface
 - **Multiple AI Providers**: Support for Ollama, LM Studio, and Amazon Bedrock
-- **Real-time Streaming**: Stream responses from AI models in real-time
+- **Real-time Streaming**: Stream responses from AI models in real-time with loading indicators
+- **Prompt Optimizer**: Optimize prompts for Claude 4.5 models using best practices (Bedrock only)
 - **Model Configuration**: Adjust temperature, top-p, and max tokens for fine-tuned responses
 - **User Preferences**: Persistent settings for preferred AI provider and custom avatar initials
-- **Visual Provider Indicators**: Clear icons showing which AI provider is active
+- **Visual Provider Indicators**: Clear icons showing which AI provider is active in the header
 - **Document Upload**: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) with Bedrock models
-- **Usage Metrics**: View token usage and latency for Bedrock requests
+- **Usage Metrics**: View token usage and latency displayed after each AI response
+- **Connection Error Handling**: Flashbar notifications for provider connection issues
+- **Visual Mode & Density**: Toggle between light/dark mode and comfortable/compact density
 - **Chat History**: Manage multiple chat sessions with automatic history tracking *(Coming soon)*
 - **Responsive Design**: Works seamlessly across desktop and mobile devices
-- **Dark/Light Mode**: Automatic theme support through Cloudscape
 
 ## Prerequisites
 
@@ -224,16 +226,26 @@ When using Amazon Bedrock models, you can upload documents:
 4. Send your message with the attached documents
 5. The AI will analyze and respond based on the document content
 
-### Usage Metrics (Bedrock Only)
+### Usage Metrics
 
-For Bedrock models, view detailed usage metrics:
+For all AI providers, view usage metrics displayed after each AI response:
 
 - **Input Tokens**: Tokens in your prompt
 - **Output Tokens**: Tokens in the AI response
 - **Total Tokens**: Combined token count
 - **Latency**: Response time in milliseconds
 
-Metrics appear in an expandable section below the chat input.
+Metrics appear with subtle icons below each assistant message.
+
+### Prompt Optimizer (Bedrock Claude 4.5 Only)
+
+When using Claude 4.5 models (Sonnet, Haiku, Opus) with Amazon Bedrock:
+
+1. A "Prompt Optimizer Available" badge appears in the chat header
+2. Click the optimize button (gen-ai icon) next to the send button
+3. Confirm the optimization in the modal dialog
+4. Your prompt is sent to Claude Opus 4.5 for optimization using best practices
+5. The optimized prompt replaces your original (undo available with Ctrl+Z)
 
 ## Project Structure
 
@@ -367,19 +379,17 @@ This project uses:
 
 ## Screenshots
 
-### Main Interface
+### Chat Interface with Ollama/LM Studio
 
 ![Local LLM UI Main Interface](.github/images/local-llm-ui-ex1.png)
 
-*Chat interface with model selection, settings, and real-time streaming responses*
+*Chat interface with model selection, settings panel, and real-time streaming responses*
 
-<!-- Add more screenshots here as you create them:
-### Settings Panel
-![Settings Panel](.github/images/screenshot-settings.png)
+### Amazon Bedrock Features
 
-### Chat in Action
-![Chat Example](.github/images/screenshot-chat.png)
--->
+![Local LLM UI Amazon Bedrock Features](.github/images/local-llm-ui-ex2.png)
+
+*Bedrock integration with Claude 4.5 prompt optimizer, usage metrics, and document upload*
 
 ## Technologies Used
 
@@ -389,16 +399,6 @@ This project uses:
 - **Cloudscape Design System**: AWS UI component library
 - **AWS SDK**: Bedrock integration (@aws-sdk/client-bedrock, @aws-sdk/client-bedrock-runtime)
 - **React Markdown**: Markdown rendering in chat
-
-## Screenshots
-
-### Ollama, LMStudio Support
-
-![Local LLM UI Screenshot](.github/images/local-llm-ui-ex1.png)
-
-### Amazon Bedrock features
-
-![Local LLM UI Amazon Bedrock Features](.github/images/local-llm-ui-ex2.png)
 
 ## License
 
