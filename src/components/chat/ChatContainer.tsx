@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 
-import { Alert, Box, Header, SpaceBetween } from '@cloudscape-design/components';
+import { Alert, Box, Header, Icon, SpaceBetween } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 
 import { FittedContainer, ScrollableContainer } from '../../components/layout';
@@ -358,7 +358,12 @@ const ChatContainer = ({
         {/* Header */}
         <div style={{ borderBottom: '1px solid var(--color-border-divider-default)' }}>
           <Box padding={{ horizontal: 'l', vertical: 'm' }}>
-            <Header variant="h2">Chat 💬</Header>
+            <Header variant="h2">
+              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                <Icon name="contact" size="medium" />
+                <span>Chat</span>
+              </SpaceBetween>
+            </Header>
           </Box>
         </div>
 
