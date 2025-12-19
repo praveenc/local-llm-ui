@@ -38,6 +38,7 @@ interface ChatContainerProps {
   setSamplingParameter: (param: SamplingParameter) => void;
   onClearHistoryRef?: React.MutableRefObject<(() => void) | null>;
   avatarInitials?: string;
+  onConnectionError?: (error: { title: string; content: string }) => void;
 }
 
 const ChatContainer = ({
@@ -52,6 +53,7 @@ const ChatContainer = ({
   setSamplingParameter,
   onClearHistoryRef,
   avatarInitials = 'PC',
+  onConnectionError,
 }: ChatContainerProps) => {
   const [inputValue, setInputValue] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -391,12 +393,21 @@ const ChatContainer = ({
       setMessages((prevMessages) => [...prevMessages, errorMessage]);
       setStreamingMessage(null);
 
-      setError({
-        type: 'error',
+      // Use Flashbar callback for connection errors if available
+      const connectionError = {
         title: 'Connection Error',
         content:
           'Failed to connect to the chat service. Please ensure LMStudio (port 1234) or Ollama (port 11434) is running.',
-      });
+      };
+
+      if (onConnectionError) {
+        onConnectionError(connectionError);
+      } else {
+        setError({
+          type: 'error',
+          ...connectionError,
+        });
+      }
     } finally {
       setIsLoading(false);
       setFiles([]);
@@ -450,6 +461,31 @@ const ChatContainer = ({
                 <SpaceBetween direction="horizontal" size="xs" alignItems="center">
                   <Icon name="contact" size="medium" />
                   <span>Chat</span>
+                  {selectedModel && (
+                    <>
+                      {selectedModel.description?.toLowerCase().includes('bedrock') && (
+                        <img
+                          src="/bedrock_bw.svg"
+                          alt="Amazon Bedrock"
+                          style={{ width: '24px', height: '24px' }}
+                        />
+                      )}
+                      {selectedModel.description?.toLowerCase().includes('lmstudio') && (
+                        <img
+                          src="/lmstudio_icon.svg"
+                          alt="LM Studio"
+                          style={{ width: '24px', height: '24px' }}
+                        />
+                      )}
+                      {selectedModel.description?.toLowerCase().includes('ollama') && (
+                        <img
+                          src="/ollama_icon.svg"
+                          alt="Ollama"
+                          style={{ width: '24px', height: '24px' }}
+                        />
+                      )}
+                    </>
+                  )}
                   {showOptimizeButton && (
                     <Box margin={{ left: 's' }}>
                       <span className="optimize-available-badge">
@@ -519,6 +555,13 @@ const ChatContainer = ({
                     messages={messages}
                     streamingMessage={streamingMessage}
                     avatarInitials={avatarInitials}
+                    lastMessageMetadata={
+                      selectedModel?.description?.toLowerCase().includes('bedrock')
+                        ? bedrockMetadata
+                        : selectedModel?.description?.toLowerCase().includes('lmstudio')
+                          ? lmstudioMetadata
+                          : null
+                    }
                   />
                 </Box>
               )}
@@ -544,8 +587,6 @@ const ChatContainer = ({
         setTopP={setTopP}
         samplingParameter={samplingParameter}
         setSamplingParameter={setSamplingParameter}
-        bedrockMetadata={bedrockMetadata}
-        lmstudioMetadata={lmstudioMetadata}
         showOptimizeButton={showOptimizeButton}
         onOptimizePrompt={handleOptimizeClick}
         isOptimizing={isOptimizing}

@@ -21,13 +21,28 @@ interface Message {
   content: string;
 }
 
+interface UsageMetadata {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  latencyMs?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+}
+
 interface MessageListProps {
   messages: Message[];
   streamingMessage?: Message | null;
   avatarInitials?: string;
+  lastMessageMetadata?: UsageMetadata | null;
 }
 
-const MessageList = ({ messages, streamingMessage, avatarInitials = 'PC' }: MessageListProps) => {
+const MessageList = ({
+  messages,
+  streamingMessage,
+  avatarInitials = 'PC',
+  lastMessageMetadata,
+}: MessageListProps) => {
   const [messageFeedback, setMessageFeedback] = useState<Record<number, string>>({});
 
   const parseThinkingContent = (content: string) => {
@@ -129,116 +144,183 @@ const MessageList = ({ messages, streamingMessage, avatarInitials = 'PC' }: Mess
     tr: ({ children }: { children?: React.ReactNode }) => <tr>{children}</tr>,
   };
 
+  // Find the last assistant message index
+  const lastAssistantIndex = messages.reduce(
+    (lastIdx, msg, idx) => (msg.role === 'assistant' ? idx : lastIdx),
+    -1
+  );
+
   return (
     <SpaceBetween size="s">
-      {messages.map((message) => (
-        <ChatBubble
-          key={message.id}
-          type={message.role === 'assistant' ? 'incoming' : 'outgoing'}
-          ariaLabel={message.role === 'assistant' ? 'AI Assistant' : 'You'}
-          actions={
-            message.role === 'assistant' ? (
-              <SpaceBetween direction="horizontal" size="xs">
-                <ButtonGroup
-                  ariaLabel="Chat bubble actions"
-                  variant="icon"
-                  items={[
-                    {
-                      type: 'group',
-                      text: 'Feedback',
-                      items: [
-                        {
-                          type: 'icon-button',
-                          id: `helpful-${message.id}`,
-                          iconName:
-                            messageFeedback[message.id] === 'helpful'
-                              ? 'thumbs-up-filled'
-                              : 'thumbs-up',
-                          text: 'Helpful',
-                          disabled: messageFeedback[message.id] === 'helpful',
-                        },
-                        {
-                          type: 'icon-button',
-                          id: `not-helpful-${message.id}`,
-                          iconName:
-                            messageFeedback[message.id] === 'not-helpful'
-                              ? 'thumbs-down-filled'
-                              : 'thumbs-down',
-                          text: 'Not helpful',
-                          disabled:
-                            messageFeedback[message.id] === 'not-helpful' ||
-                            messageFeedback[message.id] === 'helpful',
-                        },
-                      ],
-                    },
-                  ]}
-                  onItemClick={(e) => {
-                    if (e.detail.id.startsWith('helpful-')) {
-                      handleFeedback(message.id, 'helpful');
-                    } else if (e.detail.id.startsWith('not-helpful-')) {
-                      handleFeedback(message.id, 'not-helpful');
-                    }
-                  }}
+      {messages.map((message, index) => (
+        <SpaceBetween key={message.id} size="xs">
+          <ChatBubble
+            type={message.role === 'assistant' ? 'incoming' : 'outgoing'}
+            ariaLabel={message.role === 'assistant' ? 'AI Assistant' : 'You'}
+            actions={
+              message.role === 'assistant' ? (
+                <SpaceBetween direction="horizontal" size="xs">
+                  <ButtonGroup
+                    ariaLabel="Chat bubble actions"
+                    variant="icon"
+                    items={[
+                      {
+                        type: 'group',
+                        text: 'Feedback',
+                        items: [
+                          {
+                            type: 'icon-button',
+                            id: `helpful-${message.id}`,
+                            iconName:
+                              messageFeedback[message.id] === 'helpful'
+                                ? 'thumbs-up-filled'
+                                : 'thumbs-up',
+                            text: 'Helpful',
+                            disabled: messageFeedback[message.id] === 'helpful',
+                          },
+                          {
+                            type: 'icon-button',
+                            id: `not-helpful-${message.id}`,
+                            iconName:
+                              messageFeedback[message.id] === 'not-helpful'
+                                ? 'thumbs-down-filled'
+                                : 'thumbs-down',
+                            text: 'Not helpful',
+                            disabled:
+                              messageFeedback[message.id] === 'not-helpful' ||
+                              messageFeedback[message.id] === 'helpful',
+                          },
+                        ],
+                      },
+                    ]}
+                    onItemClick={(e) => {
+                      if (e.detail.id.startsWith('helpful-')) {
+                        handleFeedback(message.id, 'helpful');
+                      } else if (e.detail.id.startsWith('not-helpful-')) {
+                        handleFeedback(message.id, 'not-helpful');
+                      }
+                    }}
+                  />
+                  <CopyToClipboard
+                    copyButtonAriaLabel="Copy message"
+                    copyErrorText="Message failed to copy"
+                    copySuccessText="Message copied"
+                    textToCopy={message.content}
+                    variant="icon"
+                  />
+                </SpaceBetween>
+              ) : undefined
+            }
+            avatar={
+              message.role === 'assistant' ? (
+                <Avatar
+                  color="gen-ai"
+                  iconName="gen-ai"
+                  ariaLabel="AI Assistant"
+                  tooltipText="AI Assistant"
                 />
-                <CopyToClipboard
-                  copyButtonAriaLabel="Copy message"
-                  copyErrorText="Message failed to copy"
-                  copySuccessText="Message copied"
-                  textToCopy={message.content}
-                  variant="icon"
+              ) : (
+                <Avatar
+                  initials={avatarInitials}
+                  ariaLabel={avatarInitials}
+                  tooltipText={avatarInitials}
                 />
-              </SpaceBetween>
-            ) : undefined
-          }
-          avatar={
-            message.role === 'assistant' ? (
-              <Avatar
-                color="gen-ai"
-                iconName="gen-ai"
-                ariaLabel="AI Assistant"
-                tooltipText="AI Assistant"
-              />
-            ) : (
-              <Avatar
-                initials={avatarInitials}
-                ariaLabel={avatarInitials}
-                tooltipText={avatarInitials}
-              />
-            )
-          }
-        >
-          {message.role === 'assistant' ? (
-            (() => {
-              const { thinkingContent, mainContent } = parseThinkingContent(message.content);
-              return thinkingContent ? (
-                <SpaceBetween size="s">
-                  <ExpandableSection headerText="Thinking Process">
+              )
+            }
+          >
+            {message.role === 'assistant' ? (
+              (() => {
+                const { thinkingContent, mainContent } = parseThinkingContent(message.content);
+                return thinkingContent ? (
+                  <SpaceBetween size="s">
+                    <ExpandableSection headerText="Thinking Process">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                        {thinkingContent}
+                      </ReactMarkdown>
+                    </ExpandableSection>
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                      {thinkingContent}
+                      {mainContent}
                     </ReactMarkdown>
-                  </ExpandableSection>
+                  </SpaceBetween>
+                ) : (
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                     {mainContent}
                   </ReactMarkdown>
-                </SpaceBetween>
-              ) : (
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {mainContent}
-                </ReactMarkdown>
-              );
-            })()
-          ) : (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                ...markdownComponents,
-                p: ({ children }) => <>{children}</>,
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
-          )}
-        </ChatBubble>
+                );
+              })()
+            ) : (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  ...markdownComponents,
+                  p: ({ children }) => <>{children}</>,
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+            )}
+          </ChatBubble>
+          {/* Show usage metrics after the last assistant message */}
+          {message.role === 'assistant' &&
+            index === lastAssistantIndex &&
+            lastMessageMetadata &&
+            !streamingMessage && (
+              <Box padding={{ left: 'xxxl' }}>
+                <Box fontSize="body-s" color="text-body-secondary">
+                  <SpaceBetween direction="horizontal" size="m">
+                    {(lastMessageMetadata.inputTokens !== undefined ||
+                      lastMessageMetadata.promptTokens !== undefined) && (
+                      <span>
+                        <Box variant="span" fontWeight="bold">
+                          Input:
+                        </Box>{' '}
+                        <span style={{ fontStyle: 'italic' }}>
+                          {(
+                            lastMessageMetadata.inputTokens ?? lastMessageMetadata.promptTokens
+                          )?.toLocaleString()}{' '}
+                          tokens
+                        </span>
+                      </span>
+                    )}
+                    {(lastMessageMetadata.outputTokens !== undefined ||
+                      lastMessageMetadata.completionTokens !== undefined) && (
+                      <span>
+                        <Box variant="span" fontWeight="bold">
+                          Output:
+                        </Box>{' '}
+                        <span style={{ fontStyle: 'italic' }}>
+                          {(
+                            lastMessageMetadata.outputTokens ?? lastMessageMetadata.completionTokens
+                          )?.toLocaleString()}{' '}
+                          tokens
+                        </span>
+                      </span>
+                    )}
+                    {lastMessageMetadata.totalTokens !== undefined && (
+                      <span>
+                        <Box variant="span" fontWeight="bold">
+                          Total:
+                        </Box>{' '}
+                        <span style={{ fontStyle: 'italic' }}>
+                          {lastMessageMetadata.totalTokens.toLocaleString()} tokens
+                        </span>
+                      </span>
+                    )}
+                    {lastMessageMetadata.latencyMs !== undefined && (
+                      <span>
+                        <Box variant="span" fontWeight="bold">
+                          Latency:
+                        </Box>{' '}
+                        <span style={{ fontStyle: 'italic' }}>
+                          {lastMessageMetadata.latencyMs}ms
+                        </span>
+                      </span>
+                    )}
+                  </SpaceBetween>
+                </Box>
+              </Box>
+            )}
+        </SpaceBetween>
       ))}
 
       {streamingMessage && (
@@ -256,28 +338,32 @@ const MessageList = ({ messages, streamingMessage, avatarInitials = 'PC' }: Mess
             />
           }
         >
-          <Box padding={{ top: 'xs', bottom: 'xs' }}>
-            {(() => {
-              const { thinkingContent, mainContent } = parseThinkingContent(
-                streamingMessage.content
-              );
-              return (
-                <SpaceBetween size="s">
-                  {thinkingContent && (
-                    <ExpandableSection headerText="Thinking Process">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                        {thinkingContent}
-                      </ReactMarkdown>
-                    </ExpandableSection>
-                  )}
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                    {mainContent}
-                  </ReactMarkdown>
-                  <span className="cursor">|</span>
-                </SpaceBetween>
-              );
-            })()}
-          </Box>
+          {streamingMessage.content ? (
+            <Box padding={{ top: 'xs', bottom: 'xs' }}>
+              {(() => {
+                const { thinkingContent, mainContent } = parseThinkingContent(
+                  streamingMessage.content
+                );
+                return (
+                  <SpaceBetween size="s">
+                    {thinkingContent && (
+                      <ExpandableSection headerText="Thinking Process">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                          {thinkingContent}
+                        </ReactMarkdown>
+                      </ExpandableSection>
+                    )}
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                      {mainContent}
+                    </ReactMarkdown>
+                    <span className="cursor">|</span>
+                  </SpaceBetween>
+                );
+              })()}
+            </Box>
+          ) : (
+            <Box color="text-status-inactive">Generating response</Box>
+          )}
         </ChatBubble>
       )}
     </SpaceBetween>
