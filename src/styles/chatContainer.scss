@@ -63,3 +63,16 @@
     opacity: 0;
   }
 }
+
+// Optimize prompt available badge
+.optimize-available-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: cs.$space-static-xxs;
+  padding: cs.$space-static-xxs cs.$space-static-xs;
+  background: linear-gradient(135deg, #7b2cbf, #9d4edd);
+  color: #ffffff;
+  border-radius: cs.$border-radius-badge;
+  font-size: cs.$font-size-body-s;
+  font-weight: cs.$font-weight-heading-s;
+}

@@ -37,3 +37,18 @@
     opacity: 1;
   }
 }
+
+// Optimize prompt button styling
+.optimize-prompt-button {
+  button {
+    color: cs.$color-text-accent !important;
+
+    &:hover:not(:disabled) {
+      color: cs.$color-text-link-hover !important;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+    }
+  }
+}

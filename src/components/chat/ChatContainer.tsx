@@ -1,14 +1,16 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Alert, Box, Header, Icon, SpaceBetween } from '@cloudscape-design/components';
+import { Alert, Box, Button, Header, Icon, SpaceBetween } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 
 import { FittedContainer, ScrollableContainer } from '../../components/layout';
+import { usePromptOptimizer } from '../../hooks/usePromptOptimizer';
 import '../../styles/chatContainer.scss';
 import FloatingChatInput from './FloatingChatInput';
 import MessageList from './MessageList';
+import OptimizePromptModal from './OptimizePromptModal';
 
 interface Message {
   id: number;
@@ -74,6 +76,28 @@ const ChatContainer = ({
   } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Prompt optimization state
+  const [showOptimizeModal, setShowOptimizeModal] = useState(false);
+  const [previousPrompt, setPreviousPrompt] = useState<string | null>(null);
+  const {
+    isOptimizing,
+    error: optimizeError,
+    optimize,
+    clearError: clearOptimizeError,
+  } = usePromptOptimizer();
+
+  // Determine if optimize button should be shown
+  const showOptimizeButton = useMemo(() => {
+    const isBedrockProvider =
+      selectedModel?.description?.toLowerCase().includes('bedrock') ?? false;
+    const modelId = selectedModel?.value?.toLowerCase() ?? '';
+    const isClaude45 =
+      modelId.includes('sonnet-4-5') ||
+      modelId.includes('haiku-4-5') ||
+      modelId.includes('opus-4-5');
+    return isBedrockProvider && isClaude45;
+  }, [selectedModel]);
+
   const handleClearHistory = React.useCallback(async () => {
     try {
       await fetch('/api/clear-history', {
@@ -121,6 +145,39 @@ const ChatContainer = ({
   useEffect(() => {
     setStreamingMessage(null);
   }, [selectedModel]);
+
+  // Clear previous prompt when input changes manually
+  useEffect(() => {
+    if (previousPrompt && inputValue !== previousPrompt) {
+      setPreviousPrompt(null);
+    }
+  }, [inputValue, previousPrompt]);
+
+  const handleOptimizeClick = () => {
+    setShowOptimizeModal(true);
+  };
+
+  const handleOptimizeConfirm = async () => {
+    const currentPrompt = inputValue;
+    const result = await optimize(currentPrompt);
+
+    if (result.success && result.optimizedPrompt) {
+      setPreviousPrompt(currentPrompt);
+      setInputValue(result.optimizedPrompt);
+      setShowOptimizeModal(false);
+    }
+  };
+
+  const handleOptimizeCancel = () => {
+    setShowOptimizeModal(false);
+  };
+
+  const handleUndoOptimization = () => {
+    if (previousPrompt) {
+      setInputValue(previousPrompt);
+      setPreviousPrompt(null);
+    }
+  };
 
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {
@@ -355,6 +412,35 @@ const ChatContainer = ({
         </Alert>
       )}
 
+      {optimizeError && (
+        <Alert type="error" dismissible onDismiss={clearOptimizeError} header="Optimization Error">
+          {optimizeError}
+        </Alert>
+      )}
+
+      {previousPrompt && (
+        <Alert
+          type="success"
+          dismissible
+          onDismiss={() => setPreviousPrompt(null)}
+          header="Prompt Optimized"
+          action={
+            <Button onClick={handleUndoOptimization} variant="link">
+              Undo
+            </Button>
+          }
+        >
+          Your prompt has been optimized. Click Undo to restore the original.
+        </Alert>
+      )}
+
+      <OptimizePromptModal
+        visible={showOptimizeModal}
+        onDismiss={handleOptimizeCancel}
+        onConfirm={handleOptimizeConfirm}
+        isOptimizing={isOptimizing}
+      />
+
       <div className="chat-content-wrapper">
         {/* Header */}
         <div className="chat-header">
@@ -364,6 +450,14 @@ const ChatContainer = ({
                 <SpaceBetween direction="horizontal" size="xs" alignItems="center">
                   <Icon name="contact" size="medium" />
                   <span>Chat</span>
+                  {showOptimizeButton && (
+                    <Box margin={{ left: 's' }}>
+                      <span className="optimize-available-badge">
+                        <Icon name="gen-ai" size="small" />
+                        <span>Prompt Optimizer Available</span>
+                      </span>
+                    </Box>
+                  )}
                 </SpaceBetween>
               </Header>
               {selectedModel && (
@@ -452,6 +546,9 @@ const ChatContainer = ({
         setSamplingParameter={setSamplingParameter}
         bedrockMetadata={bedrockMetadata}
         lmstudioMetadata={lmstudioMetadata}
+        showOptimizeButton={showOptimizeButton}
+        onOptimizePrompt={handleOptimizeClick}
+        isOptimizing={isOptimizing}
       />
     </>
   );

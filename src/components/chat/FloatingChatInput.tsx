@@ -52,6 +52,9 @@ interface FloatingChatInputProps {
     completionTokens?: number;
     totalTokens?: number;
   } | null;
+  showOptimizeButton?: boolean;
+  onOptimizePrompt?: () => void;
+  isOptimizing?: boolean;
 }
 
 const FloatingChatInput = ({
@@ -72,6 +75,9 @@ const FloatingChatInput = ({
   setSamplingParameter,
   bedrockMetadata,
   lmstudioMetadata,
+  showOptimizeButton = false,
+  onOptimizePrompt,
+  isOptimizing = false,
 }: FloatingChatInputProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const { areFilesDragging } = useFilesDragging();
@@ -298,6 +304,18 @@ const FloatingChatInput = ({
                           multiple={true}
                           value={files}
                           onChange={({ detail }) => handleFileChange(detail.value)}
+                        />
+                      </Box>
+                    )}
+                    {showOptimizeButton && onOptimizePrompt && (
+                      <Box padding={{ top: 'xs' }} className="optimize-prompt-button">
+                        <Button
+                          variant="icon"
+                          iconName="gen-ai"
+                          ariaLabel="Optimize prompt with Claude 4.5"
+                          onClick={onOptimizePrompt}
+                          disabled={!inputValue.trim() || isOptimizing || isLoading}
+                          loading={isOptimizing}
                         />
                       </Box>
                     )}
