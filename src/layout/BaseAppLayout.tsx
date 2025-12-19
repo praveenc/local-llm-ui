@@ -14,6 +14,8 @@ import SideBar from './SideBar';
 
 const LOCALE = 'en';
 
+type Provider = 'lmstudio' | 'ollama' | 'bedrock';
+
 export default function BaseAppLayout() {
   const [selectedModel, setSelectedModel] = useState<SelectProps.Option | null>(null);
   const [maxTokens, setMaxTokens] = useState<number>(4096);
@@ -35,6 +37,11 @@ export default function BaseAppLayout() {
   // Load user preferences
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => loadPreferences());
 
+  // Track selected provider (lifted from SideBar for connection checking)
+  const [selectedProvider, setSelectedProvider] = useState<Provider>(
+    () => loadPreferences().preferredProvider
+  );
+
   const handleNewChat = () => {
     if (clearHistoryRef.current) {
       clearHistoryRef.current();
@@ -45,23 +52,26 @@ export default function BaseAppLayout() {
     setUserPreferences(preferences);
   };
 
-  // Check connections on mount
+  // Check connection only for the selected provider
   React.useEffect(() => {
-    const checkConnections = async () => {
+    const checkConnection = async () => {
       try {
         const { apiService } = await import('../services');
-        const status = await apiService.checkConnections();
-        setConnectionStatus(status);
+        const isConnected = await apiService.checkConnection(selectedProvider);
+        setConnectionStatus((prev) => ({
+          ...prev,
+          [selectedProvider]: isConnected,
+        }));
       } catch (error) {
-        console.error('Failed to check connections:', error);
+        console.error(`Failed to check ${selectedProvider} connection:`, error);
       }
     };
 
-    checkConnections();
+    checkConnection();
     // Check every 30 seconds
-    const interval = setInterval(checkConnections, 30000);
+    const interval = setInterval(checkConnection, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedProvider]);
 
   return (
     <I18nProvider locale={LOCALE} messages={[messages]}>
@@ -74,6 +84,8 @@ export default function BaseAppLayout() {
             setSelectedModel={setSelectedModel}
             onNewChat={handleNewChat}
             onPreferencesChange={handlePreferencesChange}
+            selectedProvider={selectedProvider}
+            onProviderChange={setSelectedProvider}
           />
         }
         toolsOpen={toolsOpen}

@@ -20,21 +20,25 @@ import type { SelectProps } from '@cloudscape-design/components';
 import { loadPreferences, savePreferences, validateInitials } from '../utils/preferences';
 import type { UserPreferences } from '../utils/preferences';
 
+type LoadingStatus = 'pending' | 'loading' | 'error' | 'finished';
+type Provider = 'lmstudio' | 'ollama' | 'bedrock';
+
 interface SideBarProps {
   selectedModel: SelectProps.Option | null;
   setSelectedModel: (model: SelectProps.Option | null) => void;
   onNewChat?: () => void;
   onPreferencesChange?: (preferences: UserPreferences) => void;
+  selectedProvider: Provider;
+  onProviderChange: (provider: Provider) => void;
 }
-
-type LoadingStatus = 'pending' | 'loading' | 'error' | 'finished';
-type Provider = 'lmstudio' | 'ollama' | 'bedrock';
 
 export default function SideBar({
   selectedModel,
   setSelectedModel,
   onNewChat,
   onPreferencesChange,
+  selectedProvider,
+  onProviderChange,
 }: SideBarProps) {
   const [activeHref, setActiveHref] = useState('#/page1');
   const [modelOptions, setModelOptions] = useState<SelectProps.Option[]>([]);
@@ -43,10 +47,6 @@ export default function SideBar({
 
   // Preferences state - load immediately to avoid double fetch
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
-  const [selectedProvider, setSelectedProvider] = useState<Provider>(() => {
-    const prefs = loadPreferences();
-    return prefs.preferredProvider;
-  });
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
 
   const handlePreferencesConfirm = (detail: { custom?: UserPreferences }) => {
@@ -60,7 +60,7 @@ export default function SideBar({
         setModelOptions([]);
       }
 
-      setSelectedProvider(detail.custom.preferredProvider);
+      onProviderChange(detail.custom.preferredProvider);
       setShowSuccessAlert(true);
       if (onPreferencesChange) {
         onPreferencesChange(detail.custom);
@@ -288,7 +288,7 @@ export default function SideBar({
             <FormField label="AI Provider" stretch={true}>
               <RadioGroup
                 value={selectedProvider}
-                onChange={({ detail }) => setSelectedProvider(detail.value as Provider)}
+                onChange={({ detail }) => onProviderChange(detail.value as Provider)}
                 items={[
                   {
                     value: 'ollama',

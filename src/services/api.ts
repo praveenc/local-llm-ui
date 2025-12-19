@@ -63,6 +63,19 @@ class APIService {
 
     return { lmstudio, ollama, bedrock };
   }
+
+  async checkConnection(provider: Provider): Promise<boolean> {
+    switch (provider) {
+      case 'lmstudio':
+        return lmstudioService.checkConnection();
+      case 'ollama':
+        return ollamaService.checkConnection();
+      case 'bedrock':
+        return bedrockService.checkConnection();
+      default:
+        return false;
+    }
+  }
 }
 
 export const apiService = new APIService();
