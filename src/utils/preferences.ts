@@ -3,10 +3,14 @@
  */
 
 export type Provider = 'ollama' | 'lmstudio' | 'bedrock';
+export type VisualMode = 'light' | 'dark';
+export type ContentDensity = 'comfortable' | 'compact';
 
 export interface UserPreferences {
   preferredProvider: Provider;
   avatarInitials: string;
+  visualMode: VisualMode;
+  contentDensity: ContentDensity;
 }
 
 const STORAGE_KEY = 'local-llm-ui-preferences';
@@ -14,6 +18,8 @@ const STORAGE_KEY = 'local-llm-ui-preferences';
 const DEFAULT_PREFERENCES: UserPreferences = {
   preferredProvider: 'ollama',
   avatarInitials: 'PC',
+  visualMode: 'light',
+  contentDensity: 'comfortable',
 };
 
 /**

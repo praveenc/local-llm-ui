@@ -1,3 +1,5 @@
+import remarkGfm from 'remark-gfm';
+
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 
@@ -46,6 +48,85 @@ const MessageList = ({ messages, streamingMessage, avatarInitials = 'PC' }: Mess
       ...prev,
       [messageId]: feedbackType,
     }));
+  };
+
+  // Reusable markdown components configuration with table support
+  const markdownComponents = {
+    code: ({
+      className,
+      children,
+      ...props
+    }: {
+      className?: string;
+      children?: React.ReactNode;
+    }) => {
+      const inline = !className;
+      const match = /language-(\w+)/.exec(className || '');
+      const language = match ? match[1] : undefined;
+      const codeString = String(children).replace(/\n$/, '');
+
+      return !inline ? (
+        <CodeBlock code={codeString} language={language} />
+      ) : (
+        <code
+          style={{
+            backgroundColor: 'var(--color-background-code-inline, #f4f4f4)',
+            padding: '0.2em 0.4em',
+            borderRadius: '3px',
+            fontFamily: 'monospace',
+            fontSize: '0.9em',
+          }}
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    },
+    table: ({ children }: { children?: React.ReactNode }) => (
+      <div style={{ overflowX: 'auto', margin: '1em 0' }}>
+        <table
+          style={{
+            borderCollapse: 'collapse',
+            width: '100%',
+            fontSize: '0.9em',
+          }}
+        >
+          {children}
+        </table>
+      </div>
+    ),
+    thead: ({ children }: { children?: React.ReactNode }) => (
+      <thead
+        style={{
+          backgroundColor: 'var(--color-background-container-header, #fafafa)',
+        }}
+      >
+        {children}
+      </thead>
+    ),
+    th: ({ children }: { children?: React.ReactNode }) => (
+      <th
+        style={{
+          border: '1px solid var(--color-border-divider-default, #e9ebed)',
+          padding: '8px 12px',
+          textAlign: 'left',
+          fontWeight: 600,
+        }}
+      >
+        {children}
+      </th>
+    ),
+    td: ({ children }: { children?: React.ReactNode }) => (
+      <td
+        style={{
+          border: '1px solid var(--color-border-divider-default, #e9ebed)',
+          padding: '8px 12px',
+        }}
+      >
+        {children}
+      </td>
+    ),
+    tr: ({ children }: { children?: React.ReactNode }) => <tr>{children}</tr>,
   };
 
   return (
@@ -132,125 +213,26 @@ const MessageList = ({ messages, streamingMessage, avatarInitials = 'PC' }: Mess
               return thinkingContent ? (
                 <SpaceBetween size="s">
                   <ExpandableSection headerText="Thinking Process">
-                    <ReactMarkdown
-                      components={{
-                        code: ({ className, children, ...props }) => {
-                          const inline = !className;
-                          const match = /language-(\w+)/.exec(className || '');
-                          const language = match ? match[1] : undefined;
-                          const codeString = String(children).replace(/\n$/, '');
-
-                          return !inline ? (
-                            <CodeBlock code={codeString} language={language} />
-                          ) : (
-                            <code
-                              style={{
-                                backgroundColor: 'var(--color-background-code-inline, #f4f4f4)',
-                                padding: '0.2em 0.4em',
-                                borderRadius: '3px',
-                                fontFamily: 'monospace',
-                                fontSize: '0.9em',
-                              }}
-                              {...props}
-                            >
-                              {children}
-                            </code>
-                          );
-                        },
-                      }}
-                    >
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                       {thinkingContent}
                     </ReactMarkdown>
                   </ExpandableSection>
-                  <ReactMarkdown
-                    components={{
-                      code: ({ className, children, ...props }) => {
-                        const inline = !className;
-                        const match = /language-(\w+)/.exec(className || '');
-                        const language = match ? match[1] : undefined;
-                        const codeString = String(children).replace(/\n$/, '');
-
-                        return !inline ? (
-                          <CodeBlock code={codeString} language={language} />
-                        ) : (
-                          <code
-                            style={{
-                              backgroundColor: 'var(--color-background-code-inline, #f4f4f4)',
-                              padding: '0.2em 0.4em',
-                              borderRadius: '3px',
-                              fontFamily: 'monospace',
-                              fontSize: '0.9em',
-                            }}
-                            {...props}
-                          >
-                            {children}
-                          </code>
-                        );
-                      },
-                    }}
-                  >
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                     {mainContent}
                   </ReactMarkdown>
                 </SpaceBetween>
               ) : (
-                <ReactMarkdown
-                  components={{
-                    code: ({ className, children, ...props }) => {
-                      const inline = !className;
-                      const match = /language-(\w+)/.exec(className || '');
-                      const language = match ? match[1] : undefined;
-                      const codeString = String(children).replace(/\n$/, '');
-
-                      return !inline ? (
-                        <CodeBlock code={codeString} language={language} />
-                      ) : (
-                        <code
-                          style={{
-                            backgroundColor: 'var(--color-background-code-inline, #f4f4f4)',
-                            padding: '0.2em 0.4em',
-                            borderRadius: '3px',
-                            fontFamily: 'monospace',
-                            fontSize: '0.9em',
-                          }}
-                          {...props}
-                        >
-                          {children}
-                        </code>
-                      );
-                    },
-                  }}
-                >
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                   {mainContent}
                 </ReactMarkdown>
               );
             })()
           ) : (
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
+                ...markdownComponents,
                 p: ({ children }) => <>{children}</>,
-                code: ({ className, children, ...props }) => {
-                  const inline = !className;
-                  const match = /language-(\w+)/.exec(className || '');
-                  const language = match ? match[1] : undefined;
-                  const codeString = String(children).replace(/\n$/, '');
-
-                  return !inline ? (
-                    <CodeBlock code={codeString} language={language} />
-                  ) : (
-                    <code
-                      style={{
-                        backgroundColor: 'var(--color-background-code-inline, #f4f4f4)',
-                        padding: '0.2em 0.4em',
-                        borderRadius: '3px',
-                        fontFamily: 'monospace',
-                        fontSize: '0.9em',
-                      }}
-                      {...props}
-                    >
-                      {children}
-                    </code>
-                  );
-                },
               }}
             >
               {message.content}
@@ -283,52 +265,12 @@ const MessageList = ({ messages, streamingMessage, avatarInitials = 'PC' }: Mess
                 <SpaceBetween size="s">
                   {thinkingContent && (
                     <ExpandableSection headerText="Thinking Process">
-                      <ReactMarkdown
-                        components={{
-                          code: ({ className, children, ...props }) => {
-                            const inline = !className;
-                            const match = /language-(\w+)/.exec(className || '');
-                            const language = match ? match[1] : undefined;
-                            const codeString = String(children).replace(/\n$/, '');
-
-                            return !inline ? (
-                              <CodeBlock code={codeString} language={language} />
-                            ) : (
-                              <code
-                                style={{
-                                  backgroundColor: 'var(--color-background-code-inline, #f4f4f4)',
-                                  padding: '0.2em 0.4em',
-                                  borderRadius: '3px',
-                                  fontFamily: 'monospace',
-                                  fontSize: '0.9em',
-                                }}
-                                {...props}
-                              >
-                                {children}
-                              </code>
-                            );
-                          },
-                        }}
-                      >
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                         {thinkingContent}
                       </ReactMarkdown>
                     </ExpandableSection>
                   )}
-                  <ReactMarkdown
-                    components={{
-                      pre: ({ ...props }) => (
-                        <div className="code-block-container">
-                          <pre {...props} />
-                        </div>
-                      ),
-                      code: ({ ...props }) =>
-                        !props.className ? (
-                          <code className="inline-code" {...props} />
-                        ) : (
-                          <code className="code-block" {...props} />
-                        ),
-                    }}
-                  >
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                     {mainContent}
                   </ReactMarkdown>
                   <span className="cursor">|</span>

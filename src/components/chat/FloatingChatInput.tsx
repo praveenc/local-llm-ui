@@ -145,21 +145,33 @@ const FloatingChatInput = ({
                   <Badge color="blue">{selectedModel.label}</Badge>
                   <SpaceBetween direction="horizontal" size="l">
                     <Box fontSize="body-s" color="text-body-secondary">
-                      🌡️ Temperature:{' '}
-                      <strong>
-                        {isClaude45Model && samplingParameter !== 'temperature'
-                          ? 'N/A'
-                          : temperature.toFixed(1)}
-                      </strong>
+                      <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+                        <Icon name="status-info" size="small" />
+                        <span>Temperature:</span>
+                        <Box fontWeight="bold">
+                          {isClaude45Model && samplingParameter !== 'temperature'
+                            ? 'N/A'
+                            : temperature.toFixed(1)}
+                        </Box>
+                      </SpaceBetween>
                     </Box>
                     <Box fontSize="body-s" color="text-body-secondary">
-                      🎯 Top P:{' '}
-                      <strong>
-                        {isClaude45Model && samplingParameter !== 'topP' ? 'N/A' : topP.toFixed(1)}
-                      </strong>
+                      <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+                        <Icon name="settings" size="small" />
+                        <span>Top P:</span>
+                        <Box fontWeight="bold">
+                          {isClaude45Model && samplingParameter !== 'topP'
+                            ? 'N/A'
+                            : topP.toFixed(1)}
+                        </Box>
+                      </SpaceBetween>
                     </Box>
                     <Box fontSize="body-s" color="text-body-secondary">
-                      📊 Max Tokens: <strong>{maxTokens.toLocaleString()}</strong>
+                      <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+                        <Icon name="status-positive" size="small" />
+                        <span>Max Tokens:</span>
+                        <Box fontWeight="bold">{maxTokens.toLocaleString()}</Box>
+                      </SpaceBetween>
                     </Box>
                   </SpaceBetween>
                 </SpaceBetween>
@@ -171,8 +183,9 @@ const FloatingChatInput = ({
                       variant="footer"
                       headerText={
                         <Box fontSize="body-s">
-                          <SpaceBetween direction="horizontal" size="xs">
-                            <span>📈 Usage</span>
+                          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                            <Icon name="status-in-progress" size="small" />
+                            <span>Usage</span>
                             <Badge color="green">
                               {bedrockMetadata.totalTokens?.toLocaleString() || 0} tokens
                             </Badge>
@@ -185,19 +198,19 @@ const FloatingChatInput = ({
                           columns={4}
                           items={[
                             {
-                              label: '⬇️ Input',
+                              label: 'Input',
                               value: bedrockMetadata.inputTokens?.toLocaleString() || '0',
                             },
                             {
-                              label: '⬆️ Output',
+                              label: 'Output',
                               value: bedrockMetadata.outputTokens?.toLocaleString() || '0',
                             },
                             {
-                              label: '💎 Total',
+                              label: 'Total',
                               value: bedrockMetadata.totalTokens?.toLocaleString() || '0',
                             },
                             {
-                              label: '⚡ Latency',
+                              label: 'Latency',
                               value: bedrockMetadata.latencyMs
                                 ? `${bedrockMetadata.latencyMs}ms`
                                 : 'N/A',
@@ -215,8 +228,9 @@ const FloatingChatInput = ({
                       variant="footer"
                       headerText={
                         <Box fontSize="body-s">
-                          <SpaceBetween direction="horizontal" size="xs">
-                            <span>📈 Usage</span>
+                          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                            <Icon name="status-in-progress" size="small" />
+                            <span>Usage</span>
                             <Badge color="blue">
                               {lmstudioMetadata.totalTokens?.toLocaleString() || 0} tokens
                             </Badge>
@@ -229,15 +243,15 @@ const FloatingChatInput = ({
                           columns={3}
                           items={[
                             {
-                              label: '⬇️ Prompt',
+                              label: 'Prompt',
                               value: lmstudioMetadata.promptTokens?.toLocaleString() || '0',
                             },
                             {
-                              label: '⬆️ Completion',
+                              label: 'Completion',
                               value: lmstudioMetadata.completionTokens?.toLocaleString() || '0',
                             },
                             {
-                              label: '💎 Total',
+                              label: 'Total',
                               value: lmstudioMetadata.totalTokens?.toLocaleString() || '0',
                             },
                           ]}
@@ -253,7 +267,7 @@ const FloatingChatInput = ({
               stretch={true}
               description={
                 isBedrockModel && files.length === 0
-                  ? '💡 Tip: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) up to 4.5 MB'
+                  ? 'Tip: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) up to 4.5 MB'
                   : undefined
               }
             >
@@ -329,7 +343,10 @@ const FloatingChatInput = ({
                           />
                           {isBedrockModel && (
                             <Box fontSize="body-s" color="text-body-secondary">
-                              📎 Max 5 files, 4.5 MB each
+                              <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+                                <Icon name="file" size="small" />
+                                <span>Max 5 files, 4.5 MB each</span>
+                              </SpaceBetween>
                             </Box>
                           )}
                         </SpaceBetween>
@@ -359,10 +376,15 @@ const FloatingChatInput = ({
             </SpaceBetween>
           </Box>
         }
-        header="⚙️ Model Parameters"
+        header={
+          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+            <Icon name="settings" />
+            <span>Model Parameters</span>
+          </SpaceBetween>
+        }
       >
         <SpaceBetween size="l">
-          <FormField label={`📊 Max Tokens: ${maxTokens.toLocaleString()}`}>
+          <FormField label={`Max Tokens: ${maxTokens.toLocaleString()}`}>
             <Slider
               onChange={({ detail }) => setMaxTokens(detail.value)}
               value={maxTokens}
@@ -375,7 +397,7 @@ const FloatingChatInput = ({
 
           {isClaude45Model && (
             <FormField
-              label="🔀 Sampling Parameter"
+              label="Sampling Parameter"
               description="Claude 4.5 models support either temperature or topP, but not both"
             >
               <RadioGroup
@@ -390,7 +412,7 @@ const FloatingChatInput = ({
           )}
 
           <FormField
-            label={`🌡️ Temperature: ${isClaude45Model && samplingParameter !== 'temperature' ? 'N/A' : temperature.toFixed(1)}`}
+            label={`Temperature: ${isClaude45Model && samplingParameter !== 'temperature' ? 'N/A' : temperature.toFixed(1)}`}
           >
             <Slider
               onChange={({ detail }) => setTemperature(detail.value)}
@@ -404,7 +426,7 @@ const FloatingChatInput = ({
           </FormField>
 
           <FormField
-            label={`🎯 Top P: ${isClaude45Model && samplingParameter !== 'topP' ? 'N/A' : topP.toFixed(1)}`}
+            label={`Top P: ${isClaude45Model && samplingParameter !== 'topP' ? 'N/A' : topP.toFixed(1)}`}
           >
             <Slider
               onChange={({ detail }) => setTopP(detail.value)}

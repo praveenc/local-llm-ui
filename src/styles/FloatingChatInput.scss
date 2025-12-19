@@ -1,24 +1,28 @@
+// FloatingChatInput styles using Cloudscape design tokens
+@use '@cloudscape-design/design-tokens/index.scss' as cs;
+
 .floating-chat-input {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   z-index: 1000;
-  background: var(--color-background-container-content);
-  border-top: 1px solid var(--color-border-divider-default);
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+  background: cs.$color-background-container-content;
+  border-top: 1px solid cs.$color-border-divider-default;
+  // Use Cloudscape shadow token for sticky elements
+  box-shadow: cs.$shadow-container-active;
   backdrop-filter: blur(8px);
-  transition: all 0.3s ease;
-  animation: float-in 0.3s ease-out;
+  transition: all cs.$motion-duration-complex cs.$motion-easing-responsive;
+  animation: float-in cs.$motion-duration-complex cs.$motion-easing-expressive;
 
   &::before {
     content: '';
     position: absolute;
-    top: -20px;
+    top: -#{cs.$space-scaled-l};
     left: 0;
     right: 0;
-    height: 20px;
-    background: linear-gradient(to bottom, transparent, var(--color-background-container-content));
+    height: cs.$space-scaled-l;
+    background: linear-gradient(to bottom, transparent, cs.$color-background-container-content);
     pointer-events: none;
   }
 }

@@ -1,0 +1,65 @@
+// ChatContainer styles using Cloudscape design tokens
+@use '@cloudscape-design/design-tokens/index.scss' as cs;
+
+.chat-header {
+  border-bottom: 1px solid cs.$color-border-divider-default;
+}
+
+.chat-content-wrapper {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-messages-padding {
+  padding-bottom: 200px; // Space for floating input (fixed value since tokens are CSS vars)
+}
+
+.provider-icon {
+  width: 48px;
+  height: 48px;
+}
+
+// Code styling for markdown
+.inline-code {
+  background-color: cs.$color-background-cell-shaded;
+  border-radius: cs.$border-radius-badge;
+  padding: cs.$space-static-xxxs cs.$space-static-xxs;
+  font-family: cs.$font-family-monospace;
+  font-size: cs.$font-size-body-s;
+}
+
+.code-block-container {
+  position: relative;
+  margin: cs.$space-scaled-m 0;
+}
+
+.code-block {
+  display: block;
+  overflow-x: auto;
+  padding: cs.$space-scaled-m;
+  background-color: cs.$color-background-cell-shaded;
+  border-radius: cs.$border-radius-input;
+  font-family: cs.$font-family-monospace;
+  white-space: pre;
+  color: cs.$color-text-body-default;
+}
+
+// Streaming cursor animation
+.cursor {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  background-color: cs.$color-text-body-default;
+  animation: blink cs.$motion-duration-avatar-loading-dots step-end infinite;
+}
+
+@keyframes blink {
+  from,
+  to {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}

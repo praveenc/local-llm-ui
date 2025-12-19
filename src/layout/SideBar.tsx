@@ -18,7 +18,7 @@ import {
 import type { SelectProps } from '@cloudscape-design/components';
 
 import { loadPreferences, savePreferences, validateInitials } from '../utils/preferences';
-import type { UserPreferences } from '../utils/preferences';
+import type { ContentDensity, UserPreferences, VisualMode } from '../utils/preferences';
 
 type LoadingStatus = 'pending' | 'loading' | 'error' | 'finished';
 type Provider = 'lmstudio' | 'ollama' | 'bedrock';
@@ -28,6 +28,7 @@ interface SideBarProps {
   setSelectedModel: (model: SelectProps.Option | null) => void;
   onNewChat?: () => void;
   onPreferencesChange?: (preferences: UserPreferences) => void;
+  onPreferencesSaved?: () => void;
   selectedProvider: Provider;
   onProviderChange: (provider: Provider) => void;
 }
@@ -37,6 +38,7 @@ export default function SideBar({
   setSelectedModel,
   onNewChat,
   onPreferencesChange,
+  onPreferencesSaved,
   selectedProvider,
   onProviderChange,
 }: SideBarProps) {
@@ -47,7 +49,6 @@ export default function SideBar({
 
   // Preferences state - load immediately to avoid double fetch
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
-  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
 
   const handlePreferencesConfirm = (detail: { custom?: UserPreferences }) => {
     if (detail.custom) {
@@ -61,7 +62,12 @@ export default function SideBar({
       }
 
       onProviderChange(detail.custom.preferredProvider);
-      setShowSuccessAlert(true);
+
+      // Notify parent for page-level flashbar notification
+      if (onPreferencesSaved) {
+        onPreferencesSaved();
+      }
+
       if (onPreferencesChange) {
         onPreferencesChange(detail.custom);
       }
@@ -372,15 +378,6 @@ export default function SideBar({
         items={[]}
       />
 
-      {/* Success Alert */}
-      {showSuccessAlert && (
-        <Box padding={{ horizontal: 's' }}>
-          <Alert type="success" dismissible onDismiss={() => setShowSuccessAlert(false)}>
-            Preferences saved successfully
-          </Alert>
-        </Box>
-      )}
-
       {/* Preferences Section at Bottom */}
       <Box padding={{ horizontal: 's', bottom: 's' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -433,6 +430,54 @@ export default function SideBar({
                       })
                     }
                     placeholder="PC"
+                  />
+                </FormField>
+
+                <FormField label="Visual Mode" stretch={true}>
+                  <RadioGroup
+                    value={customValue.visualMode}
+                    onChange={({ detail }) =>
+                      setCustomValue({
+                        ...customValue,
+                        visualMode: detail.value as VisualMode,
+                      })
+                    }
+                    items={[
+                      {
+                        value: 'light',
+                        label: 'Light mode',
+                        description: 'Optimal for well-lit environments',
+                      },
+                      {
+                        value: 'dark',
+                        label: 'Dark mode',
+                        description: 'Reduces eye strain in low light',
+                      },
+                    ]}
+                  />
+                </FormField>
+
+                <FormField label="Content Density" stretch={true}>
+                  <RadioGroup
+                    value={customValue.contentDensity}
+                    onChange={({ detail }) =>
+                      setCustomValue({
+                        ...customValue,
+                        contentDensity: detail.value as ContentDensity,
+                      })
+                    }
+                    items={[
+                      {
+                        value: 'comfortable',
+                        label: 'Comfortable',
+                        description: 'Default spacing for readability',
+                      },
+                      {
+                        value: 'compact',
+                        label: 'Compact',
+                        description: 'Denser layout for more content',
+                      },
+                    ]}
                   />
                 </FormField>
               </SpaceBetween>
