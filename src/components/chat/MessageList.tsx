@@ -10,6 +10,7 @@ import {
   ButtonGroup,
   CopyToClipboard,
   ExpandableSection,
+  Icon,
   SpaceBetween,
 } from '@cloudscape-design/components';
 
@@ -271,6 +272,7 @@ const MessageList = ({
                     {(lastMessageMetadata.inputTokens !== undefined ||
                       lastMessageMetadata.promptTokens !== undefined) && (
                       <span>
+                        <Icon name="upload" size="small" />{' '}
                         <Box variant="span" fontWeight="bold">
                           Input:
                         </Box>{' '}
@@ -285,6 +287,7 @@ const MessageList = ({
                     {(lastMessageMetadata.outputTokens !== undefined ||
                       lastMessageMetadata.completionTokens !== undefined) && (
                       <span>
+                        <Icon name="download" size="small" />{' '}
                         <Box variant="span" fontWeight="bold">
                           Output:
                         </Box>{' '}
@@ -298,6 +301,7 @@ const MessageList = ({
                     )}
                     {lastMessageMetadata.totalTokens !== undefined && (
                       <span>
+                        <Icon name="add-plus" size="small" />{' '}
                         <Box variant="span" fontWeight="bold">
                           Total:
                         </Box>{' '}
@@ -308,6 +312,7 @@ const MessageList = ({
                     )}
                     {lastMessageMetadata.latencyMs !== undefined && (
                       <span>
+                        <Icon name="status-pending" size="small" />{' '}
                         <Box variant="span" fontWeight="bold">
                           Latency:
                         </Box>{' '}
