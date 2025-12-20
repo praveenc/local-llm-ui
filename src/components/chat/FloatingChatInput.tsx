@@ -7,6 +7,7 @@ import {
   FileDropzone,
   FileInput,
   FileTokenGroup,
+  Flashbar,
   FormField,
   Icon,
   Modal,
@@ -15,7 +16,7 @@ import {
   Slider,
   SpaceBetween,
 } from '@cloudscape-design/components';
-import type { SelectProps } from '@cloudscape-design/components';
+import type { FlashbarProps, SelectProps } from '@cloudscape-design/components';
 
 import useFilesDragging from '../../hooks/useFilesDragging';
 import '../../styles/FloatingChatInput.scss';
@@ -42,6 +43,12 @@ interface FloatingChatInputProps {
   showOptimizeButton?: boolean;
   onOptimizePrompt?: () => void;
   isOptimizing?: boolean;
+  modelStatus?: {
+    type: 'error' | 'warning' | 'info';
+    header: string;
+    content: string;
+  } | null;
+  onDismissModelStatus?: () => void;
 }
 
 const FloatingChatInput = ({
@@ -63,6 +70,8 @@ const FloatingChatInput = ({
   showOptimizeButton = false,
   onOptimizePrompt,
   isOptimizing = false,
+  modelStatus,
+  onDismissModelStatus,
 }: FloatingChatInputProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const { areFilesDragging } = useFilesDragging();
@@ -116,6 +125,24 @@ const FloatingChatInput = ({
 
   return (
     <>
+      {/* Model Status Flashbar - positioned above input */}
+      {modelStatus && (
+        <div className="model-status-flashbar">
+          <Flashbar
+            items={[
+              {
+                type: modelStatus.type as FlashbarProps.Type,
+                header: modelStatus.header,
+                content: modelStatus.content,
+                dismissible: true,
+                onDismiss: onDismissModelStatus,
+                id: 'model-status',
+              },
+            ]}
+          />
+        </div>
+      )}
+
       <div className="floating-chat-input">
         <Box padding={{ horizontal: 'l', vertical: 'm' }}>
           <SpaceBetween size="s">

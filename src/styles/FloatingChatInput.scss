@@ -39,3 +39,19 @@
     }
   }
 }
+
+// Model status flashbar - positioned above floating input
+.model-status-flashbar {
+  position: fixed;
+  bottom: 170px;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  padding: 0 cs.$space-scaled-l;
+
+  // Center the flashbar content
+  > div {
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+}

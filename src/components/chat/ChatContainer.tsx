@@ -2,8 +2,8 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Alert, Box, Button, Flashbar, Icon, SpaceBetween } from '@cloudscape-design/components';
-import type { FlashbarProps, SelectProps } from '@cloudscape-design/components';
+import { Alert, Box, Button, Icon, SpaceBetween } from '@cloudscape-design/components';
+import type { SelectProps } from '@cloudscape-design/components';
 
 import { FittedContainer, ScrollableContainer } from '../../components/layout';
 import { usePromptOptimizer } from '../../hooks/usePromptOptimizer';
@@ -631,24 +631,6 @@ const ChatContainer = ({
         </FittedContainer>
       </div>
 
-      {/* Model Status Flashbar - positioned above input */}
-      {modelStatus && (
-        <div className="model-status-flashbar">
-          <Flashbar
-            items={[
-              {
-                type: modelStatus.type as FlashbarProps.Type,
-                header: modelStatus.header,
-                content: modelStatus.content,
-                dismissible: true,
-                onDismiss: onDismissModelStatus,
-                id: 'model-status',
-              },
-            ]}
-          />
-        </div>
-      )}
-
       {/* Floating Input Panel */}
       <FloatingChatInput
         inputValue={inputValue}
@@ -669,6 +651,8 @@ const ChatContainer = ({
         showOptimizeButton={showOptimizeButton}
         onOptimizePrompt={handleOptimizeClick}
         isOptimizing={isOptimizing}
+        modelStatus={modelStatus}
+        onDismissModelStatus={onDismissModelStatus}
       />
     </>
   );

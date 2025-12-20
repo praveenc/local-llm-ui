@@ -113,15 +113,3 @@
 .tool-use-unsupported {
   color: cs.$color-text-status-warning;
 }
-
-// Model status flashbar - positioned above floating input
-.model-status-flashbar {
-  position: fixed;
-  bottom: 180px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  width: 100%;
-  max-width: 1000px;
-  padding: 0 cs.$space-scaled-l;
-}
