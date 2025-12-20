@@ -59,6 +59,13 @@ export default function BaseAppLayout() {
   // Flashbar notifications
   const [flashbarItems, setFlashbarItems] = useState<FlashbarProps.MessageDefinition[]>([]);
 
+  // Model status for ChatContainer flashbar
+  const [modelStatus, setModelStatus] = useState<{
+    type: 'error' | 'warning' | 'info';
+    header: string;
+    content: string;
+  } | null>(null);
+
   // Apply visual mode and content density on mount and when preferences change
   useEffect(() => {
     applyMode(userPreferences.visualMode === 'dark' ? Mode.Dark : Mode.Light);
@@ -155,6 +162,16 @@ export default function BaseAppLayout() {
     }, 5000);
   };
 
+  const handleModelStatusChange = (
+    status: { type: 'error' | 'warning' | 'info'; header: string; content: string } | null
+  ) => {
+    setModelStatus(status);
+  };
+
+  const handleDismissModelStatus = () => {
+    setModelStatus(null);
+  };
+
   // Check connection only for the selected provider
   React.useEffect(() => {
     const checkConnection = async () => {
@@ -193,6 +210,7 @@ export default function BaseAppLayout() {
             onProviderChange={setSelectedProvider}
             onModelLoadError={handleModelLoadError}
             onModelLoadSuccess={handleModelLoadSuccess}
+            onModelStatusChange={handleModelStatusChange}
           />
         }
         toolsOpen={toolsOpen}
@@ -306,6 +324,8 @@ export default function BaseAppLayout() {
               onClearHistoryRef={clearHistoryRef}
               avatarInitials={userPreferences.avatarInitials}
               onConnectionError={handleConnectionError}
+              modelStatus={modelStatus}
+              onDismissModelStatus={handleDismissModelStatus}
             />
           </div>
         }

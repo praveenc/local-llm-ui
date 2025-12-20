@@ -2,8 +2,8 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Alert, Box, Button, Icon, SpaceBetween } from '@cloudscape-design/components';
-import type { SelectProps } from '@cloudscape-design/components';
+import { Alert, Box, Button, Flashbar, Icon, SpaceBetween } from '@cloudscape-design/components';
+import type { FlashbarProps, SelectProps } from '@cloudscape-design/components';
 
 import { FittedContainer, ScrollableContainer } from '../../components/layout';
 import { usePromptOptimizer } from '../../hooks/usePromptOptimizer';
@@ -39,6 +39,12 @@ interface ChatContainerProps {
   onClearHistoryRef?: React.MutableRefObject<(() => void) | null>;
   avatarInitials?: string;
   onConnectionError?: (error: { title: string; content: string }) => void;
+  modelStatus?: {
+    type: 'error' | 'warning' | 'info';
+    header: string;
+    content: string;
+  } | null;
+  onDismissModelStatus?: () => void;
 }
 
 const ChatContainer = ({
@@ -54,6 +60,8 @@ const ChatContainer = ({
   onClearHistoryRef,
   avatarInitials = 'PC',
   onConnectionError,
+  modelStatus,
+  onDismissModelStatus,
 }: ChatContainerProps) => {
   const [inputValue, setInputValue] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -622,6 +630,24 @@ const ChatContainer = ({
           </ScrollableContainer>
         </FittedContainer>
       </div>
+
+      {/* Model Status Flashbar - positioned above input */}
+      {modelStatus && (
+        <div className="model-status-flashbar">
+          <Flashbar
+            items={[
+              {
+                type: modelStatus.type as FlashbarProps.Type,
+                header: modelStatus.header,
+                content: modelStatus.content,
+                dismissible: true,
+                onDismiss: onDismissModelStatus,
+                id: 'model-status',
+              },
+            ]}
+          />
+        </div>
+      )}
 
       {/* Floating Input Panel */}
       <FloatingChatInput

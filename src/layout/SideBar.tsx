@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 
 import {
-  Alert,
   Box,
   Button,
   CollectionPreferences,
@@ -81,6 +80,13 @@ interface SideBarProps {
   onProviderChange: (provider: Provider) => void;
   onModelLoadError?: (error: { title: string; content: string }) => void;
   onModelLoadSuccess?: (modelName: string) => void;
+  onModelStatusChange?: (
+    status: {
+      type: 'error' | 'warning' | 'info';
+      header: string;
+      content: string;
+    } | null
+  ) => void;
 }
 
 export default function SideBar({
@@ -93,6 +99,7 @@ export default function SideBar({
   onProviderChange,
   onModelLoadError,
   onModelLoadSuccess,
+  onModelStatusChange,
 }: SideBarProps) {
   const [activeHref, setActiveHref] = useState('#/page1');
   const [modelOptions, setModelOptions] = useState<SelectProps.Option[]>([]);
@@ -179,6 +186,8 @@ export default function SideBar({
     const fetchModels = async () => {
       setModelsLoadingStatus('loading');
       setModelErrorText('');
+      // Clear any previous status
+      onModelStatusChange?.(null);
 
       try {
         const { lmstudioService, ollamaService, bedrockService, mantleService } = await import(
@@ -189,12 +198,16 @@ export default function SideBar({
         if (selectedProvider === 'bedrock-mantle') {
           const currentPrefs = loadPreferences();
           if (!currentPrefs.bedrockMantleApiKey) {
-            setModelErrorText(
-              'Bedrock API key is required. Please configure it in the preferences.'
-            );
+            const errorMsg = 'Bedrock API key is required. Please configure it in the preferences.';
+            setModelErrorText(errorMsg);
             setModelsLoadingStatus('error');
             setModelOptions([]);
             setSelectedModel(null);
+            onModelStatusChange?.({
+              type: 'info',
+              header: 'Bedrock API Key Required',
+              content: `${errorMsg} Region: ${currentPrefs.bedrockMantleRegion || 'us-west-2'}`,
+            });
             return;
           }
           mantleService.setApiKey(currentPrefs.bedrockMantleApiKey);
@@ -260,6 +273,28 @@ export default function SideBar({
         setModelOptions(formattedOptions);
         setModelsLoadingStatus('finished');
 
+        // Notify if no models available
+        if (formattedOptions.length === 0) {
+          let emptyMessage = '';
+          if (selectedProvider === 'lmstudio') {
+            emptyMessage =
+              'Load a model in LM Studio or enable JIT Loading in Developer > Server Settings.';
+          } else if (selectedProvider === 'ollama') {
+            emptyMessage = 'Pull a model using: ollama pull llama2';
+          } else if (selectedProvider === 'bedrock') {
+            emptyMessage =
+              'No models found. Please check your AWS credentials and IAM permissions for Amazon Bedrock.';
+          } else if (selectedProvider === 'bedrock-mantle') {
+            emptyMessage =
+              'No models found. Please check your Bedrock API key and ensure you have access to Mantle models.';
+          }
+          onModelStatusChange?.({
+            type: 'info',
+            header: 'No models available',
+            content: emptyMessage,
+          });
+        }
+
         const getFirstOption = (options: SelectProps.Option[]): SelectProps.Option | null => {
           if (options.length === 0) return null;
           const first = options[0];
@@ -306,12 +341,16 @@ export default function SideBar({
         console.error(`Failed to fetch ${selectedProvider} models:`, error);
 
         let errorMessage = '';
+        let errorHeader = '';
         if (selectedProvider === 'lmstudio') {
+          errorHeader = 'LM Studio not running';
           errorMessage =
             'Cannot connect to LM Studio (port 1234). Please ensure LM Studio is running.';
         } else if (selectedProvider === 'ollama') {
+          errorHeader = 'Ollama not running';
           errorMessage = 'Cannot connect to Ollama (port 11434). Please ensure Ollama is running.';
         } else if (selectedProvider === 'bedrock') {
+          errorHeader = 'Amazon Bedrock connection failed';
           const err = error as Error;
           if (err.message?.includes('credentials') || err.message?.includes('AWS')) {
             errorMessage = err.message;
@@ -319,6 +358,7 @@ export default function SideBar({
             errorMessage = 'Cannot connect to Amazon Bedrock. Please configure AWS credentials.';
           }
         } else if (selectedProvider === 'bedrock-mantle') {
+          errorHeader = 'Bedrock Mantle connection failed';
           const err = error as Error;
           if (err.message?.includes('API key')) {
             errorMessage = err.message;
@@ -327,6 +367,7 @@ export default function SideBar({
               'Cannot connect to Bedrock Mantle. Please check your Bedrock API key in preferences.';
           }
         } else {
+          errorHeader = 'Connection Error';
           errorMessage = 'Invalid provider selected.';
         }
 
@@ -334,6 +375,13 @@ export default function SideBar({
         setModelsLoadingStatus('error');
         setModelOptions([]);
         setSelectedModel(null);
+
+        // Notify parent about the error
+        onModelStatusChange?.({
+          type: 'warning',
+          header: errorHeader,
+          content: errorMessage,
+        });
       }
     };
 
@@ -388,79 +436,6 @@ export default function SideBar({
                 </Box>
               </SpaceBetween>
             </Box>
-
-            {/* Error Alerts */}
-            {modelsLoadingStatus === 'error' && (
-              <Alert
-                type="warning"
-                header={
-                  selectedProvider === 'lmstudio'
-                    ? 'LM Studio not running'
-                    : selectedProvider === 'ollama'
-                      ? 'Ollama not running'
-                      : selectedProvider === 'bedrock-mantle'
-                        ? 'Bedrock API key required'
-                        : 'Amazon Bedrock connection failed'
-                }
-              >
-                {selectedProvider === 'lmstudio' && (
-                  <>Please start LM Studio and ensure it's running on port 1234.</>
-                )}
-                {selectedProvider === 'ollama' && (
-                  <>Please start Ollama and ensure it's running on port 11434.</>
-                )}
-                {selectedProvider === 'bedrock' && (
-                  <>{modelErrorText || 'Please configure AWS credentials to use Amazon Bedrock.'}</>
-                )}
-                {selectedProvider === 'bedrock-mantle' && (
-                  <>
-                    {modelErrorText || 'Please configure your Bedrock API key in the preferences.'}
-                  </>
-                )}
-              </Alert>
-            )}
-
-            {modelsLoadingStatus === 'finished' && modelOptions.length === 0 && (
-              <Alert type="info" header="No models available">
-                {selectedProvider === 'lmstudio' && (
-                  <>
-                    Load a model in LM Studio or enable JIT Loading in Developer &gt; Server
-                    Settings.
-                  </>
-                )}
-                {selectedProvider === 'ollama' && (
-                  <>
-                    Pull a model using: <code>ollama pull llama2</code>
-                  </>
-                )}
-                {selectedProvider === 'bedrock' && (
-                  <>
-                    No models found. Please check your AWS credentials and IAM permissions for
-                    Amazon Bedrock.
-                  </>
-                )}
-                {selectedProvider === 'bedrock-mantle' && (
-                  <>
-                    No models found. Please check your Bedrock API key and ensure you have access to
-                    Mantle models.
-                  </>
-                )}
-              </Alert>
-            )}
-
-            {/* API key prompt for Mantle */}
-            {selectedProvider === 'bedrock-mantle' && !preferences.bedrockMantleApiKey && (
-              <Alert type="info" header="Bedrock API Key Required">
-                <SpaceBetween size="xs">
-                  <Box>
-                    Bedrock Mantle requires an API key. Please configure it in the preferences.
-                  </Box>
-                  <Box variant="small" color="text-body-secondary">
-                    Region: {preferences.bedrockMantleRegion || 'us-west-2'}
-                  </Box>
-                </SpaceBetween>
-              </Alert>
-            )}
 
             {/* Model Selection */}
             <FormField
