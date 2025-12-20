@@ -3,5 +3,7 @@ export * from './api';
 export { lmstudioService } from './lmstudio';
 export { ollamaService } from './ollama';
 export { bedrockService } from './bedrock';
+export { mantleService } from './mantle';
+export type { MantleRegion } from './mantle';
 export { promptOptimizerService, optimizePrompt } from './promptOptimizer';
 export type { OptimizePromptResult } from './promptOptimizer';

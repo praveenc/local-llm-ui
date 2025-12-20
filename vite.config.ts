@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 
 import { handleBedrockRequest } from './server/bedrock-proxy';
 import { handleLMStudioRequest } from './server/lmstudio-proxy';
+import { handleMantleRequest } from './server/mantle-proxy';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -21,13 +22,41 @@ export default defineConfig({
         });
       },
     },
+    // Bedrock Mantle proxy for OpenAI-compatible endpoints
+    {
+      name: 'mantle-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (req.url?.startsWith('/api/mantle')) {
+            await handleMantleRequest(req, res);
+          } else {
+            next();
+          }
+        });
+      },
+    },
     // LMStudio SDK proxy for model management
     {
       name: 'lmstudio-sdk-proxy',
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
           if (req.url?.startsWith('/api/lmstudio-sdk')) {
-            await handleLMStudioRequest(req, res);
+            try {
+              await handleLMStudioRequest(req, res);
+            } catch (error) {
+              console.error('LMStudio SDK proxy unhandled error:', error);
+              if (!res.headersSent) {
+                res.statusCode = 503;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(
+                  JSON.stringify({
+                    error:
+                      'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled.',
+                    errorType: 'ConnectionError',
+                  })
+                );
+              }
+            }
           } else {
             next();
           }

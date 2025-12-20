@@ -39,6 +39,12 @@ interface ChatContainerProps {
   onClearHistoryRef?: React.MutableRefObject<(() => void) | null>;
   avatarInitials?: string;
   onConnectionError?: (error: { title: string; content: string }) => void;
+  modelStatus?: {
+    type: 'error' | 'warning' | 'info';
+    header: string;
+    content: string;
+  } | null;
+  onDismissModelStatus?: () => void;
 }
 
 const ChatContainer = ({
@@ -54,6 +60,8 @@ const ChatContainer = ({
   onClearHistoryRef,
   avatarInitials = 'PC',
   onConnectionError,
+  modelStatus,
+  onDismissModelStatus,
 }: ChatContainerProps) => {
   const [inputValue, setInputValue] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -219,9 +227,11 @@ const ChatContainer = ({
       const { processFilesForBedrock } = await import('../../utils/fileUtils');
 
       // Determine provider from model description
-      let provider: 'ollama' | 'lmstudio' | 'bedrock';
+      let provider: 'ollama' | 'lmstudio' | 'bedrock' | 'bedrock-mantle';
       if (selectedModel.description?.toLowerCase().includes('ollama')) {
         provider = 'ollama';
+      } else if (selectedModel.description?.toLowerCase().includes('bedrock-mantle')) {
+        provider = 'bedrock-mantle';
       } else if (selectedModel.description?.toLowerCase().includes('bedrock')) {
         provider = 'bedrock';
       } else {
@@ -328,6 +338,26 @@ const ChatContainer = ({
             }
           } catch (e) {
             console.error('Failed to parse Bedrock metadata:', e);
+          }
+          continue;
+        }
+
+        // Check if this is Mantle metadata (same format as Bedrock)
+        if (chunk.startsWith('__MANTLE_METADATA__')) {
+          try {
+            const metadataJson = chunk.replace('__MANTLE_METADATA__', '');
+            const metadata = JSON.parse(metadataJson);
+
+            // Extract usage information
+            if (metadata.usage) {
+              setBedrockMetadata({
+                inputTokens: metadata.usage.inputTokens,
+                outputTokens: metadata.usage.outputTokens,
+                totalTokens: metadata.usage.totalTokens,
+              });
+            }
+          } catch (e) {
+            console.error('Failed to parse Mantle metadata:', e);
           }
           continue;
         }
@@ -456,52 +486,70 @@ const ChatContainer = ({
         {/* Header */}
         <div className="chat-header">
           <Box padding={{ horizontal: 'l', vertical: 's' }}>
-            <SpaceBetween size="xxs">
-              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                <Icon name="contact" size="medium" />
-                <Box variant="h2">Chat</Box>
-                {selectedModel && (
-                  <>
-                    {selectedModel.description?.toLowerCase().includes('bedrock') && (
-                      <img
-                        src="/bedrock_bw.svg"
-                        alt="Amazon Bedrock"
-                        style={{ width: '20px', height: '20px', opacity: 0.8 }}
-                      />
-                    )}
-                    {selectedModel.description?.toLowerCase().includes('lmstudio') && (
-                      <img
-                        src="/lmstudio_icon.svg"
-                        alt="LM Studio"
-                        style={{ width: '20px', height: '20px', opacity: 0.8 }}
-                      />
-                    )}
-                    {selectedModel.description?.toLowerCase().includes('ollama') && (
-                      <img
-                        src="/ollama_icon.svg"
-                        alt="Ollama"
-                        style={{ width: '20px', height: '20px', opacity: 0.8 }}
-                      />
-                    )}
-                  </>
-                )}
-                {showOptimizeButton && (
-                  <span className="optimize-available-badge">
-                    <Icon name="gen-ai" size="small" />
-                    <span>Prompt Optimizer</span>
-                  </span>
-                )}
-              </SpaceBetween>
-              {selectedModel && (
-                <Box variant="small" color="text-body-secondary">
-                  {selectedModel.description?.toLowerCase().includes('bedrock') && 'Amazon Bedrock'}
-                  {selectedModel.description?.toLowerCase().includes('lmstudio') && 'LM Studio'}
-                  {selectedModel.description?.toLowerCase().includes('ollama') && 'Ollama'}
-                  {' - '}
+            {selectedModel ? (
+              <SpaceBetween size="xxs">
+                <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                  {/* Provider Icon */}
+                  {selectedModel.description?.toLowerCase().includes('bedrock-mantle') ? (
+                    <img
+                      src="/bedrock-color.svg"
+                      alt="Bedrock Mantle"
+                      style={{ width: '24px', height: '24px' }}
+                    />
+                  ) : selectedModel.description?.toLowerCase().includes('bedrock') ? (
+                    <img
+                      src="/bedrock_bw.svg"
+                      alt="Amazon Bedrock"
+                      style={{ width: '24px', height: '24px' }}
+                    />
+                  ) : selectedModel.description?.toLowerCase().includes('lmstudio') ? (
+                    <img
+                      src="/lmstudio_icon.svg"
+                      alt="LM Studio"
+                      style={{ width: '24px', height: '24px' }}
+                    />
+                  ) : selectedModel.description?.toLowerCase().includes('ollama') ? (
+                    <img
+                      src="/ollama_icon.svg"
+                      alt="Ollama"
+                      style={{ width: '24px', height: '24px' }}
+                    />
+                  ) : (
+                    <Icon name="contact" size="medium" />
+                  )}
+
+                  {/* Provider Name */}
+                  <Box variant="h3" fontWeight="bold">
+                    {selectedModel.description?.toLowerCase().includes('bedrock-mantle')
+                      ? 'Bedrock Mantle'
+                      : selectedModel.description?.toLowerCase().includes('bedrock')
+                        ? 'Amazon Bedrock'
+                        : selectedModel.description?.toLowerCase().includes('lmstudio')
+                          ? 'LM Studio'
+                          : selectedModel.description?.toLowerCase().includes('ollama')
+                            ? 'Ollama'
+                            : 'Chat'}
+                  </Box>
+
+                  {showOptimizeButton && (
+                    <span className="optimize-available-badge">
+                      <Icon name="gen-ai" size="small" />
+                      <span>Optimizer</span>
+                    </span>
+                  )}
+                </SpaceBetween>
+
+                {/* Model Name */}
+                <Box variant="small" color="text-body-secondary" padding={{ left: 'xxxl' }}>
                   {selectedModel.label}
                 </Box>
-              )}
-            </SpaceBetween>
+              </SpaceBetween>
+            ) : (
+              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                <Icon name="contact" size="medium" />
+                <Box variant="h3">Chat</Box>
+              </SpaceBetween>
+            )}
           </Box>
         </div>
 
@@ -567,11 +615,13 @@ const ChatContainer = ({
                     streamingMessage={streamingMessage}
                     avatarInitials={avatarInitials}
                     lastMessageMetadata={
-                      selectedModel?.description?.toLowerCase().includes('bedrock')
+                      selectedModel?.description?.toLowerCase().includes('bedrock-mantle')
                         ? bedrockMetadata
-                        : selectedModel?.description?.toLowerCase().includes('lmstudio')
-                          ? lmstudioMetadata
-                          : null
+                        : selectedModel?.description?.toLowerCase().includes('bedrock')
+                          ? bedrockMetadata
+                          : selectedModel?.description?.toLowerCase().includes('lmstudio')
+                            ? lmstudioMetadata
+                            : null
                     }
                   />
                 </Box>
@@ -601,6 +651,8 @@ const ChatContainer = ({
         showOptimizeButton={showOptimizeButton}
         onOptimizePrompt={handleOptimizeClick}
         isOptimizing={isOptimizing}
+        modelStatus={modelStatus}
+        onDismissModelStatus={onDismissModelStatus}
       />
     </>
   );

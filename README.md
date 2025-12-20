@@ -261,8 +261,8 @@ local-llm-ui/
 │   │   │   └── ...
 │   │   └── layout/            # Layout components
 │   ├── layout/
-│   │   ├── BaseAppLayout.tsx  # Main app layout
-│   │   └── SideBar.tsx        # Model settings sidebar
+│   │   ├── AppShell.tsx       # Main app shell/orchestrator
+│   │   └── ModelSettingsPanel.tsx  # Model settings panel
 │   ├── services/
 │   │   ├── api.ts             # API service orchestrator
 │   │   ├── ollama.ts          # Ollama integration

@@ -21,13 +21,13 @@ import { Density, Mode, applyDensity, applyMode } from '@cloudscape-design/globa
 import { ChatContainer } from '../components/chat';
 import { loadPreferences } from '../utils/preferences';
 import type { UserPreferences } from '../utils/preferences';
-import SideBar from './SideBar';
+import ModelSettingsPanel from './ModelSettingsPanel';
 
 const LOCALE = 'en';
 
-type Provider = 'lmstudio' | 'ollama' | 'bedrock';
+type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle';
 
-export default function BaseAppLayout() {
+export default function AppShell() {
   const [selectedModel, setSelectedModel] = useState<SelectProps.Option | null>(null);
   const [maxTokens, setMaxTokens] = useState<number>(4096);
   const [temperature, setTemperature] = useState<number>(0.5);
@@ -39,10 +39,12 @@ export default function BaseAppLayout() {
     lmstudio: boolean;
     ollama: boolean;
     bedrock: boolean;
+    'bedrock-mantle': boolean;
   }>({
     lmstudio: false,
     ollama: false,
     bedrock: false,
+    'bedrock-mantle': false,
   });
   const clearHistoryRef = React.useRef<(() => void) | null>(null);
 
@@ -56,6 +58,13 @@ export default function BaseAppLayout() {
 
   // Flashbar notifications
   const [flashbarItems, setFlashbarItems] = useState<FlashbarProps.MessageDefinition[]>([]);
+
+  // Model status for ChatContainer flashbar
+  const [modelStatus, setModelStatus] = useState<{
+    type: 'error' | 'warning' | 'info';
+    header: string;
+    content: string;
+  } | null>(null);
 
   // Apply visual mode and content density on mount and when preferences change
   useEffect(() => {
@@ -153,6 +162,16 @@ export default function BaseAppLayout() {
     }, 5000);
   };
 
+  const handleModelStatusChange = (
+    status: { type: 'error' | 'warning' | 'info'; header: string; content: string } | null
+  ) => {
+    setModelStatus(status);
+  };
+
+  const handleDismissModelStatus = () => {
+    setModelStatus(null);
+  };
+
   // Check connection only for the selected provider
   React.useEffect(() => {
     const checkConnection = async () => {
@@ -181,7 +200,7 @@ export default function BaseAppLayout() {
         onNavigationChange={({ detail }) => setNavigationOpen(detail.open)}
         notifications={<Flashbar items={flashbarItems} />}
         navigation={
-          <SideBar
+          <ModelSettingsPanel
             selectedModel={selectedModel}
             setSelectedModel={setSelectedModel}
             onNewChat={handleNewChat}
@@ -191,6 +210,7 @@ export default function BaseAppLayout() {
             onProviderChange={setSelectedProvider}
             onModelLoadError={handleModelLoadError}
             onModelLoadSuccess={handleModelLoadSuccess}
+            onModelStatusChange={handleModelStatusChange}
           />
         }
         toolsOpen={toolsOpen}
@@ -304,6 +324,8 @@ export default function BaseAppLayout() {
               onClearHistoryRef={clearHistoryRef}
               avatarInitials={userPreferences.avatarInitials}
               onConnectionError={handleConnectionError}
+              modelStatus={modelStatus}
+              onDismissModelStatus={handleDismissModelStatus}
             />
           </div>
         }

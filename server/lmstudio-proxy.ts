@@ -3,12 +3,51 @@ import type { IncomingMessage, ServerResponse } from 'http';
 
 // LMStudio SDK client - connects via WebSocket to LM Studio
 let client: LMStudioClient | null = null;
+let clientConnectionFailed = false;
+let lastConnectionAttempt = 0;
+const CONNECTION_RETRY_DELAY = 5000; // 5 seconds between retry attempts
 
 async function getClient(): Promise<LMStudioClient> {
+  const now = Date.now();
+
+  // If connection previously failed, wait before retrying
+  if (clientConnectionFailed && now - lastConnectionAttempt < CONNECTION_RETRY_DELAY) {
+    throw new Error(
+      'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled.'
+    );
+  }
+
   if (!client) {
-    client = new LMStudioClient();
+    lastConnectionAttempt = now;
+    try {
+      // Create client with error handling
+      client = new LMStudioClient({
+        // Use default localhost connection
+        baseUrl: 'ws://127.0.0.1:1234',
+      });
+      // Test the connection by making a simple call with a timeout
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Connection timeout')), 5000);
+      });
+      await Promise.race([client.system.listDownloadedModels(), timeoutPromise]);
+      clientConnectionFailed = false;
+    } catch (error) {
+      client = null;
+      clientConnectionFailed = true;
+      const err = error as Error;
+      console.error('LMStudio connection error:', err.message);
+      throw new Error(
+        'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled.'
+      );
+    }
   }
   return client;
+}
+
+// Reset client on connection errors (allows retry)
+function resetClient(): void {
+  client = null;
+  clientConnectionFailed = false;
 }
 
 export async function handleLMStudioRequest(
@@ -49,14 +88,20 @@ export async function handleLMStudioRequest(
     let errorMessage = 'Internal server error';
     let statusCode = 500;
 
-    if (
+    // Check for connection-related errors
+    const isConnectionError =
       err.message?.includes('ECONNREFUSED') ||
       err.message?.includes('connect') ||
-      err.message?.includes('WebSocket')
-    ) {
+      err.message?.includes('WebSocket') ||
+      err.message?.includes('Cannot connect to LM Studio') ||
+      err.message?.includes('Failed to connect');
+
+    if (isConnectionError) {
       errorMessage =
         'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled.';
       statusCode = 503;
+      // Reset client so next request will try to reconnect
+      resetClient();
     }
 
     res.statusCode = statusCode;
@@ -74,10 +119,13 @@ export async function handleLMStudioRequest(
 async function handleListModels(res: ServerResponse): Promise<void> {
   const lmstudio = await getClient();
 
+  console.log('LMStudio SDK: Client connected, fetching downloaded models...');
+
   // Get all downloaded models (not just loaded ones)
   const downloadedModels = await lmstudio.system.listDownloadedModels();
 
   console.log(`LMStudio SDK: Found ${downloadedModels.length} downloaded models`);
+  console.log('LMStudio SDK: Raw downloaded models:', JSON.stringify(downloadedModels, null, 2));
 
   // Filter out embedding models and map to our format
   const models = downloadedModels
