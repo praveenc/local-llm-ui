@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 import { handleBedrockRequest } from './server/bedrock-proxy';
+import { handleLMStudioRequest } from './server/lmstudio-proxy';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -14,6 +15,19 @@ export default defineConfig({
         server.middlewares.use(async (req, res, next) => {
           if (req.url?.startsWith('/api/bedrock')) {
             await handleBedrockRequest(req, res);
+          } else {
+            next();
+          }
+        });
+      },
+    },
+    // LMStudio SDK proxy for model management
+    {
+      name: 'lmstudio-sdk-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (req.url?.startsWith('/api/lmstudio-sdk')) {
+            await handleLMStudioRequest(req, res);
           } else {
             next();
           }

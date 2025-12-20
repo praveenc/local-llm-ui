@@ -76,6 +76,10 @@ const ChatContainer = ({
     completionTokens?: number;
     totalTokens?: number;
   } | null>(null);
+  const [lmstudioModelInfo, setLmstudioModelInfo] = useState<{
+    contextLength?: number;
+    trainedForToolUse?: boolean;
+  } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Prompt optimization state
@@ -146,6 +150,32 @@ const ChatContainer = ({
 
   useEffect(() => {
     setStreamingMessage(null);
+  }, [selectedModel]);
+
+  // Fetch LM Studio model info when model changes
+  useEffect(() => {
+    const fetchLmstudioModelInfo = async () => {
+      if (!selectedModel?.description?.toLowerCase().includes('lmstudio')) {
+        setLmstudioModelInfo(null);
+        return;
+      }
+
+      try {
+        const { lmstudioService } = await import('../../services');
+        const modelInfo = await lmstudioService.getModelInfo(selectedModel.value || undefined);
+        if (modelInfo) {
+          setLmstudioModelInfo({
+            contextLength: modelInfo.contextLength,
+            trainedForToolUse: modelInfo.trainedForToolUse,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch LM Studio model info:', error);
+        setLmstudioModelInfo(null);
+      }
+    };
+
+    fetchLmstudioModelInfo();
   }, [selectedModel]);
 
   // Clear previous prompt when input changes manually
@@ -508,6 +538,20 @@ const ChatContainer = ({
                     </span>
                     <span>·</span>
                     <span>{maxTokens.toLocaleString()} tokens</span>
+                    {lmstudioModelInfo && (
+                      <>
+                        <span>·</span>
+                        <span>ctx {lmstudioModelInfo.contextLength?.toLocaleString()}</span>
+                        <span>·</span>
+                        <span
+                          style={{
+                            color: lmstudioModelInfo.trainedForToolUse ? '#037f0c' : '#8d6605',
+                          }}
+                        >
+                          {lmstudioModelInfo.trainedForToolUse ? '✓ Tool Use' : '✗ No Tool Use'}
+                        </span>
+                      </>
+                    )}
                   </SpaceBetween>
                 </Box>
               )}

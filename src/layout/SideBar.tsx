@@ -31,6 +31,8 @@ interface SideBarProps {
   onPreferencesSaved?: () => void;
   selectedProvider: Provider;
   onProviderChange: (provider: Provider) => void;
+  onModelLoadError?: (error: { title: string; content: string }) => void;
+  onModelLoadSuccess?: (modelName: string) => void;
 }
 
 export default function SideBar({
@@ -41,14 +43,65 @@ export default function SideBar({
   onPreferencesSaved,
   selectedProvider,
   onProviderChange,
+  onModelLoadError,
+  onModelLoadSuccess,
 }: SideBarProps) {
   const [activeHref, setActiveHref] = useState('#/page1');
   const [modelOptions, setModelOptions] = useState<SelectProps.Option[]>([]);
   const [modelsLoadingStatus, setModelsLoadingStatus] = useState<LoadingStatus>('pending');
   const [modelErrorText, setModelErrorText] = useState('');
+  const [isModelLoading, setIsModelLoading] = useState(false);
 
   // Preferences state - load immediately to avoid double fetch
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
+
+  // Handle model selection - loads the model for LM Studio
+  const handleModelSelect = async (option: SelectProps.Option | null) => {
+    if (!option) {
+      setSelectedModel(null);
+      return;
+    }
+
+    // For LM Studio, trigger model loading
+    if (selectedProvider === 'lmstudio' && option.value) {
+      setIsModelLoading(true);
+      setSelectedModel(option);
+
+      try {
+        const { lmstudioService } = await import('../services');
+        const result = await lmstudioService.loadModel(option.value);
+
+        if (result.success) {
+          console.log('Model loaded successfully:', result.identifier);
+          if (onModelLoadSuccess) {
+            onModelLoadSuccess(option.label || option.value);
+          }
+        } else {
+          console.error('Failed to load model:', result.error);
+          if (onModelLoadError) {
+            onModelLoadError({
+              title: 'Failed to load model',
+              content: result.error || 'An unknown error occurred while loading the model.',
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error loading model:', error);
+        const err = error as Error;
+        if (onModelLoadError) {
+          onModelLoadError({
+            title: 'Failed to load model',
+            content: err.message || 'An unknown error occurred while loading the model.',
+          });
+        }
+      } finally {
+        setIsModelLoading(false);
+      }
+    } else {
+      // For other providers, just set the model
+      setSelectedModel(option);
+    }
+  };
 
   const handlePreferencesConfirm = (detail: { custom?: UserPreferences }) => {
     if (detail.custom) {
@@ -348,6 +401,9 @@ export default function SideBar({
                   <SpaceBetween direction="horizontal" size="xs">
                     <Icon name="gen-ai" size="small" />
                     <span>Select Model</span>
+                    {isModelLoading && selectedProvider === 'lmstudio' && (
+                      <span style={{ fontSize: '12px', color: '#0972d3' }}>Loading...</span>
+                    )}
                   </SpaceBetween>
                 </Box>
               }
@@ -355,21 +411,21 @@ export default function SideBar({
             >
               <Select
                 selectedOption={selectedModel}
-                onChange={({ detail }) => setSelectedModel(detail.selectedOption)}
+                onChange={({ detail }) => handleModelSelect(detail.selectedOption)}
                 options={modelOptions}
                 statusType={
                   modelsLoadingStatus === 'error'
                     ? 'error'
-                    : modelsLoadingStatus === 'loading'
+                    : modelsLoadingStatus === 'loading' || isModelLoading
                       ? 'loading'
                       : 'finished'
                 }
-                loadingText="Loading models..."
+                loadingText={isModelLoading ? 'Loading model into memory...' : 'Loading models...'}
                 errorText={modelErrorText}
                 placeholder={modelsLoadingStatus === 'loading' ? 'Loading...' : 'Choose a model'}
                 filteringType="auto"
                 ariaLabel="Model selection"
-                disabled={modelsLoadingStatus === 'error'}
+                disabled={modelsLoadingStatus === 'error' || isModelLoading}
                 renderHighlightedAriaLive={(item) => item.label || ''}
               />
             </FormField>

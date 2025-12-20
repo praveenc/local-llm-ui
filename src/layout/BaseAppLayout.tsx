@@ -114,6 +114,45 @@ export default function BaseAppLayout() {
     }, 10000);
   };
 
+  const handleModelLoadError = (error: { title: string; content: string }) => {
+    const id = `model-load-error-${Date.now()}`;
+    setFlashbarItems((prev) => [
+      ...prev,
+      {
+        type: 'error',
+        dismissible: true,
+        dismissLabel: 'Dismiss message',
+        header: error.title,
+        content: error.content,
+        id,
+        onDismiss: () => setFlashbarItems((items) => items.filter((item) => item.id !== id)),
+      },
+    ]);
+    // Auto-dismiss after 10 seconds for errors
+    setTimeout(() => {
+      setFlashbarItems((items) => items.filter((item) => item.id !== id));
+    }, 10000);
+  };
+
+  const handleModelLoadSuccess = (modelName: string) => {
+    const id = `model-load-success-${Date.now()}`;
+    setFlashbarItems((prev) => [
+      ...prev,
+      {
+        type: 'success',
+        dismissible: true,
+        dismissLabel: 'Dismiss message',
+        content: `Model "${modelName}" loaded successfully`,
+        id,
+        onDismiss: () => setFlashbarItems((items) => items.filter((item) => item.id !== id)),
+      },
+    ]);
+    // Auto-dismiss after 5 seconds for success
+    setTimeout(() => {
+      setFlashbarItems((items) => items.filter((item) => item.id !== id));
+    }, 5000);
+  };
+
   // Check connection only for the selected provider
   React.useEffect(() => {
     const checkConnection = async () => {
@@ -150,6 +189,8 @@ export default function BaseAppLayout() {
             onPreferencesSaved={handlePreferencesSaved}
             selectedProvider={selectedProvider}
             onProviderChange={setSelectedProvider}
+            onModelLoadError={handleModelLoadError}
+            onModelLoadSuccess={handleModelLoadSuccess}
           />
         }
         toolsOpen={toolsOpen}
