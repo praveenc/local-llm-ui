@@ -513,22 +513,58 @@ export default function SideBar({
                         items={[
                           {
                             value: 'bedrock',
-                            label: 'Amazon Bedrock',
+                            label: (
+                              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                                <img
+                                  src="/bedrock_bw.svg"
+                                  alt=""
+                                  style={{ width: '16px', height: '16px' }}
+                                />
+                                <span>Amazon Bedrock</span>
+                              </SpaceBetween>
+                            ),
                             description: 'AWS cloud AI models (uses AWS credentials)',
                           },
                           {
                             value: 'bedrock-mantle',
-                            label: 'Bedrock Mantle',
+                            label: (
+                              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                                <img
+                                  src="/bedrock-color.svg"
+                                  alt=""
+                                  style={{ width: '16px', height: '16px' }}
+                                />
+                                <span>Bedrock Mantle</span>
+                              </SpaceBetween>
+                            ),
                             description: 'OpenAI-compatible API (requires Bedrock API key)',
                           },
                           {
                             value: 'lmstudio',
-                            label: 'LM Studio',
+                            label: (
+                              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                                <img
+                                  src="/lmstudio_icon.svg"
+                                  alt=""
+                                  style={{ width: '16px', height: '16px' }}
+                                />
+                                <span>LM Studio</span>
+                              </SpaceBetween>
+                            ),
                             description: 'Local server on port 1234',
                           },
                           {
                             value: 'ollama',
-                            label: 'Ollama',
+                            label: (
+                              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                                <img
+                                  src="/ollama_icon.svg"
+                                  alt=""
+                                  style={{ width: '16px', height: '16px' }}
+                                />
+                                <span>Ollama</span>
+                              </SpaceBetween>
+                            ),
                             description: 'Local server on port 11434',
                           },
                         ]}
