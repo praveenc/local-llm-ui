@@ -9,22 +9,9 @@
   z-index: 1000;
   background: cs.$color-background-container-content;
   border-top: 1px solid cs.$color-border-divider-default;
-  // Use Cloudscape shadow token for sticky elements
-  box-shadow: cs.$shadow-container-active;
-  backdrop-filter: blur(8px);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
   transition: all cs.$motion-duration-complex cs.$motion-easing-responsive;
   animation: float-in cs.$motion-duration-complex cs.$motion-easing-expressive;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: -#{cs.$space-scaled-l};
-    left: 0;
-    right: 0;
-    height: cs.$space-scaled-l;
-    background: linear-gradient(to bottom, transparent, cs.$color-background-container-content);
-    pointer-events: none;
-  }
 }
 
 @keyframes float-in {
