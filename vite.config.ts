@@ -41,7 +41,22 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
           if (req.url?.startsWith('/api/lmstudio-sdk')) {
-            await handleLMStudioRequest(req, res);
+            try {
+              await handleLMStudioRequest(req, res);
+            } catch (error) {
+              console.error('LMStudio SDK proxy unhandled error:', error);
+              if (!res.headersSent) {
+                res.statusCode = 503;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(
+                  JSON.stringify({
+                    error:
+                      'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled.',
+                    errorType: 'ConnectionError',
+                  })
+                );
+              }
+            }
           } else {
             next();
           }
