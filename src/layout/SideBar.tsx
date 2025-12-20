@@ -7,10 +7,10 @@ import {
   Box,
   Button,
   CollectionPreferences,
+  ColumnLayout,
   FormField,
   Icon,
   Input,
-  Link,
   RadioGroup,
   Select,
   SideNavigation,
@@ -39,6 +39,37 @@ const MANTLE_REGIONS = [
   { label: 'Europe (Stockholm)', value: 'eu-north-1' },
   { label: 'South America (São Paulo)', value: 'sa-east-1' },
 ];
+
+// Provider display info
+const PROVIDER_INFO: Record<
+  Provider,
+  { label: string; icon: string; description: string; iconAlt: string }
+> = {
+  bedrock: {
+    label: 'Amazon Bedrock',
+    icon: '/bedrock_bw.svg',
+    description: 'AWS credentials',
+    iconAlt: 'Amazon Bedrock',
+  },
+  'bedrock-mantle': {
+    label: 'Bedrock Mantle',
+    icon: '/bedrock-color.svg',
+    description: 'API key required',
+    iconAlt: 'Bedrock Mantle',
+  },
+  lmstudio: {
+    label: 'LM Studio',
+    icon: '/lmstudio_icon.svg',
+    description: 'Port 1234',
+    iconAlt: 'LM Studio',
+  },
+  ollama: {
+    label: 'Ollama',
+    icon: '/ollama_icon.svg',
+    description: 'Port 11434',
+    iconAlt: 'Ollama',
+  },
+};
 
 interface SideBarProps {
   selectedModel: SelectProps.Option | null;
@@ -159,7 +190,7 @@ export default function SideBar({
           const currentPrefs = loadPreferences();
           if (!currentPrefs.bedrockMantleApiKey) {
             setModelErrorText(
-              'Bedrock Mantle API key is required. Please configure it in the preferences.'
+              'Bedrock API key is required. Please configure it in the preferences.'
             );
             setModelsLoadingStatus('error');
             setModelOptions([]);
@@ -192,7 +223,6 @@ export default function SideBar({
 
         // Group Bedrock models by model family
         if (selectedProvider === 'bedrock') {
-          // Group models by family
           const modelsByFamily = models.reduce(
             (acc, model) => {
               const family = model.modelFamily || 'Other';
@@ -209,8 +239,6 @@ export default function SideBar({
             {} as Record<string, SelectProps.Option[]>
           );
 
-          // Convert to grouped options format
-          // Sort families: Anthropic Claude first, then alphabetically
           const sortedFamilies = Object.keys(modelsByFamily).sort((a, b) => {
             if (a === 'Anthropic Claude') return -1;
             if (b === 'Anthropic Claude') return 1;
@@ -222,7 +250,6 @@ export default function SideBar({
             options: modelsByFamily[family],
           }));
         } else {
-          // For non-Bedrock providers (including Mantle), use flat list
           formattedOptions = models.map((model) => ({
             label: model.modelName,
             value: model.modelId,
@@ -230,34 +257,25 @@ export default function SideBar({
           }));
         }
 
-        console.log('Formatted options:', formattedOptions);
-
         setModelOptions(formattedOptions);
         setModelsLoadingStatus('finished');
 
-        // Auto-select first model if available and no model is currently selected
-        // Handle both flat and grouped options
         const getFirstOption = (options: SelectProps.Option[]): SelectProps.Option | null => {
           if (options.length === 0) return null;
           const first = options[0];
-          // If it's a group (has options property), get the first option from the group
           if ('options' in first && Array.isArray(first.options) && first.options.length > 0) {
             return first.options[0];
           }
-          // Otherwise it's a flat option
           return first;
         };
 
         const isOptionValid = (options: SelectProps.Option[], value: string): boolean => {
           for (const opt of options) {
-            // Check if it's a group (has options property)
             if ('options' in opt && Array.isArray(opt.options)) {
-              // It's a group, check nested options
               if (opt.options.some((o: SelectProps.Option) => o.value === value)) {
                 return true;
               }
             } else if (opt.value === value) {
-              // It's a flat option
               return true;
             }
           }
@@ -270,7 +288,6 @@ export default function SideBar({
             setSelectedModel(firstOption);
           }
         } else if (formattedOptions.length > 0 && selectedModel) {
-          // Check if current selection is still valid AND belongs to current provider
           const stillValid = isOptionValid(formattedOptions, selectedModel.value || '');
           const belongsToCurrentProvider = selectedModel.description
             ?.toLowerCase()
@@ -291,7 +308,7 @@ export default function SideBar({
         let errorMessage = '';
         if (selectedProvider === 'lmstudio') {
           errorMessage =
-            'Cannot connect to LMStudio (port 1234). Please ensure LMStudio is running.';
+            'Cannot connect to LM Studio (port 1234). Please ensure LM Studio is running.';
         } else if (selectedProvider === 'ollama') {
           errorMessage = 'Cannot connect to Ollama (port 11434). Please ensure Ollama is running.';
         } else if (selectedProvider === 'bedrock') {
@@ -307,7 +324,7 @@ export default function SideBar({
             errorMessage = err.message;
           } else {
             errorMessage =
-              'Cannot connect to Bedrock Mantle. Please check your API key in preferences.';
+              'Cannot connect to Bedrock Mantle. Please check your Bedrock API key in preferences.';
           }
         } else {
           errorMessage = 'Invalid provider selected.';
@@ -324,6 +341,8 @@ export default function SideBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProvider, preferences.bedrockMantleApiKey, preferences.bedrockMantleRegion]);
 
+  const providerInfo = PROVIDER_INFO[selectedProvider];
+
   return (
     <SpaceBetween direction="vertical" size="m">
       {onNewChat && (
@@ -333,6 +352,7 @@ export default function SideBar({
           </Button>
         </Box>
       )}
+
       <SideNavigation
         activeHref={activeHref}
         header={{ href: '#/', text: 'Model Settings' }}
@@ -344,6 +364,32 @@ export default function SideBar({
         }}
         itemsControl={
           <SpaceBetween size="l">
+            {/* Current Provider Display */}
+            <Box>
+              <SpaceBetween size="xs">
+                <Box variant="awsui-key-label">
+                  <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                    <Icon name="share" size="small" />
+                    <span>Provider</span>
+                  </SpaceBetween>
+                </Box>
+                <Box padding={{ left: 'xxs' }}>
+                  <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                    <img
+                      src={providerInfo.icon}
+                      alt={providerInfo.iconAlt}
+                      style={{ width: '18px', height: '18px' }}
+                    />
+                    <Box fontWeight="bold">{providerInfo.label}</Box>
+                  </SpaceBetween>
+                  <Box variant="small" color="text-body-secondary">
+                    {providerInfo.description}
+                  </Box>
+                </Box>
+              </SpaceBetween>
+            </Box>
+
+            {/* Error Alerts */}
             {modelsLoadingStatus === 'error' && (
               <Alert
                 type="warning"
@@ -353,7 +399,7 @@ export default function SideBar({
                     : selectedProvider === 'ollama'
                       ? 'Ollama not running'
                       : selectedProvider === 'bedrock-mantle'
-                        ? 'Bedrock Mantle connection failed'
+                        ? 'Bedrock API key required'
                         : 'Amazon Bedrock connection failed'
                 }
               >
@@ -368,8 +414,7 @@ export default function SideBar({
                 )}
                 {selectedProvider === 'bedrock-mantle' && (
                   <>
-                    {modelErrorText ||
-                      'Please configure your Bedrock Mantle API key in the preferences.'}
+                    {modelErrorText || 'Please configure your Bedrock API key in the preferences.'}
                   </>
                 )}
               </Alert>
@@ -396,28 +441,19 @@ export default function SideBar({
                 )}
                 {selectedProvider === 'bedrock-mantle' && (
                   <>
-                    No models found. Please check your API key and ensure you have access to Mantle
-                    models.
+                    No models found. Please check your Bedrock API key and ensure you have access to
+                    Mantle models.
                   </>
                 )}
               </Alert>
             )}
 
-            {/* Show API key prompt for Mantle if not configured */}
+            {/* API key prompt for Mantle */}
             {selectedProvider === 'bedrock-mantle' && !preferences.bedrockMantleApiKey && (
-              <Alert type="info" header="API Key Required">
+              <Alert type="info" header="Bedrock API Key Required">
                 <SpaceBetween size="xs">
                   <Box>
-                    Bedrock Mantle requires an API key. Please configure it in the{' '}
-                    <Link
-                      onFollow={(e) => {
-                        e.preventDefault();
-                        // Trigger preferences modal - this is handled by clicking the preferences button
-                      }}
-                    >
-                      preferences
-                    </Link>
-                    .
+                    Bedrock Mantle requires an API key. Please configure it in the preferences.
                   </Box>
                   <Box variant="small" color="text-body-secondary">
                     Region: {preferences.bedrockMantleRegion || 'us-west-2'}
@@ -426,82 +462,18 @@ export default function SideBar({
               </Alert>
             )}
 
-            <FormField label="AI Provider" stretch={true}>
-              <RadioGroup
-                value={selectedProvider}
-                onChange={({ detail }) => onProviderChange(detail.value as Provider)}
-                items={[
-                  {
-                    value: 'ollama',
-                    label: (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <img
-                          src="/ollama_icon.svg"
-                          alt="Ollama"
-                          style={{ width: '16px', height: '16px' }}
-                        />
-                        <span>Ollama</span>
-                      </span>
-                    ),
-                    description: 'Local AI models (port 11434)',
-                  },
-                  {
-                    value: 'lmstudio',
-                    label: (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <img
-                          src="/lmstudio_icon.svg"
-                          alt="LM Studio"
-                          style={{ width: '16px', height: '16px' }}
-                        />
-                        <span>LM Studio</span>
-                      </span>
-                    ),
-                    description: 'LM Studio server (port 1234)',
-                  },
-                  {
-                    value: 'bedrock',
-                    label: (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <img
-                          src="/bedrock_bw.svg"
-                          alt="Amazon Bedrock"
-                          style={{ width: '16px', height: '16px' }}
-                        />
-                        <span>Amazon Bedrock</span>
-                      </span>
-                    ),
-                    description: 'AWS cloud AI models (AWS credentials)',
-                  },
-                  {
-                    value: 'bedrock-mantle',
-                    label: (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <img
-                          src="/bedrock-color.svg"
-                          alt="Bedrock Mantle"
-                          style={{ width: '16px', height: '16px' }}
-                        />
-                        <span>Bedrock Mantle</span>
-                      </span>
-                    ),
-                    description: 'OpenAI-compatible API (API key)',
-                  },
-                ]}
-              />
-            </FormField>
-
+            {/* Model Selection */}
             <FormField
               label={
-                <Box>
-                  <SpaceBetween direction="horizontal" size="xs">
-                    <Icon name="gen-ai" size="small" />
-                    <span>Select Model</span>
-                    {isModelLoading && selectedProvider === 'lmstudio' && (
-                      <span style={{ fontSize: '12px', color: '#0972d3' }}>Loading...</span>
-                    )}
-                  </SpaceBetween>
-                </Box>
+                <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                  <Icon name="gen-ai" size="small" />
+                  <span>Select Model</span>
+                  {isModelLoading && selectedProvider === 'lmstudio' && (
+                    <Box variant="small" color="text-status-info">
+                      Loading...
+                    </Box>
+                  )}
+                </SpaceBetween>
               }
               stretch={true}
             >
@@ -530,156 +502,200 @@ export default function SideBar({
         items={[]}
       />
 
-      {/* Preferences Section at Bottom */}
+      {/* Preferences Section */}
       <Box padding={{ horizontal: 's', bottom: 's' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <SpaceBetween direction="horizontal" size="xs" alignItems="center">
           <Icon name="settings" size="medium" />
-          <span style={{ flex: 1, fontWeight: 600 }}>Preferences</span>
-          <CollectionPreferences
-            title="User Preferences"
-            confirmLabel="Save"
-            cancelLabel="Cancel"
-            preferences={{ custom: preferences }}
-            onConfirm={({ detail }) => handlePreferencesConfirm(detail)}
-            customPreference={(customValue, setCustomValue) => (
-              <SpaceBetween size="l">
-                <FormField label="Preferred Provider" stretch={true}>
-                  <Select
-                    selectedOption={{
-                      label:
-                        customValue.preferredProvider === 'ollama'
-                          ? 'Ollama'
-                          : customValue.preferredProvider === 'lmstudio'
-                            ? 'LM Studio'
-                            : customValue.preferredProvider === 'bedrock-mantle'
-                              ? 'Bedrock Mantle'
-                              : 'Amazon Bedrock',
-                      value: customValue.preferredProvider,
+          <Box fontWeight="bold" fontSize="body-m">
+            Preferences
+          </Box>
+          <Box margin={{ left: 'l' }}>
+            <CollectionPreferences
+              title="User Preferences"
+              confirmLabel="Save"
+              cancelLabel="Cancel"
+              preferences={{ custom: preferences }}
+              onConfirm={({ detail }) => handlePreferencesConfirm(detail)}
+              customPreference={(customValue, setCustomValue) => (
+                <SpaceBetween size="l">
+                  {/* Provider Selection Section */}
+                  <Box>
+                    <SpaceBetween size="s">
+                      <Box variant="h4">
+                        <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                          <Icon name="share" size="small" />
+                          <span>Model Provider</span>
+                        </SpaceBetween>
+                      </Box>
+                      <RadioGroup
+                        value={customValue.preferredProvider}
+                        onChange={({ detail }) =>
+                          setCustomValue({
+                            ...customValue,
+                            preferredProvider: detail.value as Provider,
+                          })
+                        }
+                        items={[
+                          {
+                            value: 'bedrock',
+                            label: 'Amazon Bedrock',
+                            description: 'AWS cloud AI models (uses AWS credentials)',
+                          },
+                          {
+                            value: 'bedrock-mantle',
+                            label: 'Bedrock Mantle',
+                            description: 'OpenAI-compatible API (requires Bedrock API key)',
+                          },
+                          {
+                            value: 'lmstudio',
+                            label: 'LM Studio',
+                            description: 'Local server on port 1234',
+                          },
+                          {
+                            value: 'ollama',
+                            label: 'Ollama',
+                            description: 'Local server on port 11434',
+                          },
+                        ]}
+                      />
+                    </SpaceBetween>
+                  </Box>
+
+                  {/* Divider */}
+                  <hr
+                    style={{
+                      border: 'none',
+                      borderTop: '1px solid var(--color-border-divider-default)',
+                      margin: '0',
                     }}
-                    onChange={({ detail }) =>
-                      setCustomValue({
-                        ...customValue,
-                        preferredProvider: detail.selectedOption.value as Provider,
-                      })
-                    }
-                    options={[
-                      { label: 'Ollama', value: 'ollama' },
-                      { label: 'LM Studio', value: 'lmstudio' },
-                      { label: 'Amazon Bedrock', value: 'bedrock' },
-                      { label: 'Bedrock Mantle', value: 'bedrock-mantle' },
-                    ]}
                   />
-                </FormField>
 
-                {/* Bedrock Mantle Settings */}
-                <Box>
-                  <SpaceBetween size="s">
-                    <Box variant="h4">Bedrock Mantle Settings</Box>
-                    <FormField
-                      label="API Key"
-                      description="Your Bedrock Mantle API key"
-                      stretch={true}
-                    >
-                      <Input
-                        type="password"
-                        value={customValue.bedrockMantleApiKey || ''}
-                        onChange={({ detail }) =>
-                          setCustomValue({
-                            ...customValue,
-                            bedrockMantleApiKey: detail.value,
-                          })
-                        }
-                        placeholder="Enter your API key"
-                      />
-                    </FormField>
+                  {/* Bedrock Mantle Settings */}
+                  <Box>
+                    <SpaceBetween size="s">
+                      <Box variant="h4">
+                        <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                          <Icon name="key" size="small" />
+                          <span>Bedrock Mantle Settings</span>
+                        </SpaceBetween>
+                      </Box>
+                      <FormField
+                        label="Bedrock API Key"
+                        description="Your Amazon Bedrock API key"
+                        stretch={true}
+                      >
+                        <Input
+                          type="password"
+                          value={customValue.bedrockMantleApiKey || ''}
+                          onChange={({ detail }) =>
+                            setCustomValue({
+                              ...customValue,
+                              bedrockMantleApiKey: detail.value,
+                            })
+                          }
+                          placeholder="Enter your Bedrock API key"
+                        />
+                      </FormField>
 
-                    <FormField label="Region" description="AWS region for Mantle endpoint" stretch>
-                      <Select
-                        selectedOption={
-                          MANTLE_REGIONS.find(
-                            (r) => r.value === (customValue.bedrockMantleRegion || 'us-west-2')
-                          ) || MANTLE_REGIONS[2]
-                        }
-                        onChange={({ detail }) =>
-                          setCustomValue({
-                            ...customValue,
-                            bedrockMantleRegion: detail.selectedOption.value,
-                          })
-                        }
-                        options={MANTLE_REGIONS}
-                      />
-                    </FormField>
-                  </SpaceBetween>
-                </Box>
+                      <FormField
+                        label="Region"
+                        description="AWS region for Mantle endpoint"
+                        stretch={true}
+                      >
+                        <Select
+                          selectedOption={
+                            MANTLE_REGIONS.find(
+                              (r) => r.value === (customValue.bedrockMantleRegion || 'us-west-2')
+                            ) || MANTLE_REGIONS[2]
+                          }
+                          onChange={({ detail }) =>
+                            setCustomValue({
+                              ...customValue,
+                              bedrockMantleRegion: detail.selectedOption.value,
+                            })
+                          }
+                          options={MANTLE_REGIONS}
+                        />
+                      </FormField>
+                    </SpaceBetween>
+                  </Box>
 
-                <FormField
-                  label="Avatar Initials"
-                  description="Max 2 alphanumeric characters"
-                  stretch={true}
-                >
-                  <Input
-                    value={customValue.avatarInitials}
-                    onChange={({ detail }) =>
-                      setCustomValue({
-                        ...customValue,
-                        avatarInitials: validateInitials(detail.value),
-                      })
-                    }
-                    placeholder="PC"
+                  {/* Divider */}
+                  <hr
+                    style={{
+                      border: 'none',
+                      borderTop: '1px solid var(--color-border-divider-default)',
+                      margin: '0',
+                    }}
                   />
-                </FormField>
 
-                <FormField label="Visual Mode" stretch={true}>
-                  <RadioGroup
-                    value={customValue.visualMode}
-                    onChange={({ detail }) =>
-                      setCustomValue({
-                        ...customValue,
-                        visualMode: detail.value as VisualMode,
-                      })
-                    }
-                    items={[
-                      {
-                        value: 'light',
-                        label: 'Light mode',
-                        description: 'Optimal for well-lit environments',
-                      },
-                      {
-                        value: 'dark',
-                        label: 'Dark mode',
-                        description: 'Reduces eye strain in low light',
-                      },
-                    ]}
-                  />
-                </FormField>
+                  {/* User Preferences Section */}
+                  <Box>
+                    <SpaceBetween size="s">
+                      <Box variant="h4">
+                        <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                          <Icon name="user-profile" size="small" />
+                          <span>Display Settings</span>
+                        </SpaceBetween>
+                      </Box>
 
-                <FormField label="Content Density" stretch={true}>
-                  <RadioGroup
-                    value={customValue.contentDensity}
-                    onChange={({ detail }) =>
-                      setCustomValue({
-                        ...customValue,
-                        contentDensity: detail.value as ContentDensity,
-                      })
-                    }
-                    items={[
-                      {
-                        value: 'comfortable',
-                        label: 'Comfortable',
-                        description: 'Default spacing for readability',
-                      },
-                      {
-                        value: 'compact',
-                        label: 'Compact',
-                        description: 'Denser layout for more content',
-                      },
-                    ]}
-                  />
-                </FormField>
-              </SpaceBetween>
-            )}
-          />
-        </div>
+                      <FormField
+                        label="Avatar Initials"
+                        description="Max 2 alphanumeric characters"
+                        stretch={true}
+                      >
+                        <Input
+                          value={customValue.avatarInitials}
+                          onChange={({ detail }) =>
+                            setCustomValue({
+                              ...customValue,
+                              avatarInitials: validateInitials(detail.value),
+                            })
+                          }
+                          placeholder="PC"
+                        />
+                      </FormField>
+
+                      <ColumnLayout columns={2}>
+                        <FormField label="Visual Mode" stretch={true}>
+                          <RadioGroup
+                            value={customValue.visualMode}
+                            onChange={({ detail }) =>
+                              setCustomValue({
+                                ...customValue,
+                                visualMode: detail.value as VisualMode,
+                              })
+                            }
+                            items={[
+                              { value: 'light', label: 'Light' },
+                              { value: 'dark', label: 'Dark' },
+                            ]}
+                          />
+                        </FormField>
+
+                        <FormField label="Content Density" stretch={true}>
+                          <RadioGroup
+                            value={customValue.contentDensity}
+                            onChange={({ detail }) =>
+                              setCustomValue({
+                                ...customValue,
+                                contentDensity: detail.value as ContentDensity,
+                              })
+                            }
+                            items={[
+                              { value: 'comfortable', label: 'Comfortable' },
+                              { value: 'compact', label: 'Compact' },
+                            ]}
+                          />
+                        </FormField>
+                      </ColumnLayout>
+                    </SpaceBetween>
+                  </Box>
+                </SpaceBetween>
+              )}
+            />
+          </Box>
+        </SpaceBetween>
       </Box>
     </SpaceBetween>
   );
