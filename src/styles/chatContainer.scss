@@ -91,14 +91,14 @@
   color: cs.$color-text-status-info;
   border-radius: cs.$border-radius-badge;
   font-size: cs.$font-size-body-s;
-  font-weight: cs.$font-weight-body;
+  font-weight: 400;
   border: 1px solid cs.$color-border-status-info;
 }
 
 // Token metadata display
 .token-metadata {
   opacity: 0.85;
-  transition: opacity cs.$motion-duration-moderate cs.$motion-easing-responsive;
+  transition: opacity cs.$motion-duration-responsive cs.$motion-easing-responsive;
 
   &:hover {
     opacity: 1;

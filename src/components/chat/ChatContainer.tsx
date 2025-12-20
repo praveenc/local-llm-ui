@@ -76,10 +76,6 @@ const ChatContainer = ({
     completionTokens?: number;
     totalTokens?: number;
   } | null>(null);
-  const [lmstudioModelInfo, setLmstudioModelInfo] = useState<{
-    contextLength?: number;
-    trainedForToolUse?: boolean;
-  } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Prompt optimization state
@@ -150,32 +146,6 @@ const ChatContainer = ({
 
   useEffect(() => {
     setStreamingMessage(null);
-  }, [selectedModel]);
-
-  // Fetch LM Studio model info when model changes
-  useEffect(() => {
-    const fetchLmstudioModelInfo = async () => {
-      if (!selectedModel?.description?.toLowerCase().includes('lmstudio')) {
-        setLmstudioModelInfo(null);
-        return;
-      }
-
-      try {
-        const { lmstudioService } = await import('../../services');
-        const modelInfo = await lmstudioService.getModelInfo(selectedModel.value || undefined);
-        if (modelInfo) {
-          setLmstudioModelInfo({
-            contextLength: modelInfo.contextLength,
-            trainedForToolUse: modelInfo.trainedForToolUse,
-          });
-        }
-      } catch (error) {
-        console.error('Failed to fetch LM Studio model info:', error);
-        setLmstudioModelInfo(null);
-      }
-    };
-
-    fetchLmstudioModelInfo();
   }, [selectedModel]);
 
   // Clear previous prompt when input changes manually
@@ -524,33 +494,11 @@ const ChatContainer = ({
               </SpaceBetween>
               {selectedModel && (
                 <Box variant="small" color="text-body-secondary">
-                  <SpaceBetween direction="horizontal" size="xs">
-                    <span>{selectedModel.label}</span>
-                    <span>·</span>
-                    <span>
-                      {samplingParameter === 'temperature'
-                        ? `temp ${temperature}`
-                        : `top-p ${topP}`}
-                    </span>
-                    <span>·</span>
-                    <span>{maxTokens.toLocaleString()} tokens</span>
-                    {lmstudioModelInfo && (
-                      <>
-                        <span>·</span>
-                        <span>ctx {lmstudioModelInfo.contextLength?.toLocaleString()}</span>
-                        <span>·</span>
-                        <span
-                          className={
-                            lmstudioModelInfo.trainedForToolUse
-                              ? 'tool-use-supported'
-                              : 'tool-use-unsupported'
-                          }
-                        >
-                          {lmstudioModelInfo.trainedForToolUse ? '✓ Tool Use' : '✗ No Tool Use'}
-                        </span>
-                      </>
-                    )}
-                  </SpaceBetween>
+                  {selectedModel.description?.toLowerCase().includes('bedrock') && 'Amazon Bedrock'}
+                  {selectedModel.description?.toLowerCase().includes('lmstudio') && 'LM Studio'}
+                  {selectedModel.description?.toLowerCase().includes('ollama') && 'Ollama'}
+                  {' - '}
+                  {selectedModel.label}
                 </Box>
               )}
             </SpaceBetween>
