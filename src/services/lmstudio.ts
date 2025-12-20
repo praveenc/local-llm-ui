@@ -43,6 +43,8 @@ export class LMStudioService {
       console.log('LMStudio: Fetching downloaded models from SDK');
       const sdkResponse = await fetch(`${this.sdkUrl}/models`);
 
+      console.log('LMStudio SDK: Response status:', sdkResponse.status);
+
       if (sdkResponse.ok) {
         const data = await sdkResponse.json();
         console.log('LMStudio SDK: Raw response:', data);
@@ -69,15 +71,29 @@ export class LMStudioService {
 
           console.log('LMStudio SDK: Parsed models:', models);
           return models;
+        } else {
+          console.log('LMStudio SDK: No models in response, data:', data);
+        }
+      } else {
+        const errorData = await sdkResponse.json().catch(() => ({}));
+        console.error('LMStudio SDK: Error response:', sdkResponse.status, errorData);
+        // If SDK returns an error, throw it so we can show proper error message
+        if (errorData.error) {
+          throw new Error(errorData.error);
         }
       }
 
       // Fallback to OpenAI-compatible API (only shows loaded models)
-      console.log('LMStudio: SDK unavailable, falling back to OpenAI API');
+      console.log('LMStudio: SDK unavailable or empty, falling back to OpenAI API');
       return this.getLoadedModels();
     } catch (error) {
       console.error('LMStudio: Failed to fetch models:', error);
-      // Try fallback
+      // Re-throw connection errors
+      const err = error as Error;
+      if (err.message?.includes('Cannot connect') || err.message?.includes('Connection')) {
+        throw error;
+      }
+      // Try fallback for other errors
       try {
         return this.getLoadedModels();
       } catch {
