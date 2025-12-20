@@ -478,52 +478,70 @@ const ChatContainer = ({
         {/* Header */}
         <div className="chat-header">
           <Box padding={{ horizontal: 'l', vertical: 's' }}>
-            <SpaceBetween size="xxs">
-              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                <Icon name="contact" size="medium" />
-                <Box variant="h2">Chat</Box>
-                {selectedModel && (
-                  <>
-                    {selectedModel.description?.toLowerCase().includes('bedrock') && (
-                      <img
-                        src="/bedrock_bw.svg"
-                        alt="Amazon Bedrock"
-                        style={{ width: '20px', height: '20px', opacity: 0.8 }}
-                      />
-                    )}
-                    {selectedModel.description?.toLowerCase().includes('lmstudio') && (
-                      <img
-                        src="/lmstudio_icon.svg"
-                        alt="LM Studio"
-                        style={{ width: '20px', height: '20px', opacity: 0.8 }}
-                      />
-                    )}
-                    {selectedModel.description?.toLowerCase().includes('ollama') && (
-                      <img
-                        src="/ollama_icon.svg"
-                        alt="Ollama"
-                        style={{ width: '20px', height: '20px', opacity: 0.8 }}
-                      />
-                    )}
-                  </>
-                )}
-                {showOptimizeButton && (
-                  <span className="optimize-available-badge">
-                    <Icon name="gen-ai" size="small" />
-                    <span>Prompt Optimizer</span>
-                  </span>
-                )}
-              </SpaceBetween>
-              {selectedModel && (
-                <Box variant="small" color="text-body-secondary">
-                  {selectedModel.description?.toLowerCase().includes('bedrock') && 'Amazon Bedrock'}
-                  {selectedModel.description?.toLowerCase().includes('lmstudio') && 'LM Studio'}
-                  {selectedModel.description?.toLowerCase().includes('ollama') && 'Ollama'}
-                  {' - '}
+            {selectedModel ? (
+              <SpaceBetween size="xxs">
+                <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                  {/* Provider Icon */}
+                  {selectedModel.description?.toLowerCase().includes('bedrock-mantle') ? (
+                    <img
+                      src="/bedrock-color.svg"
+                      alt="Bedrock Mantle"
+                      style={{ width: '24px', height: '24px' }}
+                    />
+                  ) : selectedModel.description?.toLowerCase().includes('bedrock') ? (
+                    <img
+                      src="/bedrock_bw.svg"
+                      alt="Amazon Bedrock"
+                      style={{ width: '24px', height: '24px' }}
+                    />
+                  ) : selectedModel.description?.toLowerCase().includes('lmstudio') ? (
+                    <img
+                      src="/lmstudio_icon.svg"
+                      alt="LM Studio"
+                      style={{ width: '24px', height: '24px' }}
+                    />
+                  ) : selectedModel.description?.toLowerCase().includes('ollama') ? (
+                    <img
+                      src="/ollama_icon.svg"
+                      alt="Ollama"
+                      style={{ width: '24px', height: '24px' }}
+                    />
+                  ) : (
+                    <Icon name="contact" size="medium" />
+                  )}
+
+                  {/* Provider Name */}
+                  <Box variant="h3" fontWeight="bold">
+                    {selectedModel.description?.toLowerCase().includes('bedrock-mantle')
+                      ? 'Bedrock Mantle'
+                      : selectedModel.description?.toLowerCase().includes('bedrock')
+                        ? 'Amazon Bedrock'
+                        : selectedModel.description?.toLowerCase().includes('lmstudio')
+                          ? 'LM Studio'
+                          : selectedModel.description?.toLowerCase().includes('ollama')
+                            ? 'Ollama'
+                            : 'Chat'}
+                  </Box>
+
+                  {showOptimizeButton && (
+                    <span className="optimize-available-badge">
+                      <Icon name="gen-ai" size="small" />
+                      <span>Optimizer</span>
+                    </span>
+                  )}
+                </SpaceBetween>
+
+                {/* Model Name */}
+                <Box variant="small" color="text-body-secondary" padding={{ left: 'xxxl' }}>
                   {selectedModel.label}
                 </Box>
-              )}
-            </SpaceBetween>
+              </SpaceBetween>
+            ) : (
+              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                <Icon name="contact" size="medium" />
+                <Box variant="h3">Chat</Box>
+              </SpaceBetween>
+            )}
           </Box>
         </div>
 
