@@ -21,13 +21,13 @@ import { Density, Mode, applyDensity, applyMode } from '@cloudscape-design/globa
 import { ChatContainer } from '../components/chat';
 import { loadPreferences } from '../utils/preferences';
 import type { UserPreferences } from '../utils/preferences';
-import SideBar from './SideBar';
+import ModelSettingsPanel from './ModelSettingsPanel';
 
 const LOCALE = 'en';
 
 type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle';
 
-export default function BaseAppLayout() {
+export default function AppShell() {
   const [selectedModel, setSelectedModel] = useState<SelectProps.Option | null>(null);
   const [maxTokens, setMaxTokens] = useState<number>(4096);
   const [temperature, setTemperature] = useState<number>(0.5);
@@ -200,7 +200,7 @@ export default function BaseAppLayout() {
         onNavigationChange={({ detail }) => setNavigationOpen(detail.open)}
         notifications={<Flashbar items={flashbarItems} />}
         navigation={
-          <SideBar
+          <ModelSettingsPanel
             selectedModel={selectedModel}
             setSelectedModel={setSelectedModel}
             onNewChat={handleNewChat}

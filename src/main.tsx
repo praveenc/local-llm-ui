@@ -3,10 +3,10 @@ import { createRoot } from 'react-dom/client';
 
 import '@cloudscape-design/global-styles/index.css';
 
-import { BaseAppLayout } from './layout';
+import { AppShell } from './layout';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BaseAppLayout />
+    <AppShell />
   </StrictMode>
 );
