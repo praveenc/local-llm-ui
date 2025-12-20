@@ -1,9 +1,10 @@
 import { bedrockService } from './bedrock';
 import { lmstudioService } from './lmstudio';
+import { mantleService } from './mantle';
 import { ollamaService } from './ollama';
 import type { ChatRequest, ModelInfo } from './types';
 
-export type Provider = 'lmstudio' | 'ollama' | 'bedrock';
+export type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle';
 
 class APIService {
   async getAllModels(): Promise<ModelInfo[]> {
@@ -48,20 +49,28 @@ class APIService {
       service = lmstudioService;
     } else if (provider === 'ollama') {
       service = ollamaService;
+    } else if (provider === 'bedrock-mantle') {
+      service = mantleService;
     } else {
       service = bedrockService;
     }
     yield* service.chat(request);
   }
 
-  async checkConnections(): Promise<{ lmstudio: boolean; ollama: boolean; bedrock: boolean }> {
-    const [lmstudio, ollama, bedrock] = await Promise.all([
+  async checkConnections(): Promise<{
+    lmstudio: boolean;
+    ollama: boolean;
+    bedrock: boolean;
+    'bedrock-mantle': boolean;
+  }> {
+    const [lmstudio, ollama, bedrock, bedrockMantle] = await Promise.all([
       lmstudioService.checkConnection(),
       ollamaService.checkConnection(),
       bedrockService.checkConnection(),
+      mantleService.checkConnection(),
     ]);
 
-    return { lmstudio, ollama, bedrock };
+    return { lmstudio, ollama, bedrock, 'bedrock-mantle': bedrockMantle };
   }
 
   async checkConnection(provider: Provider): Promise<boolean> {
@@ -72,6 +81,8 @@ class APIService {
         return ollamaService.checkConnection();
       case 'bedrock':
         return bedrockService.checkConnection();
+      case 'bedrock-mantle':
+        return mantleService.checkConnection();
       default:
         return false;
     }

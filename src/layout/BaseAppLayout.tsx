@@ -25,7 +25,7 @@ import SideBar from './SideBar';
 
 const LOCALE = 'en';
 
-type Provider = 'lmstudio' | 'ollama' | 'bedrock';
+type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle';
 
 export default function BaseAppLayout() {
   const [selectedModel, setSelectedModel] = useState<SelectProps.Option | null>(null);
@@ -39,10 +39,12 @@ export default function BaseAppLayout() {
     lmstudio: boolean;
     ollama: boolean;
     bedrock: boolean;
+    'bedrock-mantle': boolean;
   }>({
     lmstudio: false,
     ollama: false,
     bedrock: false,
+    'bedrock-mantle': false,
   });
   const clearHistoryRef = React.useRef<(() => void) | null>(null);
 

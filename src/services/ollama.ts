@@ -1,9 +1,7 @@
 import type { ChatRequest, ModelInfo } from './types';
 
 // Use proxy in development, direct connection in production
-const OLLAMA_BASE_URL = import.meta.env.DEV
-    ? '/api/ollama'
-    : 'http://localhost:11434';
+const OLLAMA_BASE_URL = import.meta.env.DEV ? '/api/ollama' : 'http://localhost:11434';
 
 export class OllamaService {
   private baseUrl: string;

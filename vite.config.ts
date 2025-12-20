@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 
 import { handleBedrockRequest } from './server/bedrock-proxy';
 import { handleLMStudioRequest } from './server/lmstudio-proxy';
+import { handleMantleRequest } from './server/mantle-proxy';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -15,6 +16,19 @@ export default defineConfig({
         server.middlewares.use(async (req, res, next) => {
           if (req.url?.startsWith('/api/bedrock')) {
             await handleBedrockRequest(req, res);
+          } else {
+            next();
+          }
+        });
+      },
+    },
+    // Bedrock Mantle proxy for OpenAI-compatible endpoints
+    {
+      name: 'mantle-proxy',
+      configureServer(server) {
+        server.middlewares.use(async (req, res, next) => {
+          if (req.url?.startsWith('/api/mantle')) {
+            await handleMantleRequest(req, res);
           } else {
             next();
           }

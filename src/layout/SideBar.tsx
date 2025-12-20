@@ -10,6 +10,7 @@ import {
   FormField,
   Icon,
   Input,
+  Link,
   RadioGroup,
   Select,
   SideNavigation,
@@ -21,7 +22,23 @@ import { loadPreferences, savePreferences, validateInitials } from '../utils/pre
 import type { ContentDensity, UserPreferences, VisualMode } from '../utils/preferences';
 
 type LoadingStatus = 'pending' | 'loading' | 'error' | 'finished';
-type Provider = 'lmstudio' | 'ollama' | 'bedrock';
+type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle';
+
+// Mantle regions for the dropdown
+const MANTLE_REGIONS = [
+  { label: 'US East (N. Virginia)', value: 'us-east-1' },
+  { label: 'US East (Ohio)', value: 'us-east-2' },
+  { label: 'US West (Oregon)', value: 'us-west-2' },
+  { label: 'Asia Pacific (Tokyo)', value: 'ap-northeast-1' },
+  { label: 'Asia Pacific (Mumbai)', value: 'ap-south-1' },
+  { label: 'Asia Pacific (Jakarta)', value: 'ap-southeast-3' },
+  { label: 'Europe (Frankfurt)', value: 'eu-central-1' },
+  { label: 'Europe (Ireland)', value: 'eu-west-1' },
+  { label: 'Europe (London)', value: 'eu-west-2' },
+  { label: 'Europe (Milan)', value: 'eu-south-1' },
+  { label: 'Europe (Stockholm)', value: 'eu-north-1' },
+  { label: 'South America (São Paulo)', value: 'sa-east-1' },
+];
 
 interface SideBarProps {
   selectedModel: SelectProps.Option | null;
@@ -133,7 +150,25 @@ export default function SideBar({
       setModelErrorText('');
 
       try {
-        const { lmstudioService, ollamaService, bedrockService } = await import('../services');
+        const { lmstudioService, ollamaService, bedrockService, mantleService } = await import(
+          '../services'
+        );
+
+        // For Mantle, configure the service with API key and region from preferences
+        if (selectedProvider === 'bedrock-mantle') {
+          const currentPrefs = loadPreferences();
+          if (!currentPrefs.bedrockMantleApiKey) {
+            setModelErrorText(
+              'Bedrock Mantle API key is required. Please configure it in the preferences.'
+            );
+            setModelsLoadingStatus('error');
+            setModelOptions([]);
+            setSelectedModel(null);
+            return;
+          }
+          mantleService.setApiKey(currentPrefs.bedrockMantleApiKey);
+          mantleService.setRegion(currentPrefs.bedrockMantleRegion || 'us-west-2');
+        }
 
         // Fetch models from the selected provider
         let service;
@@ -143,6 +178,8 @@ export default function SideBar({
           service = ollamaService;
         } else if (selectedProvider === 'bedrock') {
           service = bedrockService;
+        } else if (selectedProvider === 'bedrock-mantle') {
+          service = mantleService;
         } else {
           throw new Error('Invalid provider');
         }
@@ -185,7 +222,7 @@ export default function SideBar({
             options: modelsByFamily[family],
           }));
         } else {
-          // For non-Bedrock providers, use flat list
+          // For non-Bedrock providers (including Mantle), use flat list
           formattedOptions = models.map((model) => ({
             label: model.modelName,
             value: model.modelId,
@@ -237,7 +274,7 @@ export default function SideBar({
           const stillValid = isOptionValid(formattedOptions, selectedModel.value || '');
           const belongsToCurrentProvider = selectedModel.description
             ?.toLowerCase()
-            .includes(selectedProvider.toLowerCase());
+            .includes(selectedProvider.toLowerCase().replace('-', ''));
 
           if (!stillValid || !belongsToCurrentProvider) {
             const firstOption = getFirstOption(formattedOptions);
@@ -264,6 +301,14 @@ export default function SideBar({
           } else {
             errorMessage = 'Cannot connect to Amazon Bedrock. Please configure AWS credentials.';
           }
+        } else if (selectedProvider === 'bedrock-mantle') {
+          const err = error as Error;
+          if (err.message?.includes('API key')) {
+            errorMessage = err.message;
+          } else {
+            errorMessage =
+              'Cannot connect to Bedrock Mantle. Please check your API key in preferences.';
+          }
         } else {
           errorMessage = 'Invalid provider selected.';
         }
@@ -277,7 +322,7 @@ export default function SideBar({
 
     fetchModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProvider]);
+  }, [selectedProvider, preferences.bedrockMantleApiKey, preferences.bedrockMantleRegion]);
 
   return (
     <SpaceBetween direction="vertical" size="m">
@@ -307,7 +352,9 @@ export default function SideBar({
                     ? 'LM Studio not running'
                     : selectedProvider === 'ollama'
                       ? 'Ollama not running'
-                      : 'Amazon Bedrock connection failed'
+                      : selectedProvider === 'bedrock-mantle'
+                        ? 'Bedrock Mantle connection failed'
+                        : 'Amazon Bedrock connection failed'
                 }
               >
                 {selectedProvider === 'lmstudio' && (
@@ -318,6 +365,12 @@ export default function SideBar({
                 )}
                 {selectedProvider === 'bedrock' && (
                   <>{modelErrorText || 'Please configure AWS credentials to use Amazon Bedrock.'}</>
+                )}
+                {selectedProvider === 'bedrock-mantle' && (
+                  <>
+                    {modelErrorText ||
+                      'Please configure your Bedrock Mantle API key in the preferences.'}
+                  </>
                 )}
               </Alert>
             )}
@@ -341,6 +394,35 @@ export default function SideBar({
                     Amazon Bedrock.
                   </>
                 )}
+                {selectedProvider === 'bedrock-mantle' && (
+                  <>
+                    No models found. Please check your API key and ensure you have access to Mantle
+                    models.
+                  </>
+                )}
+              </Alert>
+            )}
+
+            {/* Show API key prompt for Mantle if not configured */}
+            {selectedProvider === 'bedrock-mantle' && !preferences.bedrockMantleApiKey && (
+              <Alert type="info" header="API Key Required">
+                <SpaceBetween size="xs">
+                  <Box>
+                    Bedrock Mantle requires an API key. Please configure it in the{' '}
+                    <Link
+                      onFollow={(e) => {
+                        e.preventDefault();
+                        // Trigger preferences modal - this is handled by clicking the preferences button
+                      }}
+                    >
+                      preferences
+                    </Link>
+                    .
+                  </Box>
+                  <Box variant="small" color="text-body-secondary">
+                    Region: {preferences.bedrockMantleRegion || 'us-west-2'}
+                  </Box>
+                </SpaceBetween>
               </Alert>
             )}
 
@@ -389,7 +471,21 @@ export default function SideBar({
                         <span>Amazon Bedrock</span>
                       </span>
                     ),
-                    description: 'AWS cloud AI models',
+                    description: 'AWS cloud AI models (AWS credentials)',
+                  },
+                  {
+                    value: 'bedrock-mantle',
+                    label: (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <img
+                          src="/bedrock-color.svg"
+                          alt="Bedrock Mantle"
+                          style={{ width: '16px', height: '16px' }}
+                        />
+                        <span>Bedrock Mantle</span>
+                      </span>
+                    ),
+                    description: 'OpenAI-compatible API (API key)',
                   },
                 ]}
               />
@@ -455,7 +551,9 @@ export default function SideBar({
                           ? 'Ollama'
                           : customValue.preferredProvider === 'lmstudio'
                             ? 'LM Studio'
-                            : 'Amazon Bedrock',
+                            : customValue.preferredProvider === 'bedrock-mantle'
+                              ? 'Bedrock Mantle'
+                              : 'Amazon Bedrock',
                       value: customValue.preferredProvider,
                     }}
                     onChange={({ detail }) =>
@@ -468,9 +566,51 @@ export default function SideBar({
                       { label: 'Ollama', value: 'ollama' },
                       { label: 'LM Studio', value: 'lmstudio' },
                       { label: 'Amazon Bedrock', value: 'bedrock' },
+                      { label: 'Bedrock Mantle', value: 'bedrock-mantle' },
                     ]}
                   />
                 </FormField>
+
+                {/* Bedrock Mantle Settings */}
+                <Box>
+                  <SpaceBetween size="s">
+                    <Box variant="h4">Bedrock Mantle Settings</Box>
+                    <FormField
+                      label="API Key"
+                      description="Your Bedrock Mantle API key"
+                      stretch={true}
+                    >
+                      <Input
+                        type="password"
+                        value={customValue.bedrockMantleApiKey || ''}
+                        onChange={({ detail }) =>
+                          setCustomValue({
+                            ...customValue,
+                            bedrockMantleApiKey: detail.value,
+                          })
+                        }
+                        placeholder="Enter your API key"
+                      />
+                    </FormField>
+
+                    <FormField label="Region" description="AWS region for Mantle endpoint" stretch>
+                      <Select
+                        selectedOption={
+                          MANTLE_REGIONS.find(
+                            (r) => r.value === (customValue.bedrockMantleRegion || 'us-west-2')
+                          ) || MANTLE_REGIONS[2]
+                        }
+                        onChange={({ detail }) =>
+                          setCustomValue({
+                            ...customValue,
+                            bedrockMantleRegion: detail.selectedOption.value,
+                          })
+                        }
+                        options={MANTLE_REGIONS}
+                      />
+                    </FormField>
+                  </SpaceBetween>
+                </Box>
 
                 <FormField
                   label="Avatar Initials"

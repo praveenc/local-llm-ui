@@ -219,9 +219,11 @@ const ChatContainer = ({
       const { processFilesForBedrock } = await import('../../utils/fileUtils');
 
       // Determine provider from model description
-      let provider: 'ollama' | 'lmstudio' | 'bedrock';
+      let provider: 'ollama' | 'lmstudio' | 'bedrock' | 'bedrock-mantle';
       if (selectedModel.description?.toLowerCase().includes('ollama')) {
         provider = 'ollama';
+      } else if (selectedModel.description?.toLowerCase().includes('bedrock-mantle')) {
+        provider = 'bedrock-mantle';
       } else if (selectedModel.description?.toLowerCase().includes('bedrock')) {
         provider = 'bedrock';
       } else {
@@ -328,6 +330,26 @@ const ChatContainer = ({
             }
           } catch (e) {
             console.error('Failed to parse Bedrock metadata:', e);
+          }
+          continue;
+        }
+
+        // Check if this is Mantle metadata (same format as Bedrock)
+        if (chunk.startsWith('__MANTLE_METADATA__')) {
+          try {
+            const metadataJson = chunk.replace('__MANTLE_METADATA__', '');
+            const metadata = JSON.parse(metadataJson);
+
+            // Extract usage information
+            if (metadata.usage) {
+              setBedrockMetadata({
+                inputTokens: metadata.usage.inputTokens,
+                outputTokens: metadata.usage.outputTokens,
+                totalTokens: metadata.usage.totalTokens,
+              });
+            }
+          } catch (e) {
+            console.error('Failed to parse Mantle metadata:', e);
           }
           continue;
         }
@@ -567,11 +589,13 @@ const ChatContainer = ({
                     streamingMessage={streamingMessage}
                     avatarInitials={avatarInitials}
                     lastMessageMetadata={
-                      selectedModel?.description?.toLowerCase().includes('bedrock')
+                      selectedModel?.description?.toLowerCase().includes('bedrock-mantle')
                         ? bedrockMetadata
-                        : selectedModel?.description?.toLowerCase().includes('lmstudio')
-                          ? lmstudioMetadata
-                          : null
+                        : selectedModel?.description?.toLowerCase().includes('bedrock')
+                          ? bedrockMetadata
+                          : selectedModel?.description?.toLowerCase().includes('lmstudio')
+                            ? lmstudioMetadata
+                            : null
                     }
                   />
                 </Box>

@@ -2,7 +2,7 @@
  * User preferences management utilities
  */
 
-export type Provider = 'ollama' | 'lmstudio' | 'bedrock';
+export type Provider = 'ollama' | 'lmstudio' | 'bedrock' | 'bedrock-mantle';
 export type VisualMode = 'light' | 'dark';
 export type ContentDensity = 'comfortable' | 'compact';
 
@@ -11,6 +11,9 @@ export interface UserPreferences {
   avatarInitials: string;
   visualMode: VisualMode;
   contentDensity: ContentDensity;
+  // Bedrock Mantle settings
+  bedrockMantleApiKey?: string;
+  bedrockMantleRegion?: string;
 }
 
 const STORAGE_KEY = 'local-llm-ui-preferences';
@@ -20,6 +23,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   avatarInitials: 'PC',
   visualMode: 'light',
   contentDensity: 'comfortable',
+  bedrockMantleRegion: 'us-west-2',
 };
 
 /**
