@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 
 interface UseFilesDraggingReturn {
   isDragging: boolean;
@@ -29,7 +29,7 @@ const useFilesDragging = (): UseFilesDraggingReturn => {
   const handleDrop = useCallback((e: React.DragEvent, onFilesChange?: (files: File[]) => void) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     const files = Array.from(e.dataTransfer.files);
     if (onFilesChange) {
       onFilesChange(files);

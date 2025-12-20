@@ -3,6 +3,7 @@
 
 .chat-header {
   border-bottom: 1px solid cs.$color-border-divider-default;
+  background: cs.$color-background-container-content;
 }
 
 .chat-content-wrapper {
@@ -12,12 +13,28 @@
 }
 
 .chat-messages-padding {
-  padding-bottom: 200px; // Space for floating input (fixed value since tokens are CSS vars)
+  padding-bottom: 220px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding-left: cs.$space-scaled-l;
+  padding-right: cs.$space-scaled-l;
+  padding-top: cs.$space-scaled-m;
 }
 
 .provider-icon {
   width: 48px;
   height: 48px;
+  opacity: 0.8;
+}
+
+// Empty state styling
+.empty-state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  padding: cs.$space-scaled-xxxl;
 }
 
 // Code styling for markdown
@@ -64,15 +81,35 @@
   }
 }
 
-// Optimize prompt available badge
+// Optimize prompt available badge - softer, token-compliant
 .optimize-available-badge {
   display: inline-flex;
   align-items: center;
   gap: cs.$space-static-xxs;
-  padding: cs.$space-static-xxs cs.$space-static-xs;
-  background: linear-gradient(135deg, #7b2cbf, #9d4edd);
-  color: #ffffff;
+  padding: cs.$space-static-xxs cs.$space-static-s;
+  background: cs.$color-background-status-info;
+  color: cs.$color-text-status-info;
   border-radius: cs.$border-radius-badge;
   font-size: cs.$font-size-body-s;
-  font-weight: cs.$font-weight-heading-s;
+  font-weight: 400;
+  border: 1px solid cs.$color-border-status-info;
+}
+
+// Token metadata display
+.token-metadata {
+  opacity: 0.85;
+  transition: opacity cs.$motion-duration-responsive cs.$motion-easing-responsive;
+
+  &:hover {
+    opacity: 1;
+  }
+}
+
+// Tool use status indicators using tokens
+.tool-use-supported {
+  color: cs.$color-text-status-success;
+}
+
+.tool-use-unsupported {
+  color: cs.$color-text-status-warning;
 }

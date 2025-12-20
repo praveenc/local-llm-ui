@@ -1,23 +1,25 @@
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
 import {
   AppLayout,
-  Container,
-  Header,
-  SpaceBetween,
-  Button,
-  Box,
-  SideNavigation,
-  Modal,
-  FormField,
-  Select,
-  Input,
-  Slider,
-  ExpandableSection,
   Badge,
+  Box,
+  Button,
   ColumnLayout,
+  Container,
+  ExpandableSection,
+  FormField,
+  Header,
+  Input,
+  Modal,
+  Select,
+  SideNavigation,
+  Slider,
+  SpaceBetween,
 } from '@cloudscape-design/components';
 import PromptInput from '@cloudscape-design/components/prompt-input';
-import { apiService, type Provider } from './services';
+
+import { type Provider, apiService } from './services';
 
 // Layout containers
 const FittedContainer = ({ children }: { children: React.ReactNode }) => (
@@ -140,16 +142,16 @@ function App() {
       try {
         const allModels = await apiService.getAllModels();
         const providerModels = allModels
-          .filter(m => m.provider === modelSettings.provider.value)
-          .map(m => ({ label: m.modelName, value: m.modelId }));
-        
+          .filter((m) => m.provider === modelSettings.provider.value)
+          .map((m) => ({ label: m.modelName, value: m.modelId }));
+
         setAvailableModels(providerModels);
-        
+
         // Auto-select first model if available
         if (providerModels.length > 0 && !modelSettings.model.value) {
-          setModelSettings(prev => ({
+          setModelSettings((prev) => ({
             ...prev,
-            model: providerModels[0]
+            model: providerModels[0],
           }));
         }
       } catch (error) {
@@ -184,11 +186,7 @@ function App() {
   };
 
   const clearHistory = () => {
-    setSessions(
-      sessions.map((s) =>
-        s.id === activeSessionId ? { ...s, messages: [] } : s
-      )
-    );
+    setSessions(sessions.map((s) => (s.id === activeSessionId ? { ...s, messages: [] } : s)));
   };
 
   const sendMessage = () => {
@@ -229,9 +227,7 @@ function App() {
       };
       setSessions(
         sessions.map((s) =>
-          s.id === activeSessionId
-            ? { ...s, messages: [...s.messages, aiMessage] }
-            : s
+          s.id === activeSessionId ? { ...s, messages: [...s.messages, aiMessage] } : s
         )
       );
     }, 1000);
@@ -249,17 +245,18 @@ function App() {
           type: 'link' as const,
           text: session.title,
           href: `#session-${session.id}`,
-          info: sessions.length > 1 ? (
-            <Button
-              variant="icon"
-              iconName="close"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                deleteSession(session.id);
-              }}
-            />
-          ) : undefined,
+          info:
+            sessions.length > 1 ? (
+              <Button
+                variant="icon"
+                iconName="close"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  deleteSession(session.id);
+                }}
+              />
+            ) : undefined,
         })),
       });
     }
@@ -272,17 +269,18 @@ function App() {
           type: 'link' as const,
           text: session.title,
           href: `#session-${session.id}`,
-          info: sessions.length > 1 ? (
-            <Button
-              variant="icon"
-              iconName="close"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                deleteSession(session.id);
-              }}
-            />
-          ) : undefined,
+          info:
+            sessions.length > 1 ? (
+              <Button
+                variant="icon"
+                iconName="close"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  deleteSession(session.id);
+                }}
+              />
+            ) : undefined,
         })),
       });
     }
@@ -298,12 +296,7 @@ function App() {
         navigation={
           <SpaceBetween direction="vertical" size="m">
             <Box padding={{ horizontal: 's' }}>
-              <Button
-                onClick={createSession}
-                variant="primary"
-                iconName="add-plus"
-                fullWidth
-              >
+              <Button onClick={createSession} variant="primary" iconName="add-plus" fullWidth>
                 New Chat
               </Button>
             </Box>
@@ -316,9 +309,7 @@ function App() {
               activeHref={`#session-${activeSessionId}`}
               onFollow={(event) => {
                 event.preventDefault();
-                const sessionId = parseInt(
-                  event.detail.href.replace('#session-', '')
-                );
+                const sessionId = parseInt(event.detail.href.replace('#session-', ''));
                 setActiveSessionId(sessionId);
               }}
             />
@@ -348,9 +339,9 @@ function App() {
                       {connectionStatus.ollama && <Badge color="green">Ollama</Badge>}
                       {connectionStatus.lmstudio && <Badge color="green">LM Studio</Badge>}
                       {connectionStatus.bedrock && <Badge color="green">Bedrock</Badge>}
-                      {!connectionStatus.ollama && !connectionStatus.lmstudio && !connectionStatus.bedrock && (
-                        <Badge color="red">Disconnected</Badge>
-                      )}
+                      {!connectionStatus.ollama &&
+                        !connectionStatus.lmstudio &&
+                        !connectionStatus.bedrock && <Badge color="red">Disconnected</Badge>}
                     </SpaceBetween>
                   }
                 >
@@ -375,8 +366,11 @@ function App() {
                               onChange={({ detail }) =>
                                 setModelSettings({
                                   ...modelSettings,
-                                  provider: detail.selectedOption as { label: string; value: Provider },
-                                  model: { label: 'Select a model', value: '' }
+                                  provider: detail.selectedOption as {
+                                    label: string;
+                                    value: Provider;
+                                  },
+                                  model: { label: 'Select a model', value: '' },
                                 })
                               }
                               options={providerOptions}
@@ -467,9 +461,7 @@ function App() {
                       <SpaceBetween size="m">
                         <Box fontSize="display-l">💬</Box>
                         <Box variant="h2">Start a Conversation</Box>
-                        <Box variant="p">
-                          Connect to LMStudio or Ollama and start chatting!
-                        </Box>
+                        <Box variant="p">Connect to LMStudio or Ollama and start chatting!</Box>
                       </SpaceBetween>
                     </Box>
                   ) : (

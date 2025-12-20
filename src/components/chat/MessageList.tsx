@@ -10,10 +10,10 @@ import {
   ButtonGroup,
   CopyToClipboard,
   ExpandableSection,
-  Icon,
   SpaceBetween,
 } from '@cloudscape-design/components';
 
+import '../../styles/chatContainer.scss';
 import CodeBlock from './CodeBlock';
 
 interface Message {
@@ -266,60 +266,36 @@ const MessageList = ({
             index === lastAssistantIndex &&
             lastMessageMetadata &&
             !streamingMessage && (
-              <Box padding={{ left: 'xxxl' }}>
-                <Box fontSize="body-s" color="text-body-secondary">
-                  <SpaceBetween direction="horizontal" size="m">
+              <Box padding={{ left: 'xxxl', top: 'xxs' }}>
+                <Box fontSize="body-s" color="text-body-secondary" className="token-metadata">
+                  <SpaceBetween direction="horizontal" size="s">
                     {(lastMessageMetadata.inputTokens !== undefined ||
                       lastMessageMetadata.promptTokens !== undefined) && (
                       <span>
-                        <Icon name="upload" size="small" />{' '}
-                        <Box variant="span" fontWeight="bold">
-                          Input:
-                        </Box>{' '}
-                        <span style={{ fontStyle: 'italic' }}>
-                          {(
-                            lastMessageMetadata.inputTokens ?? lastMessageMetadata.promptTokens
-                          )?.toLocaleString()}{' '}
-                          tokens
-                        </span>
+                        ↑ Input:{' '}
+                        {(
+                          lastMessageMetadata.inputTokens ?? lastMessageMetadata.promptTokens
+                        )?.toLocaleString()}{' '}
+                        tokens
                       </span>
                     )}
                     {(lastMessageMetadata.outputTokens !== undefined ||
                       lastMessageMetadata.completionTokens !== undefined) && (
                       <span>
-                        <Icon name="download" size="small" />{' '}
-                        <Box variant="span" fontWeight="bold">
-                          Output:
-                        </Box>{' '}
-                        <span style={{ fontStyle: 'italic' }}>
-                          {(
-                            lastMessageMetadata.outputTokens ?? lastMessageMetadata.completionTokens
-                          )?.toLocaleString()}{' '}
-                          tokens
-                        </span>
+                        ↓ Output:{' '}
+                        {(
+                          lastMessageMetadata.outputTokens ?? lastMessageMetadata.completionTokens
+                        )?.toLocaleString()}{' '}
+                        tokens
                       </span>
                     )}
                     {lastMessageMetadata.totalTokens !== undefined && (
                       <span>
-                        <Icon name="add-plus" size="small" />{' '}
-                        <Box variant="span" fontWeight="bold">
-                          Total:
-                        </Box>{' '}
-                        <span style={{ fontStyle: 'italic' }}>
-                          {lastMessageMetadata.totalTokens.toLocaleString()} tokens
-                        </span>
+                        + Total: {lastMessageMetadata.totalTokens.toLocaleString()} tokens
                       </span>
                     )}
                     {lastMessageMetadata.latencyMs !== undefined && (
-                      <span>
-                        <Icon name="status-pending" size="small" />{' '}
-                        <Box variant="span" fontWeight="bold">
-                          Latency:
-                        </Box>{' '}
-                        <span style={{ fontStyle: 'italic' }}>
-                          {lastMessageMetadata.latencyMs}ms
-                        </span>
-                      </span>
+                      <span>⏱ {lastMessageMetadata.latencyMs}ms</span>
                     )}
                   </SpaceBetween>
                 </Box>

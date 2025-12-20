@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Alert, Box, Button, Header, Icon, SpaceBetween } from '@cloudscape-design/components';
+import { Alert, Box, Button, Icon, SpaceBetween } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 
 import { FittedContainer, ScrollableContainer } from '../../components/layout';
@@ -76,10 +76,6 @@ const ChatContainer = ({
     completionTokens?: number;
     totalTokens?: number;
   } | null>(null);
-  const [lmstudioModelInfo, setLmstudioModelInfo] = useState<{
-    contextLength?: number;
-    trainedForToolUse?: boolean;
-  } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Prompt optimization state
@@ -150,32 +146,6 @@ const ChatContainer = ({
 
   useEffect(() => {
     setStreamingMessage(null);
-  }, [selectedModel]);
-
-  // Fetch LM Studio model info when model changes
-  useEffect(() => {
-    const fetchLmstudioModelInfo = async () => {
-      if (!selectedModel?.description?.toLowerCase().includes('lmstudio')) {
-        setLmstudioModelInfo(null);
-        return;
-      }
-
-      try {
-        const { lmstudioService } = await import('../../services');
-        const modelInfo = await lmstudioService.getModelInfo(selectedModel.value || undefined);
-        if (modelInfo) {
-          setLmstudioModelInfo({
-            contextLength: modelInfo.contextLength,
-            trainedForToolUse: modelInfo.trainedForToolUse,
-          });
-        }
-      } catch (error) {
-        console.error('Failed to fetch LM Studio model info:', error);
-        setLmstudioModelInfo(null);
-      }
-    };
-
-    fetchLmstudioModelInfo();
   }, [selectedModel]);
 
   // Clear previous prompt when input changes manually
@@ -487,72 +457,48 @@ const ChatContainer = ({
         <div className="chat-header">
           <Box padding={{ horizontal: 'l', vertical: 's' }}>
             <SpaceBetween size="xxs">
-              <Header variant="h2">
-                <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                  <Icon name="contact" size="medium" />
-                  <span>Chat</span>
-                  {selectedModel && (
-                    <>
-                      {selectedModel.description?.toLowerCase().includes('bedrock') && (
-                        <img
-                          src="/bedrock_bw.svg"
-                          alt="Amazon Bedrock"
-                          style={{ width: '24px', height: '24px' }}
-                        />
-                      )}
-                      {selectedModel.description?.toLowerCase().includes('lmstudio') && (
-                        <img
-                          src="/lmstudio_icon.svg"
-                          alt="LM Studio"
-                          style={{ width: '24px', height: '24px' }}
-                        />
-                      )}
-                      {selectedModel.description?.toLowerCase().includes('ollama') && (
-                        <img
-                          src="/ollama_icon.svg"
-                          alt="Ollama"
-                          style={{ width: '24px', height: '24px' }}
-                        />
-                      )}
-                    </>
-                  )}
-                  {showOptimizeButton && (
-                    <Box margin={{ left: 's' }}>
-                      <span className="optimize-available-badge">
-                        <Icon name="gen-ai" size="small" />
-                        <span>Prompt Optimizer Available</span>
-                      </span>
-                    </Box>
-                  )}
-                </SpaceBetween>
-              </Header>
+              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                <Icon name="contact" size="medium" />
+                <Box variant="h2">Chat</Box>
+                {selectedModel && (
+                  <>
+                    {selectedModel.description?.toLowerCase().includes('bedrock') && (
+                      <img
+                        src="/bedrock_bw.svg"
+                        alt="Amazon Bedrock"
+                        style={{ width: '20px', height: '20px', opacity: 0.8 }}
+                      />
+                    )}
+                    {selectedModel.description?.toLowerCase().includes('lmstudio') && (
+                      <img
+                        src="/lmstudio_icon.svg"
+                        alt="LM Studio"
+                        style={{ width: '20px', height: '20px', opacity: 0.8 }}
+                      />
+                    )}
+                    {selectedModel.description?.toLowerCase().includes('ollama') && (
+                      <img
+                        src="/ollama_icon.svg"
+                        alt="Ollama"
+                        style={{ width: '20px', height: '20px', opacity: 0.8 }}
+                      />
+                    )}
+                  </>
+                )}
+                {showOptimizeButton && (
+                  <span className="optimize-available-badge">
+                    <Icon name="gen-ai" size="small" />
+                    <span>Prompt Optimizer</span>
+                  </span>
+                )}
+              </SpaceBetween>
               {selectedModel && (
                 <Box variant="small" color="text-body-secondary">
-                  <SpaceBetween direction="horizontal" size="xs">
-                    <span>{selectedModel.label}</span>
-                    <span>·</span>
-                    <span>
-                      {samplingParameter === 'temperature'
-                        ? `temp ${temperature}`
-                        : `top-p ${topP}`}
-                    </span>
-                    <span>·</span>
-                    <span>{maxTokens.toLocaleString()} tokens</span>
-                    {lmstudioModelInfo && (
-                      <>
-                        <span>·</span>
-                        <span>ctx {lmstudioModelInfo.contextLength?.toLocaleString()}</span>
-                        <span>·</span>
-                        <span
-                          style={{
-                            color: lmstudioModelInfo.trainedForToolUse ? '#037f0c' : '#8d6605',
-                          }}
-                        >
-                          {lmstudioModelInfo.trainedForToolUse ? '✓ Tool Use' : '✗ No Tool Use'}
-                        </span>
-                      </>
-                    )}
-                  </SpaceBetween>
+                  {selectedModel.description?.toLowerCase().includes('bedrock') && 'Amazon Bedrock'}
+                  {selectedModel.description?.toLowerCase().includes('lmstudio') && 'LM Studio'}
+                  {selectedModel.description?.toLowerCase().includes('ollama') && 'Ollama'}
+                  {' - '}
+                  {selectedModel.label}
                 </Box>
               )}
             </SpaceBetween>
@@ -564,35 +510,56 @@ const ChatContainer = ({
           <ScrollableContainer ref={scrollContainerRef}>
             <div className="chat-messages-padding">
               {messages.length === 0 ? (
-                <Box color="text-body-secondary" textAlign="center" padding="l">
-                  {selectedModel ? (
-                    <SpaceBetween size="m" alignItems="center">
-                      <Box fontSize="display-l">
-                        {selectedModel.description?.toLowerCase().includes('ollama') && (
-                          <img src="/ollama_icon.svg" alt="Ollama" className="provider-icon" />
-                        )}
-                        {selectedModel.description?.toLowerCase().includes('lmstudio') && (
-                          <img src="/lmstudio_icon.svg" alt="LM Studio" className="provider-icon" />
-                        )}
-                        {selectedModel.description?.toLowerCase().includes('bedrock') && (
-                          <img
-                            src="/bedrock_bw.svg"
-                            alt="Amazon Bedrock"
-                            className="provider-icon"
-                          />
-                        )}
-                      </Box>
-                      <Box variant="p">
-                        Send a message to start chatting with <strong>{selectedModel.label}</strong>
-                      </Box>
-                      <Box variant="small" color="text-body-secondary">
-                        Provider: {selectedModel.description?.replace('Provider: ', '')}
-                      </Box>
-                    </SpaceBetween>
-                  ) : (
-                    'Please select a model from the sidebar to start chatting.'
-                  )}
-                </Box>
+                <div className="empty-state-container">
+                  <SpaceBetween size="l" alignItems="center">
+                    {selectedModel ? (
+                      <>
+                        <Box>
+                          {selectedModel.description?.toLowerCase().includes('ollama') && (
+                            <img src="/ollama_icon.svg" alt="Ollama" className="provider-icon" />
+                          )}
+                          {selectedModel.description?.toLowerCase().includes('lmstudio') && (
+                            <img
+                              src="/lmstudio_icon.svg"
+                              alt="LM Studio"
+                              className="provider-icon"
+                            />
+                          )}
+                          {selectedModel.description?.toLowerCase().includes('bedrock') && (
+                            <img
+                              src="/bedrock_bw.svg"
+                              alt="Amazon Bedrock"
+                              className="provider-icon"
+                            />
+                          )}
+                        </Box>
+                        <SpaceBetween size="xs" alignItems="center">
+                          <Box variant="h3" color="text-body-secondary">
+                            Ready to chat
+                          </Box>
+                          <Box color="text-body-secondary" textAlign="center">
+                            Send a message to start chatting with{' '}
+                            <strong>{selectedModel.label}</strong>
+                          </Box>
+                        </SpaceBetween>
+                      </>
+                    ) : (
+                      <>
+                        <Box color="text-status-inactive">
+                          <Icon name="contact" size="big" />
+                        </Box>
+                        <SpaceBetween size="xs" alignItems="center">
+                          <Box variant="h3" color="text-body-secondary">
+                            No model selected
+                          </Box>
+                          <Box color="text-body-secondary">
+                            Select a model from the sidebar to begin
+                          </Box>
+                        </SpaceBetween>
+                      </>
+                    )}
+                  </SpaceBetween>
+                </div>
               ) : (
                 <Box padding="s">
                   <MessageList
