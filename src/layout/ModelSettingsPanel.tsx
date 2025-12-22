@@ -7,7 +7,6 @@ import {
   Button,
   CollectionPreferences,
   ColumnLayout,
-  ExpandableSection,
   FormField,
   Icon,
   Input,
@@ -478,253 +477,228 @@ export default function SideBar({
       {/* Divider before settings */}
       <div className="sidebar-divider" style={{ marginTop: 'auto' }} />
 
-      {/* Settings Section */}
-      <Box padding={{ horizontal: 's', bottom: 's' }}>
-        <ExpandableSection
-          variant="footer"
-          headerText={
-            <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-              <Icon name="settings" size="small" />
-              <span>Settings</span>
-            </SpaceBetween>
-          }
-        >
-          <Box padding={{ top: 's' }}>
-            <SpaceBetween size="s">
-              {/* Provider Info */}
-              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                <Box variant="small" color="text-body-secondary">
-                  Provider:
-                </Box>
-                <Box variant="small" fontWeight="bold">
-                  {providerInfo.label}
-                </Box>
-              </SpaceBetween>
-
-              {/* Preferences Button */}
-              <CollectionPreferences
-                title="User Preferences"
-                confirmLabel="Save"
-                cancelLabel="Cancel"
-                preferences={{ custom: preferences }}
-                onConfirm={({ detail }) => handlePreferencesConfirm(detail)}
-                customPreference={(customValue, setCustomValue) => (
-                  <SpaceBetween size="l">
-                    {/* Provider Selection Section */}
-                    <Box>
-                      <SpaceBetween size="s">
-                        <Box variant="h4">
+      {/* Preferences Button - Simple one-click access */}
+      <Box padding={{ horizontal: 's', vertical: 's' }}>
+        <CollectionPreferences
+          title="User Preferences"
+          confirmLabel="Save"
+          cancelLabel="Cancel"
+          preferences={{ custom: preferences }}
+          onConfirm={({ detail }) => handlePreferencesConfirm(detail)}
+          customPreference={(customValue, setCustomValue) => (
+            <SpaceBetween size="l">
+              {/* Provider Selection Section */}
+              <Box>
+                <SpaceBetween size="s">
+                  <Box variant="h4">
+                    <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                      <Icon name="share" size="small" />
+                      <span>Model Provider</span>
+                    </SpaceBetween>
+                  </Box>
+                  <RadioGroup
+                    value={customValue.preferredProvider}
+                    onChange={({ detail }) =>
+                      setCustomValue({
+                        ...customValue,
+                        preferredProvider: detail.value as Provider,
+                      })
+                    }
+                    items={[
+                      {
+                        value: 'bedrock',
+                        label: (
                           <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                            <Icon name="share" size="small" />
-                            <span>Model Provider</span>
-                          </SpaceBetween>
-                        </Box>
-                        <RadioGroup
-                          value={customValue.preferredProvider}
-                          onChange={({ detail }) =>
-                            setCustomValue({
-                              ...customValue,
-                              preferredProvider: detail.value as Provider,
-                            })
-                          }
-                          items={[
-                            {
-                              value: 'bedrock',
-                              label: (
-                                <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                                  <img
-                                    src="/bedrock_bw.svg"
-                                    alt=""
-                                    style={{ width: '16px', height: '16px' }}
-                                  />
-                                  <span>Amazon Bedrock</span>
-                                </SpaceBetween>
-                              ),
-                              description: 'AWS cloud AI models (uses AWS credentials)',
-                            },
-                            {
-                              value: 'bedrock-mantle',
-                              label: (
-                                <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                                  <img
-                                    src="/bedrock-color.svg"
-                                    alt=""
-                                    style={{ width: '16px', height: '16px' }}
-                                  />
-                                  <span>Bedrock Mantle</span>
-                                </SpaceBetween>
-                              ),
-                              description: 'OpenAI-compatible API (requires Bedrock API key)',
-                            },
-                            {
-                              value: 'lmstudio',
-                              label: (
-                                <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                                  <img
-                                    src="/lmstudio_icon.svg"
-                                    alt=""
-                                    style={{ width: '16px', height: '16px' }}
-                                  />
-                                  <span>LM Studio</span>
-                                </SpaceBetween>
-                              ),
-                              description: 'Local server on port 1234',
-                            },
-                            {
-                              value: 'ollama',
-                              label: (
-                                <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                                  <img
-                                    src="/ollama_icon.svg"
-                                    alt=""
-                                    style={{ width: '16px', height: '16px' }}
-                                  />
-                                  <span>Ollama</span>
-                                </SpaceBetween>
-                              ),
-                              description: 'Local server on port 11434',
-                            },
-                          ]}
-                        />
-                      </SpaceBetween>
-                    </Box>
-
-                    {/* Divider */}
-                    <hr
-                      style={{
-                        border: 'none',
-                        borderTop: '1px solid var(--color-border-divider-default)',
-                        margin: '0',
-                      }}
-                    />
-
-                    {/* Bedrock Mantle Settings */}
-                    <Box>
-                      <SpaceBetween size="s">
-                        <Box variant="h4">
-                          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                            <Icon name="key" size="small" />
-                            <span>Bedrock Mantle Settings</span>
-                          </SpaceBetween>
-                        </Box>
-                        <FormField
-                          label="Bedrock API Key"
-                          description="Your Amazon Bedrock API key"
-                          stretch={true}
-                        >
-                          <Input
-                            type="password"
-                            value={customValue.bedrockMantleApiKey || ''}
-                            onChange={({ detail }) =>
-                              setCustomValue({
-                                ...customValue,
-                                bedrockMantleApiKey: detail.value,
-                              })
-                            }
-                            placeholder="Enter your Bedrock API key"
-                          />
-                        </FormField>
-
-                        <FormField
-                          label="Region"
-                          description="AWS region for Mantle endpoint"
-                          stretch={true}
-                        >
-                          <Select
-                            selectedOption={
-                              MANTLE_REGIONS.find(
-                                (r) => r.value === (customValue.bedrockMantleRegion || 'us-west-2')
-                              ) || MANTLE_REGIONS[2]
-                            }
-                            onChange={({ detail }) =>
-                              setCustomValue({
-                                ...customValue,
-                                bedrockMantleRegion: detail.selectedOption.value,
-                              })
-                            }
-                            options={MANTLE_REGIONS}
-                          />
-                        </FormField>
-                      </SpaceBetween>
-                    </Box>
-
-                    {/* Divider */}
-                    <hr
-                      style={{
-                        border: 'none',
-                        borderTop: '1px solid var(--color-border-divider-default)',
-                        margin: '0',
-                      }}
-                    />
-
-                    {/* User Preferences Section */}
-                    <Box>
-                      <SpaceBetween size="s">
-                        <Box variant="h4">
-                          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                            <Icon name="user-profile" size="small" />
-                            <span>Display Settings</span>
-                          </SpaceBetween>
-                        </Box>
-
-                        <FormField
-                          label="Avatar Initials"
-                          description="Max 2 alphanumeric characters"
-                          stretch={true}
-                        >
-                          <Input
-                            value={customValue.avatarInitials}
-                            onChange={({ detail }) =>
-                              setCustomValue({
-                                ...customValue,
-                                avatarInitials: validateInitials(detail.value),
-                              })
-                            }
-                            placeholder="PC"
-                          />
-                        </FormField>
-
-                        <ColumnLayout columns={2}>
-                          <FormField label="Visual Mode" stretch={true}>
-                            <RadioGroup
-                              value={customValue.visualMode}
-                              onChange={({ detail }) =>
-                                setCustomValue({
-                                  ...customValue,
-                                  visualMode: detail.value as VisualMode,
-                                })
-                              }
-                              items={[
-                                { value: 'light', label: 'Light' },
-                                { value: 'dark', label: 'Dark' },
-                              ]}
+                            <img
+                              src="/bedrock_bw.svg"
+                              alt=""
+                              style={{ width: '16px', height: '16px' }}
                             />
-                          </FormField>
-
-                          <FormField label="Content Density" stretch={true}>
-                            <RadioGroup
-                              value={customValue.contentDensity}
-                              onChange={({ detail }) =>
-                                setCustomValue({
-                                  ...customValue,
-                                  contentDensity: detail.value as ContentDensity,
-                                })
-                              }
-                              items={[
-                                { value: 'comfortable', label: 'Comfortable' },
-                                { value: 'compact', label: 'Compact' },
-                              ]}
+                            <span>Amazon Bedrock</span>
+                          </SpaceBetween>
+                        ),
+                        description: 'AWS cloud AI models (uses AWS credentials)',
+                      },
+                      {
+                        value: 'bedrock-mantle',
+                        label: (
+                          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                            <img
+                              src="/bedrock-color.svg"
+                              alt=""
+                              style={{ width: '16px', height: '16px' }}
                             />
-                          </FormField>
-                        </ColumnLayout>
-                      </SpaceBetween>
-                    </Box>
-                  </SpaceBetween>
-                )}
+                            <span>Bedrock Mantle</span>
+                          </SpaceBetween>
+                        ),
+                        description: 'OpenAI-compatible API (requires Bedrock API key)',
+                      },
+                      {
+                        value: 'lmstudio',
+                        label: (
+                          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                            <img
+                              src="/lmstudio_icon.svg"
+                              alt=""
+                              style={{ width: '16px', height: '16px' }}
+                            />
+                            <span>LM Studio</span>
+                          </SpaceBetween>
+                        ),
+                        description: 'Local server on port 1234',
+                      },
+                      {
+                        value: 'ollama',
+                        label: (
+                          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                            <img
+                              src="/ollama_icon.svg"
+                              alt=""
+                              style={{ width: '16px', height: '16px' }}
+                            />
+                            <span>Ollama</span>
+                          </SpaceBetween>
+                        ),
+                        description: 'Local server on port 11434',
+                      },
+                    ]}
+                  />
+                </SpaceBetween>
+              </Box>
+
+              {/* Divider */}
+              <hr
+                style={{
+                  border: 'none',
+                  borderTop: '1px solid var(--color-border-divider-default)',
+                  margin: '0',
+                }}
               />
+
+              {/* Bedrock Mantle Settings */}
+              <Box>
+                <SpaceBetween size="s">
+                  <Box variant="h4">
+                    <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                      <Icon name="key" size="small" />
+                      <span>Bedrock Mantle Settings</span>
+                    </SpaceBetween>
+                  </Box>
+                  <FormField
+                    label="Bedrock API Key"
+                    description="Your Amazon Bedrock API key"
+                    stretch={true}
+                  >
+                    <Input
+                      type="password"
+                      value={customValue.bedrockMantleApiKey || ''}
+                      onChange={({ detail }) =>
+                        setCustomValue({
+                          ...customValue,
+                          bedrockMantleApiKey: detail.value,
+                        })
+                      }
+                      placeholder="Enter your Bedrock API key"
+                    />
+                  </FormField>
+
+                  <FormField
+                    label="Region"
+                    description="AWS region for Mantle endpoint"
+                    stretch={true}
+                  >
+                    <Select
+                      selectedOption={
+                        MANTLE_REGIONS.find(
+                          (r) => r.value === (customValue.bedrockMantleRegion || 'us-west-2')
+                        ) || MANTLE_REGIONS[2]
+                      }
+                      onChange={({ detail }) =>
+                        setCustomValue({
+                          ...customValue,
+                          bedrockMantleRegion: detail.selectedOption.value,
+                        })
+                      }
+                      options={MANTLE_REGIONS}
+                    />
+                  </FormField>
+                </SpaceBetween>
+              </Box>
+
+              {/* Divider */}
+              <hr
+                style={{
+                  border: 'none',
+                  borderTop: '1px solid var(--color-border-divider-default)',
+                  margin: '0',
+                }}
+              />
+
+              {/* User Preferences Section */}
+              <Box>
+                <SpaceBetween size="s">
+                  <Box variant="h4">
+                    <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                      <Icon name="user-profile" size="small" />
+                      <span>Display Settings</span>
+                    </SpaceBetween>
+                  </Box>
+
+                  <FormField
+                    label="Avatar Initials"
+                    description="Max 2 alphanumeric characters"
+                    stretch={true}
+                  >
+                    <Input
+                      value={customValue.avatarInitials}
+                      onChange={({ detail }) =>
+                        setCustomValue({
+                          ...customValue,
+                          avatarInitials: validateInitials(detail.value),
+                        })
+                      }
+                      placeholder="PC"
+                    />
+                  </FormField>
+
+                  <ColumnLayout columns={2}>
+                    <FormField label="Visual Mode" stretch={true}>
+                      <RadioGroup
+                        value={customValue.visualMode}
+                        onChange={({ detail }) =>
+                          setCustomValue({
+                            ...customValue,
+                            visualMode: detail.value as VisualMode,
+                          })
+                        }
+                        items={[
+                          { value: 'light', label: 'Light' },
+                          { value: 'dark', label: 'Dark' },
+                        ]}
+                      />
+                    </FormField>
+
+                    <FormField label="Content Density" stretch={true}>
+                      <RadioGroup
+                        value={customValue.contentDensity}
+                        onChange={({ detail }) =>
+                          setCustomValue({
+                            ...customValue,
+                            contentDensity: detail.value as ContentDensity,
+                          })
+                        }
+                        items={[
+                          { value: 'comfortable', label: 'Comfortable' },
+                          { value: 'compact', label: 'Compact' },
+                        ]}
+                      />
+                    </FormField>
+                  </ColumnLayout>
+                </SpaceBetween>
+              </Box>
             </SpaceBetween>
-          </Box>
-        </ExpandableSection>
+          )}
+        />
       </Box>
     </div>
   );

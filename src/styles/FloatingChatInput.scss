@@ -18,7 +18,7 @@
 }
 
 .floating-chat-input__container {
-  max-width: 800px;
+  max-width: 1100px;
   margin: 0 auto;
   background: cs.$color-background-container-content;
   border: 1px solid cs.$color-border-divider-default;
@@ -116,7 +116,7 @@
   pointer-events: none;
 
   > div {
-    max-width: 800px;
+    max-width: 1100px;
     margin: 0 auto;
     pointer-events: auto;
   }
