@@ -174,6 +174,12 @@ export const ConversationList = ({
     setDeleteModalVisible(true);
   };
 
+  // Group conversations by date
+  const groupedConversations = useMemo(() => {
+    if (!conversations) return {};
+    return groupByDate(conversations, (conv) => new Date(conv.updatedAt));
+  }, [conversations]);
+
   const handleConfirmDelete = async () => {
     if (conversationToDelete) {
       await archiveConversation(conversationToDelete.id);
