@@ -740,6 +740,8 @@ const ChatContainer = ({
         isOptimizing={isOptimizing}
         modelStatus={modelStatus}
         onDismissModelStatus={onDismissModelStatus}
+        onClearConversation={handleClearHistory}
+        hasMessages={messages.length > 0}
       />
     </>
   );
