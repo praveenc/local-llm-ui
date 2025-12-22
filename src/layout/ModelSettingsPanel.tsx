@@ -470,6 +470,7 @@ export default function SideBar({
                 ariaLabel="Model selection"
                 disabled={modelsLoadingStatus === 'error' || isModelLoading}
                 renderHighlightedAriaLive={(item) => item.label || ''}
+                expandToViewport={true}
               />
             </FormField>
           </SpaceBetween>
