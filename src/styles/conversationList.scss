@@ -1,18 +1,20 @@
 // ConversationList styles using Cloudscape design tokens
+// Supports grouped conversations by time period
 @use '@cloudscape-design/design-tokens/index.scss' as cs;
 
 .conversation-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-height: 300px;
+  gap: cs.$space-static-xxs;
+  max-height: calc(100vh - 350px); // Dynamic height based on viewport
+  min-height: 200px;
   overflow-y: auto;
   margin: 0 calc(-1 * cs.$space-scaled-s);
   padding: 0 cs.$space-scaled-s;
 
-  // Custom scrollbar
+  // Custom scrollbar - subtle
   &::-webkit-scrollbar {
-    width: 6px;
+    width: 4px;
   }
 
   &::-webkit-scrollbar-track {
@@ -21,7 +23,7 @@
 
   &::-webkit-scrollbar-thumb {
     background-color: cs.$color-border-divider-default;
-    border-radius: 3px;
+    border-radius: 2px;
 
     &:hover {
       background-color: cs.$color-text-body-secondary;
@@ -29,59 +31,104 @@
   }
 }
 
+// Group styling
+.conversation-group {
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: cs.$space-static-xs;
+    font-size: cs.$font-size-body-s;
+    font-weight: cs.$font-weight-heading-xs;
+  }
+
+  &__count {
+    font-weight: 400;
+    color: cs.$color-text-body-secondary;
+    font-size: cs.$font-size-body-s;
+  }
+
+  &__items {
+    display: flex;
+    flex-direction: column;
+    gap: cs.$space-static-xxxs;
+    padding-top: cs.$space-static-xxs;
+  }
+}
+
+// Conversation item styling
 .conversation-item {
   padding: cs.$space-scaled-xs cs.$space-scaled-s;
   border-radius: cs.$border-radius-item;
   cursor: pointer;
-  transition: background-color cs.$motion-duration-complex cs.$motion-easing-responsive;
+  transition:
+    background-color cs.$motion-duration-responsive cs.$motion-easing-responsive,
+    border-color cs.$motion-duration-responsive cs.$motion-easing-responsive;
+  border: 1px solid transparent;
+  background-color: transparent;
 
   &:hover {
     background-color: cs.$color-background-dropdown-item-hover;
+    border-color: cs.$color-border-divider-default;
 
     .conversation-item__delete {
       opacity: 1;
+    }
+
+    .conversation-item__meta {
+      color: cs.$color-text-body-default;
     }
   }
 
   &:focus {
     outline: 2px solid cs.$color-border-item-focused;
     outline-offset: -2px;
+    border-radius: cs.$border-radius-item;
   }
 
   &--active {
     background-color: cs.$color-background-item-selected;
+    border-color: cs.$color-border-item-selected;
 
     &:hover {
       background-color: cs.$color-background-item-selected;
+      border-color: cs.$color-border-item-selected;
     }
 
     .conversation-item__title {
-      font-weight: 700;
+      color: cs.$color-text-interactive-active;
+      font-weight: cs.$font-weight-heading-xs;
+    }
+
+    .conversation-item__provider-icon {
+      opacity: 1;
     }
   }
 
   &__content {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: cs.$space-static-xxxs;
+    min-width: 0;
   }
 
   &__header {
     display: flex;
     align-items: center;
-    gap: cs.$space-scaled-xxs;
+    gap: cs.$space-scaled-xs;
+    min-width: 0;
   }
 
   &__provider-icon {
-    width: 12px;
-    height: 12px;
-    opacity: 0.7;
+    width: 14px;
+    height: 14px;
+    opacity: 0.6;
     flex-shrink: 0;
+    transition: opacity cs.$motion-duration-responsive cs.$motion-easing-responsive;
   }
 
   &__title {
     font-size: cs.$font-size-body-s;
-    line-height: 1.4;
+    line-height: cs.$line-height-body-s;
     color: cs.$color-text-body-default;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -96,34 +143,42 @@
     gap: cs.$space-scaled-xs;
     font-size: cs.$font-size-body-s;
     color: cs.$color-text-body-secondary;
+    padding-left: calc(14px + cs.$space-scaled-xs); // Align with title
+    transition: color cs.$motion-duration-responsive cs.$motion-easing-responsive;
   }
 
   &__time {
-    font-size: 11px;
+    font-size: cs.$font-size-body-s;
+    font-variant-numeric: tabular-nums;
   }
 
   &__count {
-    font-size: 11px;
+    font-size: cs.$font-size-body-s;
 
     &::before {
       content: '·';
-      margin-right: cs.$space-scaled-xxs;
+      margin-right: cs.$space-static-xxs;
+      color: cs.$color-text-body-secondary;
     }
   }
 
   &__delete {
     margin-left: auto;
-    padding: 2px;
+    padding: cs.$space-static-xxxs;
     background: none;
     border: none;
     cursor: pointer;
     opacity: 0;
-    transition: opacity cs.$motion-duration-complex cs.$motion-easing-responsive;
+    transition:
+      opacity cs.$motion-duration-responsive cs.$motion-easing-responsive,
+      color cs.$motion-duration-responsive cs.$motion-easing-responsive,
+      background-color cs.$motion-duration-responsive cs.$motion-easing-responsive;
     color: cs.$color-text-body-secondary;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: cs.$border-radius-button;
+    line-height: 0;
 
     &:hover {
       color: cs.$color-text-status-error;
@@ -133,6 +188,19 @@
     &:focus {
       opacity: 1;
       outline: 2px solid cs.$color-border-item-focused;
+      outline-offset: -2px;
     }
+  }
+}
+
+// Override Cloudscape ExpandableSection styles for compact sidebar
+.conversation-list {
+  // Make expandable sections more compact
+  [class*='awsui_header'] {
+    padding: cs.$space-static-xxs 0 !important;
+  }
+
+  [class*='awsui_content'] {
+    padding: 0 !important;
   }
 }
