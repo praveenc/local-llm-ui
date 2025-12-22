@@ -6,7 +6,8 @@ import { Alert, Box, Button, Icon, SpaceBetween } from '@cloudscape-design/compo
 import type { SelectProps } from '@cloudscape-design/components';
 
 import { FittedContainer, ScrollableContainer } from '../../components/layout';
-import { usePromptOptimizer } from '../../hooks/usePromptOptimizer';
+import type { Provider } from '../../db';
+import { useConversation, useConversationMutations, usePromptOptimizer } from '../../hooks';
 import '../../styles/chatContainer.scss';
 import FloatingChatInput from './FloatingChatInput';
 import MessageList from './MessageList';
@@ -45,7 +46,17 @@ interface ChatContainerProps {
     content: string;
   } | null;
   onDismissModelStatus?: () => void;
+  conversationId?: string | null;
+  onConversationChange?: (id: string | null) => void;
 }
+
+// Helper to determine provider from model description
+const getProviderFromModel = (model: SelectProps.Option | null): Provider => {
+  if (model?.description?.toLowerCase().includes('ollama')) return 'ollama';
+  if (model?.description?.toLowerCase().includes('bedrock-mantle')) return 'bedrock-mantle';
+  if (model?.description?.toLowerCase().includes('bedrock')) return 'bedrock';
+  return 'lmstudio';
+};
 
 const ChatContainer = ({
   selectedModel,
@@ -62,6 +73,8 @@ const ChatContainer = ({
   onConnectionError,
   modelStatus,
   onDismissModelStatus,
+  conversationId: externalConversationId,
+  onConversationChange,
 }: ChatContainerProps) => {
   const [inputValue, setInputValue] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -85,6 +98,26 @@ const ChatContainer = ({
     totalTokens?: number;
   } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Conversation persistence state
+  const [internalConversationId, setInternalConversationId] = useState<string | null>(null);
+  const activeConversationId = externalConversationId ?? internalConversationId;
+
+  // Load conversation from DB
+  const { messages: dbMessages } = useConversation(activeConversationId);
+  const { createConversation, addMessage, getNextSequence } = useConversationMutations();
+
+  // Sync DB messages to local state when conversation loads
+  useEffect(() => {
+    if (dbMessages && dbMessages.length > 0) {
+      const localMessages: Message[] = dbMessages.map((m, idx) => ({
+        id: idx + 1,
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+      setMessages(localMessages);
+    }
+  }, [dbMessages]);
 
   // Prompt optimization state
   const [showOptimizeModal, setShowOptimizeModal] = useState(false);
@@ -119,10 +152,13 @@ const ChatContainer = ({
       });
       setMessages([]);
       setStreamingMessage(null);
+      // Reset conversation ID to start fresh
+      setInternalConversationId(null);
+      onConversationChange?.(null);
     } catch (error) {
       console.error('Error clearing history:', error);
     }
-  }, [sessionId]);
+  }, [sessionId, onConversationChange]);
 
   // Expose clear history function to parent
   useEffect(() => {
@@ -201,6 +237,19 @@ const ChatContainer = ({
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !selectedModel || isLoading) return;
 
+    const provider = getProviderFromModel(selectedModel);
+    const modelId = selectedModel.value || '';
+    const modelName = selectedModel.label || modelId;
+
+    // Create conversation if this is the first message
+    let currentConversationId = activeConversationId;
+    if (!currentConversationId) {
+      const newConversation = await createConversation();
+      currentConversationId = newConversation.id;
+      setInternalConversationId(currentConversationId);
+      onConversationChange?.(currentConversationId);
+    }
+
     const userMessage: Message = {
       id: Date.now(),
       role: 'user',
@@ -210,6 +259,24 @@ const ChatContainer = ({
     setMessages((prevMessages) => [...prevMessages, userMessage]);
     setInputValue('');
     setIsLoading(true);
+
+    // Persist user message to DB
+    const userSequence = await getNextSequence(currentConversationId);
+    await addMessage({
+      conversationId: currentConversationId,
+      role: 'user',
+      content: userMessage.content,
+      sequence: userSequence,
+      createdAt: new Date(),
+      provider,
+      modelId,
+      modelName,
+      parameters: {
+        temperature,
+        topP,
+        maxTokens,
+      },
+    });
 
     // Create new AbortController for this request
     abortControllerRef.current = new AbortController();
@@ -225,18 +292,6 @@ const ChatContainer = ({
       // Import API service and file utilities
       const { apiService } = await import('../../services');
       const { processFilesForBedrock } = await import('../../utils/fileUtils');
-
-      // Determine provider from model description
-      let provider: 'ollama' | 'lmstudio' | 'bedrock' | 'bedrock-mantle';
-      if (selectedModel.description?.toLowerCase().includes('ollama')) {
-        provider = 'ollama';
-      } else if (selectedModel.description?.toLowerCase().includes('bedrock-mantle')) {
-        provider = 'bedrock-mantle';
-      } else if (selectedModel.description?.toLowerCase().includes('bedrock')) {
-        provider = 'bedrock';
-      } else {
-        provider = 'lmstudio';
-      }
 
       // Process files if any (only for Bedrock)
       let processedFiles: Array<{
@@ -297,6 +352,12 @@ const ChatContainer = ({
       }
 
       let fullContent = '';
+      let capturedUsage: {
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+        latencyMs?: number;
+      } | null = null;
 
       // For Claude 4.5 models, only send the selected sampling parameter
       const modelIdLower = (selectedModel.value || '').toLowerCase();
@@ -329,12 +390,13 @@ const ChatContainer = ({
 
             // Extract usage information
             if (metadata.usage) {
-              setBedrockMetadata({
+              capturedUsage = {
                 inputTokens: metadata.usage.inputTokens,
                 outputTokens: metadata.usage.outputTokens,
                 totalTokens: metadata.usage.totalTokens,
                 latencyMs: metadata.metrics?.latencyMs,
-              });
+              };
+              setBedrockMetadata(capturedUsage);
             }
           } catch (e) {
             console.error('Failed to parse Bedrock metadata:', e);
@@ -350,11 +412,12 @@ const ChatContainer = ({
 
             // Extract usage information
             if (metadata.usage) {
-              setBedrockMetadata({
+              capturedUsage = {
                 inputTokens: metadata.usage.inputTokens,
                 outputTokens: metadata.usage.outputTokens,
                 totalTokens: metadata.usage.totalTokens,
-              });
+              };
+              setBedrockMetadata(capturedUsage);
             }
           } catch (e) {
             console.error('Failed to parse Mantle metadata:', e);
@@ -370,6 +433,11 @@ const ChatContainer = ({
 
             // Extract usage information
             if (metadata.usage) {
+              capturedUsage = {
+                inputTokens: metadata.usage.promptTokens,
+                outputTokens: metadata.usage.completionTokens,
+                totalTokens: metadata.usage.totalTokens,
+              };
               setLmstudioMetadata({
                 promptTokens: metadata.usage.promptTokens,
                 completionTokens: metadata.usage.completionTokens,
@@ -398,6 +466,25 @@ const ChatContainer = ({
           content: fullContent,
         },
       ]);
+
+      // Persist assistant message to DB
+      const assistantSequence = await getNextSequence(currentConversationId);
+      await addMessage({
+        conversationId: currentConversationId,
+        role: 'assistant',
+        content: fullContent,
+        sequence: assistantSequence,
+        createdAt: new Date(),
+        provider,
+        modelId,
+        modelName,
+        parameters: {
+          temperature,
+          topP,
+          maxTokens,
+        },
+        usage: capturedUsage || undefined,
+      });
 
       setStreamingMessage(null);
     } catch (error) {

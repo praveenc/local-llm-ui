@@ -48,6 +48,9 @@ export default function AppShell() {
   });
   const clearHistoryRef = React.useRef<(() => void) | null>(null);
 
+  // Conversation state
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+
   // Load user preferences
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => loadPreferences());
 
@@ -75,9 +78,18 @@ export default function AppShell() {
   }, [userPreferences.visualMode, userPreferences.contentDensity]);
 
   const handleNewChat = () => {
+    setActiveConversationId(null);
     if (clearHistoryRef.current) {
       clearHistoryRef.current();
     }
+  };
+
+  const handleSelectConversation = (id: string) => {
+    setActiveConversationId(id);
+  };
+
+  const handleConversationChange = (id: string | null) => {
+    setActiveConversationId(id);
   };
 
   const handlePreferencesChange = (preferences: UserPreferences) => {
@@ -211,6 +223,8 @@ export default function AppShell() {
             onModelLoadError={handleModelLoadError}
             onModelLoadSuccess={handleModelLoadSuccess}
             onModelStatusChange={handleModelStatusChange}
+            activeConversationId={activeConversationId}
+            onSelectConversation={handleSelectConversation}
           />
         }
         toolsOpen={toolsOpen}
@@ -326,6 +340,8 @@ export default function AppShell() {
               onConnectionError={handleConnectionError}
               modelStatus={modelStatus}
               onDismissModelStatus={handleDismissModelStatus}
+              conversationId={activeConversationId}
+              onConversationChange={handleConversationChange}
             />
           </div>
         }

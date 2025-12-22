@@ -17,6 +17,8 @@ import {
 } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 
+import { ConversationList } from '../components/chat';
+import '../styles/conversationList.scss';
 import { loadPreferences, savePreferences, validateInitials } from '../utils/preferences';
 import type { ContentDensity, UserPreferences, VisualMode } from '../utils/preferences';
 
@@ -87,6 +89,8 @@ interface SideBarProps {
       content: string;
     } | null
   ) => void;
+  activeConversationId?: string | null;
+  onSelectConversation?: (id: string) => void;
 }
 
 export default function SideBar({
@@ -100,6 +104,8 @@ export default function SideBar({
   onModelLoadError,
   onModelLoadSuccess,
   onModelStatusChange,
+  activeConversationId,
+  onSelectConversation,
 }: SideBarProps) {
   const [activeHref, setActiveHref] = useState('#/page1');
   const [modelOptions, setModelOptions] = useState<SelectProps.Option[]>([]);
@@ -477,6 +483,25 @@ export default function SideBar({
         }
         items={[]}
       />
+
+      {/* Conversations Section */}
+      <Box padding={{ horizontal: 's' }}>
+        <SpaceBetween size="xs">
+          <Box variant="awsui-key-label">
+            <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+              <Icon name="file" size="small" />
+              <span>Recent Conversations</span>
+            </SpaceBetween>
+          </Box>
+          {onNewChat && onSelectConversation && (
+            <ConversationList
+              activeConversationId={activeConversationId ?? null}
+              onSelectConversation={onSelectConversation}
+              onNewChat={onNewChat}
+            />
+          )}
+        </SpaceBetween>
+      </Box>
 
       {/* Preferences Section */}
       <Box padding={{ horizontal: 's', bottom: 's' }}>

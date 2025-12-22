@@ -1,0 +1,40 @@
+// ConversationList styles using Cloudscape design tokens
+@use '@cloudscape-design/design-tokens/index.scss' as cs;
+
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: cs.$space-scaled-xxs;
+}
+
+.conversation-item {
+  padding: cs.$space-scaled-xs cs.$space-scaled-s;
+  border-radius: cs.$border-radius-item;
+  cursor: pointer;
+  transition: background-color cs.$motion-duration-complex cs.$motion-easing-responsive;
+
+  &:hover {
+    background-color: cs.$color-background-dropdown-item-hover;
+  }
+
+  &:focus {
+    outline: 2px solid cs.$color-border-item-focused;
+    outline-offset: -2px;
+  }
+
+  &--active {
+    background-color: cs.$color-background-item-selected;
+
+    &:hover {
+      background-color: cs.$color-background-item-selected;
+    }
+  }
+}
+
+.conversation-title {
+  display: block;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
