@@ -475,10 +475,10 @@ export default function SideBar({
         </SpaceBetween>
       </Box>
 
-      {/* Spacer to push settings to bottom */}
-      <div className="sidebar-spacer" />
+      {/* Divider before settings */}
+      <div className="sidebar-divider" style={{ marginTop: 'auto' }} />
 
-      {/* Settings Section - Collapsed by default */}
+      {/* Settings Section */}
       <Box padding={{ horizontal: 's', bottom: 's' }}>
         <ExpandableSection
           variant="footer"
