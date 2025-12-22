@@ -1,0 +1,73 @@
+# Conversations Feature - Progress Tracker
+
+## Phase 1: Foundation
+- [ ] Install Dexie.js dependencies (dexie, dexie-react-hooks)
+- [ ] Create database schema (src/db/schema.ts)
+- [ ] Create TypeScript interfaces (src/db/types.ts)
+- [ ] Create database singleton (src/db/index.ts)
+- [ ] Write unit tests for schema
+
+## Phase 2: Service Layer
+- [ ] Create conversationService.ts with CRUD operations
+  - [ ] createConversation()
+  - [ ] getConversation()
+  - [ ] listConversations()
+  - [ ] updateConversation()
+  - [ ] archiveConversation()
+  - [ ] deleteConversation()
+- [ ] Create messageService.ts
+  - [ ] addMessage()
+  - [ ] getMessages()
+  - [ ] getMessageCount()
+- [ ] Write unit tests for services
+
+## Phase 3: React Hooks
+- [ ] Create useConversations hook (list with filtering)
+- [ ] Create useConversation hook (single conversation + messages)
+- [ ] Create useConversationMutations hook (create/update/delete)
+- [ ] Write hook tests
+
+## Phase 4: ChatContainer Integration
+- [ ] Add conversationId state to ChatContainer
+- [ ] Auto-create conversation on first message
+- [ ] Persist messages on send/receive
+- [ ] Track model/provider per message
+- [ ] Capture usage metrics per message
+- [ ] Handle conversation loading
+
+## Phase 5: Sidebar UI
+- [ ] Add "Conversations" section to sidebar
+- [ ] Create ConversationList component
+- [ ] Create ConversationItem component (with preview)
+- [ ] Wire up "New Chat" to create fresh conversation
+- [ ] Wire up conversation click to load conversation
+- [ ] Add conversation delete/archive action
+
+## Phase 6: Polish & Edge Cases
+- [ ] Handle conversation title generation (first message summary)
+- [ ] Add loading states for conversation list
+- [ ] Add empty state for no conversations
+- [ ] Handle errors gracefully (IndexedDB quota, etc.)
+- [ ] Add "Clear All Conversations" option
+- [ ] Test with large conversation counts
+
+## Phase 7: Documentation
+- [ ] Update README with conversations feature
+- [ ] Add JSDoc comments to services/hooks
+- [ ] Document data model in code
+
+---
+
+## Current Status: Phase 1 - Not Started
+
+## Notes
+-
+
+## Blockers
+- None
+
+## Decisions Made
+- Using Dexie.js v4 for IndexedDB wrapper
+- Storing message metadata only for attachments (not file content)
+- Soft delete via status field for conversations
+- Multi-entry indexes for provider/model filtering

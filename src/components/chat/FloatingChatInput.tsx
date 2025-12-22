@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  Badge,
   Box,
   Button,
   FileDropzone,
@@ -79,6 +78,8 @@ const FloatingChatInput = ({
   const [settingsVisible, setSettingsVisible] = useState<boolean>(false);
 
   const isBedrockModel = selectedModel?.description?.toLowerCase().includes('bedrock') ?? false;
+  const isMantleModel =
+    selectedModel?.description?.toLowerCase().includes('bedrock-mantle') ?? false;
   const isLMStudioModel = selectedModel?.description?.toLowerCase().includes('lmstudio') ?? false;
   const isOllamaModel = selectedModel?.description?.toLowerCase().includes('ollama') ?? false;
 
@@ -94,14 +95,16 @@ const FloatingChatInput = ({
     }
   }, [isClaude45Model, setSamplingParameter]);
 
-  // Determine provider icon to show
-  const providerIcon = isBedrockModel
-    ? '/bedrock_bw.svg'
-    : isLMStudioModel
-      ? '/lmstudio_icon.svg'
-      : isOllamaModel
-        ? '/ollama_icon.svg'
-        : null;
+  // Determine provider icon and name
+  const getProviderInfo = () => {
+    if (isMantleModel) return { icon: '/bedrock-color.svg', name: 'Mantle' };
+    if (isBedrockModel) return { icon: '/bedrock_bw.svg', name: 'Bedrock' };
+    if (isLMStudioModel) return { icon: '/lmstudio_icon.svg', name: 'LM Studio' };
+    if (isOllamaModel) return { icon: '/ollama_icon.svg', name: 'Ollama' };
+    return null;
+  };
+
+  const providerInfo = getProviderInfo();
 
   const handleFileChange = (newFiles: File[]) => {
     setFiles((prev) => {
@@ -144,186 +147,129 @@ const FloatingChatInput = ({
       )}
 
       <div className="floating-chat-input">
-        <Box padding={{ horizontal: 'l', vertical: 'm' }}>
-          <SpaceBetween size="s">
-            {/* Model Badge and Settings */}
-            {selectedModel && (
-              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                {/* Provider Icon */}
-                {providerIcon && (
-                  <img
-                    src={providerIcon}
-                    alt={
-                      isBedrockModel ? 'Amazon Bedrock' : isLMStudioModel ? 'LM Studio' : 'Ollama'
-                    }
-                    style={{ width: '20px', height: '20px' }}
-                  />
+        <div className="floating-chat-input__container">
+          {/* Compact header bar */}
+          {selectedModel && (
+            <div className="floating-chat-input__header">
+              <div className="floating-chat-input__model-info">
+                {providerInfo && (
+                  <>
+                    <img
+                      src={providerInfo.icon}
+                      alt={providerInfo.name}
+                      className="floating-chat-input__provider-icon"
+                    />
+                    <span className="floating-chat-input__model-name">{selectedModel.label}</span>
+                  </>
                 )}
-                <Badge color="blue">{selectedModel.label}</Badge>
-                <SpaceBetween direction="horizontal" size="l">
-                  <Box fontSize="body-s" color="text-body-secondary">
-                    <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
-                      <Icon name="status-info" size="small" />
-                      <span>Temperature:</span>
-                      <Box fontWeight="bold">
-                        {isClaude45Model && samplingParameter !== 'temperature'
-                          ? 'N/A'
-                          : temperature.toFixed(1)}
-                      </Box>
-                    </SpaceBetween>
-                  </Box>
-                  <Box fontSize="body-s" color="text-body-secondary">
-                    <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
-                      <Icon name="settings" size="small" />
-                      <span>Top P:</span>
-                      <Box fontWeight="bold">
-                        {isClaude45Model && samplingParameter !== 'topP' ? 'N/A' : topP.toFixed(1)}
-                      </Box>
-                    </SpaceBetween>
-                  </Box>
-                  <Box fontSize="body-s" color="text-body-secondary">
-                    <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
-                      <Icon name="status-positive" size="small" />
-                      <span>Max Tokens:</span>
-                      <Box fontWeight="bold">{maxTokens.toLocaleString()}</Box>
-                    </SpaceBetween>
-                  </Box>
-                </SpaceBetween>
-              </SpaceBetween>
-            )}
+              </div>
+              <div className="floating-chat-input__actions">
+                {showOptimizeButton && onOptimizePrompt && (
+                  <button
+                    className="floating-chat-input__action-btn floating-chat-input__action-btn--optimize"
+                    onClick={onOptimizePrompt}
+                    disabled={!inputValue.trim() || isOptimizing || isLoading}
+                    aria-label="Optimize prompt"
+                    title="Optimize prompt with AI"
+                  >
+                    <Icon name="gen-ai" size="small" />
+                  </button>
+                )}
+                <button
+                  className="floating-chat-input__action-btn"
+                  onClick={() => setSettingsVisible(true)}
+                  aria-label="Model settings"
+                  title="Model parameters"
+                >
+                  <Icon name="settings" size="small" />
+                </button>
+              </div>
+            </div>
+          )}
 
-            {/* Input Field */}
-            <FormField
-              stretch={true}
-              description={
-                isBedrockModel && files.length === 0
-                  ? 'Tip: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) up to 4.5 MB'
-                  : undefined
+          {/* Input area */}
+          <Box padding={{ horizontal: 'm', bottom: 'm', top: selectedModel ? 'xs' : 'm' }}>
+            <PromptInput
+              ref={promptInputRef}
+              value={inputValue}
+              onChange={({ detail }) => onInputValueChange(detail.value)}
+              onAction={onSendMessage}
+              placeholder={selectedModel ? 'Send a message...' : 'Select a model to start chatting'}
+              disabled={isLoading || !selectedModel}
+              actionButtonAriaLabel={
+                isLoading ? 'Send message button - suppressed' : 'Send message'
               }
-            >
-              <PromptInput
-                ref={promptInputRef}
-                value={inputValue}
-                onChange={({ detail }) => onInputValueChange(detail.value)}
-                onAction={onSendMessage}
-                placeholder={
-                  selectedModel ? 'Send a message...' : 'Select a model to start chatting'
-                }
-                disabled={isLoading || !selectedModel}
-                actionButtonAriaLabel={
-                  isLoading ? 'Send message button - suppressed' : 'Send message'
-                }
-                actionButtonIconName="send"
-                ariaLabel={isLoading ? 'Prompt input - suppressed' : 'Chat input'}
-                maxRows={8}
-                minRows={3}
-                disableSecondaryActionsPaddings
-                secondaryActions={
-                  <SpaceBetween direction="horizontal" size="xs">
-                    {isBedrockModel && (
-                      <Box padding={{ left: 'xxs', top: 'xs' }}>
-                        <FileInput
-                          ariaLabel="Chat file input - Max 4.5MB per file"
-                          variant="icon"
-                          multiple={true}
-                          value={files}
-                          onChange={({ detail }) => handleFileChange(detail.value)}
-                        />
-                      </Box>
-                    )}
-                    {showOptimizeButton && onOptimizePrompt && (
-                      <Box padding={{ top: 'xs' }} className="optimize-prompt-button">
-                        <Button
-                          variant="icon"
-                          iconName="gen-ai"
-                          ariaLabel="Optimize prompt with Claude 4.5"
-                          onClick={onOptimizePrompt}
-                          disabled={!inputValue.trim() || isOptimizing || isLoading}
-                          loading={isOptimizing}
-                        />
-                      </Box>
-                    )}
-                    {isLMStudioModel && isLoading && (
-                      <Box padding={{ top: 'xs' }}>
-                        <Button
-                          variant="icon"
-                          iconName="stop-circle"
-                          ariaLabel="Stop generation"
-                          onClick={onStopGeneration}
-                        />
-                      </Box>
-                    )}
+              actionButtonIconName="send"
+              ariaLabel={isLoading ? 'Prompt input - suppressed' : 'Chat input'}
+              maxRows={6}
+              minRows={2}
+              disableSecondaryActionsPaddings
+              secondaryActions={
+                <SpaceBetween direction="horizontal" size="xxs">
+                  {isBedrockModel && (
+                    <Box padding={{ left: 'xxs', top: 'xs' }}>
+                      <FileInput
+                        ariaLabel="Upload files"
+                        variant="icon"
+                        multiple={true}
+                        value={files}
+                        onChange={({ detail }) => handleFileChange(detail.value)}
+                      />
+                    </Box>
+                  )}
+                  {isLMStudioModel && isLoading && (
                     <Box padding={{ top: 'xs' }}>
                       <Button
                         variant="icon"
-                        iconName="settings"
-                        ariaLabel="Model settings"
-                        onClick={() => setSettingsVisible(true)}
+                        iconName="close"
+                        ariaLabel="Stop generation"
+                        onClick={onStopGeneration}
                       />
                     </Box>
-                  </SpaceBetween>
-                }
-                secondaryContent={
-                  <>
-                    {isBedrockModel && areFilesDragging ? (
-                      <FileDropzone onChange={({ detail }) => handleFileChange(detail.value)}>
-                        <SpaceBetween size="xs" alignItems="center">
-                          <Icon name="upload" />
-                          <Box>Drop files here</Box>
-                        </SpaceBetween>
-                      </FileDropzone>
-                    ) : (
-                      files.length > 0 && (
-                        <SpaceBetween size="xs">
-                          <FileTokenGroup
-                            items={files.map((file) => ({ file }))}
-                            onDismiss={({ detail }) => handleFileDismiss(detail.fileIndex)}
-                            limit={3}
-                            alignment="horizontal"
-                            showFileThumbnail={true}
-                            i18nStrings={fileTokenGroupI18nStrings}
-                          />
-                          {isBedrockModel && (
-                            <Box fontSize="body-s" color="text-body-secondary">
-                              <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
-                                <Icon name="file" size="small" />
-                                <span>Max 5 files, 4.5 MB each</span>
-                              </SpaceBetween>
-                            </Box>
-                          )}
-                        </SpaceBetween>
-                      )
-                    )}
-                  </>
-                }
-              />
-            </FormField>
-          </SpaceBetween>
-        </Box>
+                  )}
+                </SpaceBetween>
+              }
+              secondaryContent={
+                <>
+                  {isBedrockModel && areFilesDragging ? (
+                    <FileDropzone onChange={({ detail }) => handleFileChange(detail.value)}>
+                      <SpaceBetween size="xs" alignItems="center">
+                        <Icon name="upload" />
+                        <Box>Drop files here</Box>
+                      </SpaceBetween>
+                    </FileDropzone>
+                  ) : (
+                    files.length > 0 && (
+                      <FileTokenGroup
+                        items={files.map((file) => ({ file }))}
+                        onDismiss={({ detail }) => handleFileDismiss(detail.fileIndex)}
+                        limit={3}
+                        alignment="horizontal"
+                        showFileThumbnail={true}
+                        i18nStrings={fileTokenGroupI18nStrings}
+                      />
+                    )
+                  )}
+                </>
+              }
+            />
+          </Box>
+        </div>
       </div>
 
       {/* Settings Modal */}
       <Modal
         onDismiss={() => setSettingsVisible(false)}
         visible={settingsVisible}
+        size="medium"
         footer={
           <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setSettingsVisible(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={() => setSettingsVisible(false)}>
-                OK
-              </Button>
-            </SpaceBetween>
+            <Button variant="primary" onClick={() => setSettingsVisible(false)}>
+              Done
+            </Button>
           </Box>
         }
-        header={
-          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-            <Icon name="settings" />
-            <span>Model Parameters</span>
-          </SpaceBetween>
-        }
+        header="Model Parameters"
       >
         <SpaceBetween size="l">
           <FormField label={`Max Tokens: ${maxTokens.toLocaleString()}`}>
