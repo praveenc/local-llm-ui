@@ -1,7 +1,7 @@
 /**
  * Component for displaying and managing conversation history
  */
-import { Box, Button, Icon, SpaceBetween, Spinner } from '@cloudscape-design/components';
+import { Box, Icon, SpaceBetween, Spinner } from '@cloudscape-design/components';
 
 import type { Conversation } from '../../db';
 import { useConversationMutations, useConversations } from '../../hooks';
@@ -20,11 +20,11 @@ const formatRelativeTime = (date: Date): string => {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
+  if (diffMins < 1) return 'now';
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) return `${diffHours}h`;
+  if (diffDays < 7) return `${diffDays}d`;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
 // Get provider icon
@@ -59,41 +59,30 @@ const ConversationItem = ({
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && onSelect()}
     >
-      <SpaceBetween size="xxs">
-        <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+      <div className="conversation-item__content">
+        <div className="conversation-item__header">
           {providerIcon && (
-            <img
-              src={providerIcon}
-              alt=""
-              style={{ width: '14px', height: '14px', opacity: 0.7 }}
-            />
+            <img src={providerIcon} alt="" className="conversation-item__provider-icon" />
           )}
-          <Box
-            variant="small"
-            fontWeight={isActive ? 'bold' : 'normal'}
-            color={isActive ? 'text-body-secondary' : 'text-body-secondary'}
-          >
-            <span className="conversation-title">{conversation.title}</span>
-          </Box>
-        </SpaceBetween>
-        <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-          <Box variant="small" color="text-status-inactive" fontSize="body-s">
+          <span className="conversation-item__title">{conversation.title}</span>
+        </div>
+        <div className="conversation-item__meta">
+          <span className="conversation-item__time">
             {formatRelativeTime(new Date(conversation.updatedAt))}
-          </Box>
-          <Box variant="small" color="text-status-inactive" fontSize="body-s">
-            · {conversation.messageCount} msgs
-          </Box>
-          <Button
-            variant="inline-icon"
-            iconName="remove"
-            ariaLabel="Archive conversation"
+          </span>
+          <span className="conversation-item__count">{conversation.messageCount} msgs</span>
+          <button
+            className="conversation-item__delete"
             onClick={(e) => {
               e.stopPropagation();
               onArchive();
             }}
-          />
-        </SpaceBetween>
-      </SpaceBetween>
+            aria-label="Delete conversation"
+          >
+            <Icon name="close" size="small" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
@@ -103,7 +92,7 @@ export const ConversationList = ({
   onSelectConversation,
   onNewChat,
 }: ConversationListProps) => {
-  const { conversations, isLoading } = useConversations({ limit: 20 });
+  const { conversations, isLoading } = useConversations({ limit: 15 });
   const { archiveConversation } = useConversationMutations();
 
   const handleArchive = async (id: string) => {
@@ -115,7 +104,7 @@ export const ConversationList = ({
 
   if (isLoading) {
     return (
-      <Box textAlign="center" padding="m">
+      <Box textAlign="center" padding="s">
         <Spinner size="normal" />
       </Box>
     );
@@ -124,9 +113,12 @@ export const ConversationList = ({
   if (!conversations || conversations.length === 0) {
     return (
       <Box padding="s" color="text-status-inactive" textAlign="center">
-        <SpaceBetween size="xs" alignItems="center">
-          <Icon name="file" size="medium" />
+        <SpaceBetween size="xxs" alignItems="center">
+          <Icon name="status-info" size="small" />
           <Box variant="small">No conversations yet</Box>
+          <Box variant="small" color="text-body-secondary">
+            Start chatting to create one
+          </Box>
         </SpaceBetween>
       </Box>
     );

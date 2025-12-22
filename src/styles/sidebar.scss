@@ -1,0 +1,20 @@
+// Sidebar styles using Cloudscape design tokens
+@use '@cloudscape-design/design-tokens/index.scss' as cs;
+
+.sidebar-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.sidebar-divider {
+  height: 1px;
+  background-color: cs.$color-border-divider-default;
+  margin: cs.$space-scaled-xs cs.$space-scaled-s;
+}
+
+.sidebar-spacer {
+  flex: 1;
+  min-height: cs.$space-scaled-l;
+}
