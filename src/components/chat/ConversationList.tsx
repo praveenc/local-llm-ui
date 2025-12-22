@@ -166,16 +166,8 @@ export const ConversationList = ({
   // Remove limit to show all conversations
   const { conversations, isLoading } = useConversations({});
   const { archiveConversation } = useConversationMutations();
-
-  // Delete confirmation modal state
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
-
-  // Group conversations by date
-  const groupedConversations = useMemo(() => {
-    if (!conversations) return {};
-    return groupByDate(conversations, (conv) => new Date(conv.updatedAt));
-  }, [conversations]);
 
   const handleDeleteClick = (conversation: Conversation) => {
     setConversationToDelete(conversation);

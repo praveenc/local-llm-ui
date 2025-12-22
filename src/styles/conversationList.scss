@@ -10,9 +10,9 @@
   min-height: 200px;
   overflow-y: auto;
   margin: 0 calc(-1 * cs.$space-scaled-s);
-  padding: 0 cs.$space-scaled-s;
+  padding: cs.$space-scaled-xxs cs.$space-scaled-s;
 
-  // Custom scrollbar - subtle
+  // Custom scrollbar - subtle and unobtrusive
   &::-webkit-scrollbar {
     width: 4px;
   }
@@ -85,6 +85,7 @@
   border: 1px solid transparent;
   background-color: transparent;
 
+  // Hover state - light fill per Cloudscape visual styles
   &:hover {
     background-color: cs.$color-background-dropdown-item-hover;
     border-color: cs.$color-border-divider-default;
@@ -98,12 +99,14 @@
     }
   }
 
+  // Focus state - blue focus ring per Cloudscape states
   &:focus {
     outline: 2px solid cs.$color-border-item-focused;
     outline-offset: -2px;
     border-radius: cs.$border-radius-item;
   }
 
+  // Active/selected state - blue highlight per Cloudscape states
   &--active {
     background-color: cs.$color-background-item-selected;
     border-color: cs.$color-border-item-selected;
@@ -162,7 +165,7 @@
     gap: cs.$space-scaled-xs;
     font-size: cs.$font-size-body-s;
     color: cs.$color-text-body-secondary;
-    padding-left: calc(14px + cs.$space-scaled-xs); // Align with title
+    padding-left: calc(14px + cs.$space-scaled-xs); // Align with title (icon width + gap)
     transition: color cs.$motion-duration-responsive cs.$motion-easing-responsive;
   }
 
@@ -209,5 +212,27 @@
       outline: 2px solid cs.$color-border-item-focused;
       outline-offset: -2px;
     }
+  }
+}
+
+// Empty state styling
+.conversation-list-empty {
+  padding: cs.$space-scaled-m cs.$space-scaled-s;
+  text-align: center;
+
+  &__icon {
+    color: cs.$color-text-body-secondary;
+    margin-bottom: cs.$space-scaled-xxs;
+  }
+
+  &__title {
+    font-size: cs.$font-size-body-s;
+    color: cs.$color-text-body-secondary;
+    margin-bottom: cs.$space-static-xxxs;
+  }
+
+  &__hint {
+    font-size: cs.$font-size-body-s;
+    color: cs.$color-text-body-secondary;
   }
 }
