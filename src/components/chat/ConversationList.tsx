@@ -1,7 +1,9 @@
 /**
  * Component for displaying and managing conversation history
  */
-import { Box, Icon, SpaceBetween, Spinner } from '@cloudscape-design/components';
+import { useState } from 'react';
+
+import { Box, Button, Icon, Modal, SpaceBetween, Spinner } from '@cloudscape-design/components';
 
 import type { Conversation } from '../../db';
 import { useConversationMutations, useConversations } from '../../hooks';
@@ -40,14 +42,14 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect: () => void;
-  onArchive: () => void;
+  onDelete: () => void;
 }
 
 const ConversationItem = ({
   conversation,
   isActive,
   onSelect,
-  onArchive,
+  onDelete,
 }: ConversationItemProps) => {
   const providerIcon = getProviderIcon(conversation.providers);
 
@@ -75,7 +77,7 @@ const ConversationItem = ({
             className="conversation-item__delete"
             onClick={(e) => {
               e.stopPropagation();
-              onArchive();
+              onDelete();
             }}
             aria-label="Delete conversation"
           >
@@ -94,12 +96,28 @@ export const ConversationList = ({
 }: ConversationListProps) => {
   const { conversations, isLoading } = useConversations({ limit: 15 });
   const { archiveConversation } = useConversationMutations();
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
 
-  const handleArchive = async (id: string) => {
-    await archiveConversation(id);
-    if (id === activeConversationId) {
-      onNewChat();
+  const handleDeleteClick = (conversation: Conversation) => {
+    setConversationToDelete(conversation);
+    setDeleteModalVisible(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (conversationToDelete) {
+      await archiveConversation(conversationToDelete.id);
+      if (conversationToDelete.id === activeConversationId) {
+        onNewChat();
+      }
     }
+    setDeleteModalVisible(false);
+    setConversationToDelete(null);
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteModalVisible(false);
+    setConversationToDelete(null);
   };
 
   if (isLoading) {
@@ -125,17 +143,48 @@ export const ConversationList = ({
   }
 
   return (
-    <div className="conversation-list">
-      {conversations.map((conv) => (
-        <ConversationItem
-          key={conv.id}
-          conversation={conv}
-          isActive={conv.id === activeConversationId}
-          onSelect={() => onSelectConversation(conv.id)}
-          onArchive={() => handleArchive(conv.id)}
-        />
-      ))}
-    </div>
+    <>
+      <div className="conversation-list">
+        {conversations.map((conv) => (
+          <ConversationItem
+            key={conv.id}
+            conversation={conv}
+            isActive={conv.id === activeConversationId}
+            onSelect={() => onSelectConversation(conv.id)}
+            onDelete={() => handleDeleteClick(conv)}
+          />
+        ))}
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={deleteModalVisible}
+        onDismiss={handleCancelDelete}
+        header="Delete conversation"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={handleCancelDelete}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleConfirmDelete}>
+                Delete
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween size="s">
+          <Box>Are you sure you want to delete "{conversationToDelete?.title}"?</Box>
+          <Box color="text-status-warning" variant="small">
+            <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+              <Icon name="status-warning" size="small" />
+              <span>Once deleted, this conversation cannot be restored.</span>
+            </SpaceBetween>
+          </Box>
+        </SpaceBetween>
+      </Modal>
+    </>
   );
 };
 
