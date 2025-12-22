@@ -1,12 +1,37 @@
 /**
  * Component for displaying and managing conversation history
+ * Conversations are grouped by time period (Today, Yesterday, This Week, etc.)
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
-import { Box, Button, Icon, Modal, SpaceBetween, Spinner } from '@cloudscape-design/components';
+import {
+  Box,
+  Button,
+  ExpandableSection,
+  Icon,
+  Modal,
+  SpaceBetween,
+  Spinner,
+} from '@cloudscape-design/components';
+import type { IconProps } from '@cloudscape-design/components';
 
 import type { Conversation } from '../../db';
 import { useConversationMutations, useConversations } from '../../hooks';
+import {
+  DATE_GROUP_LABELS,
+  DATE_GROUP_ORDER,
+  type DateGroup,
+  groupByDate,
+} from '../../utils/dateUtils';
+
+// Map date groups to appropriate icons
+const DATE_GROUP_ICONS: Record<DateGroup, IconProps.Name> = {
+  today: 'calendar',
+  yesterday: 'history',
+  thisWeek: 'history',
+  thisMonth: 'history',
+  older: 'folder',
+};
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -14,7 +39,7 @@ interface ConversationListProps {
   onNewChat: () => void;
 }
 
-// Format relative time
+// Format relative time for display
 const formatRelativeTime = (date: Date): string => {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -29,7 +54,7 @@ const formatRelativeTime = (date: Date): string => {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
-// Get provider icon
+// Get provider icon based on providers used in conversation
 const getProviderIcon = (providers: string[]): string | null => {
   if (providers.includes('bedrock-mantle')) return '/bedrock-color.svg';
   if (providers.includes('bedrock')) return '/bedrock_bw.svg';
@@ -89,12 +114,57 @@ const ConversationItem = ({
   );
 };
 
+interface ConversationGroupProps {
+  group: DateGroup;
+  conversations: Conversation[];
+  activeConversationId: string | null;
+  onSelectConversation: (id: string) => void;
+  onDeleteConversation: (conversation: Conversation) => void;
+  defaultExpanded?: boolean;
+}
+
+const ConversationGroup = ({
+  group,
+  conversations,
+  activeConversationId,
+  onSelectConversation,
+  onDeleteConversation,
+  defaultExpanded = true,
+}: ConversationGroupProps) => {
+  return (
+    <ExpandableSection
+      variant="footer"
+      defaultExpanded={defaultExpanded}
+      headerText={
+        <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+          <Icon name={DATE_GROUP_ICONS[group]} size="small" />
+          <span className="conversation-group__label">{DATE_GROUP_LABELS[group]}</span>
+          <span className="conversation-group__count">({conversations.length})</span>
+        </SpaceBetween>
+      }
+    >
+      <div className="conversation-group__items">
+        {conversations.map((conv) => (
+          <ConversationItem
+            key={conv.id}
+            conversation={conv}
+            isActive={conv.id === activeConversationId}
+            onSelect={() => onSelectConversation(conv.id)}
+            onDelete={() => onDeleteConversation(conv)}
+          />
+        ))}
+      </div>
+    </ExpandableSection>
+  );
+};
+
 export const ConversationList = ({
   activeConversationId,
   onSelectConversation,
   onNewChat,
 }: ConversationListProps) => {
-  const { conversations, isLoading } = useConversations({ limit: 15 });
+  // Remove limit to show all conversations
+  const { conversations, isLoading } = useConversations({});
   const { archiveConversation } = useConversationMutations();
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
@@ -145,15 +215,23 @@ export const ConversationList = ({
   return (
     <>
       <div className="conversation-list">
-        {conversations.map((conv) => (
-          <ConversationItem
-            key={conv.id}
-            conversation={conv}
-            isActive={conv.id === activeConversationId}
-            onSelect={() => onSelectConversation(conv.id)}
-            onDelete={() => handleDeleteClick(conv)}
-          />
-        ))}
+        {DATE_GROUP_ORDER.map((group) => {
+          const groupConversations = groupedConversations[group];
+          if (!groupConversations || groupConversations.length === 0) return null;
+
+          return (
+            <ConversationGroup
+              key={group}
+              group={group}
+              conversations={groupConversations}
+              activeConversationId={activeConversationId}
+              onSelectConversation={onSelectConversation}
+              onDeleteConversation={handleDeleteClick}
+              // Collapse older groups by default
+              defaultExpanded={group === 'today' || group === 'yesterday'}
+            />
+          );
+        })}
       </div>
 
       {/* Delete Confirmation Modal */}

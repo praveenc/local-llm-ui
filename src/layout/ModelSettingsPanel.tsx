@@ -461,9 +461,12 @@ export default function SideBar({
       {/* Conversations Section - Primary focus */}
       <Box padding={{ horizontal: 's', top: 'xs' }}>
         <SpaceBetween size="xs">
-          <Box variant="small" color="text-body-secondary" fontWeight="bold">
-            Conversations
-          </Box>
+          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+            <Icon name="contact" size="small" />
+            <Box variant="small" color="text-body-secondary" fontWeight="bold">
+              Conversations
+            </Box>
+          </SpaceBetween>
           {onNewChat && onSelectConversation && (
             <ConversationList
               activeConversationId={activeConversationId ?? null}

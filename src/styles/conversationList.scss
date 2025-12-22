@@ -1,12 +1,13 @@
 // ConversationList styles using Cloudscape design tokens
-// Following Cloudscape visual foundations: spacing, typography, colors, and states
+// Supports grouped conversations by time period
 @use '@cloudscape-design/design-tokens/index.scss' as cs;
 
 .conversation-list {
   display: flex;
   flex-direction: column;
   gap: cs.$space-static-xxs;
-  max-height: 400px;
+  max-height: calc(100vh - 350px); // Dynamic height based on viewport
+  min-height: 200px;
   overflow-y: auto;
   margin: 0 calc(-1 * cs.$space-scaled-s);
   padding: cs.$space-scaled-xxs cs.$space-scaled-s;
@@ -30,6 +31,50 @@
   }
 }
 
+// Group styling
+.conversation-group {
+  &__label {
+    font-size: cs.$font-size-body-s;
+    font-weight: cs.$font-weight-heading-xs;
+    color: cs.$color-text-body-default;
+  }
+
+  &__count {
+    font-weight: 400;
+    color: cs.$color-text-body-secondary;
+    font-size: cs.$font-size-body-s;
+  }
+
+  &__items {
+    display: flex;
+    flex-direction: column;
+    gap: cs.$space-static-xxxs;
+    padding-top: cs.$space-static-xxs;
+  }
+}
+
+// Override Cloudscape ExpandableSection styles for sidebar groups
+.conversation-list {
+  // Give expandable section headers proper spacing
+  [class*='awsui_header-wrapper'] {
+    padding: cs.$space-scaled-xs cs.$space-scaled-s !important;
+    margin: 0 calc(-1 * cs.$space-scaled-s);
+    border-radius: cs.$border-radius-item;
+
+    &:hover {
+      background-color: cs.$color-background-dropdown-item-hover;
+    }
+  }
+
+  [class*='awsui_content'] {
+    padding: 0 !important;
+  }
+
+  // Ensure the expand/collapse icon is visible
+  [class*='awsui_icon'] {
+    color: cs.$color-text-body-secondary;
+  }
+}
 .conversation-item {
   padding: cs.$space-scaled-xs cs.$space-scaled-s;
   border-radius: cs.$border-radius-item;
