@@ -48,6 +48,8 @@ interface FloatingChatInputProps {
     content: string;
   } | null;
   onDismissModelStatus?: () => void;
+  onClearConversation?: () => void;
+  hasMessages?: boolean;
 }
 
 const FloatingChatInput = ({
@@ -71,11 +73,14 @@ const FloatingChatInput = ({
   isOptimizing = false,
   modelStatus,
   onDismissModelStatus,
+  onClearConversation,
+  hasMessages = false,
 }: FloatingChatInputProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const { areFilesDragging } = useFilesDragging();
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const [settingsVisible, setSettingsVisible] = useState<boolean>(false);
+  const [clearModalVisible, setClearModalVisible] = useState<boolean>(false);
 
   const isBedrockModel = selectedModel?.description?.toLowerCase().includes('bedrock') ?? false;
   const isMantleModel =
@@ -173,6 +178,17 @@ const FloatingChatInput = ({
                     title="Optimize prompt with AI"
                   >
                     <Icon name="gen-ai" size="small" />
+                  </button>
+                )}
+                {hasMessages && onClearConversation && (
+                  <button
+                    className="floating-chat-input__action-btn"
+                    onClick={() => setClearModalVisible(true)}
+                    disabled={isLoading}
+                    aria-label="Clear conversation"
+                    title="Clear conversation"
+                  >
+                    <Icon name="remove" size="small" />
                   </button>
                 )}
                 <button
@@ -326,6 +342,42 @@ const FloatingChatInput = ({
               disabled={isClaude45Model && samplingParameter !== 'topP'}
             />
           </FormField>
+        </SpaceBetween>
+      </Modal>
+
+      {/* Clear Conversation Confirmation Modal */}
+      <Modal
+        onDismiss={() => setClearModalVisible(false)}
+        visible={clearModalVisible}
+        size="small"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={() => setClearModalVisible(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  onClearConversation?.();
+                  setClearModalVisible(false);
+                }}
+              >
+                Clear
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+        header="Clear conversation"
+      >
+        <SpaceBetween size="s">
+          <Box>Are you sure you want to clear this conversation?</Box>
+          <Box color="text-status-warning" variant="small">
+            <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+              <Icon name="status-warning" size="small" />
+              <span>This action is irreversible. All messages will be permanently deleted.</span>
+            </SpaceBetween>
+          </Box>
         </SpaceBetween>
       </Modal>
     </>
