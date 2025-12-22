@@ -33,12 +33,10 @@
 
 // Group styling
 .conversation-group {
-  &__header {
-    display: flex;
-    align-items: center;
-    gap: cs.$space-static-xs;
+  &__label {
     font-size: cs.$font-size-body-s;
     font-weight: cs.$font-weight-heading-xs;
+    color: cs.$color-text-body-default;
   }
 
   &__count {
@@ -55,7 +53,28 @@
   }
 }
 
-// Conversation item styling
+// Override Cloudscape ExpandableSection styles for sidebar groups
+.conversation-list {
+  // Give expandable section headers proper spacing
+  [class*='awsui_header-wrapper'] {
+    padding: cs.$space-scaled-xs cs.$space-scaled-s !important;
+    margin: 0 calc(-1 * cs.$space-scaled-s);
+    border-radius: cs.$border-radius-item;
+
+    &:hover {
+      background-color: cs.$color-background-dropdown-item-hover;
+    }
+  }
+
+  [class*='awsui_content'] {
+    padding: 0 !important;
+  }
+
+  // Ensure the expand/collapse icon is visible
+  [class*='awsui_icon'] {
+    color: cs.$color-text-body-secondary;
+  }
+}
 .conversation-item {
   padding: cs.$space-scaled-xs cs.$space-scaled-s;
   border-radius: cs.$border-radius-item;
@@ -190,17 +209,5 @@
       outline: 2px solid cs.$color-border-item-focused;
       outline-offset: -2px;
     }
-  }
-}
-
-// Override Cloudscape ExpandableSection styles for compact sidebar
-.conversation-list {
-  // Make expandable sections more compact
-  [class*='awsui_header'] {
-    padding: cs.$space-static-xxs 0 !important;
-  }
-
-  [class*='awsui_content'] {
-    padding: 0 !important;
   }
 }

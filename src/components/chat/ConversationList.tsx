@@ -13,6 +13,7 @@ import {
   SpaceBetween,
   Spinner,
 } from '@cloudscape-design/components';
+import type { IconProps } from '@cloudscape-design/components';
 
 import type { Conversation } from '../../db';
 import { useConversationMutations, useConversations } from '../../hooks';
@@ -22,6 +23,15 @@ import {
   type DateGroup,
   groupByDate,
 } from '../../utils/dateUtils';
+
+// Map date groups to appropriate icons
+const DATE_GROUP_ICONS: Record<DateGroup, IconProps.Name> = {
+  today: 'calendar',
+  yesterday: 'history',
+  thisWeek: 'history',
+  thisMonth: 'history',
+  older: 'folder',
+};
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -126,10 +136,11 @@ const ConversationGroup = ({
       variant="footer"
       defaultExpanded={defaultExpanded}
       headerText={
-        <span className="conversation-group__header">
-          {DATE_GROUP_LABELS[group]}
+        <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+          <Icon name={DATE_GROUP_ICONS[group]} size="small" />
+          <span className="conversation-group__label">{DATE_GROUP_LABELS[group]}</span>
           <span className="conversation-group__count">({conversations.length})</span>
-        </span>
+        </SpaceBetween>
       }
     >
       <div className="conversation-group__items">
