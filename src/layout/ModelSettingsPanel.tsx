@@ -622,6 +622,34 @@ export default function SideBar({
                           ),
                           description: 'Local server on port 11434',
                         },
+                        {
+                          value: 'groq',
+                          label: (
+                            <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                              <img
+                                src="/groq_icon.svg"
+                                alt=""
+                                style={{ width: '16px', height: '16px' }}
+                              />
+                              <span>Groq</span>
+                            </SpaceBetween>
+                          ),
+                          description: 'Fast inference cloud API (requires API key)',
+                        },
+                        {
+                          value: 'cerebras',
+                          label: (
+                            <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                              <img
+                                src="/cerebras_icon.svg"
+                                alt=""
+                                style={{ width: '16px', height: '16px' }}
+                              />
+                              <span>Cerebras</span>
+                            </SpaceBetween>
+                          ),
+                          description: 'High-speed inference API (requires API key)',
+                        },
                       ]}
                     />
                   </SpaceBetween>
