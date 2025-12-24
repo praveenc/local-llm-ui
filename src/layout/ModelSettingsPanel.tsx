@@ -757,8 +757,6 @@ export default function SideBar({
         <ModelLoadingProgress
           visible={modelLoader.isLoading}
           modelName={pendingModel.label || pendingModel.value || 'Unknown Model'}
-          progress={modelLoader.progress}
-          message={modelLoader.message}
           onCancel={handleCancelProgress}
         />
       )}

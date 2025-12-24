@@ -1,27 +1,16 @@
 import { useEffect, useState } from 'react';
 
-import {
-  Box,
-  Button,
-  Modal,
-  ProgressBar,
-  SpaceBetween,
-  StatusIndicator,
-} from '@cloudscape-design/components';
+import { Box, Button, Modal, SpaceBetween, Spinner } from '@cloudscape-design/components';
 
 export interface ModelLoadingProgressProps {
   visible: boolean;
   modelName: string;
-  progress: number;
-  message: string;
   onCancel: () => void;
 }
 
 export default function ModelLoadingProgress({
   visible,
   modelName,
-  progress,
-  message,
   onCancel,
 }: ModelLoadingProgressProps) {
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -40,12 +29,10 @@ export default function ModelLoadingProgress({
     return () => clearInterval(interval);
   }, [visible]);
 
-  const canCancel = progress < 90;
-
   return (
     <Modal
       visible={visible}
-      onDismiss={canCancel ? onCancel : undefined}
+      onDismiss={onCancel}
       header={
         <SpaceBetween direction="horizontal" size="xs" alignItems="center">
           <img src="/lmstudio_icon.svg" alt="LM Studio" style={{ width: '24px', height: '24px' }} />
@@ -53,13 +40,11 @@ export default function ModelLoadingProgress({
         </SpaceBetween>
       }
       footer={
-        canCancel ? (
-          <Box float="right">
-            <Button variant="link" onClick={onCancel}>
-              Cancel
-            </Button>
-          </Box>
-        ) : null
+        <Box float="right">
+          <Button variant="link" onClick={onCancel}>
+            Cancel
+          </Button>
+        </Box>
       }
     >
       <SpaceBetween size="l">
@@ -70,31 +55,15 @@ export default function ModelLoadingProgress({
           </SpaceBetween>
         </Box>
 
-        <div>
-          <ProgressBar value={progress} variant="standalone" />
-        </div>
-
-        <Box>
-          <SpaceBetween size="xs">
-            <div>
-              <StatusIndicator type="loading">{progress.toFixed(1)}% complete</StatusIndicator>
-            </div>
-            {message && (
-              <Box color="text-body-secondary" fontSize="body-s">
-                {message}
-              </Box>
-            )}
-            <Box color="text-body-secondary" fontSize="body-s">
-              Elapsed time: {elapsedTime}s
-            </Box>
-          </SpaceBetween>
+        <Box textAlign="center" padding="l">
+          <Spinner size="large" />
         </Box>
 
-        {!canCancel && (
-          <Box variant="p" color="text-body-secondary" fontSize="body-s">
-            Almost done! Please wait...
+        <Box textAlign="center">
+          <Box color="text-body-secondary" fontSize="body-s">
+            Elapsed time: {elapsedTime}s
           </Box>
-        )}
+        </Box>
       </SpaceBetween>
     </Modal>
   );
