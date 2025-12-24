@@ -98,6 +98,7 @@ const ChatContainer = ({
     promptTokens?: number;
     completionTokens?: number;
     totalTokens?: number;
+    latencyMs?: number;
   } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -458,17 +459,19 @@ const ChatContainer = ({
             const metadataJson = chunk.replace('__AISDK_METADATA__', '');
             const metadata = JSON.parse(metadataJson);
 
-            // Extract usage information
-            if (metadata.usage) {
+            // Extract usage and latency information
+            if (metadata.usage || metadata.latencyMs) {
               capturedUsage = {
-                inputTokens: metadata.usage.promptTokens,
-                outputTokens: metadata.usage.completionTokens,
-                totalTokens: metadata.usage.totalTokens,
+                inputTokens: metadata.usage?.promptTokens,
+                outputTokens: metadata.usage?.completionTokens,
+                totalTokens: metadata.usage?.totalTokens,
+                latencyMs: metadata.latencyMs,
               };
               setLmstudioMetadata({
-                promptTokens: metadata.usage.promptTokens,
-                completionTokens: metadata.usage.completionTokens,
-                totalTokens: metadata.usage.totalTokens,
+                promptTokens: metadata.usage?.promptTokens,
+                completionTokens: metadata.usage?.completionTokens,
+                totalTokens: metadata.usage?.totalTokens,
+                latencyMs: metadata.latencyMs,
               });
             }
           } catch (e) {
@@ -735,7 +738,11 @@ const ChatContainer = ({
                           ? bedrockMetadata
                           : selectedModel?.description?.toLowerCase().includes('lmstudio')
                             ? lmstudioMetadata
-                            : null
+                            : selectedModel?.description?.toLowerCase().includes('groq')
+                              ? lmstudioMetadata
+                              : selectedModel?.description?.toLowerCase().includes('cerebras')
+                                ? lmstudioMetadata
+                                : null
                     }
                   />
                 </Box>

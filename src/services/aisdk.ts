@@ -125,6 +125,7 @@ export class AISDKService {
    */
   async *chat(request: ChatRequest): AsyncGenerator<string, void, unknown> {
     const provider = this.createProvider();
+    const startTime = Date.now();
 
     // Convert messages to AI SDK format
     const messages = request.messages.map((msg) => ({
@@ -147,19 +148,22 @@ export class AISDKService {
         yield chunk;
       }
 
+      // Calculate latency
+      const latencyMs = Date.now() - startTime;
+
       // After streaming completes, get usage data
       const usage = await result.usage;
-      if (usage) {
-        console.log(`${this.provider}: Usage data:`, usage);
-        // Yield metadata in the same format as LM Studio for consistency
-        yield `__AISDK_METADATA__${JSON.stringify({
-          usage: {
-            promptTokens: usage.inputTokens,
-            completionTokens: usage.outputTokens,
-            totalTokens: (usage.inputTokens || 0) + (usage.outputTokens || 0),
-          },
-        })}`;
-      }
+      console.log(`${this.provider}: Usage data:`, usage, `Latency: ${latencyMs}ms`);
+
+      // Yield metadata in the same format as LM Studio for consistency
+      yield `__AISDK_METADATA__${JSON.stringify({
+        usage: {
+          promptTokens: usage?.inputTokens,
+          completionTokens: usage?.outputTokens,
+          totalTokens: (usage?.inputTokens || 0) + (usage?.outputTokens || 0),
+        },
+        latencyMs,
+      })}`;
     } catch (error) {
       const err = error as Error;
       console.error(`${this.provider}: Chat error:`, err);
