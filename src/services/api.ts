@@ -1,10 +1,11 @@
+import { cerebrasService, groqService } from './aisdk';
 import { bedrockService } from './bedrock';
 import { lmstudioService } from './lmstudio';
 import { mantleService } from './mantle';
 import { ollamaService } from './ollama';
 import type { ChatRequest, ModelInfo } from './types';
 
-export type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle';
+export type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle' | 'groq' | 'cerebras';
 
 class APIService {
   async getAllModels(): Promise<ModelInfo[]> {
@@ -34,6 +35,22 @@ class APIService {
       console.log('Bedrock not available');
     }
 
+    // Try Groq (AI SDK)
+    try {
+      const groqModels = groqService.getModels();
+      models.push(...groqModels);
+    } catch {
+      console.log('Groq not available');
+    }
+
+    // Try Cerebras (AI SDK)
+    try {
+      const cerebrasModels = cerebrasService.getModels();
+      models.push(...cerebrasModels);
+    } catch {
+      console.log('Cerebras not available');
+    }
+
     if (models.length === 0) {
       throw new Error(
         'No AI services available. Please start LMStudio, Ollama, or configure AWS credentials for Bedrock.'
@@ -44,17 +61,28 @@ class APIService {
   }
 
   async *chat(provider: Provider, request: ChatRequest): AsyncGenerator<string, void, unknown> {
-    let service;
-    if (provider === 'lmstudio') {
-      service = lmstudioService;
-    } else if (provider === 'ollama') {
-      service = ollamaService;
-    } else if (provider === 'bedrock-mantle') {
-      service = mantleService;
-    } else {
-      service = bedrockService;
+    switch (provider) {
+      case 'lmstudio':
+        yield* lmstudioService.chat(request);
+        break;
+      case 'ollama':
+        yield* ollamaService.chat(request);
+        break;
+      case 'bedrock-mantle':
+        yield* mantleService.chat(request);
+        break;
+      case 'bedrock':
+        yield* bedrockService.chat(request);
+        break;
+      case 'groq':
+        yield* groqService.chat(request);
+        break;
+      case 'cerebras':
+        yield* cerebrasService.chat(request);
+        break;
+      default:
+        throw new Error(`Unknown provider: ${provider}`);
     }
-    yield* service.chat(request);
   }
 
   async checkConnections(): Promise<{
@@ -62,15 +90,19 @@ class APIService {
     ollama: boolean;
     bedrock: boolean;
     'bedrock-mantle': boolean;
+    groq: boolean;
+    cerebras: boolean;
   }> {
-    const [lmstudio, ollama, bedrock, bedrockMantle] = await Promise.all([
+    const [lmstudio, ollama, bedrock, bedrockMantle, groq, cerebras] = await Promise.all([
       lmstudioService.checkConnection(),
       ollamaService.checkConnection(),
       bedrockService.checkConnection(),
       mantleService.checkConnection(),
+      groqService.checkConnection(),
+      cerebrasService.checkConnection(),
     ]);
 
-    return { lmstudio, ollama, bedrock, 'bedrock-mantle': bedrockMantle };
+    return { lmstudio, ollama, bedrock, 'bedrock-mantle': bedrockMantle, groq, cerebras };
   }
 
   async checkConnection(provider: Provider): Promise<boolean> {
@@ -83,6 +115,10 @@ class APIService {
         return bedrockService.checkConnection();
       case 'bedrock-mantle':
         return mantleService.checkConnection();
+      case 'groq':
+        return groqService.checkConnection();
+      case 'cerebras':
+        return cerebrasService.checkConnection();
       default:
         return false;
     }
