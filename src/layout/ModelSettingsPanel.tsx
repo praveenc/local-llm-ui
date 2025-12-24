@@ -22,13 +22,14 @@ import {
   ModelLoadingProgress,
 } from '../components/chat';
 import { useModelLoader } from '../hooks';
+import { syncApiKeysFromPreferences } from '../services/aisdk';
 import '../styles/conversationList.scss';
 import '../styles/sidebar.scss';
 import { loadPreferences, savePreferences, validateInitials } from '../utils/preferences';
 import type { ContentDensity, UserPreferences, VisualMode } from '../utils/preferences';
 
 type LoadingStatus = 'pending' | 'loading' | 'error' | 'finished';
-type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle';
+type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle' | 'groq' | 'cerebras';
 
 // Mantle regions for the dropdown
 const MANTLE_REGIONS = [
@@ -78,6 +79,20 @@ const PROVIDER_INFO: Record<
     icon: '/ollama_icon.svg',
     description: 'Port 11434',
     iconAlt: 'Ollama',
+  },
+  groq: {
+    label: 'Groq',
+    shortLabel: 'Groq',
+    icon: '/groq_icon.svg',
+    description: 'API key required',
+    iconAlt: 'Groq',
+  },
+  cerebras: {
+    label: 'Cerebras',
+    shortLabel: 'Cerebras',
+    icon: '/cerebras_icon.svg',
+    description: 'API key required',
+    iconAlt: 'Cerebras',
   },
 };
 
@@ -427,9 +442,18 @@ export default function SideBar({
       }
     };
 
+    // Sync AI SDK API keys to localStorage
+    syncApiKeysFromPreferences(preferences.groqApiKey, preferences.cerebrasApiKey);
+
     fetchModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProvider, preferences.bedrockMantleApiKey, preferences.bedrockMantleRegion]);
+  }, [
+    selectedProvider,
+    preferences.bedrockMantleApiKey,
+    preferences.bedrockMantleRegion,
+    preferences.groqApiKey,
+    preferences.cerebrasApiKey,
+  ]);
 
   const providerInfo = PROVIDER_INFO[selectedProvider];
 
@@ -657,6 +681,62 @@ export default function SideBar({
                           })
                         }
                         options={MANTLE_REGIONS}
+                      />
+                    </FormField>
+                  </SpaceBetween>
+                </Box>
+
+                {/* Divider */}
+                <hr
+                  style={{
+                    border: 'none',
+                    borderTop: '1px solid var(--color-border-divider-default)',
+                    margin: '0',
+                  }}
+                />
+
+                {/* AI SDK Provider Settings */}
+                <Box>
+                  <SpaceBetween size="s">
+                    <Box variant="h4">
+                      <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                        <Icon name="key" size="small" />
+                        <span>AI Provider API Keys</span>
+                      </SpaceBetween>
+                    </Box>
+                    <FormField
+                      label="Groq API Key"
+                      description="Get your key from console.groq.com"
+                      stretch={true}
+                    >
+                      <Input
+                        type="password"
+                        value={customValue.groqApiKey || ''}
+                        onChange={({ detail }) =>
+                          setCustomValue({
+                            ...customValue,
+                            groqApiKey: detail.value,
+                          })
+                        }
+                        placeholder="Enter your Groq API key"
+                      />
+                    </FormField>
+
+                    <FormField
+                      label="Cerebras API Key"
+                      description="Get your key from cloud.cerebras.ai"
+                      stretch={true}
+                    >
+                      <Input
+                        type="password"
+                        value={customValue.cerebrasApiKey || ''}
+                        onChange={({ detail }) =>
+                          setCustomValue({
+                            ...customValue,
+                            cerebrasApiKey: detail.value,
+                          })
+                        }
+                        placeholder="Enter your Cerebras API key"
                       />
                     </FormField>
                   </SpaceBetween>

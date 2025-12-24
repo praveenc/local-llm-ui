@@ -2,7 +2,7 @@
  * User preferences management utilities
  */
 
-export type Provider = 'ollama' | 'lmstudio' | 'bedrock' | 'bedrock-mantle';
+export type Provider = 'ollama' | 'lmstudio' | 'bedrock' | 'bedrock-mantle' | 'groq' | 'cerebras';
 export type VisualMode = 'light' | 'dark';
 export type ContentDensity = 'comfortable' | 'compact';
 
@@ -14,6 +14,9 @@ export interface UserPreferences {
   // Bedrock Mantle settings
   bedrockMantleApiKey?: string;
   bedrockMantleRegion?: string;
+  // AI SDK provider settings
+  groqApiKey?: string;
+  cerebrasApiKey?: string;
 }
 
 const STORAGE_KEY = 'local-llm-ui-preferences';

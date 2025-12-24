@@ -24,11 +24,25 @@ const CEREBRAS_MODELS = [
   { id: 'llama3.1-8b', name: 'Llama 3.1 8B' },
 ];
 
-// API key storage keys
+// API key storage keys (used directly in localStorage for runtime access)
 const API_KEY_STORAGE = {
   groq: 'GROQ_API_KEY',
   cerebras: 'CEREBRAS_API_KEY',
 } as const;
+
+// Sync API keys from preferences to localStorage (call on app init or preference change)
+export function syncApiKeysFromPreferences(groqApiKey?: string, cerebrasApiKey?: string): void {
+  if (groqApiKey) {
+    localStorage.setItem(API_KEY_STORAGE.groq, groqApiKey);
+  } else {
+    localStorage.removeItem(API_KEY_STORAGE.groq);
+  }
+  if (cerebrasApiKey) {
+    localStorage.setItem(API_KEY_STORAGE.cerebras, cerebrasApiKey);
+  } else {
+    localStorage.removeItem(API_KEY_STORAGE.cerebras);
+  }
+}
 
 export class AISDKService {
   private provider: AISDKProvider;
