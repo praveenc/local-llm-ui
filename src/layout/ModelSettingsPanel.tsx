@@ -22,7 +22,7 @@ import {
   ModelLoadingProgress,
 } from '../components/chat';
 import { useModelLoader } from '../hooks';
-import { syncApiKeysFromPreferences } from '../services/aisdk';
+import { cerebrasService, groqService, syncApiKeysFromPreferences } from '../services/aisdk';
 import '../styles/conversationList.scss';
 import '../styles/sidebar.scss';
 import { loadPreferences, savePreferences, validateInitials } from '../utils/preferences';
@@ -272,21 +272,28 @@ export default function SideBar({
         }
 
         // Fetch models from the selected provider
-        let service;
+        let models;
         if (selectedProvider === 'lmstudio') {
-          service = lmstudioService;
+          console.log(`Fetching models from ${selectedProvider}...`);
+          models = await lmstudioService.getModels();
         } else if (selectedProvider === 'ollama') {
-          service = ollamaService;
+          console.log(`Fetching models from ${selectedProvider}...`);
+          models = await ollamaService.getModels();
         } else if (selectedProvider === 'bedrock') {
-          service = bedrockService;
+          console.log(`Fetching models from ${selectedProvider}...`);
+          models = await bedrockService.getModels();
         } else if (selectedProvider === 'bedrock-mantle') {
-          service = mantleService;
+          console.log(`Fetching models from ${selectedProvider}...`);
+          models = await mantleService.getModels();
+        } else if (selectedProvider === 'groq') {
+          console.log(`Fetching models from ${selectedProvider}...`);
+          models = groqService.getModels();
+        } else if (selectedProvider === 'cerebras') {
+          console.log(`Fetching models from ${selectedProvider}...`);
+          models = cerebrasService.getModels();
         } else {
           throw new Error('Invalid provider');
         }
-        console.log(`Fetching models from ${selectedProvider}...`);
-
-        const models = await service.getModels();
         console.log(`Received ${models.length} models from ${selectedProvider}:`, models);
 
         let formattedOptions: SelectProps.Option[];
@@ -423,6 +430,16 @@ export default function SideBar({
             errorMessage =
               'Cannot connect to Bedrock Mantle. Please check your Bedrock API key in preferences.';
           }
+        } else if (selectedProvider === 'groq') {
+          errorHeader = 'Groq connection failed';
+          const err = error as Error;
+          errorMessage =
+            err.message || 'Cannot connect to Groq. Please check your API key in preferences.';
+        } else if (selectedProvider === 'cerebras') {
+          errorHeader = 'Cerebras connection failed';
+          const err = error as Error;
+          errorMessage =
+            err.message || 'Cannot connect to Cerebras. Please check your API key in preferences.';
         } else {
           errorHeader = 'Connection Error';
           errorMessage = 'Invalid provider selected.';
