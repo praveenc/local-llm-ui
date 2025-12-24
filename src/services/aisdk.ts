@@ -142,8 +142,23 @@ export class AISDKService {
         abortSignal: request.signal,
       });
 
+      // Stream the text content
       for await (const chunk of result.textStream) {
         yield chunk;
+      }
+
+      // After streaming completes, get usage data
+      const usage = await result.usage;
+      if (usage) {
+        console.log(`${this.provider}: Usage data:`, usage);
+        // Yield metadata in the same format as LM Studio for consistency
+        yield `__AISDK_METADATA__${JSON.stringify({
+          usage: {
+            promptTokens: usage.inputTokens,
+            completionTokens: usage.outputTokens,
+            totalTokens: (usage.inputTokens || 0) + (usage.outputTokens || 0),
+          },
+        })}`;
       }
     } catch (error) {
       const err = error as Error;

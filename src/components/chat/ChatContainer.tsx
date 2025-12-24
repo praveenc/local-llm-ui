@@ -452,6 +452,31 @@ const ChatContainer = ({
           continue;
         }
 
+        // Check if this is AI SDK metadata (Groq, Cerebras)
+        if (chunk.startsWith('__AISDK_METADATA__')) {
+          try {
+            const metadataJson = chunk.replace('__AISDK_METADATA__', '');
+            const metadata = JSON.parse(metadataJson);
+
+            // Extract usage information
+            if (metadata.usage) {
+              capturedUsage = {
+                inputTokens: metadata.usage.promptTokens,
+                outputTokens: metadata.usage.completionTokens,
+                totalTokens: metadata.usage.totalTokens,
+              };
+              setLmstudioMetadata({
+                promptTokens: metadata.usage.promptTokens,
+                completionTokens: metadata.usage.completionTokens,
+                totalTokens: metadata.usage.totalTokens,
+              });
+            }
+          } catch (e) {
+            console.error('Failed to parse AI SDK metadata:', e);
+          }
+          continue;
+        }
+
         fullContent += chunk;
         setStreamingMessage({
           id: streamingId,
