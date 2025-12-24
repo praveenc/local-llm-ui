@@ -1,4 +1,4 @@
-import type { ChatRequest, ModelInfo } from './types';
+import type { ChatRequest, LoadProgressEvent, ModelInfo } from './types';
 
 // Use proxy in development, direct connection in production
 const LMSTUDIO_BASE_URL = import.meta.env.DEV ? '/api/lmstudio/v1' : 'http://localhost:1234/v1';
@@ -285,6 +285,65 @@ export class LMStudioService {
       }
     } catch (error) {
       console.error('LMStudio: Chat error:', error);
+      throw error;
+    }
+  }
+
+  async *loadModelWithProgress(
+    modelPath: string,
+    options?: { contextLength?: number; ttl?: number; signal?: AbortSignal }
+  ): AsyncGenerator<LoadProgressEvent, void, unknown> {
+    try {
+      const response = await fetch(`${this.sdkUrl}/load-with-progress`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          modelPath,
+          contextLength: options?.contextLength,
+          ttl: options?.ttl ?? 300,
+        }),
+        signal: options?.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to load model: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Response body is not readable');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+
+            try {
+              const event = JSON.parse(data) as LoadProgressEvent;
+              yield event;
+            } catch (e) {
+              console.error('Failed to parse SSE data:', e);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('LMStudio: Load model with progress error:', error);
       throw error;
     }
   }
