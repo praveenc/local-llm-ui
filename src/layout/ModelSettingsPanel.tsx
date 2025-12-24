@@ -119,7 +119,6 @@ export default function SideBar({
   const [modelOptions, setModelOptions] = useState<SelectProps.Option[]>([]);
   const [modelsLoadingStatus, setModelsLoadingStatus] = useState<LoadingStatus>('pending');
   const [modelErrorText, setModelErrorText] = useState('');
-  const [isModelLoading, setIsModelLoading] = useState(false);
 
   // Model loading flow state
   const [showLoadConfirm, setShowLoadConfirm] = useState(false);
@@ -151,16 +150,27 @@ export default function SideBar({
     if (!pendingModel?.value) return;
 
     setShowLoadConfirm(false);
-    setIsModelLoading(true);
+
+    // Store pending model info before async operation
+    const modelToLoad = pendingModel;
 
     try {
-      await modelLoader.loadModel(pendingModel.value);
+      // loadModel now returns the result directly
+      const result = await modelLoader.loadModel(modelToLoad.value!);
 
-      // Success - model loaded
-      if (modelLoader.loadedModel) {
-        setSelectedModel(pendingModel);
+      if (result.success && result.loadedModel) {
+        // Update dropdown with the loaded model
+        setSelectedModel(modelToLoad);
         if (onModelLoadSuccess) {
-          onModelLoadSuccess(pendingModel.label || pendingModel.value);
+          onModelLoadSuccess(modelToLoad.label || modelToLoad.value || 'Unknown');
+        }
+      } else if (result.error) {
+        console.error('Failed to load model:', result.error);
+        if (onModelLoadError) {
+          onModelLoadError({
+            title: 'Failed to load model',
+            content: result.error,
+          });
         }
       }
     } catch (error) {
@@ -173,7 +183,6 @@ export default function SideBar({
         });
       }
     } finally {
-      setIsModelLoading(false);
       setPendingModel(null);
       modelLoader.reset();
     }
@@ -188,7 +197,6 @@ export default function SideBar({
   // Handle cancel during progress
   const handleCancelProgress = () => {
     modelLoader.cancelLoading();
-    setIsModelLoading(false);
     setPendingModel(null);
   };
 
@@ -464,16 +472,16 @@ export default function SideBar({
             statusType={
               modelsLoadingStatus === 'error'
                 ? 'error'
-                : modelsLoadingStatus === 'loading' || isModelLoading
+                : modelsLoadingStatus === 'loading' || modelLoader.isLoading
                   ? 'loading'
                   : 'finished'
             }
-            loadingText={isModelLoading ? 'Loading model...' : 'Loading...'}
+            loadingText={modelLoader.isLoading ? 'Loading model...' : 'Loading...'}
             errorText={modelErrorText}
             placeholder={modelsLoadingStatus === 'loading' ? 'Loading...' : 'Choose model'}
             filteringType="auto"
             ariaLabel="Model selection"
-            disabled={modelsLoadingStatus === 'error' || isModelLoading}
+            disabled={modelsLoadingStatus === 'error' || modelLoader.isLoading}
             renderHighlightedAriaLive={(item) => item.label || ''}
             expandToViewport={true}
           />

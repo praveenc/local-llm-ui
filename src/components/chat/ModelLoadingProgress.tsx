@@ -46,7 +46,12 @@ export default function ModelLoadingProgress({
     <Modal
       visible={visible}
       onDismiss={canCancel ? onCancel : undefined}
-      header="Loading Model"
+      header={
+        <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+          <img src="/lmstudio_icon.svg" alt="LM Studio" style={{ width: '24px', height: '24px' }} />
+          <span>Loading Model</span>
+        </SpaceBetween>
+      }
       footer={
         canCancel ? (
           <Box float="right">

@@ -14,11 +14,21 @@ export interface ModelLoaderState {
   } | null;
 }
 
+export interface LoadModelResult {
+  success: boolean;
+  loadedModel?: {
+    identifier: string;
+    modelPath: string;
+    loadTime: number;
+  };
+  error?: string;
+}
+
 export interface UseModelLoaderReturn extends ModelLoaderState {
   loadModel: (
     modelPath: string,
     options?: { contextLength?: number; ttl?: number }
-  ) => Promise<void>;
+  ) => Promise<LoadModelResult>;
   cancelLoading: () => void;
   reset: () => void;
 }
@@ -36,7 +46,10 @@ export function useModelLoader(): UseModelLoaderReturn {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const loadModel = useCallback(
-    async (modelPath: string, options?: { contextLength?: number; ttl?: number }) => {
+    async (
+      modelPath: string,
+      options?: { contextLength?: number; ttl?: number }
+    ): Promise<LoadModelResult> => {
       // Cancel any existing loading
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -53,6 +66,8 @@ export function useModelLoader(): UseModelLoaderReturn {
         error: null,
         loadedModel: null,
       });
+
+      let result: LoadModelResult = { success: false };
 
       try {
         const generator = lmstudioService.loadModelWithProgress(modelPath, {
@@ -78,19 +93,22 @@ export function useModelLoader(): UseModelLoaderReturn {
               }));
               break;
 
-            case 'success':
+            case 'success': {
+              const loadedModel = {
+                identifier: event.identifier,
+                modelPath: event.modelPath,
+                loadTime: event.loadTime,
+              };
               setState((prev) => ({
                 ...prev,
                 isLoading: false,
                 progress: 100,
                 message: `Model loaded successfully in ${event.loadTime}ms`,
-                loadedModel: {
-                  identifier: event.identifier,
-                  modelPath: event.modelPath,
-                  loadTime: event.loadTime,
-                },
+                loadedModel,
               }));
+              result = { success: true, loadedModel };
               break;
+            }
 
             case 'error':
               setState((prev) => ({
@@ -99,6 +117,7 @@ export function useModelLoader(): UseModelLoaderReturn {
                 error: event.message,
                 message: '',
               }));
+              result = { success: false, error: event.message };
               break;
           }
         }
@@ -108,18 +127,22 @@ export function useModelLoader(): UseModelLoaderReturn {
         // Don't set error state if aborted
         if (err.name === 'AbortError') {
           setState(initialState);
-          return;
+          return { success: false, error: 'Loading cancelled' };
         }
 
+        const errorMessage = err.message || 'Failed to load model';
         setState((prev) => ({
           ...prev,
           isLoading: false,
-          error: err.message || 'Failed to load model',
+          error: errorMessage,
           message: '',
         }));
+        result = { success: false, error: errorMessage };
       } finally {
         abortControllerRef.current = null;
       }
+
+      return result;
     },
     []
   );

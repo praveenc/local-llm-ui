@@ -21,7 +21,12 @@ export default function ModelLoadingConfirmModal({
     <Modal
       visible={visible}
       onDismiss={onCancel}
-      header="Load Model?"
+      header={
+        <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+          <img src="/lmstudio_icon.svg" alt="LM Studio" style={{ width: '24px', height: '24px' }} />
+          <span>Load Model?</span>
+        </SpaceBetween>
+      }
       footer={
         <Box float="right">
           <SpaceBetween direction="horizontal" size="xs">
