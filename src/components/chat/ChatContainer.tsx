@@ -55,6 +55,8 @@ const getProviderFromModel = (model: SelectProps.Option | null): Provider => {
   if (model?.description?.toLowerCase().includes('ollama')) return 'ollama';
   if (model?.description?.toLowerCase().includes('bedrock-mantle')) return 'bedrock-mantle';
   if (model?.description?.toLowerCase().includes('bedrock')) return 'bedrock';
+  if (model?.description?.toLowerCase().includes('groq')) return 'groq';
+  if (model?.description?.toLowerCase().includes('cerebras')) return 'cerebras';
   return 'lmstudio';
 };
 
