@@ -16,7 +16,12 @@ import {
 } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
 
-import { ConversationList } from '../components/chat';
+import {
+  ConversationList,
+  ModelLoadingConfirmModal,
+  ModelLoadingProgress,
+} from '../components/chat';
+import { useModelLoader } from '../hooks';
 import '../styles/conversationList.scss';
 import '../styles/sidebar.scss';
 import { loadPreferences, savePreferences, validateInitials } from '../utils/preferences';
@@ -114,7 +119,11 @@ export default function SideBar({
   const [modelOptions, setModelOptions] = useState<SelectProps.Option[]>([]);
   const [modelsLoadingStatus, setModelsLoadingStatus] = useState<LoadingStatus>('pending');
   const [modelErrorText, setModelErrorText] = useState('');
-  const [isModelLoading, setIsModelLoading] = useState(false);
+
+  // Model loading flow state
+  const [showLoadConfirm, setShowLoadConfirm] = useState(false);
+  const [pendingModel, setPendingModel] = useState<SelectProps.Option | null>(null);
+  const modelLoader = useModelLoader();
 
   // Preferences state - load immediately to avoid double fetch
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
@@ -126,45 +135,69 @@ export default function SideBar({
       return;
     }
 
-    // For LM Studio, trigger model loading
+    // For LM Studio, show confirmation modal before loading
     if (selectedProvider === 'lmstudio' && option.value) {
-      setIsModelLoading(true);
-      setSelectedModel(option);
-
-      try {
-        const { lmstudioService } = await import('../services');
-        const result = await lmstudioService.loadModel(option.value);
-
-        if (result.success) {
-          console.log('Model loaded successfully:', result.identifier);
-          if (onModelLoadSuccess) {
-            onModelLoadSuccess(option.label || option.value);
-          }
-        } else {
-          console.error('Failed to load model:', result.error);
-          if (onModelLoadError) {
-            onModelLoadError({
-              title: 'Failed to load model',
-              content: result.error || 'An unknown error occurred while loading the model.',
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Error loading model:', error);
-        const err = error as Error;
-        if (onModelLoadError) {
-          onModelLoadError({
-            title: 'Failed to load model',
-            content: err.message || 'An unknown error occurred while loading the model.',
-          });
-        }
-      } finally {
-        setIsModelLoading(false);
-      }
+      setPendingModel(option);
+      setShowLoadConfirm(true);
     } else {
       // For other providers, just set the model
       setSelectedModel(option);
     }
+  };
+
+  // Handle confirmed model loading
+  const handleConfirmLoad = async () => {
+    if (!pendingModel?.value) return;
+
+    setShowLoadConfirm(false);
+
+    // Store pending model info before async operation
+    const modelToLoad = pendingModel;
+
+    try {
+      // loadModel now returns the result directly
+      const result = await modelLoader.loadModel(modelToLoad.value!);
+
+      if (result.success && result.loadedModel) {
+        // Update dropdown with the loaded model
+        setSelectedModel(modelToLoad);
+        if (onModelLoadSuccess) {
+          onModelLoadSuccess(modelToLoad.label || modelToLoad.value || 'Unknown');
+        }
+      } else if (result.error) {
+        console.error('Failed to load model:', result.error);
+        if (onModelLoadError) {
+          onModelLoadError({
+            title: 'Failed to load model',
+            content: result.error,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading model:', error);
+      const err = error as Error;
+      if (onModelLoadError) {
+        onModelLoadError({
+          title: 'Failed to load model',
+          content: err.message || 'An unknown error occurred while loading the model.',
+        });
+      }
+    } finally {
+      setPendingModel(null);
+      modelLoader.reset();
+    }
+  };
+
+  // Handle cancel loading
+  const handleCancelLoad = () => {
+    setShowLoadConfirm(false);
+    setPendingModel(null);
+  };
+
+  // Handle cancel during progress
+  const handleCancelProgress = () => {
+    modelLoader.cancelLoading();
+    setPendingModel(null);
   };
 
   const handlePreferencesConfirm = (detail: { custom?: UserPreferences }) => {
@@ -424,9 +457,9 @@ export default function SideBar({
             <Box variant="small" color="text-body-secondary">
               {providerInfo.shortLabel}
             </Box>
-            {isModelLoading && (
+            {modelLoader.isLoading && (
               <Box variant="small" color="text-status-info">
-                Loading...
+                Loading... {modelLoader.progress.toFixed(0)}%
               </Box>
             )}
           </SpaceBetween>
@@ -439,16 +472,16 @@ export default function SideBar({
             statusType={
               modelsLoadingStatus === 'error'
                 ? 'error'
-                : modelsLoadingStatus === 'loading' || isModelLoading
+                : modelsLoadingStatus === 'loading' || modelLoader.isLoading
                   ? 'loading'
                   : 'finished'
             }
-            loadingText={isModelLoading ? 'Loading model...' : 'Loading...'}
+            loadingText={modelLoader.isLoading ? 'Loading model...' : 'Loading...'}
             errorText={modelErrorText}
             placeholder={modelsLoadingStatus === 'loading' ? 'Loading...' : 'Choose model'}
             filteringType="auto"
             ariaLabel="Model selection"
-            disabled={modelsLoadingStatus === 'error' || isModelLoading}
+            disabled={modelsLoadingStatus === 'error' || modelLoader.isLoading}
             renderHighlightedAriaLive={(item) => item.label || ''}
             expandToViewport={true}
           />
@@ -708,6 +741,25 @@ export default function SideBar({
           </Box>
         </SpaceBetween>
       </Box>
+
+      {/* Model Loading Confirmation Modal */}
+      {pendingModel && (
+        <ModelLoadingConfirmModal
+          visible={showLoadConfirm}
+          modelName={pendingModel.label || pendingModel.value || 'Unknown Model'}
+          onConfirm={handleConfirmLoad}
+          onCancel={handleCancelLoad}
+        />
+      )}
+
+      {/* Model Loading Progress Modal */}
+      {pendingModel && (
+        <ModelLoadingProgress
+          visible={modelLoader.isLoading}
+          modelName={pendingModel.label || pendingModel.value || 'Unknown Model'}
+          onCancel={handleCancelProgress}
+        />
+      )}
     </div>
   );
 }

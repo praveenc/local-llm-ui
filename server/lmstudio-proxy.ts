@@ -73,6 +73,8 @@ export async function handleLMStudioRequest(
       await handleListModels(res);
     } else if (pathname === '/api/lmstudio-sdk/load') {
       await handleLoadModel(req, res);
+    } else if (pathname === '/api/lmstudio-sdk/load-with-progress') {
+      await handleLoadModelWithProgress(req, res);
     } else if (pathname === '/api/lmstudio-sdk/loaded') {
       await handleListLoaded(res);
     } else if (pathname === '/api/lmstudio-sdk/model-info') {
@@ -213,6 +215,135 @@ async function handleListLoaded(res: ServerResponse): Promise<void> {
 
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({ models }));
+}
+
+async function handleLoadModelWithProgress(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk;
+  }
+
+  const { modelPath, contextLength, ttl } = JSON.parse(body);
+
+  if (!modelPath) {
+    res.statusCode = 400;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: 'modelPath is required' }));
+    return;
+  }
+
+  // Set up SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  // Helper to send SSE events
+  const sendEvent = (data: object) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  const startTime = Date.now();
+
+  // Intercept console.log to capture progress messages
+  const originalConsoleLog = console.log;
+  const progressRegex = /\[LMStudioClient\]\[LLM\].*progress:\s*([0-9.]+)%/;
+  const loadingStartRegex = /\[LMStudioClient\]\[LLM\].*Start loading/;
+  const successRegex = /\[LMStudioClient\]\[LLM\].*Successfully loaded.*in (\d+)ms/;
+
+  console.log = (...args: unknown[]) => {
+    const message = args.join(' ');
+
+    // Check for progress updates
+    const progressMatch = message.match(progressRegex);
+    if (progressMatch) {
+      const percentage = parseFloat(progressMatch[1]);
+      sendEvent({
+        type: 'progress',
+        percentage,
+        message: `Loading model: ${percentage.toFixed(1)}%`,
+      });
+    }
+
+    // Check for loading start
+    if (loadingStartRegex.test(message)) {
+      sendEvent({
+        type: 'log',
+        message: 'Model loading started...',
+      });
+    }
+
+    // Check for success
+    const successMatch = message.match(successRegex);
+    if (successMatch) {
+      const loadTimeMs = parseInt(successMatch[1]);
+      sendEvent({
+        type: 'log',
+        message: `Model loaded in ${loadTimeMs}ms`,
+      });
+    }
+
+    // Call original console.log
+    originalConsoleLog(...args);
+  };
+
+  try {
+    sendEvent({
+      type: 'log',
+      message: `Loading model: ${modelPath}`,
+    });
+
+    const lmstudio = await getClient();
+
+    // Build load options
+    const loadOptions: {
+      contextLength?: number;
+      ttl?: number;
+      verbose?: boolean;
+    } = {
+      verbose: true, // Enable verbose logging to get progress
+    };
+
+    if (contextLength) {
+      loadOptions.contextLength = contextLength;
+    }
+
+    if (ttl) {
+      loadOptions.ttl = ttl;
+    }
+
+    // Load the model with verbose logging
+    const model = await lmstudio.llm.model(modelPath, loadOptions);
+
+    const loadTime = Date.now() - startTime;
+
+    // Send success event
+    sendEvent({
+      type: 'success',
+      identifier: model.identifier,
+      modelPath,
+      loadTime,
+    });
+
+    // Close the connection
+    res.end();
+  } catch (error) {
+    const err = error as Error;
+    console.error('LMStudio: Failed to load model with progress:', err);
+
+    sendEvent({
+      type: 'error',
+      message: err.message || 'Failed to load model',
+    });
+
+    res.end();
+  } finally {
+    // Restore original console.log
+    console.log = originalConsoleLog;
+  }
 }
 
 async function handleGetModelInfo(req: IncomingMessage, res: ServerResponse): Promise<void> {
