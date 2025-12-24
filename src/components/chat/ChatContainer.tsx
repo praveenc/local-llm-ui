@@ -660,6 +660,18 @@ const ChatContainer = ({
                       alt="Ollama"
                       style={{ width: '24px', height: '24px' }}
                     />
+                  ) : selectedModel.description?.toLowerCase().includes('groq') ? (
+                    <img
+                      src="/groq_icon.svg"
+                      alt="Groq"
+                      style={{ width: '24px', height: '24px' }}
+                    />
+                  ) : selectedModel.description?.toLowerCase().includes('cerebras') ? (
+                    <img
+                      src="/cerebras_icon.svg"
+                      alt="Cerebras"
+                      style={{ width: '24px', height: '24px' }}
+                    />
                   ) : (
                     <Icon name="contact" size="medium" />
                   )}
@@ -674,7 +686,11 @@ const ChatContainer = ({
                           ? 'LM Studio'
                           : selectedModel.description?.toLowerCase().includes('ollama')
                             ? 'Ollama'
-                            : 'Chat'}
+                            : selectedModel.description?.toLowerCase().includes('groq')
+                              ? 'Groq'
+                              : selectedModel.description?.toLowerCase().includes('cerebras')
+                                ? 'Cerebras'
+                                : 'Chat'}
                   </Box>
 
                   {showOptimizeButton && (
@@ -723,6 +739,16 @@ const ChatContainer = ({
                             <img
                               src="/bedrock_bw.svg"
                               alt="Amazon Bedrock"
+                              className="provider-icon"
+                            />
+                          )}
+                          {selectedModel.description?.toLowerCase().includes('groq') && (
+                            <img src="/groq_icon.svg" alt="Groq" className="provider-icon" />
+                          )}
+                          {selectedModel.description?.toLowerCase().includes('cerebras') && (
+                            <img
+                              src="/cerebras_icon.svg"
+                              alt="Cerebras"
                               className="provider-icon"
                             />
                           )}
