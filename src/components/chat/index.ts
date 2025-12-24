@@ -1,3 +1,8 @@
 export { default as ChatContainer } from './ChatContainer';
-export { default as OptimizePromptModal } from './OptimizePromptModal';
+export { default as CodeBlock } from './CodeBlock';
 export { default as ConversationList } from './ConversationList';
+export { default as FloatingChatInput } from './FloatingChatInput';
+export { default as MessageList } from './MessageList';
+export { default as ModelLoadingConfirmModal } from './ModelLoadingConfirmModal';
+export { default as ModelLoadingProgress } from './ModelLoadingProgress';
+export { default as OptimizePromptModal } from './OptimizePromptModal';
