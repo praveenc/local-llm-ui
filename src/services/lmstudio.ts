@@ -209,6 +209,7 @@ export class LMStudioService {
   }
 
   async *chat(request: ChatRequest): AsyncGenerator<string, void, unknown> {
+    const startTime = Date.now();
     try {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
@@ -268,13 +269,15 @@ export class LMStudioService {
 
               // Extract usage information from streaming response
               if (parsed.usage) {
-                console.log('LMStudio: Usage data found:', parsed.usage);
+                const latencyMs = Date.now() - startTime;
+                console.log('LMStudio: Usage data found:', parsed.usage, `Latency: ${latencyMs}ms`);
                 yield `__LMSTUDIO_METADATA__${JSON.stringify({
                   usage: {
                     promptTokens: parsed.usage.prompt_tokens,
                     completionTokens: parsed.usage.completion_tokens,
                     totalTokens: parsed.usage.total_tokens,
                   },
+                  latencyMs,
                 })}`;
               }
             } catch (e) {

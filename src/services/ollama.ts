@@ -32,6 +32,7 @@ export class OllamaService {
   }
 
   async *chat(request: ChatRequest): AsyncGenerator<string, void, unknown> {
+    const startTime = Date.now();
     try {
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
@@ -77,6 +78,24 @@ export class OllamaService {
               const content = parsed.message?.content;
               if (content) {
                 yield content;
+              }
+
+              // Ollama sends usage info in the final chunk when done=true
+              if (parsed.done && (parsed.prompt_eval_count || parsed.eval_count)) {
+                const latencyMs = Date.now() - startTime;
+                console.log('Ollama: Usage data found:', {
+                  prompt_eval_count: parsed.prompt_eval_count,
+                  eval_count: parsed.eval_count,
+                  latencyMs,
+                });
+                yield `__OLLAMA_METADATA__${JSON.stringify({
+                  usage: {
+                    promptTokens: parsed.prompt_eval_count,
+                    completionTokens: parsed.eval_count,
+                    totalTokens: (parsed.prompt_eval_count || 0) + (parsed.eval_count || 0),
+                  },
+                  latencyMs,
+                })}`;
               }
             } catch (e) {
               console.error('Failed to parse Ollama response:', e);

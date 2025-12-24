@@ -434,21 +434,50 @@ const ChatContainer = ({
             const metadataJson = chunk.replace('__LMSTUDIO_METADATA__', '');
             const metadata = JSON.parse(metadataJson);
 
-            // Extract usage information
-            if (metadata.usage) {
+            // Extract usage and latency information
+            if (metadata.usage || metadata.latencyMs) {
               capturedUsage = {
-                inputTokens: metadata.usage.promptTokens,
-                outputTokens: metadata.usage.completionTokens,
-                totalTokens: metadata.usage.totalTokens,
+                inputTokens: metadata.usage?.promptTokens,
+                outputTokens: metadata.usage?.completionTokens,
+                totalTokens: metadata.usage?.totalTokens,
+                latencyMs: metadata.latencyMs,
               };
               setLmstudioMetadata({
-                promptTokens: metadata.usage.promptTokens,
-                completionTokens: metadata.usage.completionTokens,
-                totalTokens: metadata.usage.totalTokens,
+                promptTokens: metadata.usage?.promptTokens,
+                completionTokens: metadata.usage?.completionTokens,
+                totalTokens: metadata.usage?.totalTokens,
+                latencyMs: metadata.latencyMs,
               });
             }
           } catch (e) {
             console.error('Failed to parse LM Studio metadata:', e);
+          }
+          continue;
+        }
+
+        // Check if this is Ollama metadata
+        if (chunk.startsWith('__OLLAMA_METADATA__')) {
+          try {
+            const metadataJson = chunk.replace('__OLLAMA_METADATA__', '');
+            const metadata = JSON.parse(metadataJson);
+
+            // Extract usage and latency information
+            if (metadata.usage || metadata.latencyMs) {
+              capturedUsage = {
+                inputTokens: metadata.usage?.promptTokens,
+                outputTokens: metadata.usage?.completionTokens,
+                totalTokens: metadata.usage?.totalTokens,
+                latencyMs: metadata.latencyMs,
+              };
+              setLmstudioMetadata({
+                promptTokens: metadata.usage?.promptTokens,
+                completionTokens: metadata.usage?.completionTokens,
+                totalTokens: metadata.usage?.totalTokens,
+                latencyMs: metadata.latencyMs,
+              });
+            }
+          } catch (e) {
+            console.error('Failed to parse Ollama metadata:', e);
           }
           continue;
         }
@@ -738,11 +767,13 @@ const ChatContainer = ({
                           ? bedrockMetadata
                           : selectedModel?.description?.toLowerCase().includes('lmstudio')
                             ? lmstudioMetadata
-                            : selectedModel?.description?.toLowerCase().includes('groq')
+                            : selectedModel?.description?.toLowerCase().includes('ollama')
                               ? lmstudioMetadata
-                              : selectedModel?.description?.toLowerCase().includes('cerebras')
+                              : selectedModel?.description?.toLowerCase().includes('groq')
                                 ? lmstudioMetadata
-                                : null
+                                : selectedModel?.description?.toLowerCase().includes('cerebras')
+                                  ? lmstudioMetadata
+                                  : null
                     }
                   />
                 </Box>
