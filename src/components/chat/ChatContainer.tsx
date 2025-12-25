@@ -237,6 +237,212 @@ const ChatContainer = ({
     }
   };
 
+  // Handle regenerating a response - finds the preceding user message and re-sends it
+  const handleRegenerate = async (assistantMessageIndex: number) => {
+    if (isLoading || !selectedModel) return;
+
+    // Find the user message that preceded this assistant message
+    let userMessageIndex = -1;
+    for (let i = assistantMessageIndex - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        userMessageIndex = i;
+        break;
+      }
+    }
+
+    if (userMessageIndex === -1) {
+      console.error('Could not find user message to regenerate from');
+      return;
+    }
+
+    const userMessage = messages[userMessageIndex];
+
+    // Remove all messages from the assistant message onwards (keep user message)
+    const newMessages = messages.slice(0, assistantMessageIndex);
+    setMessages(newMessages);
+
+    // Set the input to the original user message and trigger send
+    setInputValue(userMessage.content);
+
+    // Use setTimeout to ensure state updates before sending
+    setTimeout(() => {
+      // Manually trigger the send with the user's original content
+      handleSendMessageWithContent(userMessage.content, newMessages);
+    }, 0);
+  };
+
+  // Internal function to send a message with specific content and message history
+  const handleSendMessageWithContent = async (content: string, currentMessages: Message[]) => {
+    if (!content.trim() || !selectedModel || isLoading) return;
+
+    const provider = getProviderFromModel(selectedModel);
+    const modelId = selectedModel.value || '';
+    const modelName = selectedModel.label || modelId;
+
+    // Create conversation if this is the first message
+    let currentConversationId = activeConversationId;
+    if (!currentConversationId) {
+      const newConversation = await createConversation();
+      currentConversationId = newConversation.id;
+      setInternalConversationId(currentConversationId);
+      onConversationChange?.(currentConversationId);
+    }
+
+    setInputValue('');
+    setIsLoading(true);
+
+    // Create new AbortController for this request
+    abortControllerRef.current = new AbortController();
+
+    const streamingId = Date.now() + 1;
+    setStreamingMessage({
+      id: streamingId,
+      role: 'assistant',
+      content: '',
+    });
+
+    try {
+      // Import API service
+      const { apiService } = await import('../../services');
+
+      // Build chat history from current messages (not including the new user message since it's already there)
+      const chatMessages: Array<{
+        role: 'user' | 'assistant';
+        content: string;
+      }> = currentMessages.map((m) => ({
+        role: m.role === 'user' ? ('user' as const) : ('assistant' as const),
+        content: m.content,
+      }));
+
+      let fullContent = '';
+      let capturedUsage: {
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+        latencyMs?: number;
+      } | null = null;
+
+      // For Claude 4.5 models, only send the selected sampling parameter
+      const modelIdLower = (selectedModel.value || '').toLowerCase();
+      const isClaude45 =
+        modelIdLower.includes('sonnet-4-5') ||
+        modelIdLower.includes('haiku-4-5') ||
+        modelIdLower.includes('opus-4-5');
+
+      const chatRequest = {
+        model: selectedModel.value || '',
+        messages: chatMessages,
+        max_tokens: maxTokens,
+        stream: true,
+        signal: abortControllerRef.current?.signal,
+        ...(isClaude45
+          ? samplingParameter === 'temperature'
+            ? { temperature }
+            : { top_p: topP }
+          : { temperature, top_p: topP }),
+      };
+
+      // Stream the response
+      for await (const chunk of apiService.chat(provider, chatRequest)) {
+        // Handle metadata chunks (same as handleSendMessage)
+        if (
+          chunk.startsWith('__BEDROCK_METADATA__') ||
+          chunk.startsWith('__MANTLE_METADATA__') ||
+          chunk.startsWith('__LMSTUDIO_METADATA__') ||
+          chunk.startsWith('__OLLAMA_METADATA__') ||
+          chunk.startsWith('__AISDK_METADATA__')
+        ) {
+          try {
+            const metadataJson = chunk.replace(/^__[A-Z_]+__/, '');
+            const metadata = JSON.parse(metadataJson);
+            if (metadata.usage) {
+              capturedUsage = {
+                inputTokens: metadata.usage.inputTokens ?? metadata.usage.promptTokens,
+                outputTokens: metadata.usage.outputTokens ?? metadata.usage.completionTokens,
+                totalTokens: metadata.usage.totalTokens,
+                latencyMs: metadata.metrics?.latencyMs ?? metadata.latencyMs,
+              };
+              if (
+                chunk.startsWith('__BEDROCK_METADATA__') ||
+                chunk.startsWith('__MANTLE_METADATA__')
+              ) {
+                setBedrockMetadata(capturedUsage);
+              } else {
+                setLmstudioMetadata({
+                  promptTokens: capturedUsage.inputTokens,
+                  completionTokens: capturedUsage.outputTokens,
+                  totalTokens: capturedUsage.totalTokens,
+                  latencyMs: capturedUsage.latencyMs,
+                });
+              }
+            }
+          } catch (e) {
+            console.error('Failed to parse metadata:', e);
+          }
+          continue;
+        }
+
+        fullContent += chunk;
+        setStreamingMessage({
+          id: streamingId,
+          role: 'assistant',
+          content: fullContent,
+        });
+      }
+
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        {
+          id: streamingId,
+          role: 'assistant',
+          content: fullContent,
+        },
+      ]);
+
+      // Persist assistant message to DB
+      const assistantSequence = await getNextSequence(currentConversationId);
+      await addMessage({
+        conversationId: currentConversationId,
+        role: 'assistant',
+        content: fullContent,
+        sequence: assistantSequence,
+        createdAt: new Date(),
+        provider,
+        modelId,
+        modelName,
+        parameters: {
+          temperature,
+          topP,
+          maxTokens,
+        },
+        usage: capturedUsage || undefined,
+      });
+
+      setStreamingMessage(null);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Generation stopped by user');
+        if (streamingMessage && streamingMessage.content) {
+          setMessages((prevMessages) => [...prevMessages, streamingMessage]);
+        }
+        setStreamingMessage(null);
+        return;
+      }
+
+      console.error('Error regenerating response:', error);
+      const errorMessage: Message = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: `Error: ${(error as Error).message || 'Could not regenerate response.'}`,
+      };
+      setMessages((prevMessages) => [...prevMessages, errorMessage]);
+      setStreamingMessage(null);
+    } finally {
+      setIsLoading(false);
+      abortControllerRef.current = null;
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !selectedModel || isLoading) return;
 
@@ -801,6 +1007,8 @@ const ChatContainer = ({
                                   ? lmstudioMetadata
                                   : null
                     }
+                    onRegenerate={handleRegenerate}
+                    isLoading={isLoading}
                   />
                 </Box>
               )}
