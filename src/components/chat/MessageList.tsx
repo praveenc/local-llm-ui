@@ -12,6 +12,7 @@ import {
   CopyToClipboard,
   ExpandableSection,
   Icon,
+  Modal,
   SpaceBetween,
 } from '@cloudscape-design/components';
 
@@ -61,6 +62,39 @@ const MessageList = ({
   isLoading = false,
 }: MessageListProps) => {
   const [messageFeedback, setMessageFeedback] = useState<Record<number, string>>({});
+  const [regenerateModalVisible, setRegenerateModalVisible] = useState(false);
+  const [pendingRegenerateIndex, setPendingRegenerateIndex] = useState<number | null>(null);
+
+  // Calculate how many messages will be removed if regenerating at a given index
+  const getMessagesToRemoveCount = (assistantIndex: number): number => {
+    return messages.length - assistantIndex - 1;
+  };
+
+  const handleRegenerateClick = (index: number) => {
+    const messagesToRemove = getMessagesToRemoveCount(index);
+
+    if (messagesToRemove > 0) {
+      // Show confirmation dialog if there are subsequent messages
+      setPendingRegenerateIndex(index);
+      setRegenerateModalVisible(true);
+    } else {
+      // No subsequent messages, regenerate directly
+      onRegenerate?.(index);
+    }
+  };
+
+  const handleRegenerateConfirm = () => {
+    if (pendingRegenerateIndex !== null) {
+      onRegenerate?.(pendingRegenerateIndex);
+    }
+    setRegenerateModalVisible(false);
+    setPendingRegenerateIndex(null);
+  };
+
+  const handleRegenerateCancel = () => {
+    setRegenerateModalVisible(false);
+    setPendingRegenerateIndex(null);
+  };
 
   const parseThinkingContent = (content: string) => {
     const thinkRegex = /<think>(.*?)<\/think>/s;
@@ -233,7 +267,7 @@ const MessageList = ({
                       variant="icon"
                       iconName="refresh"
                       ariaLabel="Regenerate response"
-                      onClick={() => onRegenerate(index)}
+                      onClick={() => handleRegenerateClick(index)}
                       disabled={isLoading}
                     />
                   )}
@@ -389,6 +423,42 @@ const MessageList = ({
           )}
         </ChatBubble>
       )}
+
+      {/* Regenerate Confirmation Modal */}
+      <Modal
+        visible={regenerateModalVisible}
+        onDismiss={handleRegenerateCancel}
+        size="small"
+        header="Regenerate response"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={handleRegenerateCancel}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleRegenerateConfirm}>
+                Regenerate
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween size="s">
+          <Box>
+            Regenerating this response will remove{' '}
+            {pendingRegenerateIndex !== null && (
+              <strong>{getMessagesToRemoveCount(pendingRegenerateIndex)} message(s)</strong>
+            )}{' '}
+            that follow it.
+          </Box>
+          <Box color="text-status-warning" variant="small">
+            <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+              <Icon name="status-warning" size="small" />
+              <span>This action cannot be undone.</span>
+            </SpaceBetween>
+          </Box>
+        </SpaceBetween>
+      </Modal>
     </SpaceBetween>
   );
 };
