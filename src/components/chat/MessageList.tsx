@@ -210,7 +210,15 @@ const MessageList = ({
                     variant="icon"
                   />
                 </SpaceBetween>
-              ) : undefined
+              ) : (
+                <CopyToClipboard
+                  copyButtonAriaLabel="Copy message"
+                  copyErrorText="Message failed to copy"
+                  copySuccessText="Message copied"
+                  textToCopy={message.content}
+                  variant="icon"
+                />
+              )
             }
             avatar={
               message.role === 'assistant' ? (

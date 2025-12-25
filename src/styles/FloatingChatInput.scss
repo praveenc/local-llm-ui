@@ -20,12 +20,14 @@
 .floating-chat-input__container {
   max-width: 1100px;
   margin: 0 auto;
-  background: cs.$color-background-container-content;
+  background: color-mix(in srgb, var(--color-background-container-content, #fff) 92%, transparent);
   border: 1px solid cs.$color-border-divider-default;
   border-radius: cs.$border-radius-container;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
   pointer-events: auto;
   overflow: hidden;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .floating-chat-input__header {
@@ -33,7 +35,11 @@
   align-items: center;
   justify-content: space-between;
   padding: cs.$space-scaled-xs cs.$space-scaled-m;
-  background: cs.$color-background-container-header;
+  background: color-mix(
+    in srgb,
+    var(--color-background-container-header, #fafafa) 60%,
+    transparent
+  );
   border-bottom: 1px solid cs.$color-border-divider-default;
 }
 
