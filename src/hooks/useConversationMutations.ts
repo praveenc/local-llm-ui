@@ -13,6 +13,7 @@ interface UseConversationMutationsResult {
   updateConversationTitle: (id: string, title: string) => Promise<void>;
   addMessage: (input: CreateMessageInput) => Promise<Message>;
   getNextSequence: (conversationId: string) => Promise<number>;
+  deleteMessagesFromSequence: (conversationId: string, fromSequence: number) => Promise<number>;
   clearAllConversations: () => Promise<void>;
 }
 
@@ -41,6 +42,13 @@ export function useConversationMutations(): UseConversationMutationsResult {
     return conversationService.getNextSequence(conversationId);
   }, []);
 
+  const deleteMessagesFromSequence = useCallback(
+    async (conversationId: string, fromSequence: number) => {
+      return conversationService.deleteMessagesFromSequence(conversationId, fromSequence);
+    },
+    []
+  );
+
   const clearAllConversations = useCallback(async () => {
     return conversationService.clearAll();
   }, []);
@@ -52,6 +60,7 @@ export function useConversationMutations(): UseConversationMutationsResult {
     updateConversationTitle,
     addMessage,
     getNextSequence,
+    deleteMessagesFromSequence,
     clearAllConversations,
   };
 }
