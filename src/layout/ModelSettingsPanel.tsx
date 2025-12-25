@@ -676,166 +676,174 @@ export default function SideBar({
                 {(customValue.preferredProvider === 'bedrock' ||
                   customValue.preferredProvider === 'lmstudio' ||
                   customValue.preferredProvider === 'ollama') && (
-                  <>
-                    <hr
-                      style={{
-                        border: 'none',
-                        borderTop: '1px solid var(--color-border-divider-default)',
-                        margin: '0',
-                      }}
-                    />
-                    <Box color="text-body-secondary" fontSize="body-s">
-                      <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                        <Icon name="status-info" size="small" />
-                        <span>
-                          {customValue.preferredProvider === 'bedrock' &&
-                            'Uses your AWS credentials from environment or ~/.aws/credentials'}
-                          {customValue.preferredProvider === 'lmstudio' &&
-                            'Connects to local LM Studio server on port 1234'}
-                          {customValue.preferredProvider === 'ollama' &&
-                            'Connects to local Ollama server on port 11434'}
-                        </span>
-                      </SpaceBetween>
-                    </Box>
-                  </>
+                  <div
+                    style={{
+                      background: 'var(--color-background-layout-toggle-default)',
+                      borderRadius: '8px',
+                      padding: '12px 16px',
+                      border: '1px solid var(--color-border-divider-default)',
+                    }}
+                  >
+                    <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                      <img
+                        src={PROVIDER_INFO[customValue.preferredProvider as Provider].icon}
+                        alt=""
+                        style={{ width: '20px', height: '20px' }}
+                      />
+                      <Box color="text-body-secondary" fontSize="body-s">
+                        {customValue.preferredProvider === 'bedrock' &&
+                          'Uses your AWS credentials from environment or ~/.aws/credentials'}
+                        {customValue.preferredProvider === 'lmstudio' &&
+                          'Connects to local LM Studio server on port 1234'}
+                        {customValue.preferredProvider === 'ollama' &&
+                          'Connects to local Ollama server on port 11434'}
+                      </Box>
+                    </SpaceBetween>
+                  </div>
                 )}
 
                 {customValue.preferredProvider === 'bedrock-mantle' && (
-                  <>
-                    <hr
-                      style={{
-                        border: 'none',
-                        borderTop: '1px solid var(--color-border-divider-default)',
-                        margin: '0',
-                      }}
-                    />
-                    <Box>
-                      <SpaceBetween size="s">
-                        <Box variant="h4">
-                          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                            <Icon name="key" size="small" />
-                            <span>Mantle Configuration</span>
-                          </SpaceBetween>
+                  <div
+                    style={{
+                      background: 'var(--color-background-layout-toggle-default)',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      border: '1px solid var(--color-border-divider-default)',
+                    }}
+                  >
+                    <SpaceBetween size="m">
+                      <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                        <img
+                          src={PROVIDER_INFO['bedrock-mantle'].icon}
+                          alt=""
+                          style={{ width: '20px', height: '20px' }}
+                        />
+                        <Box variant="h4" margin={{ top: 'n', bottom: 'n' }}>
+                          Mantle Configuration
                         </Box>
-                        <FormField
-                          label="Bedrock API Key"
-                          description="Your Amazon Bedrock API key"
-                          stretch={true}
-                        >
-                          <Input
-                            type="password"
-                            value={customValue.bedrockMantleApiKey || ''}
-                            onChange={({ detail }) =>
-                              setCustomValue({
-                                ...customValue,
-                                bedrockMantleApiKey: detail.value,
-                              })
-                            }
-                            placeholder="Enter your Bedrock API key"
-                          />
-                        </FormField>
-
-                        <FormField
-                          label="Region"
-                          description="AWS region for Mantle endpoint"
-                          stretch={true}
-                        >
-                          <Select
-                            selectedOption={
-                              MANTLE_REGIONS.find(
-                                (r) => r.value === (customValue.bedrockMantleRegion || 'us-west-2')
-                              ) || MANTLE_REGIONS[2]
-                            }
-                            onChange={({ detail }) =>
-                              setCustomValue({
-                                ...customValue,
-                                bedrockMantleRegion: detail.selectedOption.value,
-                              })
-                            }
-                            options={MANTLE_REGIONS}
-                          />
-                        </FormField>
                       </SpaceBetween>
-                    </Box>
-                  </>
+                      <FormField
+                        label="Bedrock API Key"
+                        description="Your Amazon Bedrock API key"
+                        stretch={true}
+                      >
+                        <Input
+                          type="password"
+                          value={customValue.bedrockMantleApiKey || ''}
+                          onChange={({ detail }) =>
+                            setCustomValue({
+                              ...customValue,
+                              bedrockMantleApiKey: detail.value,
+                            })
+                          }
+                          placeholder="Enter your Bedrock API key"
+                        />
+                      </FormField>
+
+                      <FormField
+                        label="Region"
+                        description="AWS region for Mantle endpoint"
+                        stretch={true}
+                      >
+                        <Select
+                          selectedOption={
+                            MANTLE_REGIONS.find(
+                              (r) => r.value === (customValue.bedrockMantleRegion || 'us-west-2')
+                            ) || MANTLE_REGIONS[2]
+                          }
+                          onChange={({ detail }) =>
+                            setCustomValue({
+                              ...customValue,
+                              bedrockMantleRegion: detail.selectedOption.value,
+                            })
+                          }
+                          options={MANTLE_REGIONS}
+                        />
+                      </FormField>
+                    </SpaceBetween>
+                  </div>
                 )}
 
                 {customValue.preferredProvider === 'groq' && (
-                  <>
-                    <hr
-                      style={{
-                        border: 'none',
-                        borderTop: '1px solid var(--color-border-divider-default)',
-                        margin: '0',
-                      }}
-                    />
-                    <Box>
-                      <SpaceBetween size="s">
-                        <Box variant="h4">
-                          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                            <Icon name="key" size="small" />
-                            <span>Groq Configuration</span>
-                          </SpaceBetween>
+                  <div
+                    style={{
+                      background: 'var(--color-background-layout-toggle-default)',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      border: '1px solid var(--color-border-divider-default)',
+                    }}
+                  >
+                    <SpaceBetween size="m">
+                      <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                        <img
+                          src={PROVIDER_INFO['groq'].icon}
+                          alt=""
+                          style={{ width: '20px', height: '20px' }}
+                        />
+                        <Box variant="h4" margin={{ top: 'n', bottom: 'n' }}>
+                          Groq Configuration
                         </Box>
-                        <FormField
-                          label="API Key"
-                          description="Get your key from console.groq.com"
-                          stretch={true}
-                        >
-                          <Input
-                            type="password"
-                            value={customValue.groqApiKey || ''}
-                            onChange={({ detail }) =>
-                              setCustomValue({
-                                ...customValue,
-                                groqApiKey: detail.value,
-                              })
-                            }
-                            placeholder="Enter your Groq API key"
-                          />
-                        </FormField>
                       </SpaceBetween>
-                    </Box>
-                  </>
+                      <FormField
+                        label="API Key"
+                        description="Get your key from console.groq.com"
+                        stretch={true}
+                      >
+                        <Input
+                          type="password"
+                          value={customValue.groqApiKey || ''}
+                          onChange={({ detail }) =>
+                            setCustomValue({
+                              ...customValue,
+                              groqApiKey: detail.value,
+                            })
+                          }
+                          placeholder="Enter your Groq API key"
+                        />
+                      </FormField>
+                    </SpaceBetween>
+                  </div>
                 )}
 
                 {customValue.preferredProvider === 'cerebras' && (
-                  <>
-                    <hr
-                      style={{
-                        border: 'none',
-                        borderTop: '1px solid var(--color-border-divider-default)',
-                        margin: '0',
-                      }}
-                    />
-                    <Box>
-                      <SpaceBetween size="s">
-                        <Box variant="h4">
-                          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                            <Icon name="key" size="small" />
-                            <span>Cerebras Configuration</span>
-                          </SpaceBetween>
+                  <div
+                    style={{
+                      background: 'var(--color-background-layout-toggle-default)',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      border: '1px solid var(--color-border-divider-default)',
+                    }}
+                  >
+                    <SpaceBetween size="m">
+                      <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                        <img
+                          src={PROVIDER_INFO['cerebras'].icon}
+                          alt=""
+                          style={{ width: '20px', height: '20px' }}
+                        />
+                        <Box variant="h4" margin={{ top: 'n', bottom: 'n' }}>
+                          Cerebras Configuration
                         </Box>
-                        <FormField
-                          label="API Key"
-                          description="Get your key from cloud.cerebras.ai"
-                          stretch={true}
-                        >
-                          <Input
-                            type="password"
-                            value={customValue.cerebrasApiKey || ''}
-                            onChange={({ detail }) =>
-                              setCustomValue({
-                                ...customValue,
-                                cerebrasApiKey: detail.value,
-                              })
-                            }
-                            placeholder="Enter your Cerebras API key"
-                          />
-                        </FormField>
                       </SpaceBetween>
-                    </Box>
-                  </>
+                      <FormField
+                        label="API Key"
+                        description="Get your key from cloud.cerebras.ai"
+                        stretch={true}
+                      >
+                        <Input
+                          type="password"
+                          value={customValue.cerebrasApiKey || ''}
+                          onChange={({ detail }) =>
+                            setCustomValue({
+                              ...customValue,
+                              cerebrasApiKey: detail.value,
+                            })
+                          }
+                          placeholder="Enter your Cerebras API key"
+                        />
+                      </FormField>
+                    </SpaceBetween>
+                  </div>
                 )}
 
                 {/* Divider */}
