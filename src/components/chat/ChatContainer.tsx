@@ -257,38 +257,30 @@ const ChatContainer = ({
 
     const userMessage = messages[userMessageIndex];
 
-    // Remove all messages from the assistant message onwards (keep user message)
-    const newMessages = messages.slice(0, assistantMessageIndex);
+    // Remove all messages from the assistant message onwards (keep up to and including user message)
+    // This removes the assistant response we're regenerating AND any subsequent messages
+    const newMessages = messages.slice(0, userMessageIndex + 1);
     setMessages(newMessages);
 
-    // Set the input to the original user message and trigger send
-    setInputValue(userMessage.content);
-
-    // Use setTimeout to ensure state updates before sending
-    setTimeout(() => {
-      // Manually trigger the send with the user's original content
-      handleSendMessageWithContent(userMessage.content, newMessages);
-    }, 0);
+    // Directly call the regeneration logic with the trimmed message history
+    await handleSendMessageForRegenerate(userMessage.content, newMessages);
   };
 
-  // Internal function to send a message with specific content and message history
-  const handleSendMessageWithContent = async (content: string, currentMessages: Message[]) => {
-    if (!content.trim() || !selectedModel || isLoading) return;
+  // Internal function to regenerate a response with specific message history
+  const handleSendMessageForRegenerate = async (content: string, messageHistory: Message[]) => {
+    if (!content.trim() || !selectedModel) return;
 
     const provider = getProviderFromModel(selectedModel);
     const modelId = selectedModel.value || '';
     const modelName = selectedModel.label || modelId;
 
-    // Create conversation if this is the first message
-    let currentConversationId = activeConversationId;
+    // Use existing conversation
+    const currentConversationId = activeConversationId;
     if (!currentConversationId) {
-      const newConversation = await createConversation();
-      currentConversationId = newConversation.id;
-      setInternalConversationId(currentConversationId);
-      onConversationChange?.(currentConversationId);
+      console.error('No conversation ID for regeneration');
+      return;
     }
 
-    setInputValue('');
     setIsLoading(true);
 
     // Create new AbortController for this request
@@ -305,11 +297,11 @@ const ChatContainer = ({
       // Import API service
       const { apiService } = await import('../../services');
 
-      // Build chat history from current messages (not including the new user message since it's already there)
+      // Build chat history - messageHistory already includes the user message
       const chatMessages: Array<{
         role: 'user' | 'assistant';
         content: string;
-      }> = currentMessages.map((m) => ({
+      }> = messageHistory.map((m) => ({
         role: m.role === 'user' ? ('user' as const) : ('assistant' as const),
         content: m.content,
       }));
@@ -344,7 +336,7 @@ const ChatContainer = ({
 
       // Stream the response
       for await (const chunk of apiService.chat(provider, chatRequest)) {
-        // Handle metadata chunks (same as handleSendMessage)
+        // Handle metadata chunks
         if (
           chunk.startsWith('__BEDROCK_METADATA__') ||
           chunk.startsWith('__MANTLE_METADATA__') ||
@@ -390,8 +382,9 @@ const ChatContainer = ({
         });
       }
 
-      setMessages((prevMessages) => [
-        ...prevMessages,
+      // Add the new assistant message to the trimmed history (not using prevMessages!)
+      setMessages([
+        ...messageHistory,
         {
           id: streamingId,
           role: 'assistant',
@@ -423,7 +416,7 @@ const ChatContainer = ({
       if (error instanceof Error && error.name === 'AbortError') {
         console.log('Generation stopped by user');
         if (streamingMessage && streamingMessage.content) {
-          setMessages((prevMessages) => [...prevMessages, streamingMessage]);
+          setMessages([...messageHistory, streamingMessage]);
         }
         setStreamingMessage(null);
         return;
@@ -435,7 +428,7 @@ const ChatContainer = ({
         role: 'assistant',
         content: `Error: ${(error as Error).message || 'Could not regenerate response.'}`,
       };
-      setMessages((prevMessages) => [...prevMessages, errorMessage]);
+      setMessages([...messageHistory, errorMessage]);
       setStreamingMessage(null);
     } finally {
       setIsLoading(false);
