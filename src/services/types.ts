@@ -1,7 +1,7 @@
 export interface Model {
   id: string;
   name: string;
-  provider: 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle';
+  provider: 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle' | 'groq' | 'cerebras';
 }
 
 export interface DocumentBlock {
@@ -40,7 +40,7 @@ export interface ChatRequest {
 export interface ModelInfo {
   modelId: string;
   modelName: string;
-  provider: 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle';
+  provider: 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle' | 'groq' | 'cerebras';
   profileType?: string; // For Bedrock: SYSTEM_DEFINED, etc.
   modelFamily?: string; // For Bedrock: Anthropic Claude, Meta Llama, etc.
   ownedBy?: string; // For Mantle: model owner

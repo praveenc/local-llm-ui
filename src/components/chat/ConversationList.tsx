@@ -60,6 +60,8 @@ const getProviderIcon = (providers: string[]): string | null => {
   if (providers.includes('bedrock')) return '/bedrock_bw.svg';
   if (providers.includes('lmstudio')) return '/lmstudio_icon.svg';
   if (providers.includes('ollama')) return '/ollama_icon.svg';
+  if (providers.includes('groq')) return '/groq_icon.svg';
+  if (providers.includes('cerebras')) return '/cerebras_icon.svg';
   return null;
 };
 

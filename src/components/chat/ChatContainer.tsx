@@ -55,6 +55,8 @@ const getProviderFromModel = (model: SelectProps.Option | null): Provider => {
   if (model?.description?.toLowerCase().includes('ollama')) return 'ollama';
   if (model?.description?.toLowerCase().includes('bedrock-mantle')) return 'bedrock-mantle';
   if (model?.description?.toLowerCase().includes('bedrock')) return 'bedrock';
+  if (model?.description?.toLowerCase().includes('groq')) return 'groq';
+  if (model?.description?.toLowerCase().includes('cerebras')) return 'cerebras';
   return 'lmstudio';
 };
 
@@ -96,6 +98,7 @@ const ChatContainer = ({
     promptTokens?: number;
     completionTokens?: number;
     totalTokens?: number;
+    latencyMs?: number;
   } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -431,21 +434,77 @@ const ChatContainer = ({
             const metadataJson = chunk.replace('__LMSTUDIO_METADATA__', '');
             const metadata = JSON.parse(metadataJson);
 
-            // Extract usage information
-            if (metadata.usage) {
+            // Extract usage and latency information
+            if (metadata.usage || metadata.latencyMs) {
               capturedUsage = {
-                inputTokens: metadata.usage.promptTokens,
-                outputTokens: metadata.usage.completionTokens,
-                totalTokens: metadata.usage.totalTokens,
+                inputTokens: metadata.usage?.promptTokens,
+                outputTokens: metadata.usage?.completionTokens,
+                totalTokens: metadata.usage?.totalTokens,
+                latencyMs: metadata.latencyMs,
               };
               setLmstudioMetadata({
-                promptTokens: metadata.usage.promptTokens,
-                completionTokens: metadata.usage.completionTokens,
-                totalTokens: metadata.usage.totalTokens,
+                promptTokens: metadata.usage?.promptTokens,
+                completionTokens: metadata.usage?.completionTokens,
+                totalTokens: metadata.usage?.totalTokens,
+                latencyMs: metadata.latencyMs,
               });
             }
           } catch (e) {
             console.error('Failed to parse LM Studio metadata:', e);
+          }
+          continue;
+        }
+
+        // Check if this is Ollama metadata
+        if (chunk.startsWith('__OLLAMA_METADATA__')) {
+          try {
+            const metadataJson = chunk.replace('__OLLAMA_METADATA__', '');
+            const metadata = JSON.parse(metadataJson);
+
+            // Extract usage and latency information
+            if (metadata.usage || metadata.latencyMs) {
+              capturedUsage = {
+                inputTokens: metadata.usage?.promptTokens,
+                outputTokens: metadata.usage?.completionTokens,
+                totalTokens: metadata.usage?.totalTokens,
+                latencyMs: metadata.latencyMs,
+              };
+              setLmstudioMetadata({
+                promptTokens: metadata.usage?.promptTokens,
+                completionTokens: metadata.usage?.completionTokens,
+                totalTokens: metadata.usage?.totalTokens,
+                latencyMs: metadata.latencyMs,
+              });
+            }
+          } catch (e) {
+            console.error('Failed to parse Ollama metadata:', e);
+          }
+          continue;
+        }
+
+        // Check if this is AI SDK metadata (Groq, Cerebras)
+        if (chunk.startsWith('__AISDK_METADATA__')) {
+          try {
+            const metadataJson = chunk.replace('__AISDK_METADATA__', '');
+            const metadata = JSON.parse(metadataJson);
+
+            // Extract usage and latency information
+            if (metadata.usage || metadata.latencyMs) {
+              capturedUsage = {
+                inputTokens: metadata.usage?.promptTokens,
+                outputTokens: metadata.usage?.completionTokens,
+                totalTokens: metadata.usage?.totalTokens,
+                latencyMs: metadata.latencyMs,
+              };
+              setLmstudioMetadata({
+                promptTokens: metadata.usage?.promptTokens,
+                completionTokens: metadata.usage?.completionTokens,
+                totalTokens: metadata.usage?.totalTokens,
+                latencyMs: metadata.latencyMs,
+              });
+            }
+          } catch (e) {
+            console.error('Failed to parse AI SDK metadata:', e);
           }
           continue;
         }
@@ -601,6 +660,18 @@ const ChatContainer = ({
                       alt="Ollama"
                       style={{ width: '24px', height: '24px' }}
                     />
+                  ) : selectedModel.description?.toLowerCase().includes('groq') ? (
+                    <img
+                      src="/groq_icon.svg"
+                      alt="Groq"
+                      style={{ width: '24px', height: '24px' }}
+                    />
+                  ) : selectedModel.description?.toLowerCase().includes('cerebras') ? (
+                    <img
+                      src="/cerebras_icon.svg"
+                      alt="Cerebras"
+                      style={{ width: '24px', height: '24px' }}
+                    />
                   ) : (
                     <Icon name="contact" size="medium" />
                   )}
@@ -615,7 +686,11 @@ const ChatContainer = ({
                           ? 'LM Studio'
                           : selectedModel.description?.toLowerCase().includes('ollama')
                             ? 'Ollama'
-                            : 'Chat'}
+                            : selectedModel.description?.toLowerCase().includes('groq')
+                              ? 'Groq'
+                              : selectedModel.description?.toLowerCase().includes('cerebras')
+                                ? 'Cerebras'
+                                : 'Chat'}
                   </Box>
 
                   {showOptimizeButton && (
@@ -667,6 +742,16 @@ const ChatContainer = ({
                               className="provider-icon"
                             />
                           )}
+                          {selectedModel.description?.toLowerCase().includes('groq') && (
+                            <img src="/groq_icon.svg" alt="Groq" className="provider-icon" />
+                          )}
+                          {selectedModel.description?.toLowerCase().includes('cerebras') && (
+                            <img
+                              src="/cerebras_icon.svg"
+                              alt="Cerebras"
+                              className="provider-icon"
+                            />
+                          )}
                         </Box>
                         <SpaceBetween size="xs" alignItems="center">
                           <Box variant="h3" color="text-body-secondary">
@@ -708,7 +793,13 @@ const ChatContainer = ({
                           ? bedrockMetadata
                           : selectedModel?.description?.toLowerCase().includes('lmstudio')
                             ? lmstudioMetadata
-                            : null
+                            : selectedModel?.description?.toLowerCase().includes('ollama')
+                              ? lmstudioMetadata
+                              : selectedModel?.description?.toLowerCase().includes('groq')
+                                ? lmstudioMetadata
+                                : selectedModel?.description?.toLowerCase().includes('cerebras')
+                                  ? lmstudioMetadata
+                                  : null
                     }
                   />
                 </Box>
