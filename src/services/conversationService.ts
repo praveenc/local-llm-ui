@@ -193,6 +193,41 @@ export const conversationService = {
   },
 
   /**
+   * Delete messages after a certain sequence number (inclusive)
+   * Used for regeneration to remove old responses and subsequent messages
+   */
+  async deleteMessagesFromSequence(conversationId: string, fromSequence: number): Promise<number> {
+    return db.transaction('rw', [db.conversations, db.messages], async () => {
+      // Get messages to delete
+      const messagesToDelete = await db.messages
+        .where('[conversationId+sequence]')
+        .between([conversationId, fromSequence], [conversationId, Dexie.maxKey])
+        .toArray();
+
+      const deleteCount = messagesToDelete.length;
+
+      if (deleteCount > 0) {
+        // Delete the messages
+        await db.messages
+          .where('[conversationId+sequence]')
+          .between([conversationId, fromSequence], [conversationId, Dexie.maxKey])
+          .delete();
+
+        // Update conversation message count
+        const conversation = await db.conversations.get(conversationId);
+        if (conversation) {
+          await db.conversations.update(conversationId, {
+            messageCount: Math.max(0, conversation.messageCount - deleteCount),
+            updatedAt: new Date(),
+          });
+        }
+      }
+
+      return deleteCount;
+    });
+  },
+
+  /**
    * Get conversation with its messages
    */
   async getWithMessages(

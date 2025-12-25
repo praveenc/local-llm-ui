@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 
 import { Alert, Box, Button, Icon, SpaceBetween } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
@@ -108,7 +109,8 @@ const ChatContainer = ({
 
   // Load conversation from DB
   const { messages: dbMessages } = useConversation(activeConversationId);
-  const { createConversation, addMessage, getNextSequence } = useConversationMutations();
+  const { createConversation, addMessage, getNextSequence, deleteMessagesFromSequence } =
+    useConversationMutations();
 
   // Sync DB messages to local state when conversation loads
   useEffect(() => {
@@ -260,7 +262,19 @@ const ChatContainer = ({
     // Remove all messages from the assistant message onwards (keep up to and including user message)
     // This removes the assistant response we're regenerating AND any subsequent messages
     const newMessages = messages.slice(0, userMessageIndex + 1);
-    setMessages(newMessages);
+
+    // Delete messages from DB starting from the assistant message's sequence
+    // The sequence in DB is 1-based and corresponds to message index + 1
+    // We want to delete from assistantMessageIndex + 1 (the sequence of the assistant message)
+    if (activeConversationId) {
+      const fromSequence = assistantMessageIndex + 1; // Convert 0-based index to 1-based sequence
+      await deleteMessagesFromSequence(activeConversationId, fromSequence);
+    }
+
+    // Update local state - use flushSync to ensure UI updates immediately
+    flushSync(() => {
+      setMessages(newMessages);
+    });
 
     // Directly call the regeneration logic with the trimmed message history
     await handleSendMessageForRegenerate(userMessage.content, newMessages);
