@@ -9,10 +9,12 @@ export type {
   ConversationStatus,
   CreateConversationInput,
   CreateMessageInput,
+  CreateSavedPromptInput,
   Message,
   MessageAttachment,
   MessageParameters,
   MessageRole,
   MessageUsage,
   Provider,
+  SavedPrompt,
 } from './types';
