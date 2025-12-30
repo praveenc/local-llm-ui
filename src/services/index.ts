@@ -8,3 +8,4 @@ export type { MantleRegion } from './mantle';
 export { promptOptimizerService, optimizePrompt } from './promptOptimizer';
 export type { OptimizePromptResult } from './promptOptimizer';
 export { conversationService } from './conversationService';
+export { promptsService } from './promptsService';

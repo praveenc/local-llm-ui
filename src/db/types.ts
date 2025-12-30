@@ -56,3 +56,17 @@ export interface Conversation {
 // Input types for creating new records (id is auto-generated)
 export type CreateConversationInput = Omit<Conversation, 'id'>;
 export type CreateMessageInput = Omit<Message, 'id'>;
+
+/**
+ * Saved Prompts types
+ */
+export interface SavedPrompt {
+  id: string;
+  name: string;
+  content: string;
+  category: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type CreateSavedPromptInput = Omit<SavedPrompt, 'id'>;

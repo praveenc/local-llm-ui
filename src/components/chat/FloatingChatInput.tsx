@@ -50,6 +50,7 @@ interface FloatingChatInputProps {
   onDismissModelStatus?: () => void;
   onClearConversation?: () => void;
   hasMessages?: boolean;
+  onSavePrompt?: (content: string) => void;
 }
 
 const FloatingChatInput = ({
@@ -75,6 +76,7 @@ const FloatingChatInput = ({
   onDismissModelStatus,
   onClearConversation,
   hasMessages = false,
+  onSavePrompt,
 }: FloatingChatInputProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const { areFilesDragging } = useFilesDragging();
@@ -178,6 +180,17 @@ const FloatingChatInput = ({
                     title="Optimize prompt with AI"
                   >
                     <Icon name="gen-ai" size="small" />
+                  </button>
+                )}
+                {onSavePrompt && inputValue.trim() && (
+                  <button
+                    className="floating-chat-input__action-btn"
+                    onClick={() => onSavePrompt(inputValue)}
+                    disabled={isLoading}
+                    aria-label="Save prompt"
+                    title="Save prompt for later"
+                  >
+                    <Icon name="download" size="small" />
                   </button>
                 )}
                 {hasMessages && onClearConversation && (

@@ -8,8 +8,15 @@ import type { SelectProps } from '@cloudscape-design/components';
 
 import { FittedContainer, ScrollableContainer } from '../../components/layout';
 import type { Provider } from '../../db';
-import { useConversation, useConversationMutations, usePromptOptimizer } from '../../hooks';
+import {
+  useConversation,
+  useConversationMutations,
+  usePromptMutations,
+  usePromptOptimizer,
+  useSavedPrompts,
+} from '../../hooks';
 import '../../styles/chatContainer.scss';
+import { SavePromptModal } from '../prompts';
 import FloatingChatInput from './FloatingChatInput';
 import MessageList from './MessageList';
 import OptimizePromptModal from './OptimizePromptModal';
@@ -133,6 +140,28 @@ const ChatContainer = ({
     optimize,
     clearError: clearOptimizeError,
   } = usePromptOptimizer();
+
+  // Save prompt state
+  const [showSavePromptModal, setShowSavePromptModal] = useState(false);
+  const [promptToSave, setPromptToSave] = useState('');
+  const { categories } = useSavedPrompts();
+  const { savePrompt } = usePromptMutations();
+
+  const handleSavePromptClick = (content: string) => {
+    setPromptToSave(content);
+    setShowSavePromptModal(true);
+  };
+
+  const handleSavePrompt = async (name: string, category: string) => {
+    await savePrompt(name, promptToSave, category);
+    setShowSavePromptModal(false);
+    setPromptToSave('');
+  };
+
+  const handleSavePromptDismiss = () => {
+    setShowSavePromptModal(false);
+    setPromptToSave('');
+  };
 
   // Determine if optimize button should be shown
   const showOptimizeButton = useMemo(() => {
@@ -841,6 +870,14 @@ const ChatContainer = ({
         isOptimizing={isOptimizing}
       />
 
+      <SavePromptModal
+        visible={showSavePromptModal}
+        onDismiss={handleSavePromptDismiss}
+        onSave={handleSavePrompt}
+        promptContent={promptToSave}
+        existingCategories={categories}
+      />
+
       <div className="chat-content-wrapper">
         {/* Header */}
         <div className="chat-header">
@@ -1016,6 +1053,7 @@ const ChatContainer = ({
                     }
                     onRegenerate={handleRegenerate}
                     isLoading={isLoading}
+                    onSavePrompt={handleSavePromptClick}
                   />
                 </Box>
               )}
@@ -1048,6 +1086,7 @@ const ChatContainer = ({
         onDismissModelStatus={onDismissModelStatus}
         onClearConversation={handleClearHistory}
         hasMessages={messages.length > 0}
+        onSavePrompt={handleSavePromptClick}
       />
     </>
   );

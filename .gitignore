@@ -175,7 +175,7 @@ docs/tmp_docs/
 # Development artifacts
 docs/IMPLEMENTATION_PLAN*.md
 docs/progress.txt
-prompts/
+docs/prompts/
 
 # GitHub assets (images, workflows, etc.) are tracked
 # !.github/

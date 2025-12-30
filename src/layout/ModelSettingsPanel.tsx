@@ -21,6 +21,7 @@ import {
   ModelLoadingConfirmModal,
   ModelLoadingProgress,
 } from '../components/chat';
+import { ViewPromptsModal } from '../components/prompts';
 import { useModelLoader } from '../hooks';
 import { cerebrasService, groqService, syncApiKeysFromPreferences } from '../services/aisdk';
 import '../styles/conversationList.scss';
@@ -137,6 +138,7 @@ export default function SideBar({
 
   // Model loading flow state
   const [showLoadConfirm, setShowLoadConfirm] = useState(false);
+  const [showViewPromptsModal, setShowViewPromptsModal] = useState(false);
   const [pendingModel, setPendingModel] = useState<SelectProps.Option | null>(null);
   const modelLoader = useModelLoader();
 
@@ -551,6 +553,28 @@ export default function SideBar({
         </SpaceBetween>
       </Box>
 
+      {/* Divider */}
+      <div className="sidebar-divider" />
+
+      {/* Saved Prompts Section */}
+      <Box padding={{ horizontal: 's', top: 'xs', bottom: 's' }}>
+        <SpaceBetween size="xs">
+          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+            <Icon name="download" size="small" />
+            <Box variant="small" color="text-body-secondary" fontWeight="bold">
+              Saved Prompts
+            </Box>
+          </SpaceBetween>
+          <Button
+            variant="link"
+            iconName="folder-open"
+            onClick={() => setShowViewPromptsModal(true)}
+          >
+            View Saved Prompts
+          </Button>
+        </SpaceBetween>
+      </Box>
+
       {/* Divider before settings */}
       <div className="sidebar-divider" style={{ marginTop: 'auto' }} />
 
@@ -944,6 +968,12 @@ export default function SideBar({
           onCancel={handleCancelProgress}
         />
       )}
+
+      {/* View Saved Prompts Modal */}
+      <ViewPromptsModal
+        visible={showViewPromptsModal}
+        onDismiss={() => setShowViewPromptsModal(false)}
+      />
     </div>
   );
 }
