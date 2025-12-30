@@ -50,12 +50,7 @@ export function ViewPromptDetailModal({ visible, onDismiss, prompt }: ViewPrompt
           </SpaceBetween>
         </Box>
         <Box variant="awsui-key-label">Prompt Content:</Box>
-        <Box
-          variant="code"
-          padding="m"
-          color="text-body-secondary"
-          fontSize="body-s"
-        >
+        <Box variant="code" padding="m" color="text-body-secondary" fontSize="body-s">
           <div style={{ maxHeight: '400px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
             <ReactMarkdown>{prompt.content}</ReactMarkdown>
           </div>

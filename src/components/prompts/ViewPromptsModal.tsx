@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   CopyToClipboard,
+  Icon,
   Input,
   Modal,
   Pagination,
@@ -32,6 +33,10 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedPrompt, setSelectedPrompt] = useState<SavedPrompt | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+
+  // Delete confirmation state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [promptToDelete, setPromptToDelete] = useState<SavedPrompt | null>(null);
 
   // Filter prompts based on search and category
   const filteredPrompts = useMemo(() => {
@@ -72,8 +77,26 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
     setShowDetailModal(true);
   };
 
-  const handleDeletePrompt = async (id: string) => {
-    await promptsService.deletePrompt(id);
+  const handleDeleteClick = (prompt: SavedPrompt) => {
+    setPromptToDelete(prompt);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!promptToDelete) return;
+    try {
+      await promptsService.deletePrompt(promptToDelete.id);
+    } catch (err) {
+      console.error('Failed to delete prompt:', err);
+    } finally {
+      setShowDeleteConfirm(false);
+      setPromptToDelete(null);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirm(false);
+    setPromptToDelete(null);
   };
 
   const handleClose = () => {
@@ -154,7 +177,7 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
               {
                 id: 'createdAt',
                 header: 'Created On',
-                cell: (item) => item.createdAt.toLocaleDateString(),
+                cell: (item) => new Date(item.createdAt).toLocaleDateString(),
                 sortingField: 'createdAt',
                 width: 120,
               },
@@ -193,7 +216,7 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
                     variant="icon"
                     iconName="remove"
                     ariaLabel="Delete prompt"
-                    onClick={() => handleDeletePrompt(item.id)}
+                    onClick={() => handleDeleteClick(item)}
                   />
                 ),
                 width: 60,
@@ -235,6 +258,38 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
         onDismiss={() => setShowDetailModal(false)}
         prompt={selectedPrompt}
       />
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={showDeleteConfirm}
+        onDismiss={handleCancelDelete}
+        size="small"
+        header="Delete prompt"
+        footer={
+          <Box float="right">
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="link" onClick={handleCancelDelete}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleConfirmDelete}>
+                Delete
+              </Button>
+            </SpaceBetween>
+          </Box>
+        }
+      >
+        <SpaceBetween size="s">
+          <Box>
+            Are you sure you want to delete the prompt <strong>"{promptToDelete?.name}"</strong>?
+          </Box>
+          <Box color="text-status-warning" variant="small">
+            <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
+              <Icon name="status-warning" size="small" />
+              <span>This action cannot be undone.</span>
+            </SpaceBetween>
+          </Box>
+        </SpaceBetween>
+      </Modal>
     </>
   );
 }

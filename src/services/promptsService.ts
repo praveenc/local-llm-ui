@@ -38,7 +38,8 @@ class PromptsService {
    * Get prompts by category
    */
   async getPromptsByCategory(category: string): Promise<SavedPrompt[]> {
-    return db.savedPrompts.where('category').equals(category).reverse().sortBy('createdAt');
+    const prompts = await db.savedPrompts.where('category').equals(category).toArray();
+    return prompts.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
   /**
