@@ -1,4 +1,7 @@
+export { ChatAvatar } from './ChatAvatar';
+export { ChatBubble } from './ChatBubble';
 export { default as ChatContainer } from './ChatContainer';
+export { ChatInput } from './ChatInput';
 export { default as CodeBlock } from './CodeBlock';
 export { default as ConversationList } from './ConversationList';
 export { default as FloatingChatInput } from './FloatingChatInput';
