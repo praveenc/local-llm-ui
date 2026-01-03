@@ -25,6 +25,7 @@ import { ViewPromptsModal } from '../components/prompts';
 import { useModelLoader } from '../hooks';
 import { cerebrasService, groqService, syncApiKeysFromPreferences } from '../services/aisdk';
 import '../styles/conversationList.scss';
+import '../styles/sidebar-overrides.css';
 import '../styles/sidebar.scss';
 import { loadPreferences, savePreferences, validateInitials } from '../utils/preferences';
 import type { ContentDensity, UserPreferences, VisualMode } from '../utils/preferences';

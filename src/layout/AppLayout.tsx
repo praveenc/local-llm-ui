@@ -12,7 +12,7 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarProvider,
-  SidebarTrigger,
+  useSidebar,
 } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -21,6 +21,18 @@ interface AppLayoutProps {
   children: React.ReactNode;
   navigationOpen?: boolean;
   onNavigationChange?: (open: boolean) => void;
+}
+
+// Custom trigger component that uses the sidebar context
+function CustomSidebarTrigger() {
+  const { toggleSidebar } = useSidebar();
+
+  return (
+    <Button variant="ghost" size="icon" onClick={toggleSidebar} className="h-8 w-8">
+      <PanelLeft className="h-5 w-5" />
+      <span className="sr-only">Toggle Sidebar</span>
+    </Button>
+  );
 }
 
 export function AppLayout({
@@ -60,16 +72,14 @@ export function AppLayout({
             </div>
           </div>
         </SidebarHeader>
-        <SidebarContent>{navigation}</SidebarContent>
+        <SidebarContent className="p-0">{navigation}</SidebarContent>
       </Sidebar>
 
       <SidebarInset>
         {/* Header */}
         <header className="flex h-14 shrink-0 items-center justify-between border-b px-4">
           <div className="flex items-center gap-2">
-            <SidebarTrigger className="-ml-1">
-              <PanelLeft className="h-5 w-5" />
-            </SidebarTrigger>
+            <CustomSidebarTrigger />
             <Separator orientation="vertical" className="mr-2 h-4" />
             <span className="text-sm font-medium text-muted-foreground">Chat</span>
           </div>

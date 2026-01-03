@@ -168,7 +168,7 @@ const MessageList = ({
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-6 max-w-4xl mx-auto">
         {messages.map((message, index) => (
           <div key={message.id} className="flex flex-col gap-1">
             <ChatBubble
