@@ -169,7 +169,9 @@ async function handleListModels(
     throw new Error(`${response.status}: ${errorText}`);
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as {
+    data?: Array<{ id: string; owned_by?: string; created?: number }>;
+  };
 
   // Transform OpenAI models format to our format
   const models = (data.data || []).map(
@@ -314,7 +316,10 @@ async function handleChat(
     res.end();
   } else {
     // Handle non-streaming response
-    const data = await response.json();
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+    };
     const content = data.choices?.[0]?.message?.content || '';
 
     res.setHeader('Content-Type', 'application/json');

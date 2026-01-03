@@ -6,11 +6,9 @@ import type { SelectProps } from '@cloudscape-design/components';
 
 import { ChatContainer } from '../components/chat';
 import { loadPreferences } from '../utils/preferences';
-import type { UserPreferences } from '../utils/preferences';
+import type { Provider, UserPreferences } from '../utils/preferences';
 import { AppLayout } from './AppLayout';
 import ModelSettingsPanel from './ModelSettingsPanel';
-
-type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle';
 
 export default function AppShell() {
   const [selectedModel, setSelectedModel] = useState<SelectProps.Option | null>(null);
