@@ -1,25 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
-
 import {
-  Box,
-  Button,
-  FileDropzone,
-  FileInput,
-  FileTokenGroup,
-  Flashbar,
-  FormField,
-  Icon,
-  Modal,
-  PromptInput,
-  RadioGroup,
-  Slider,
-  SpaceBetween,
-} from '@cloudscape-design/components';
-import type { FlashbarProps, SelectProps } from '@cloudscape-design/components';
+  AlertTriangle,
+  Download,
+  Paperclip,
+  Send,
+  Settings,
+  Sparkles,
+  Square,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 
-import useFilesDragging from '../../hooks/useFilesDragging';
-import '../../styles/FloatingChatInput.scss';
-import { fileTokenGroupI18nStrings } from '../../utils/i18nStrings';
+import type { ChangeEvent, DragEvent, KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import type { SelectProps } from '@cloudscape-design/components';
+
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Slider } from '@/components/ui/slider';
+import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
 type SamplingParameter = 'temperature' | 'topP';
 
@@ -79,8 +92,9 @@ const FloatingChatInput = ({
   onSavePrompt,
 }: FloatingChatInputProps) => {
   const [files, setFiles] = useState<File[]>([]);
-  const { areFilesDragging } = useFilesDragging();
-  const promptInputRef = useRef<HTMLTextAreaElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [settingsVisible, setSettingsVisible] = useState<boolean>(false);
   const [clearModalVisible, setClearModalVisible] = useState<boolean>(false);
 
@@ -113,6 +127,22 @@ const FloatingChatInput = ({
 
   const providerInfo = getProviderInfo();
 
+  // Auto-resize textarea
+  const adjustHeight = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    const lineHeight = 24;
+    const minHeight = lineHeight * 2;
+    const maxHeight = lineHeight * 6;
+    const newHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight);
+    textarea.style.height = `${newHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    adjustHeight();
+  }, [inputValue, adjustHeight]);
+
   const handleFileChange = (newFiles: File[]) => {
     setFiles((prev) => {
       const updatedFiles = [...prev, ...newFiles];
@@ -129,271 +159,382 @@ const FloatingChatInput = ({
     });
 
     if (files.length === 1) {
-      promptInputRef.current?.focus();
+      textareaRef.current?.focus();
+    }
+  };
+
+  const handleFileInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      handleFileChange(Array.from(e.target.files));
+    }
+  };
+
+  const handleDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files) {
+      handleFileChange(Array.from(e.dataTransfer.files));
+    }
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (!isLoading && selectedModel && inputValue.trim()) {
+        onSendMessage();
+      }
+    }
+  };
+
+  const handleSend = () => {
+    if (!isLoading && selectedModel && inputValue.trim()) {
+      onSendMessage();
     }
   };
 
   return (
-    <>
-      {/* Model Status Flashbar - positioned above input */}
+    <TooltipProvider>
+      {/* Model Status Alert - positioned above input */}
       {modelStatus && (
-        <div className="model-status-flashbar">
-          <Flashbar
-            items={[
-              {
-                type: modelStatus.type as FlashbarProps.Type,
-                header: modelStatus.header,
-                content: modelStatus.content,
-                dismissible: true,
-                onDismiss: onDismissModelStatus,
-                id: 'model-status',
-              },
-            ]}
-          />
+        <div className="fixed bottom-36 left-0 md:left-[280px] right-0 z-[999] px-4 md:px-8 pointer-events-none">
+          <div className="max-w-[1100px] mx-auto pointer-events-auto">
+            <Alert
+              variant={modelStatus.type === 'error' ? 'destructive' : 'default'}
+              className="relative"
+            >
+              <AlertTitle>{modelStatus.header}</AlertTitle>
+              <AlertDescription>{modelStatus.content}</AlertDescription>
+              {onDismissModelStatus && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 h-6 w-6"
+                  onClick={onDismissModelStatus}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </Alert>
+          </div>
         </div>
       )}
 
-      <div className="floating-chat-input">
-        <div className="floating-chat-input__container">
+      <div className="fixed bottom-0 left-0 md:left-[280px] right-0 z-[1000] p-2 md:p-4 pointer-events-none">
+        <div
+          className={cn(
+            'max-w-[1100px] mx-auto pointer-events-auto',
+            'bg-background/92 backdrop-blur-md',
+            'border border-border rounded-lg shadow-lg',
+            'overflow-hidden'
+          )}
+          onDragOver={isBedrockModel ? handleDragOver : undefined}
+          onDragLeave={isBedrockModel ? handleDragLeave : undefined}
+          onDrop={isBedrockModel ? handleDrop : undefined}
+        >
           {/* Compact header bar */}
           {selectedModel && (
-            <div className="floating-chat-input__header">
-              <div className="floating-chat-input__model-info">
+            <div className="flex items-center justify-between px-3 py-2 bg-muted/60 border-b border-border">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
                 {providerInfo && (
                   <>
                     <img
                       src={providerInfo.icon}
                       alt={providerInfo.name}
-                      className="floating-chat-input__provider-icon"
+                      className="w-4 h-4 flex-shrink-0"
                     />
-                    <span className="floating-chat-input__model-name">{selectedModel.label}</span>
+                    <span className="text-sm font-medium text-foreground truncate">
+                      {selectedModel.label}
+                    </span>
                   </>
                 )}
               </div>
-              <div className="floating-chat-input__actions">
+              <div className="flex items-center gap-1 flex-shrink-0">
                 {showOptimizeButton && onOptimizePrompt && (
-                  <button
-                    className="floating-chat-input__action-btn floating-chat-input__action-btn--optimize"
-                    onClick={onOptimizePrompt}
-                    disabled={!inputValue.trim() || isOptimizing || isLoading}
-                    aria-label="Optimize prompt"
-                    title="Optimize prompt with AI"
-                  >
-                    <Icon name="gen-ai" size="small" />
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-primary"
+                        onClick={onOptimizePrompt}
+                        disabled={!inputValue.trim() || isOptimizing || isLoading}
+                      >
+                        <Sparkles className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Optimize prompt with AI</TooltipContent>
+                  </Tooltip>
                 )}
                 {onSavePrompt && inputValue.trim() && (
-                  <button
-                    className="floating-chat-input__action-btn"
-                    onClick={() => onSavePrompt(inputValue)}
-                    disabled={isLoading}
-                    aria-label="Save prompt"
-                    title="Save prompt for later"
-                  >
-                    <Icon name="download" size="small" />
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => onSavePrompt(inputValue)}
+                        disabled={isLoading}
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Save prompt for later</TooltipContent>
+                  </Tooltip>
                 )}
                 {hasMessages && onClearConversation && (
-                  <button
-                    className="floating-chat-input__action-btn"
-                    onClick={() => setClearModalVisible(true)}
-                    disabled={isLoading}
-                    aria-label="Clear conversation"
-                    title="Clear conversation"
-                  >
-                    <Icon name="remove" size="small" />
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setClearModalVisible(true)}
+                        disabled={isLoading}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Clear conversation</TooltipContent>
+                  </Tooltip>
                 )}
-                <button
-                  className="floating-chat-input__action-btn"
-                  onClick={() => setSettingsVisible(true)}
-                  aria-label="Model settings"
-                  title="Model parameters"
-                >
-                  <Icon name="settings" size="small" />
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => setSettingsVisible(true)}
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Model parameters</TooltipContent>
+                </Tooltip>
               </div>
             </div>
           )}
 
           {/* Input area */}
-          <Box padding={{ horizontal: 'm', bottom: 'm', top: selectedModel ? 'xs' : 'm' }}>
-            <PromptInput
-              ref={promptInputRef}
-              value={inputValue}
-              onChange={({ detail }) => onInputValueChange(detail.value)}
-              onAction={onSendMessage}
-              placeholder={selectedModel ? 'Send a message...' : 'Select a model to start chatting'}
-              disabled={isLoading || !selectedModel}
-              actionButtonAriaLabel={
-                isLoading ? 'Send message button - suppressed' : 'Send message'
-              }
-              actionButtonIconName="send"
-              ariaLabel={isLoading ? 'Prompt input - suppressed' : 'Chat input'}
-              maxRows={6}
-              minRows={2}
-              disableSecondaryActionsPaddings
-              secondaryActions={
-                <SpaceBetween direction="horizontal" size="xxs">
-                  {isBedrockModel && (
-                    <Box padding={{ left: 'xxs', top: 'xs' }}>
-                      <FileInput
-                        ariaLabel="Upload files"
-                        variant="icon"
-                        multiple={true}
-                        value={files}
-                        onChange={({ detail }) => handleFileChange(detail.value)}
-                      />
-                    </Box>
-                  )}
-                  {isLMStudioModel && isLoading && (
-                    <Box padding={{ top: 'xs' }}>
+          <div className={cn('p-3', selectedModel ? 'pt-2' : '')}>
+            {/* Drag and drop overlay */}
+            {isBedrockModel && isDragging && (
+              <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary rounded-lg flex items-center justify-center z-10">
+                <div className="flex flex-col items-center gap-2 text-primary">
+                  <Upload className="h-8 w-8" />
+                  <span className="text-sm font-medium">Drop files here</span>
+                </div>
+              </div>
+            )}
+
+            <div className="relative">
+              <Textarea
+                ref={textareaRef}
+                value={inputValue}
+                onChange={(e) => onInputValueChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  selectedModel ? 'Send a message...' : 'Select a model to start chatting'
+                }
+                disabled={isLoading || !selectedModel}
+                className={cn(
+                  'min-h-[48px] resize-none pr-24',
+                  'focus-visible:ring-1 focus-visible:ring-ring'
+                )}
+                rows={2}
+              />
+
+              {/* Action buttons inside textarea */}
+              <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                {isBedrockModel && (
+                  <>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileInputChange}
+                      accept=".pdf,.txt,.html,.md,.csv,.doc,.docx,.xls,.xlsx"
+                    />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <Paperclip className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Attach files</TooltipContent>
+                    </Tooltip>
+                  </>
+                )}
+                {isLMStudioModel && isLoading && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
                       <Button
-                        variant="icon"
-                        iconName="close"
-                        ariaLabel="Stop generation"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
                         onClick={onStopGeneration}
-                      />
-                    </Box>
-                  )}
-                </SpaceBetween>
-              }
-              secondaryContent={
-                <>
-                  {isBedrockModel && areFilesDragging ? (
-                    <FileDropzone onChange={({ detail }) => handleFileChange(detail.value)}>
-                      <SpaceBetween size="xs" alignItems="center">
-                        <Icon name="upload" />
-                        <Box>Drop files here</Box>
-                      </SpaceBetween>
-                    </FileDropzone>
-                  ) : (
-                    files.length > 0 && (
-                      <FileTokenGroup
-                        items={files.map((file) => ({ file }))}
-                        onDismiss={({ detail }) => handleFileDismiss(detail.fileIndex)}
-                        limit={3}
-                        alignment="horizontal"
-                        showFileThumbnail={true}
-                        i18nStrings={fileTokenGroupI18nStrings}
-                      />
-                    )
-                  )}
-                </>
-              }
-            />
-          </Box>
+                      >
+                        <Square className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Stop generation</TooltipContent>
+                  </Tooltip>
+                )}
+                <Button
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={handleSend}
+                  disabled={isLoading || !selectedModel || !inputValue.trim()}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* File tokens */}
+            {files.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {files.slice(0, 3).map((file, index) => (
+                  <Badge key={index} variant="secondary" className="gap-1 pr-1">
+                    <span className="truncate max-w-[150px]">{file.name}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-4 w-4 ml-1 hover:bg-transparent"
+                      onClick={() => handleFileDismiss(index)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </Badge>
+                ))}
+                {files.length > 3 && <Badge variant="outline">+{files.length - 3} more</Badge>}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Settings Modal */}
-      <Modal
-        onDismiss={() => setSettingsVisible(false)}
-        visible={settingsVisible}
-        size="medium"
-        footer={
-          <Box float="right">
-            <Button variant="primary" onClick={() => setSettingsVisible(false)}>
-              Done
-            </Button>
-          </Box>
-        }
-        header="Model Parameters"
-      >
-        <SpaceBetween size="l">
-          <FormField label={`Max Tokens: ${maxTokens.toLocaleString()}`}>
-            <Slider
-              onChange={({ detail }) => setMaxTokens(detail.value)}
-              value={maxTokens}
-              min={1024}
-              max={10240}
-              step={1024}
-              ariaLabel="Max Tokens Slider"
-            />
-          </FormField>
-
-          {isClaude45Model && (
-            <FormField
-              label="Sampling Parameter"
-              description="Claude 4.5 models support either temperature or topP, but not both"
-            >
-              <RadioGroup
-                value={samplingParameter}
-                onChange={({ detail }) => setSamplingParameter(detail.value as SamplingParameter)}
-                items={[
-                  { value: 'temperature', label: 'Temperature' },
-                  { value: 'topP', label: 'Top P' },
-                ]}
+      {/* Settings Dialog */}
+      <Dialog open={settingsVisible} onOpenChange={setSettingsVisible}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Model Parameters</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-6 py-4">
+            <div className="space-y-3">
+              <Label>Max Tokens: {maxTokens.toLocaleString()}</Label>
+              <Slider
+                value={[maxTokens]}
+                onValueChange={(values: number[]) => setMaxTokens(values[0])}
+                min={1024}
+                max={10240}
+                step={1024}
               />
-            </FormField>
-          )}
+            </div>
 
-          <FormField
-            label={`Temperature: ${isClaude45Model && samplingParameter !== 'temperature' ? 'N/A' : temperature.toFixed(1)}`}
-          >
-            <Slider
-              onChange={({ detail }) => setTemperature(detail.value)}
-              value={temperature}
-              min={0}
-              max={1.0}
-              step={0.1}
-              ariaLabel="Temperature Slider"
-              disabled={isClaude45Model && samplingParameter !== 'temperature'}
-            />
-          </FormField>
+            {isClaude45Model && (
+              <div className="space-y-3">
+                <Label>Sampling Parameter</Label>
+                <p className="text-sm text-muted-foreground">
+                  Claude 4.5 models support either temperature or topP, but not both
+                </p>
+                <RadioGroup
+                  value={samplingParameter}
+                  onValueChange={(value) => setSamplingParameter(value as SamplingParameter)}
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="temperature" id="temperature" />
+                    <Label htmlFor="temperature">Temperature</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="topP" id="topP" />
+                    <Label htmlFor="topP">Top P</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+            )}
 
-          <FormField
-            label={`Top P: ${isClaude45Model && samplingParameter !== 'topP' ? 'N/A' : topP.toFixed(1)}`}
-          >
-            <Slider
-              onChange={({ detail }) => setTopP(detail.value)}
-              value={topP}
-              min={0}
-              max={1.0}
-              step={0.1}
-              ariaLabel="Top P Slider"
-              disabled={isClaude45Model && samplingParameter !== 'topP'}
-            />
-          </FormField>
-        </SpaceBetween>
-      </Modal>
+            <div className="space-y-3">
+              <Label>
+                Temperature:{' '}
+                {isClaude45Model && samplingParameter !== 'temperature'
+                  ? 'N/A'
+                  : temperature.toFixed(1)}
+              </Label>
+              <Slider
+                value={[temperature]}
+                onValueChange={(values: number[]) => setTemperature(values[0])}
+                min={0}
+                max={1}
+                step={0.1}
+                disabled={isClaude45Model && samplingParameter !== 'temperature'}
+              />
+            </div>
 
-      {/* Clear Conversation Confirmation Modal */}
-      <Modal
-        onDismiss={() => setClearModalVisible(false)}
-        visible={clearModalVisible}
-        size="small"
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={() => setClearModalVisible(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  onClearConversation?.();
-                  setClearModalVisible(false);
-                }}
-              >
-                Clear
-              </Button>
-            </SpaceBetween>
-          </Box>
-        }
-        header="Clear conversation"
-      >
-        <SpaceBetween size="s">
-          <Box>Are you sure you want to clear this conversation?</Box>
-          <Box color="text-status-warning" variant="small">
-            <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
-              <Icon name="status-warning" size="small" />
-              <span>This action is irreversible. All messages will be permanently deleted.</span>
-            </SpaceBetween>
-          </Box>
-        </SpaceBetween>
-      </Modal>
-    </>
+            <div className="space-y-3">
+              <Label>
+                Top P: {isClaude45Model && samplingParameter !== 'topP' ? 'N/A' : topP.toFixed(1)}
+              </Label>
+              <Slider
+                value={[topP]}
+                onValueChange={(values: number[]) => setTopP(values[0])}
+                min={0}
+                max={1}
+                step={0.1}
+                disabled={isClaude45Model && samplingParameter !== 'topP'}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setSettingsVisible(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clear Conversation Confirmation Dialog */}
+      <Dialog open={clearModalVisible} onOpenChange={setClearModalVisible}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Clear conversation</DialogTitle>
+            <DialogDescription>Are you sure you want to clear this conversation?</DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-500">
+            <AlertTriangle className="h-4 w-4" />
+            <span>This action is irreversible. All messages will be permanently deleted.</span>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setClearModalVisible(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                onClearConversation?.();
+                setClearModalVisible(false);
+              }}
+            >
+              Clear
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </TooltipProvider>
   );
 };
 
