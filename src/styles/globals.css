@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:is(.dark *));
+
 /* Cosmic Night Theme from tweakcn.com */
 :root {
   --background: oklch(0.973 0.0133 286.1503);
@@ -186,5 +188,14 @@
   }
   to {
     height: 0;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
   }
 }

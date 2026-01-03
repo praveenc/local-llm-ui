@@ -1,9 +1,19 @@
-import { Moon, Sun } from 'lucide-react';
+'use client';
+
+import { Moon, PanelLeft, Sun } from 'lucide-react';
 
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Separator } from '@/components/ui/separator';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/sonner';
 
 interface AppLayoutProps {
@@ -37,53 +47,31 @@ export function AppLayout({
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background">
-      {/* Desktop Sidebar */}
-      <aside
-        className={`hidden md:flex md:flex-col border-r bg-sidebar transition-all duration-300 ${
-          navigationOpen ? 'md:w-80' : 'md:w-0'
-        } overflow-hidden`}
-      >
-        {navigationOpen && <div className="flex-1 overflow-y-auto">{navigation}</div>}
-      </aside>
+    <SidebarProvider defaultOpen={navigationOpen} onOpenChange={onNavigationChange}>
+      <Sidebar variant="sidebar" collapsible="offcanvas">
+        <SidebarHeader className="border-b border-sidebar-border">
+          <div className="flex items-center gap-2 px-2 py-1">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <span className="text-sm font-bold">L</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-sidebar-foreground">Local LLM UI</span>
+              <span className="text-xs text-sidebar-foreground/60">Chat Interface</span>
+            </div>
+          </div>
+        </SidebarHeader>
+        <SidebarContent>{navigation}</SidebarContent>
+      </Sidebar>
 
-      {/* Mobile Sidebar */}
-      <Sheet open={navigationOpen} onOpenChange={onNavigationChange}>
-        <SheetContent side="left" className="w-80 p-0 md:hidden">
-          {navigation}
-        </SheetContent>
-      </Sheet>
-
-      {/* Main Content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <SidebarInset>
         {/* Header */}
-        <header className="flex h-14 items-center justify-between border-b px-4">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b px-4">
           <div className="flex items-center gap-2">
-            <Sheet>
-              <SheetTrigger asChild className="md:hidden">
-                <Button variant="ghost" size="icon">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <line x1="3" y1="12" x2="21" y2="12" />
-                    <line x1="3" y1="6" x2="21" y2="6" />
-                    <line x1="3" y1="18" x2="21" y2="18" />
-                  </svg>
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-80 p-0">
-                {navigation}
-              </SheetContent>
-            </Sheet>
-            <h1 className="text-lg font-semibold">Local LLM UI</h1>
+            <SidebarTrigger className="-ml-1">
+              <PanelLeft className="h-5 w-5" />
+            </SidebarTrigger>
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <span className="text-sm font-medium text-muted-foreground">Chat</span>
           </div>
           <Button variant="ghost" size="icon" onClick={toggleTheme}>
             {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
@@ -91,11 +79,11 @@ export function AppLayout({
         </header>
 
         {/* Content Area */}
-        <main className="flex-1 overflow-hidden">{children}</main>
-      </div>
+        <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
+      </SidebarInset>
 
       {/* Toast Notifications */}
       <Toaster />
-    </div>
+    </SidebarProvider>
   );
 }
