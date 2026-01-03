@@ -7,16 +7,18 @@ import {
   Edit,
   Info,
   Loader2,
+  Moon,
   MoreHorizontal,
   Plus,
   Send,
   Settings,
   Sparkles,
+  Sun,
   Trash2,
   User,
 } from 'lucide-react';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Alert, AlertDescription, AlertTitle } from './components/ui/alert';
 import { Avatar, AvatarFallback, AvatarImage } from './components/ui/avatar';
@@ -104,6 +106,21 @@ export default function ShadcnStyleGuide() {
   const [switchChecked, setSwitchChecked] = useState(false);
   const [progress, setProgress] = useState(45);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    // Check for system preference on mount
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    setIsDark(prefersDark);
+    if (prefersDark) {
+      document.documentElement.classList.add('dark');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    setIsDark(!isDark);
+    document.documentElement.classList.toggle('dark');
+  };
 
   return (
     <TooltipProvider>
@@ -116,7 +133,17 @@ export default function ShadcnStyleGuide() {
               <span className="font-bold text-lg">Shadcn UI Style Guide</span>
             </div>
             <div className="flex flex-1 items-center justify-end space-x-2">
-              <Badge variant="secondary">v1.0</Badge>
+              <Badge variant="secondary">Cosmic Night</Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={toggleTheme}>
+                    {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Toggle {isDark ? 'light' : 'dark'} mode</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </header>

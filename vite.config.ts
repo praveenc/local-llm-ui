@@ -18,7 +18,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        styleguide: resolve(__dirname, 'styleguide.html'),
         'styleguide-shadcn': resolve(__dirname, 'styleguide-shadcn.html'),
       },
     },
