@@ -1,70 +1,69 @@
-import React from 'react';
+import { Check, Copy } from 'lucide-react';
 
-import { CodeView } from '@cloudscape-design/code-view';
-import cssHighlight from '@cloudscape-design/code-view/highlight/css';
-import htmlHighlight from '@cloudscape-design/code-view/highlight/html';
-// Import common language highlighters
-import javascriptHighlight from '@cloudscape-design/code-view/highlight/javascript';
-import jsonHighlight from '@cloudscape-design/code-view/highlight/json';
-import pythonHighlight from '@cloudscape-design/code-view/highlight/python';
-import shHighlight from '@cloudscape-design/code-view/highlight/sh';
-import typescriptHighlight from '@cloudscape-design/code-view/highlight/typescript';
-import yamlHighlight from '@cloudscape-design/code-view/highlight/yaml';
-import { CopyToClipboard } from '@cloudscape-design/components';
+import React, { useState } from 'react';
+
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface CodeBlockProps {
   code: string;
   language?: string;
 }
 
-const getHighlighter = (language?: string) => {
-  if (!language) return undefined;
+const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
+  const [copied, setCopied] = useState(false);
 
-  const lang = language.toLowerCase();
-
-  const highlighterMap: Record<string, (code: string) => React.ReactNode> = {
-    javascript: javascriptHighlight,
-    js: javascriptHighlight,
-    typescript: typescriptHighlight,
-    ts: typescriptHighlight,
-    tsx: typescriptHighlight,
-    jsx: javascriptHighlight,
-    python: pythonHighlight,
-    py: pythonHighlight,
-    json: jsonHighlight,
-    yaml: yamlHighlight,
-    yml: yamlHighlight,
-    css: cssHighlight,
-    scss: cssHighlight,
-    html: htmlHighlight,
-    xml: htmlHighlight,
-    bash: shHighlight,
-    sh: shHighlight,
-    shell: shHighlight,
-    zsh: shHighlight,
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy code:', err);
+    }
   };
 
-  return highlighterMap[lang];
-};
-
-const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
-  const highlighter = getHighlighter(language);
+  const lines = code.split('\n');
 
   return (
-    <CodeView
-      content={code}
-      highlight={highlighter}
-      lineNumbers
-      actions={
-        <CopyToClipboard
-          copyButtonAriaLabel="Copy code"
-          copyErrorText="Failed to copy"
-          copySuccessText="Code copied"
-          textToCopy={code}
-          variant="icon"
-        />
-      }
-    />
+    <div className="relative group rounded-lg border bg-muted/50 overflow-hidden my-2">
+      {/* Header with language and copy button */}
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/80">
+        <span className="text-xs font-medium text-muted-foreground uppercase">
+          {language || 'code'}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={handleCopy}
+          aria-label={copied ? 'Copied' : 'Copy code'}
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
+
+      {/* Code content with line numbers */}
+      <div className="overflow-x-auto">
+        <pre className="p-4 text-sm font-mono">
+          <code>
+            {lines.map((line, index) => (
+              <div key={index} className="flex">
+                <span
+                  className={cn(
+                    'select-none pr-4 text-right min-w-[3rem]',
+                    'text-muted-foreground/50'
+                  )}
+                >
+                  {index + 1}
+                </span>
+                <span className="flex-1 whitespace-pre">{line || ' '}</span>
+              </div>
+            ))}
+          </code>
+        </pre>
+      </div>
+    </div>
   );
 };
 
