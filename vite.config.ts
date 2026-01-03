@@ -1,4 +1,6 @@
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
 import { defineConfig } from 'vite';
 
 import { handleBedrockRequest } from './server/bedrock-proxy';
@@ -7,7 +9,22 @@ import { handleMantleRequest } from './server/mantle-proxy';
 
 // https://vite.dev/config/
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, './src'),
+    },
+  },
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        styleguide: resolve(__dirname, 'styleguide.html'),
+        'styleguide-shadcn': resolve(__dirname, 'styleguide-shadcn.html'),
+      },
+    },
+  },
   plugins: [
+    tailwindcss(),
     react(),
     // Bedrock proxy for AWS SDK integration
     {
