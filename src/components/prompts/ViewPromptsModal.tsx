@@ -1,22 +1,46 @@
+import { AlertTriangle, Eye, Search, Trash2 } from 'lucide-react';
+
 import { useMemo, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
 import {
-  Box,
-  Button,
-  CopyToClipboard,
-  Icon,
-  Input,
-  Modal,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import {
   Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
+import {
   Select,
-  SpaceBetween,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
-} from '@cloudscape-design/components';
-import type { SelectProps } from '@cloudscape-design/components';
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 import type { SavedPrompt } from '../../db';
 import { useSavedPrompts } from '../../hooks';
 import { promptsService } from '../../services';
+import { CopyToClipboard } from '../shared';
 import { ViewPromptDetailModal } from './ViewPromptDetailModal';
 
 interface ViewPromptsModalProps {
@@ -29,7 +53,7 @@ const PAGE_SIZE = 10;
 export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) {
   const { prompts, categories } = useSavedPrompts();
   const [searchText, setSearchText] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<SelectProps.Option | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedPrompt, setSelectedPrompt] = useState<SavedPrompt | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -51,8 +75,8 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
       );
     }
 
-    if (selectedCategory && selectedCategory.value !== 'all') {
-      result = result.filter((p) => p.category === selectedCategory.value);
+    if (selectedCategory && selectedCategory !== 'all') {
+      result = result.filter((p) => p.category === selectedCategory);
     }
 
     return result;
@@ -65,12 +89,6 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
   }, [filteredPrompts, currentPage]);
 
   const totalPages = Math.ceil(filteredPrompts.length / PAGE_SIZE);
-
-  // Category options for filter
-  const categoryOptions: SelectProps.Option[] = [
-    { label: 'All Categories', value: 'all' },
-    ...categories.map((cat) => ({ label: cat, value: cat })),
-  ];
 
   const handleViewPrompt = (prompt: SavedPrompt) => {
     setSelectedPrompt(prompt);
@@ -101,157 +119,172 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
 
   const handleClose = () => {
     setSearchText('');
-    setSelectedCategory(null);
+    setSelectedCategory('all');
     setCurrentPage(1);
     onDismiss();
   };
 
   return (
-    <>
-      <Modal
-        visible={visible}
-        onDismiss={handleClose}
-        header="Saved Prompts"
-        size="max"
-        footer={
-          <Box float="right">
-            <Button variant="primary" onClick={handleClose}>
-              Close
-            </Button>
-          </Box>
-        }
-      >
-        <SpaceBetween size="l">
-          {/* Search and Filter */}
-          <SpaceBetween direction="horizontal" size="m">
-            <div style={{ width: '300px' }}>
-              <Input
-                value={searchText}
-                onChange={({ detail }) => {
-                  setSearchText(detail.value);
-                  setCurrentPage(1);
-                }}
-                placeholder="Search prompts..."
-                type="search"
-              />
-            </div>
-            <div style={{ width: '200px' }}>
-              <Select
-                selectedOption={selectedCategory}
-                onChange={({ detail }) => {
-                  setSelectedCategory(detail.selectedOption);
-                  setCurrentPage(1);
-                }}
-                options={categoryOptions}
-                placeholder="Filter by category"
-              />
-            </div>
-          </SpaceBetween>
+    <TooltipProvider>
+      <Dialog open={visible} onOpenChange={(open) => !open && handleClose()}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Saved Prompts</DialogTitle>
+            <DialogDescription>Total prompts: {filteredPrompts.length}</DialogDescription>
+          </DialogHeader>
 
-          {/* Prompts Table */}
-          <Table
-            items={paginatedPrompts}
-            columnDefinitions={[
-              {
-                id: 'name',
-                header: 'Prompt Name',
-                cell: (item) => item.name,
-                sortingField: 'name',
-                width: 200,
-              },
-              {
-                id: 'category',
-                header: 'Category',
-                cell: (item) => (
-                  <Box
-                    display="inline-block"
-                    padding={{ horizontal: 'xs', vertical: 'xxs' }}
-                    fontSize="body-s"
-                    color="text-body-secondary"
-                  >
-                    {item.category}
-                  </Box>
-                ),
-                width: 120,
-              },
-              {
-                id: 'createdAt',
-                header: 'Created On',
-                cell: (item) => new Date(item.createdAt).toLocaleDateString(),
-                sortingField: 'createdAt',
-                width: 120,
-              },
-              {
-                id: 'view',
-                header: 'View',
-                cell: (item) => (
-                  <Button
-                    variant="icon"
-                    iconName="file-open"
-                    ariaLabel="View prompt"
-                    onClick={() => handleViewPrompt(item)}
-                  />
-                ),
-                width: 60,
-              },
-              {
-                id: 'copy',
-                header: 'Copy',
-                cell: (item) => (
-                  <CopyToClipboard
-                    copyButtonAriaLabel="Copy prompt"
-                    copyErrorText="Failed to copy"
-                    copySuccessText="Copied"
-                    textToCopy={item.content}
-                    variant="icon"
-                  />
-                ),
-                width: 60,
-              },
-              {
-                id: 'delete',
-                header: 'Delete',
-                cell: (item) => (
-                  <Button
-                    variant="icon"
-                    iconName="remove"
-                    ariaLabel="Delete prompt"
-                    onClick={() => handleDeleteClick(item)}
-                  />
-                ),
-                width: 60,
-              },
-            ]}
-            empty={
-              <Box textAlign="center" color="inherit">
-                <SpaceBetween size="m">
-                  <b>No saved prompts</b>
-                  <Box variant="p" color="inherit">
-                    Save prompts from the chat input or message history to see them here.
-                  </Box>
-                </SpaceBetween>
-              </Box>
-            }
-            header={
-              <Box>
-                <SpaceBetween direction="horizontal" size="xs">
-                  <Box variant="awsui-key-label">Total prompts:</Box>
-                  <Box>{filteredPrompts.length}</Box>
-                </SpaceBetween>
-              </Box>
-            }
-            pagination={
-              totalPages > 1 && (
-                <Pagination
-                  currentPageIndex={currentPage}
-                  pagesCount={totalPages}
-                  onChange={({ detail }) => setCurrentPage(detail.currentPageIndex)}
+          <div className="flex flex-col gap-4 flex-1 overflow-hidden">
+            {/* Search and Filter */}
+            <div className="flex gap-3">
+              <div className="relative flex-1 max-w-[300px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={searchText}
+                  onChange={(e) => {
+                    setSearchText(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  placeholder="Search prompts..."
+                  className="pl-9"
                 />
-              )
-            }
-          />
-        </SpaceBetween>
-      </Modal>
+              </div>
+              <Select
+                value={selectedCategory}
+                onValueChange={(value) => {
+                  setSelectedCategory(value);
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Filter by category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Prompts Table */}
+            <div className="flex-1 overflow-auto border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[200px]">Prompt Name</TableHead>
+                    <TableHead className="w-[120px]">Category</TableHead>
+                    <TableHead className="w-[120px]">Created On</TableHead>
+                    <TableHead className="w-[120px] text-center">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedPrompts.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="h-32 text-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <p className="font-medium">No saved prompts</p>
+                          <p className="text-sm text-muted-foreground">
+                            Save prompts from the chat input or message history to see them here.
+                          </p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    paginatedPrompts.map((prompt) => (
+                      <TableRow key={prompt.id}>
+                        <TableCell className="font-medium">{prompt.name}</TableCell>
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground">{prompt.category}</span>
+                        </TableCell>
+                        <TableCell>{new Date(prompt.createdAt).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-center gap-1">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => handleViewPrompt(prompt)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>View prompt</TooltipContent>
+                            </Tooltip>
+                            <CopyToClipboard
+                              text={prompt.content}
+                              size="icon"
+                              className="h-8 w-8"
+                            />
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  onClick={() => handleDeleteClick(prompt)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Delete prompt</TooltipContent>
+                            </Tooltip>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      className={
+                        currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'
+                      }
+                    />
+                  </PaginationItem>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <PaginationItem key={page}>
+                      <PaginationLink
+                        onClick={() => setCurrentPage(page)}
+                        isActive={currentPage === page}
+                        className="cursor-pointer"
+                      >
+                        {page}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ))}
+                  <PaginationItem>
+                    <PaginationNext
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      className={
+                        currentPage === totalPages
+                          ? 'pointer-events-none opacity-50'
+                          : 'cursor-pointer'
+                      }
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button onClick={handleClose}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ViewPromptDetailModal
         visible={showDetailModal}
@@ -259,37 +292,29 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
         prompt={selectedPrompt}
       />
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        visible={showDeleteConfirm}
-        onDismiss={handleCancelDelete}
-        size="small"
-        header="Delete prompt"
-        footer={
-          <Box float="right">
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button variant="link" onClick={handleCancelDelete}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={handleConfirmDelete}>
-                Delete
-              </Button>
-            </SpaceBetween>
-          </Box>
-        }
-      >
-        <SpaceBetween size="s">
-          <Box>
-            Are you sure you want to delete the prompt <strong>"{promptToDelete?.name}"</strong>?
-          </Box>
-          <Box color="text-status-warning" variant="small">
-            <SpaceBetween direction="horizontal" size="xxs" alignItems="center">
-              <Icon name="status-warning" size="small" />
-              <span>This action cannot be undone.</span>
-            </SpaceBetween>
-          </Box>
-        </SpaceBetween>
-      </Modal>
-    </>
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={(open) => !open && handleCancelDelete()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete prompt</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the prompt <strong>"{promptToDelete?.name}"</strong>?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-500">
+            <AlertTriangle className="h-4 w-4" />
+            <span>This action cannot be undone.</span>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={handleCancelDelete}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </TooltipProvider>
   );
 }

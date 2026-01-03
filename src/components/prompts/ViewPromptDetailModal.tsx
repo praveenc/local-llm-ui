@@ -1,8 +1,16 @@
 import ReactMarkdown from 'react-markdown';
 
-import { Box, Button, CopyToClipboard, Modal, SpaceBetween } from '@cloudscape-design/components';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 import type { SavedPrompt } from '../../db';
+import { CopyToClipboard } from '../shared';
 
 interface ViewPromptDetailModalProps {
   visible: boolean;
@@ -14,48 +22,36 @@ export function ViewPromptDetailModal({ visible, onDismiss, prompt }: ViewPrompt
   if (!prompt) return null;
 
   return (
-    <Modal
-      visible={visible}
-      onDismiss={onDismiss}
-      header={prompt.name}
-      size="large"
-      footer={
-        <Box float="right">
-          <SpaceBetween direction="horizontal" size="xs">
-            <CopyToClipboard
-              copyButtonAriaLabel="Copy prompt"
-              copyErrorText="Failed to copy"
-              copySuccessText="Prompt copied"
-              textToCopy={prompt.content}
-              variant="normal"
-            />
-            <Button variant="primary" onClick={onDismiss}>
-              Close
-            </Button>
-          </SpaceBetween>
-        </Box>
-      }
-    >
-      <SpaceBetween size="m">
-        <Box>
-          <SpaceBetween direction="horizontal" size="xs">
-            <Box variant="awsui-key-label">Category:</Box>
-            <Box>{prompt.category}</Box>
-          </SpaceBetween>
-        </Box>
-        <Box>
-          <SpaceBetween direction="horizontal" size="xs">
-            <Box variant="awsui-key-label">Created:</Box>
-            <Box>{prompt.createdAt.toLocaleDateString()}</Box>
-          </SpaceBetween>
-        </Box>
-        <Box variant="awsui-key-label">Prompt Content:</Box>
-        <Box variant="code" padding="m" color="text-body-secondary" fontSize="body-s">
-          <div style={{ maxHeight: '400px', overflow: 'auto', whiteSpace: 'pre-wrap' }}>
-            <ReactMarkdown>{prompt.content}</ReactMarkdown>
+    <Dialog open={visible} onOpenChange={(open) => !open && onDismiss()}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{prompt.name}</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4 py-2">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-medium text-muted-foreground">Category:</span>
+            <span>{prompt.category}</span>
           </div>
-        </Box>
-      </SpaceBetween>
-    </Modal>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-medium text-muted-foreground">Created:</span>
+            <span>{prompt.createdAt.toLocaleDateString()}</span>
+          </div>
+          <div className="space-y-2">
+            <span className="text-sm font-medium text-muted-foreground">Prompt Content:</span>
+            <div className="rounded-md border bg-muted/50 p-4 text-sm max-h-[400px] overflow-auto">
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                <ReactMarkdown>{prompt.content}</ReactMarkdown>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <CopyToClipboard text={prompt.content} variant="outline" size="default" />
+          <Button onClick={onDismiss}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
