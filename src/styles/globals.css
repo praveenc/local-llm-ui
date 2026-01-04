@@ -199,3 +199,64 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ============================================
+   CLOUDSCAPE GLOBAL OVERRIDES
+   These ensure Cloudscape components use our theme colors
+   ============================================ */
+
+/* Override Cloudscape CSS custom properties at root level */
+:root {
+  /* Primary button colors */
+  --awsui-color-background-button-primary-default: oklch(0.5417 0.179 288.0332);
+  --awsui-color-background-button-primary-hover: oklch(0.4917 0.179 288.0332);
+  --awsui-color-background-button-primary-active: oklch(0.4417 0.179 288.0332);
+  --awsui-color-text-button-primary-default: oklch(1 0 0);
+  --awsui-color-border-button-primary-default: oklch(0.5417 0.179 288.0332);
+
+  /* Link colors */
+  --awsui-color-text-link-default: oklch(0.5417 0.179 288.0332);
+  --awsui-color-text-link-hover: oklch(0.4917 0.179 288.0332);
+
+  /* Focus ring */
+  --awsui-color-border-item-focused: oklch(0.5417 0.179 288.0332);
+}
+
+.dark {
+  /* Primary button colors - dark mode */
+  --awsui-color-background-button-primary-default: oklch(0.7162 0.1597 290.3962);
+  --awsui-color-background-button-primary-hover: oklch(0.6662 0.1597 290.3962);
+  --awsui-color-background-button-primary-active: oklch(0.6162 0.1597 290.3962);
+  --awsui-color-text-button-primary-default: oklch(0.1743 0.0227 283.7998);
+  --awsui-color-border-button-primary-default: oklch(0.7162 0.1597 290.3962);
+
+  /* Link colors - dark mode */
+  --awsui-color-text-link-default: oklch(0.7162 0.1597 290.3962);
+  --awsui-color-text-link-hover: oklch(0.7662 0.1597 290.3962);
+}
+
+/* Force Cloudscape buttons to use our primary color */
+[class*='awsui_button'][class*='primary'],
+[class*='awsui_variant-primary'] {
+  background-color: var(--primary) !important;
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
+[class*='awsui_button'][class*='primary']:hover,
+[class*='awsui_variant-primary']:hover {
+  background-color: hsl(from var(--primary) h s calc(l - 10%)) !important;
+  background: hsl(from var(--primary) h s calc(l - 10%)) !important;
+}
+
+/* Ensure Cloudscape doesn't override our font */
+[class*='awsui'] {
+  font-family:
+    var(--font-sans),
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif !important;
+}

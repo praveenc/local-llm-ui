@@ -72,7 +72,7 @@ export function AppLayout({
             </div>
           </div>
         </SidebarHeader>
-        <SidebarContent className="p-0">{navigation}</SidebarContent>
+        <SidebarContent className="p-0 [&_.sidebar-container]:h-full">{navigation}</SidebarContent>
       </Sidebar>
 
       <SidebarInset>

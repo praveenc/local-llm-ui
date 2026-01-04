@@ -133,8 +133,8 @@ const FloatingChatInput = ({
     if (!textarea) return;
     textarea.style.height = 'auto';
     const lineHeight = 24;
-    const minHeight = lineHeight * 2;
-    const maxHeight = lineHeight * 6;
+    const minHeight = lineHeight * 3; // 3 lines minimum
+    const maxHeight = lineHeight * 8; // 8 lines maximum
     const newHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight);
     textarea.style.height = `${newHeight}px`;
   }, []);
@@ -347,10 +347,10 @@ const FloatingChatInput = ({
                 }
                 disabled={isLoading || !selectedModel}
                 className={cn(
-                  'min-h-[48px] resize-none pr-24',
+                  'min-h-[72px] resize-none pr-24',
                   'focus-visible:ring-1 focus-visible:ring-ring'
                 )}
-                rows={2}
+                rows={3}
               />
 
               {/* Action buttons inside textarea */}
