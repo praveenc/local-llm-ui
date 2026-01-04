@@ -1,6 +1,6 @@
 import { Loader2 } from 'lucide-react';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -13,8 +13,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 
 interface SavePromptModalProps {
@@ -36,7 +34,6 @@ export function SavePromptModal({
   const [category, setCategory] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [nameError, setNameError] = useState('');
-  const [categoryOpen, setCategoryOpen] = useState(false);
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -62,12 +59,6 @@ export function SavePromptModal({
     setNameError('');
     onDismiss();
   };
-
-  // Filter categories based on input
-  const filteredCategories = useMemo(() => {
-    if (!category) return existingCategories;
-    return existingCategories.filter((cat) => cat.toLowerCase().includes(category.toLowerCase()));
-  }, [category, existingCategories]);
 
   return (
     <Dialog open={visible} onOpenChange={(open) => !open && handleClose()}>
@@ -99,45 +90,28 @@ export function SavePromptModal({
             <p className="text-sm text-muted-foreground">
               Organize your prompts with a category (optional, defaults to 'default')
             </p>
-            <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
-              <PopoverTrigger asChild>
-                <Input
-                  id="category"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  placeholder="Enter or select a category"
-                  onFocus={() => setCategoryOpen(true)}
-                />
-              </PopoverTrigger>
-              <PopoverContent
-                className="w-[300px] p-0"
-                align="start"
-                onOpenAutoFocus={(e) => e.preventDefault()}
-              >
-                <ScrollArea className="h-[200px]">
-                  {filteredCategories.length === 0 ? (
-                    <div className="p-3 text-sm text-muted-foreground text-center">
-                      {category ? `Press Enter to use "${category}"` : 'No existing categories'}
-                    </div>
-                  ) : (
-                    <div className="p-1">
-                      {filteredCategories.map((cat) => (
-                        <button
-                          key={cat}
-                          className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                          onClick={() => {
-                            setCategory(cat);
-                            setCategoryOpen(false);
-                          }}
-                        >
-                          {cat}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
-              </PopoverContent>
-            </Popover>
+            <Input
+              id="category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="Enter or select a category"
+            />
+            {existingCategories.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {existingCategories.slice(0, 5).map((cat) => (
+                  <Button
+                    key={cat}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setCategory(cat)}
+                  >
+                    {cat}
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
