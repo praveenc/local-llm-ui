@@ -2,16 +2,28 @@ import { toast } from 'sonner';
 
 import React, { useEffect, useState } from 'react';
 
-import type { SelectProps } from '@cloudscape-design/components';
-
 import { ChatContainer } from '../components/chat';
+import { Sidebar } from '../components/sidebar';
 import { loadPreferences } from '../utils/preferences';
 import type { Provider, UserPreferences } from '../utils/preferences';
 import { AppLayout } from './AppLayout';
-import ModelSettingsPanel from './ModelSettingsPanel';
+
+// Simple model type for the new Sidebar
+interface SimpleModel {
+  value: string;
+  label: string;
+}
+
+// Convert to SelectProps.Option format for ChatContainer compatibility
+function toSelectOption(
+  model: SimpleModel | null
+): { value: string; label: string; description?: string } | null {
+  if (!model) return null;
+  return { value: model.value, label: model.label };
+}
 
 export default function AppShell() {
-  const [selectedModel, setSelectedModel] = useState<SelectProps.Option | null>(null);
+  const [selectedModel, setSelectedModel] = useState<SimpleModel | null>(null);
   const [maxTokens, setMaxTokens] = useState<number>(4096);
   const [temperature, setTemperature] = useState<number>(0.5);
   const [topP, setTopP] = useState<number>(0.9);
@@ -25,7 +37,7 @@ export default function AppShell() {
   // Load user preferences
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => loadPreferences());
 
-  // Track selected provider (lifted from SideBar for connection checking)
+  // Track selected provider
   const [selectedProvider, setSelectedProvider] = useState<Provider>(
     () => loadPreferences().preferredProvider
   );
@@ -93,7 +105,7 @@ export default function AppShell() {
       navigationOpen={navigationOpen}
       onNavigationChange={setNavigationOpen}
       navigation={
-        <ModelSettingsPanel
+        <Sidebar
           selectedModel={selectedModel}
           setSelectedModel={setSelectedModel}
           onNewChat={handleNewChat}
@@ -111,7 +123,7 @@ export default function AppShell() {
     >
       <div className="flex h-full flex-col">
         <ChatContainer
-          selectedModel={selectedModel}
+          selectedModel={toSelectOption(selectedModel)}
           maxTokens={maxTokens}
           setMaxTokens={setMaxTokens}
           temperature={temperature}
