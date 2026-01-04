@@ -34,11 +34,11 @@ export function ChatBubble({
             className={cn(
               'rounded-2xl px-4 py-3 text-sm',
               isIncoming
-                ? 'bg-card text-card-foreground border border-border rounded-tl-sm'
+                ? 'bg-muted text-foreground rounded-tl-sm'
                 : 'bg-primary text-primary-foreground rounded-tr-sm'
             )}
           >
-            <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+            <div className="prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed [&>p]:mb-3 [&>p:last-child]:mb-0">
               {children}
             </div>
           </div>

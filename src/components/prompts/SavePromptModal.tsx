@@ -1,16 +1,8 @@
 import { Loader2 } from 'lucide-react';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 
 interface SavePromptModalProps {
@@ -71,9 +64,10 @@ export function SavePromptModal({
   };
 
   // Filter categories based on input
-  const filteredCategories = existingCategories.filter((cat) =>
-    cat.toLowerCase().includes(category.toLowerCase())
-  );
+  const filteredCategories = useMemo(() => {
+    if (!category) return existingCategories;
+    return existingCategories.filter((cat) => cat.toLowerCase().includes(category.toLowerCase()));
+  }, [category, existingCategories]);
 
   return (
     <Dialog open={visible} onOpenChange={(open) => !open && handleClose()}>
@@ -112,36 +106,36 @@ export function SavePromptModal({
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                   placeholder="Enter or select a category"
-                  onClick={() => setCategoryOpen(true)}
+                  onFocus={() => setCategoryOpen(true)}
                 />
               </PopoverTrigger>
-              <PopoverContent className="w-[300px] p-0" align="start">
-                <Command>
-                  <CommandInput
-                    placeholder="Search categories..."
-                    value={category}
-                    onValueChange={setCategory}
-                  />
-                  <CommandList>
-                    <CommandEmpty>
-                      {category ? `Use: "${category}"` : 'No categories found'}
-                    </CommandEmpty>
-                    <CommandGroup>
+              <PopoverContent
+                className="w-[300px] p-0"
+                align="start"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+              >
+                <ScrollArea className="h-[200px]">
+                  {filteredCategories.length === 0 ? (
+                    <div className="p-3 text-sm text-muted-foreground text-center">
+                      {category ? `Press Enter to use "${category}"` : 'No existing categories'}
+                    </div>
+                  ) : (
+                    <div className="p-1">
                       {filteredCategories.map((cat) => (
-                        <CommandItem
+                        <button
                           key={cat}
-                          value={cat}
-                          onSelect={() => {
+                          className="w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                          onClick={() => {
                             setCategory(cat);
                             setCategoryOpen(false);
                           }}
                         >
                           {cat}
-                        </CommandItem>
+                        </button>
                       ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
+                    </div>
+                  )}
+                </ScrollArea>
               </PopoverContent>
             </Popover>
           </div>

@@ -40,6 +40,7 @@ type SamplingParameter = 'temperature' | 'topP';
 
 interface ChatContainerProps {
   selectedModel: SelectProps.Option | null;
+  selectedProvider?: Provider;
   maxTokens: number;
   setMaxTokens: (tokens: number) => void;
   temperature: number;
@@ -61,7 +62,7 @@ interface ChatContainerProps {
   onConversationChange?: (id: string | null) => void;
 }
 
-// Helper to determine provider from model description
+// Helper to determine provider from model description (fallback)
 const getProviderFromModel = (model: SelectProps.Option | null): Provider => {
   if (model?.description?.toLowerCase().includes('ollama')) return 'ollama';
   if (model?.description?.toLowerCase().includes('bedrock-mantle')) return 'bedrock-mantle';
@@ -86,6 +87,7 @@ const getProviderInfo = (model: SelectProps.Option | null) => {
 
 const ChatContainer = ({
   selectedModel,
+  selectedProvider: selectedProviderProp,
   maxTokens,
   setMaxTokens,
   temperature,
@@ -102,6 +104,9 @@ const ChatContainer = ({
   conversationId: externalConversationId,
   onConversationChange,
 }: ChatContainerProps) => {
+  // Use provided provider or fall back to detection from model description
+  const selectedProvider = selectedProviderProp ?? getProviderFromModel(selectedModel);
+
   const [inputValue, setInputValue] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -329,7 +334,7 @@ const ChatContainer = ({
   const handleSendMessageForRegenerate = async (content: string, messageHistory: Message[]) => {
     if (!content.trim() || !selectedModel) return;
 
-    const provider = getProviderFromModel(selectedModel);
+    const provider = selectedProvider;
     const modelId = selectedModel.value || '';
     const modelName = selectedModel.label || modelId;
 
@@ -498,7 +503,7 @@ const ChatContainer = ({
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !selectedModel || isLoading) return;
 
-    const provider = getProviderFromModel(selectedModel);
+    const provider = selectedProvider;
     const modelId = selectedModel.value || '';
     const modelName = selectedModel.label || modelId;
 
@@ -853,8 +858,9 @@ const ChatContainer = ({
 
   // Get metadata based on provider
   const getMetadata = () => {
-    const desc = selectedModel?.description?.toLowerCase() ?? '';
-    if (desc.includes('bedrock')) return bedrockMetadata;
+    if (selectedProvider === 'bedrock' || selectedProvider === 'bedrock-mantle') {
+      return bedrockMetadata;
+    }
     return lmstudioMetadata;
   };
 

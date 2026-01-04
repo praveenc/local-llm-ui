@@ -16,19 +16,13 @@ export function ChatAvatar({ type, initials = 'U', loading = false, className }:
   const isAI = type === 'ai';
 
   return (
-    <Avatar
-      className={cn(
-        'h-8 w-8',
-        isAI && 'bg-primary text-primary-foreground',
-        !isAI && 'bg-secondary text-secondary-foreground',
-        className
-      )}
-    >
+    <Avatar className={cn('h-8 w-8', className)}>
       <AvatarFallback
         className={cn(
           'text-xs font-medium',
-          isAI && 'bg-primary text-primary-foreground',
-          !isAI && 'bg-secondary text-secondary-foreground'
+          isAI
+            ? 'bg-gradient-to-br from-violet-500 to-purple-600 text-white'
+            : 'bg-muted text-muted-foreground'
         )}
       >
         {loading ? (

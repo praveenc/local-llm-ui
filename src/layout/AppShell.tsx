@@ -124,6 +124,7 @@ export default function AppShell() {
       <div className="flex h-full flex-col">
         <ChatContainer
           selectedModel={toSelectOption(selectedModel)}
+          selectedProvider={selectedProvider}
           maxTokens={maxTokens}
           setMaxTokens={setMaxTokens}
           temperature={temperature}

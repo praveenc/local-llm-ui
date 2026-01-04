@@ -1,17 +1,11 @@
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 
 import type { ModelGroup, ModelOption } from '../../hooks/useProviderModels';
@@ -40,9 +34,10 @@ export function ModelSelect({
   placeholder = 'Select model...',
 }: ModelSelectProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
 
   // Find current label
-  const findLabel = (): string => {
+  const currentLabel = useMemo(() => {
     if (!value) return '';
     for (const item of models) {
       if (isModelGroup(item)) {
@@ -53,14 +48,46 @@ export function ModelSelect({
       }
     }
     return '';
-  };
+  }, [value, models]);
 
-  const currentLabel = findLabel();
+  // Filter models based on search
+  const filteredModels = useMemo(() => {
+    if (!search) return models;
+    const lowerSearch = search.toLowerCase();
+
+    return models
+      .map((item) => {
+        if (isModelGroup(item)) {
+          const filteredOptions = item.options.filter(
+            (opt) =>
+              opt.label.toLowerCase().includes(lowerSearch) ||
+              opt.value.toLowerCase().includes(lowerSearch)
+          );
+          if (filteredOptions.length === 0) return null;
+          return { ...item, options: filteredOptions };
+        } else {
+          if (
+            item.label.toLowerCase().includes(lowerSearch) ||
+            item.value.toLowerCase().includes(lowerSearch)
+          ) {
+            return item;
+          }
+          return null;
+        }
+      })
+      .filter(Boolean) as (ModelOption | ModelGroup)[];
+  }, [models, search]);
+
+  const handleSelect = (modelValue: string, modelLabel: string) => {
+    onValueChange(modelValue, modelLabel);
+    setOpen(false);
+    setSearch('');
+  };
 
   if (error) {
     return (
-      <Button variant="outline" className="w-full justify-start text-destructive" disabled>
-        <span className="truncate text-sm">{error}</span>
+      <Button variant="outline" className="w-full justify-start text-destructive text-xs" disabled>
+        <span className="truncate">{error}</span>
       </Button>
     );
   }
@@ -89,53 +116,66 @@ export function ModelSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[280px] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Search models..." />
-          <CommandList>
-            <CommandEmpty>No models found.</CommandEmpty>
-            {models.map((item, idx) =>
-              isModelGroup(item) ? (
-                <CommandGroup key={item.label} heading={item.label}>
-                  {item.options.map((opt) => (
-                    <CommandItem
-                      key={opt.value}
-                      value={opt.value}
-                      onSelect={() => {
-                        onValueChange(opt.value, opt.label);
-                        setOpen(false);
-                      }}
-                    >
-                      <Check
+        <div className="p-2 border-b">
+          <Input
+            placeholder="Search models..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8"
+          />
+        </div>
+        <ScrollArea className="h-[300px]">
+          {filteredModels.length === 0 ? (
+            <div className="py-6 text-center text-sm text-muted-foreground">No models found.</div>
+          ) : (
+            <div className="p-1">
+              {filteredModels.map((item, idx) =>
+                isModelGroup(item) ? (
+                  <div key={item.label} className="mb-2">
+                    <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                      {item.label}
+                    </div>
+                    {item.options.map((opt) => (
+                      <button
+                        key={opt.value}
                         className={cn(
-                          'mr-2 h-4 w-4',
-                          value === opt.value ? 'opacity-100' : 'opacity-0'
+                          'relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground',
+                          value === opt.value && 'bg-accent'
                         )}
-                      />
-                      <span className="truncate">{opt.label}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              ) : (
-                <CommandItem
-                  key={item.value || idx}
-                  value={item.value}
-                  onSelect={() => {
-                    onValueChange(item.value, item.label);
-                    setOpen(false);
-                  }}
-                >
-                  <Check
+                        onClick={() => handleSelect(opt.value, opt.label)}
+                      >
+                        <Check
+                          className={cn(
+                            'mr-2 h-4 w-4',
+                            value === opt.value ? 'opacity-100' : 'opacity-0'
+                          )}
+                        />
+                        <span className="truncate">{opt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <button
+                    key={item.value || idx}
                     className={cn(
-                      'mr-2 h-4 w-4',
-                      value === item.value ? 'opacity-100' : 'opacity-0'
+                      'relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground',
+                      value === item.value && 'bg-accent'
                     )}
-                  />
-                  <span className="truncate">{item.label}</span>
-                </CommandItem>
-              )
-            )}
-          </CommandList>
-        </Command>
+                    onClick={() => handleSelect(item.value, item.label)}
+                  >
+                    <Check
+                      className={cn(
+                        'mr-2 h-4 w-4',
+                        value === item.value ? 'opacity-100' : 'opacity-0'
+                      )}
+                    />
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                )
+              )}
+            </div>
+          )}
+        </ScrollArea>
       </PopoverContent>
     </Popover>
   );

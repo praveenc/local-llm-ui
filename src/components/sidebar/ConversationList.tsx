@@ -150,7 +150,7 @@ export function ConversationList({
                 <div
                   key={conv.id}
                   className={cn(
-                    'group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer transition-colors',
+                    'group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer transition-colors min-w-0',
                     activeConversationId === conv.id
                       ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                       : 'hover:bg-sidebar-accent/50'
@@ -173,13 +173,15 @@ export function ConversationList({
                     />
                   ) : (
                     <>
-                      <span className="truncate flex-1">{conv.title}</span>
+                      <span className="truncate flex-1 max-w-[140px]" title={conv.title}>
+                        {conv.title.length > 25 ? `${conv.title.slice(0, 25)}...` : conv.title}
+                      </span>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreHorizontal className="h-4 w-4" />

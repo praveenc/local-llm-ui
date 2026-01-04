@@ -168,9 +168,9 @@ const MessageList = ({
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col gap-6 max-w-4xl mx-auto">
+      <div className="flex flex-col gap-8 max-w-4xl mx-auto px-4 py-6">
         {messages.map((message, index) => (
-          <div key={message.id} className="flex flex-col gap-1">
+          <div key={message.id} className="flex flex-col gap-2">
             <ChatBubble
               type={message.role === 'assistant' ? 'incoming' : 'outgoing'}
               ariaLabel={message.role === 'assistant' ? 'AI Assistant' : 'You'}
@@ -305,40 +305,44 @@ const MessageList = ({
 
             {/* Show metadata row after the last assistant message */}
             {message.role === 'assistant' && index === lastAssistantIndex && !streamingMessage && (
-              <div className="pl-11 pt-1">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <div className="flex justify-start pl-12 mt-1">
+                <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                   <GenAiLabel />
                   {lastMessageMetadata && (
-                    <div className="flex items-center gap-3">
-                      {(lastMessageMetadata.inputTokens !== undefined ||
-                        lastMessageMetadata.promptTokens !== undefined) && (
-                        <span>
-                          ↑ Input:{' '}
-                          {(
-                            lastMessageMetadata.inputTokens ?? lastMessageMetadata.promptTokens
-                          )?.toLocaleString()}{' '}
-                          tokens
-                        </span>
-                      )}
-                      {(lastMessageMetadata.outputTokens !== undefined ||
-                        lastMessageMetadata.completionTokens !== undefined) && (
-                        <span>
-                          ↓ Output:{' '}
-                          {(
-                            lastMessageMetadata.outputTokens ?? lastMessageMetadata.completionTokens
-                          )?.toLocaleString()}{' '}
-                          tokens
-                        </span>
-                      )}
-                      {lastMessageMetadata.totalTokens !== undefined && (
-                        <span>
-                          + Total: {lastMessageMetadata.totalTokens.toLocaleString()} tokens
-                        </span>
-                      )}
-                      {lastMessageMetadata.latencyMs !== undefined && (
-                        <span>⏱ {lastMessageMetadata.latencyMs}ms</span>
-                      )}
-                    </div>
+                    <>
+                      <span className="text-border">|</span>
+                      <div className="flex items-center gap-3">
+                        {(lastMessageMetadata.inputTokens !== undefined ||
+                          lastMessageMetadata.promptTokens !== undefined) && (
+                          <span>
+                            ↑ Input:{' '}
+                            {(
+                              lastMessageMetadata.inputTokens ?? lastMessageMetadata.promptTokens
+                            )?.toLocaleString()}{' '}
+                            tokens
+                          </span>
+                        )}
+                        {(lastMessageMetadata.outputTokens !== undefined ||
+                          lastMessageMetadata.completionTokens !== undefined) && (
+                          <span>
+                            ↓ Output:{' '}
+                            {(
+                              lastMessageMetadata.outputTokens ??
+                              lastMessageMetadata.completionTokens
+                            )?.toLocaleString()}{' '}
+                            tokens
+                          </span>
+                        )}
+                        {lastMessageMetadata.totalTokens !== undefined && (
+                          <span>
+                            = Total: {lastMessageMetadata.totalTokens.toLocaleString()} tokens
+                          </span>
+                        )}
+                        {lastMessageMetadata.latencyMs !== undefined && (
+                          <span>⏱ {lastMessageMetadata.latencyMs}ms</span>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
