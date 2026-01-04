@@ -1,38 +1,19 @@
 'use client';
 
-import { Moon, PanelLeft, Sun } from 'lucide-react';
+import { Menu, Moon, Sun, X } from 'lucide-react';
 
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarInset,
-  SidebarProvider,
-  useSidebar,
-} from '@/components/ui/sidebar';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Toaster } from '@/components/ui/sonner';
+import { cn } from '@/lib/utils';
 
 interface AppLayoutProps {
   navigation: React.ReactNode;
   children: React.ReactNode;
   navigationOpen?: boolean;
   onNavigationChange?: (open: boolean) => void;
-}
-
-// Custom trigger component that uses the sidebar context
-function CustomSidebarTrigger() {
-  const { toggleSidebar } = useSidebar();
-
-  return (
-    <Button variant="ghost" size="icon" onClick={toggleSidebar} className="h-8 w-8">
-      <PanelLeft className="h-5 w-5" />
-      <span className="sr-only">Toggle Sidebar</span>
-    </Button>
-  );
 }
 
 export function AppLayout({
@@ -42,6 +23,8 @@ export function AppLayout({
   onNavigationChange,
 }: AppLayoutProps) {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [sidebarOpen, setSidebarOpen] = useState(navigationOpen);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -58,29 +41,89 @@ export function AppLayout({
     window.document.documentElement.classList.toggle('dark', newTheme === 'dark');
   };
 
-  return (
-    <SidebarProvider defaultOpen={navigationOpen} onOpenChange={onNavigationChange}>
-      <Sidebar variant="sidebar" collapsible="icon">
-        <SidebarHeader className="border-b border-sidebar-border">
-          <div className="flex items-center gap-2 px-2 py-1">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <span className="text-sm font-bold">L</span>
-            </div>
-            <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-              <span className="text-sm font-semibold text-sidebar-foreground">Local LLM UI</span>
-              <span className="text-xs text-sidebar-foreground/60">Chat Interface</span>
-            </div>
-          </div>
-        </SidebarHeader>
-        <SidebarContent className="p-0 [&_.sidebar-container]:h-full">{navigation}</SidebarContent>
-      </Sidebar>
+  const toggleSidebar = () => {
+    const newState = !sidebarOpen;
+    setSidebarOpen(newState);
+    onNavigationChange?.(newState);
+  };
 
-      <SidebarInset>
+  return (
+    <div className="flex h-screen w-full overflow-hidden bg-background">
+      {/* Desktop Sidebar */}
+      <aside
+        className={cn(
+          'hidden md:flex md:flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300 ease-in-out',
+          sidebarOpen ? 'w-72' : 'w-0'
+        )}
+      >
+        {sidebarOpen && (
+          <>
+            {/* Sidebar Header */}
+            <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <span className="text-sm font-bold">L</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold text-sidebar-foreground">
+                    Local LLM UI
+                  </span>
+                  <span className="text-xs text-sidebar-foreground/60">Chat Interface</span>
+                </div>
+              </div>
+            </div>
+            {/* Sidebar Content */}
+            <div className="flex-1 overflow-y-auto">{navigation}</div>
+          </>
+        )}
+      </aside>
+
+      {/* Mobile Sidebar (Sheet) */}
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side="left" className="w-72 p-0 bg-sidebar">
+          {/* Sidebar Header */}
+          <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <span className="text-sm font-bold">L</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold text-sidebar-foreground">Local LLM UI</span>
+                <span className="text-xs text-sidebar-foreground/60">Chat Interface</span>
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+          {/* Sidebar Content */}
+          <div className="flex-1 overflow-y-auto">{navigation}</div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Main Content Area */}
+      <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
         <header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
           <div className="flex items-center gap-2">
-            <CustomSidebarTrigger />
-            <Separator orientation="vertical" className="mr-2 h-4" />
+            {/* Mobile menu button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden h-8 w-8"
+              onClick={() => setMobileOpen(true)}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            {/* Desktop toggle button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden md:flex h-8 w-8"
+              onClick={toggleSidebar}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
             <span className="text-sm font-medium text-muted-foreground">Chat</span>
           </div>
           <Button variant="ghost" size="icon" onClick={toggleTheme}>
@@ -90,10 +133,10 @@ export function AppLayout({
 
         {/* Content Area */}
         <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
-      </SidebarInset>
+      </div>
 
       {/* Toast Notifications */}
       <Toaster />
-    </SidebarProvider>
+    </div>
   );
 }

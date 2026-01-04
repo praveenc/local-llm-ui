@@ -77,7 +77,7 @@ export function SavePromptModal({
 
   return (
     <Dialog open={visible} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Save Prompt</DialogTitle>
           <DialogDescription>Save this prompt for later use.</DialogDescription>
@@ -148,8 +148,8 @@ export function SavePromptModal({
 
           <div className="space-y-2">
             <Label>Prompt Preview</Label>
-            <div className="rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground max-h-[150px] overflow-auto whitespace-pre-wrap font-mono">
-              {promptContent.length > 500 ? `${promptContent.slice(0, 500)}...` : promptContent}
+            <div className="rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground max-h-[100px] overflow-auto whitespace-pre-wrap font-mono">
+              {promptContent.length > 300 ? `${promptContent.slice(0, 300)}...` : promptContent}
             </div>
           </div>
         </div>
