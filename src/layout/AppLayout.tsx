@@ -60,13 +60,13 @@ export function AppLayout({
 
   return (
     <SidebarProvider defaultOpen={navigationOpen} onOpenChange={onNavigationChange}>
-      <Sidebar variant="sidebar" collapsible="offcanvas">
+      <Sidebar variant="sidebar" collapsible="icon">
         <SidebarHeader className="border-b border-sidebar-border">
           <div className="flex items-center gap-2 px-2 py-1">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <span className="text-sm font-bold">L</span>
             </div>
-            <div className="flex flex-col">
+            <div className="flex flex-col group-data-[collapsible=icon]:hidden">
               <span className="text-sm font-semibold text-sidebar-foreground">Local LLM UI</span>
               <span className="text-xs text-sidebar-foreground/60">Chat Interface</span>
             </div>
@@ -77,7 +77,7 @@ export function AppLayout({
 
       <SidebarInset>
         {/* Header */}
-        <header className="flex h-14 shrink-0 items-center justify-between border-b px-4">
+        <header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
           <div className="flex items-center gap-2">
             <CustomSidebarTrigger />
             <Separator orientation="vertical" className="mr-2 h-4" />

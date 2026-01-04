@@ -206,7 +206,7 @@ const FloatingChatInput = ({
     <TooltipProvider>
       {/* Model Status Alert - positioned above input */}
       {modelStatus && (
-        <div className="fixed bottom-36 left-0 md:left-[280px] right-0 z-[999] px-4 md:px-8 pointer-events-none">
+        <div className="fixed bottom-36 left-0 right-0 z-[999] px-4 md:px-8 pointer-events-none peer-data-[state=expanded]:md:left-[16rem]">
           <div className="max-w-[1100px] mx-auto pointer-events-auto">
             <Alert
               variant={modelStatus.type === 'error' ? 'destructive' : 'default'}
@@ -229,7 +229,7 @@ const FloatingChatInput = ({
         </div>
       )}
 
-      <div className="fixed bottom-0 left-0 md:left-[280px] right-0 z-[1000] p-2 md:p-4 pointer-events-none">
+      <div className="fixed bottom-0 left-0 right-0 z-[1000] p-2 md:p-4 pointer-events-none">
         <div
           className={cn(
             'max-w-[1100px] mx-auto pointer-events-auto',

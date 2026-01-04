@@ -41,8 +41,34 @@
 }
 
 /* ============================================
-   TEXT AND TYPOGRAPHY OVERRIDES
+   TYPOGRAPHY FIXES - Section headers vs content
    ============================================ */
+
+/* Main section headers (Conversations, etc.) - should be larger */
+.sidebar-container
+  > [class*='awsui_box']
+  > [class*='awsui_space-between']
+  > [class*='awsui_space-between']:first-child
+  [class*='awsui_box'][class*='font-weight-bold'] {
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  color: hsl(var(--sidebar-foreground)) !important;
+}
+
+/* Date group headers (Today, Yesterday, etc.) - medium size */
+.sidebar-container [class*='awsui_expandable-section'] [class*='awsui_header-text'],
+.sidebar-container [class*='awsui_header-container'] [class*='awsui_header-text'] {
+  font-size: 0.8125rem !important;
+  font-weight: 500 !important;
+  color: hsl(var(--sidebar-foreground) / 0.8) !important;
+}
+
+/* Conversation items - normal size */
+.sidebar-container .conversation-item,
+.sidebar-container [class*='conversation'] {
+  font-size: 0.8125rem !important;
+  font-weight: 400 !important;
+}
 
 /* Override Cloudscape text colors */
 .sidebar-container [class*='awsui_color-text-body-secondary'],
@@ -50,14 +76,15 @@
   color: hsl(var(--sidebar-foreground) / 0.7) !important;
 }
 
+/* Small variant text */
 .sidebar-container [class*='awsui_variant-small'],
 .sidebar-container [class*='awsui_box'][class*='variant-small'] {
   font-size: 0.75rem !important;
-  line-height: 1rem !important;
+  line-height: 1.25rem !important;
   font-family: var(--font-sans) !important;
 }
 
-/* Section headers */
+/* Bold text in sidebar */
 .sidebar-container [class*='awsui_font-weight-bold'],
 .sidebar-container [class*='awsui'][class*='font-weight-bold'] {
   font-weight: 600 !important;
@@ -132,12 +159,6 @@
   border: none !important;
 }
 
-.sidebar-container [class*='awsui_header-text'] {
-  color: hsl(var(--sidebar-foreground)) !important;
-  font-family: var(--font-sans) !important;
-  font-weight: 500 !important;
-}
-
 /* ============================================
    FORM FIELD OVERRIDES
    ============================================ */
@@ -162,18 +183,6 @@
 }
 
 /* ============================================
-   RADIO GROUP OVERRIDES
-   ============================================ */
-
-.sidebar-container [class*='awsui_radio'] {
-  color: hsl(var(--sidebar-foreground)) !important;
-}
-
-.sidebar-container [class*='awsui_radio'][class*='checked'] [class*='awsui_styled-circle-fill'] {
-  background-color: hsl(var(--primary)) !important;
-}
-
-/* ============================================
    LINK OVERRIDES
    ============================================ */
 
@@ -191,14 +200,15 @@
 }
 
 /* ============================================
-   GLOBAL CLOUDSCAPE RESET
+   NATIVE BUTTON STYLING (for Saved Prompts)
    ============================================ */
 
-/* Reset any Cloudscape root variables that might leak */
-.sidebar-container,
-.sidebar-container * {
-  --awsui-color-background-button-primary-default: hsl(var(--primary)) !important;
-  --awsui-color-background-button-primary-hover: hsl(var(--primary) / 0.9) !important;
-  --awsui-color-text-button-primary-default: hsl(var(--primary-foreground)) !important;
-  --awsui-color-border-button-primary-default: hsl(var(--primary)) !important;
+.sidebar-container button:not([class*='awsui']) {
+  font-family: var(--font-sans) !important;
+}
+
+/* Saved Prompts button hover state */
+.sidebar-container .px-3 button:hover {
+  background-color: hsl(var(--sidebar-accent)) !important;
+  color: hsl(var(--sidebar-accent-foreground)) !important;
 }

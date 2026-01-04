@@ -1,6 +1,6 @@
 'use client';
 
-import { Bot, Sparkles, User } from 'lucide-react';
+import { Bot } from 'lucide-react';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -907,34 +907,6 @@ const ChatContainer = ({
       />
 
       <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="border-b border-border bg-card/50 backdrop-blur-sm">
-          <div className="px-4 py-3">
-            {selectedModel ? (
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  {providerInfo && (
-                    <img src={providerInfo.icon} alt={providerInfo.name} className="w-6 h-6" />
-                  )}
-                  <h3 className="text-lg font-semibold">{providerInfo?.name || 'Chat'}</h3>
-                  {showOptimizeButton && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary rounded-full">
-                      <Sparkles className="h-3 w-3" />
-                      Optimizer
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground pl-8">{selectedModel.label}</p>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <User className="h-6 w-6 text-muted-foreground" />
-                <h3 className="text-lg font-semibold">Chat</h3>
-              </div>
-            )}
-          </div>
-        </div>
-
         {/* Messages Area */}
         <FittedContainer>
           <ScrollableContainer ref={scrollContainerRef}>
