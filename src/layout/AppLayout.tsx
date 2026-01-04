@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, Moon, Sun, X } from 'lucide-react';
+import { Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun, X } from 'lucide-react';
 
 import { useEffect, useState } from 'react';
 
@@ -23,8 +23,10 @@ export function AppLayout({
   onNavigationChange,
 }: AppLayoutProps) {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [sidebarOpen, setSidebarOpen] = useState(navigationOpen);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Use the prop directly - this is a controlled component
+  const sidebarOpen = navigationOpen;
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -42,9 +44,7 @@ export function AppLayout({
   };
 
   const toggleSidebar = () => {
-    const newState = !sidebarOpen;
-    setSidebarOpen(newState);
-    onNavigationChange?.(newState);
+    onNavigationChange?.(!sidebarOpen);
   };
 
   return (
@@ -121,8 +121,13 @@ export function AppLayout({
               size="icon"
               className="hidden md:flex h-8 w-8"
               onClick={toggleSidebar}
+              title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
             >
-              <Menu className="h-5 w-5" />
+              {sidebarOpen ? (
+                <PanelLeftClose className="h-5 w-5" />
+              ) : (
+                <PanelLeftOpen className="h-5 w-5" />
+              )}
             </Button>
             <span className="text-sm font-medium text-muted-foreground">Chat</span>
           </div>
