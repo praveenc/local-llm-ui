@@ -223,3 +223,6 @@ samconfig.toml
 # Environment variables (additional patterns)
 .env*.local
 .env.*.local
+
+# bv (beads viewer) local config and caches
+.bv/

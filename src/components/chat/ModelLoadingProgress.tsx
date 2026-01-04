@@ -1,6 +1,16 @@
+import { Loader2 } from 'lucide-react';
+
 import { useEffect, useState } from 'react';
 
-import { Box, Button, Modal, SpaceBetween, Spinner } from '@cloudscape-design/components';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export interface ModelLoadingProgressProps {
   visible: boolean;
@@ -30,41 +40,28 @@ export default function ModelLoadingProgress({
   }, [visible]);
 
   return (
-    <Modal
-      visible={visible}
-      onDismiss={onCancel}
-      header={
-        <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-          <img src="/lmstudio_icon.svg" alt="LM Studio" style={{ width: '24px', height: '24px' }} />
-          <span>Loading Model</span>
-        </SpaceBetween>
-      }
-      footer={
-        <Box float="right">
-          <Button variant="link" onClick={onCancel}>
+    <Dialog open={visible} onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <img src="/lmstudio_icon.svg" alt="LM Studio" className="w-6 h-6" />
+            Loading Model
+          </DialogTitle>
+          <DialogDescription>Please wait while the model loads...</DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col items-center gap-4 py-6">
+          <h3 className="text-lg font-semibold">{modelName}</h3>
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Elapsed time: {elapsedTime}s</p>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-        </Box>
-      }
-    >
-      <SpaceBetween size="l">
-        <Box>
-          <SpaceBetween size="xs">
-            <Box variant="h3">{modelName}</Box>
-            <Box color="text-body-secondary">Please wait while the model loads...</Box>
-          </SpaceBetween>
-        </Box>
-
-        <Box textAlign="center" padding="l">
-          <Spinner size="large" />
-        </Box>
-
-        <Box textAlign="center">
-          <Box color="text-body-secondary" fontSize="body-s">
-            Elapsed time: {elapsedTime}s
-          </Box>
-        </Box>
-      </SpaceBetween>
-    </Modal>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

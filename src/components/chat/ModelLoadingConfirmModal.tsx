@@ -1,4 +1,12 @@
-import { Box, Button, Modal, SpaceBetween } from '@cloudscape-design/components';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export interface ModelLoadingConfirmModalProps {
   visible: boolean;
@@ -18,57 +26,49 @@ export default function ModelLoadingConfirmModal({
   onCancel,
 }: ModelLoadingConfirmModalProps) {
   return (
-    <Modal
-      visible={visible}
-      onDismiss={onCancel}
-      header={
-        <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-          <img src="/lmstudio_icon.svg" alt="LM Studio" style={{ width: '24px', height: '24px' }} />
-          <span>Load Model?</span>
-        </SpaceBetween>
-      }
-      footer={
-        <Box float="right">
-          <SpaceBetween direction="horizontal" size="xs">
-            <Button variant="link" onClick={onCancel}>
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={onConfirm}>
-              Load Model
-            </Button>
-          </SpaceBetween>
-        </Box>
-      }
-    >
-      <SpaceBetween size="m">
-        <Box variant="p">
-          Do you want to load <strong>{modelName}</strong>?
-        </Box>
+    <Dialog open={visible} onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <img src="/lmstudio_icon.svg" alt="LM Studio" className="w-6 h-6" />
+            Load Model?
+          </DialogTitle>
+          <DialogDescription>
+            Do you want to load <strong className="text-foreground">{modelName}</strong>?
+          </DialogDescription>
+        </DialogHeader>
 
-        {(modelArchitecture || modelParams) && (
-          <Box variant="awsui-key-label">
-            <SpaceBetween size="xs">
+        <div className="flex flex-col gap-4 py-2">
+          {(modelArchitecture || modelParams) && (
+            <div className="flex flex-col gap-2 text-sm">
               {modelArchitecture && (
                 <div>
-                  <Box variant="awsui-key-label">Architecture</Box>
-                  <div>{modelArchitecture}</div>
+                  <span className="font-medium text-muted-foreground">Architecture:</span>{' '}
+                  <span>{modelArchitecture}</span>
                 </div>
               )}
               {modelParams && (
                 <div>
-                  <Box variant="awsui-key-label">Parameters</Box>
-                  <div>{modelParams}</div>
+                  <span className="font-medium text-muted-foreground">Parameters:</span>{' '}
+                  <span>{modelParams}</span>
                 </div>
               )}
-            </SpaceBetween>
-          </Box>
-        )}
+            </div>
+          )}
 
-        <Box variant="p" color="text-body-secondary">
-          This may take 5-15 seconds depending on the model size. You'll see a progress bar during
-          the loading process.
-        </Box>
-      </SpaceBetween>
-    </Modal>
+          <p className="text-sm text-muted-foreground">
+            This may take 5-15 seconds depending on the model size. You'll see a progress bar during
+            the loading process.
+          </p>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button onClick={onConfirm}>Load Model</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

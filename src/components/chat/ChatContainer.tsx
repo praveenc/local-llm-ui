@@ -1,10 +1,14 @@
 'use client';
 
+import { Bot } from 'lucide-react';
+
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 
-import { Alert, Box, Button, Icon, SpaceBetween } from '@cloudscape-design/components';
 import type { SelectProps } from '@cloudscape-design/components';
+
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 
 import { FittedContainer, ScrollableContainer } from '../../components/layout';
 import type { Provider } from '../../db';
@@ -15,7 +19,6 @@ import {
   usePromptOptimizer,
   useSavedPrompts,
 } from '../../hooks';
-import '../../styles/chatContainer.scss';
 import { SavePromptModal } from '../prompts';
 import FloatingChatInput from './FloatingChatInput';
 import MessageList from './MessageList';
@@ -37,6 +40,7 @@ type SamplingParameter = 'temperature' | 'topP';
 
 interface ChatContainerProps {
   selectedModel: SelectProps.Option | null;
+  selectedProvider?: Provider;
   maxTokens: number;
   setMaxTokens: (tokens: number) => void;
   temperature: number;
@@ -58,7 +62,7 @@ interface ChatContainerProps {
   onConversationChange?: (id: string | null) => void;
 }
 
-// Helper to determine provider from model description
+// Helper to determine provider from model description (fallback)
 const getProviderFromModel = (model: SelectProps.Option | null): Provider => {
   if (model?.description?.toLowerCase().includes('ollama')) return 'ollama';
   if (model?.description?.toLowerCase().includes('bedrock-mantle')) return 'bedrock-mantle';
@@ -68,8 +72,22 @@ const getProviderFromModel = (model: SelectProps.Option | null): Provider => {
   return 'lmstudio';
 };
 
+// Helper to get provider info
+const getProviderInfo = (model: SelectProps.Option | null) => {
+  const desc = model?.description?.toLowerCase() ?? '';
+  if (desc.includes('bedrock-mantle'))
+    return { icon: '/bedrock-color.svg', name: 'Bedrock Mantle' };
+  if (desc.includes('bedrock')) return { icon: '/bedrock_bw.svg', name: 'Amazon Bedrock' };
+  if (desc.includes('lmstudio')) return { icon: '/lmstudio_icon.svg', name: 'LM Studio' };
+  if (desc.includes('ollama')) return { icon: '/ollama_icon.svg', name: 'Ollama' };
+  if (desc.includes('groq')) return { icon: '/groq_icon.svg', name: 'Groq' };
+  if (desc.includes('cerebras')) return { icon: '/cerebras_icon.svg', name: 'Cerebras' };
+  return null;
+};
+
 const ChatContainer = ({
   selectedModel,
+  selectedProvider: selectedProviderProp,
   maxTokens,
   setMaxTokens,
   temperature,
@@ -86,6 +104,9 @@ const ChatContainer = ({
   conversationId: externalConversationId,
   onConversationChange,
 }: ChatContainerProps) => {
+  // Use provided provider or fall back to detection from model description
+  const selectedProvider = selectedProviderProp ?? getProviderFromModel(selectedModel);
+
   const [inputValue, setInputValue] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -313,7 +334,7 @@ const ChatContainer = ({
   const handleSendMessageForRegenerate = async (content: string, messageHistory: Message[]) => {
     if (!content.trim() || !selectedModel) return;
 
-    const provider = getProviderFromModel(selectedModel);
+    const provider = selectedProvider;
     const modelId = selectedModel.value || '';
     const modelName = selectedModel.label || modelId;
 
@@ -482,7 +503,7 @@ const ChatContainer = ({
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !selectedModel || isLoading) return;
 
-    const provider = getProviderFromModel(selectedModel);
+    const provider = selectedProvider;
     const modelId = selectedModel.value || '';
     const modelName = selectedModel.label || modelId;
 
@@ -833,33 +854,46 @@ const ChatContainer = ({
     }
   };
 
+  const providerInfo = getProviderInfo(selectedModel);
+
+  // Get metadata based on provider
+  const getMetadata = () => {
+    if (selectedProvider === 'bedrock' || selectedProvider === 'bedrock-mantle') {
+      return bedrockMetadata;
+    }
+    return lmstudioMetadata;
+  };
+
   return (
     <>
       {error && (
-        <Alert type={error.type} dismissible onDismiss={() => setError(null)} header={error.title}>
-          {error.content || 'An error occurred'}
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>{error.title}</AlertTitle>
+          <AlertDescription>{error.content || 'An error occurred'}</AlertDescription>
         </Alert>
       )}
 
       {optimizeError && (
-        <Alert type="error" dismissible onDismiss={clearOptimizeError} header="Optimization Error">
-          {optimizeError}
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>Optimization Error</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>{optimizeError}</span>
+            <Button variant="ghost" size="sm" onClick={clearOptimizeError} className="h-auto p-1">
+              Dismiss
+            </Button>
+          </AlertDescription>
         </Alert>
       )}
 
       {previousPrompt && (
-        <Alert
-          type="success"
-          dismissible
-          onDismiss={() => setPreviousPrompt(null)}
-          header="Prompt Optimized"
-          action={
-            <Button onClick={handleUndoOptimization} variant="link">
+        <Alert className="mb-4">
+          <AlertTitle>Prompt Optimized</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>Your prompt has been optimized. Click Undo to restore the original.</span>
+            <Button variant="link" onClick={handleUndoOptimization} className="p-0 h-auto">
               Undo
             </Button>
-          }
-        >
-          Your prompt has been optimized. Click Undo to restore the original.
+          </AlertDescription>
         </Alert>
       )}
 
@@ -878,184 +912,54 @@ const ChatContainer = ({
         existingCategories={categories}
       />
 
-      <div className="chat-content-wrapper">
-        {/* Header */}
-        <div className="chat-header">
-          <Box padding={{ horizontal: 'l', vertical: 's' }}>
-            {selectedModel ? (
-              <SpaceBetween size="xxs">
-                <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                  {/* Provider Icon */}
-                  {selectedModel.description?.toLowerCase().includes('bedrock-mantle') ? (
-                    <img
-                      src="/bedrock-color.svg"
-                      alt="Bedrock Mantle"
-                      style={{ width: '24px', height: '24px' }}
-                    />
-                  ) : selectedModel.description?.toLowerCase().includes('bedrock') ? (
-                    <img
-                      src="/bedrock_bw.svg"
-                      alt="Amazon Bedrock"
-                      style={{ width: '24px', height: '24px' }}
-                    />
-                  ) : selectedModel.description?.toLowerCase().includes('lmstudio') ? (
-                    <img
-                      src="/lmstudio_icon.svg"
-                      alt="LM Studio"
-                      style={{ width: '24px', height: '24px' }}
-                    />
-                  ) : selectedModel.description?.toLowerCase().includes('ollama') ? (
-                    <img
-                      src="/ollama_icon.svg"
-                      alt="Ollama"
-                      style={{ width: '24px', height: '24px' }}
-                    />
-                  ) : selectedModel.description?.toLowerCase().includes('groq') ? (
-                    <img
-                      src="/groq_icon.svg"
-                      alt="Groq"
-                      style={{ width: '24px', height: '24px' }}
-                    />
-                  ) : selectedModel.description?.toLowerCase().includes('cerebras') ? (
-                    <img
-                      src="/cerebras_icon.svg"
-                      alt="Cerebras"
-                      style={{ width: '24px', height: '24px' }}
-                    />
-                  ) : (
-                    <Icon name="contact" size="medium" />
-                  )}
-
-                  {/* Provider Name */}
-                  <Box variant="h3" fontWeight="bold">
-                    {selectedModel.description?.toLowerCase().includes('bedrock-mantle')
-                      ? 'Bedrock Mantle'
-                      : selectedModel.description?.toLowerCase().includes('bedrock')
-                        ? 'Amazon Bedrock'
-                        : selectedModel.description?.toLowerCase().includes('lmstudio')
-                          ? 'LM Studio'
-                          : selectedModel.description?.toLowerCase().includes('ollama')
-                            ? 'Ollama'
-                            : selectedModel.description?.toLowerCase().includes('groq')
-                              ? 'Groq'
-                              : selectedModel.description?.toLowerCase().includes('cerebras')
-                                ? 'Cerebras'
-                                : 'Chat'}
-                  </Box>
-
-                  {showOptimizeButton && (
-                    <span className="optimize-available-badge">
-                      <Icon name="gen-ai" size="small" />
-                      <span>Optimizer</span>
-                    </span>
-                  )}
-                </SpaceBetween>
-
-                {/* Model Name */}
-                <Box variant="small" color="text-body-secondary" padding={{ left: 'xxxl' }}>
-                  {selectedModel.label}
-                </Box>
-              </SpaceBetween>
-            ) : (
-              <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-                <Icon name="contact" size="medium" />
-                <Box variant="h3">Chat</Box>
-              </SpaceBetween>
-            )}
-          </Box>
-        </div>
-
+      <div className="flex flex-col h-full">
         {/* Messages Area */}
         <FittedContainer>
           <ScrollableContainer ref={scrollContainerRef}>
-            <div className="chat-messages-padding">
+            <div className="p-4 pb-40">
               {messages.length === 0 ? (
-                <div className="empty-state-container">
-                  <SpaceBetween size="l" alignItems="center">
-                    {selectedModel ? (
-                      <>
-                        <Box>
-                          {selectedModel.description?.toLowerCase().includes('ollama') && (
-                            <img src="/ollama_icon.svg" alt="Ollama" className="provider-icon" />
-                          )}
-                          {selectedModel.description?.toLowerCase().includes('lmstudio') && (
-                            <img
-                              src="/lmstudio_icon.svg"
-                              alt="LM Studio"
-                              className="provider-icon"
-                            />
-                          )}
-                          {selectedModel.description?.toLowerCase().includes('bedrock') && (
-                            <img
-                              src="/bedrock_bw.svg"
-                              alt="Amazon Bedrock"
-                              className="provider-icon"
-                            />
-                          )}
-                          {selectedModel.description?.toLowerCase().includes('groq') && (
-                            <img src="/groq_icon.svg" alt="Groq" className="provider-icon" />
-                          )}
-                          {selectedModel.description?.toLowerCase().includes('cerebras') && (
-                            <img
-                              src="/cerebras_icon.svg"
-                              alt="Cerebras"
-                              className="provider-icon"
-                            />
-                          )}
-                        </Box>
-                        <SpaceBetween size="xs" alignItems="center">
-                          <Box variant="h3" color="text-body-secondary">
-                            Ready to chat
-                          </Box>
-                          <Box color="text-body-secondary" textAlign="center">
-                            Send a message to start chatting with{' '}
-                            <strong>{selectedModel.label}</strong>
-                          </Box>
-                        </SpaceBetween>
-                      </>
-                    ) : (
-                      <>
-                        <Box color="text-status-inactive">
-                          <Icon name="contact" size="big" />
-                        </Box>
-                        <SpaceBetween size="xs" alignItems="center">
-                          <Box variant="h3" color="text-body-secondary">
-                            No model selected
-                          </Box>
-                          <Box color="text-body-secondary">
-                            Select a model from the sidebar to begin
-                          </Box>
-                        </SpaceBetween>
-                      </>
-                    )}
-                  </SpaceBetween>
+                <div className="flex flex-col items-center justify-center h-full min-h-[400px] gap-4">
+                  {selectedModel ? (
+                    <>
+                      {providerInfo && (
+                        <img
+                          src={providerInfo.icon}
+                          alt={providerInfo.name}
+                          className="w-16 h-16 opacity-50"
+                        />
+                      )}
+                      <div className="text-center">
+                        <h3 className="text-lg font-medium text-muted-foreground">Ready to chat</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Send a message to start chatting with{' '}
+                          <strong>{selectedModel.label}</strong>
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Bot className="h-16 w-16 text-muted-foreground/50" />
+                      <div className="text-center">
+                        <h3 className="text-lg font-medium text-muted-foreground">
+                          No model selected
+                        </h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Select a model from the sidebar to begin
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : (
-                <Box padding="s">
-                  <MessageList
-                    messages={messages}
-                    streamingMessage={streamingMessage}
-                    avatarInitials={avatarInitials}
-                    lastMessageMetadata={
-                      selectedModel?.description?.toLowerCase().includes('bedrock-mantle')
-                        ? bedrockMetadata
-                        : selectedModel?.description?.toLowerCase().includes('bedrock')
-                          ? bedrockMetadata
-                          : selectedModel?.description?.toLowerCase().includes('lmstudio')
-                            ? lmstudioMetadata
-                            : selectedModel?.description?.toLowerCase().includes('ollama')
-                              ? lmstudioMetadata
-                              : selectedModel?.description?.toLowerCase().includes('groq')
-                                ? lmstudioMetadata
-                                : selectedModel?.description?.toLowerCase().includes('cerebras')
-                                  ? lmstudioMetadata
-                                  : null
-                    }
-                    onRegenerate={handleRegenerate}
-                    isLoading={isLoading}
-                    onSavePrompt={handleSavePromptClick}
-                  />
-                </Box>
+                <MessageList
+                  messages={messages}
+                  streamingMessage={streamingMessage}
+                  avatarInitials={avatarInitials}
+                  lastMessageMetadata={getMetadata()}
+                  onRegenerate={handleRegenerate}
+                  isLoading={isLoading}
+                  onSavePrompt={handleSavePromptClick}
+                />
               )}
             </div>
           </ScrollableContainer>

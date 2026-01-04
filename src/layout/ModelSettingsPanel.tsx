@@ -25,6 +25,7 @@ import { ViewPromptsModal } from '../components/prompts';
 import { useModelLoader } from '../hooks';
 import { cerebrasService, groqService, syncApiKeysFromPreferences } from '../services/aisdk';
 import '../styles/conversationList.scss';
+import '../styles/sidebar-overrides.css';
 import '../styles/sidebar.scss';
 import { loadPreferences, savePreferences, validateInitials } from '../utils/preferences';
 import type { ContentDensity, UserPreferences, VisualMode } from '../utils/preferences';
@@ -556,24 +557,32 @@ export default function SideBar({
       {/* Divider */}
       <div className="sidebar-divider" />
 
-      {/* Saved Prompts Section */}
-      <Box padding={{ horizontal: 's', top: 'xs', bottom: 's' }}>
-        <SpaceBetween size="xs">
-          <SpaceBetween direction="horizontal" size="xs" alignItems="center">
-            <Icon name="download" size="small" />
-            <Box variant="small" color="text-body-secondary" fontWeight="bold">
-              Saved Prompts
-            </Box>
-          </SpaceBetween>
-          <Button
-            variant="link"
-            iconName="folder-open"
-            onClick={() => setShowViewPromptsModal(true)}
+      {/* Saved Prompts Button - Simple themed button */}
+      <div className="px-3 py-2">
+        <button
+          onClick={() => setShowViewPromptsModal(true)}
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            View Saved Prompts
-          </Button>
-        </SpaceBetween>
-      </Box>
+            <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+            <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+            <path d="M10 9H8" />
+            <path d="M16 13H8" />
+            <path d="M16 17H8" />
+          </svg>
+          Saved Prompts
+        </button>
+      </div>
 
       {/* Divider before settings */}
       <div className="sidebar-divider" style={{ marginTop: 'auto' }} />

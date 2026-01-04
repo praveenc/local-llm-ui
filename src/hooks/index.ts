@@ -6,3 +6,5 @@ export { useConversationMutations } from './useConversationMutations';
 export { useModelLoader } from './useModelLoader';
 export { useSavedPrompts } from './useSavedPrompts';
 export { usePromptMutations } from './usePromptMutations';
+export { useProviderModels } from './useProviderModels';
+export type { ModelOption, ModelGroup } from './useProviderModels';

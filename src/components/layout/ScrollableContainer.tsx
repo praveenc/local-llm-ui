@@ -8,8 +8,8 @@ interface ScrollableContainerProps {
 const ScrollableContainer = forwardRef<HTMLDivElement, ScrollableContainerProps>(
   function ScrollableContainer({ children }, ref) {
     return (
-      <div style={{ position: 'relative', blockSize: '100%' }}>
-        <div style={{ position: 'absolute', inset: 0, overflowY: 'auto' }} ref={ref}>
+      <div className="relative h-full">
+        <div className="absolute inset-0 overflow-y-auto" ref={ref}>
           {children}
         </div>
       </div>
