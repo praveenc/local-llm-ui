@@ -45,9 +45,8 @@ export function useProviderModels(
         // Sync AI SDK API keys
         syncApiKeysFromPreferences(preferences.groqApiKey, preferences.cerebrasApiKey);
 
-        const { lmstudioService, ollamaService, bedrockService, mantleService } = await import(
-          '../services'
-        );
+        const { lmstudioService, ollamaService, bedrockService, mantleService } =
+          await import('../services');
 
         // Configure Mantle if needed
         if (provider === 'bedrock-mantle') {

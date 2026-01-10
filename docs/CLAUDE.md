@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Local LLM UI is a React chat interface for interacting with multiple LLM providers: Ollama, LM Studio, Amazon Bedrock, Groq, and Cerebras. Built with TypeScript, Vite, and AWS Cloudscape Design System.
+Local LLM UI is a React chat interface for interacting with multiple LLM providers: Ollama, LM Studio, Amazon Bedrock, Groq, and Cerebras. Built with TypeScript, Vite, shadcn/ui, and Tailwind CSS.
 
 ## Common Commands
 
@@ -17,6 +17,8 @@ npm run format       # Prettier format
 npm run test         # Run tests in watch mode
 npm run test:run     # Run tests once
 npm run test:ui      # Run tests with UI
+make check           # Run lint + tests (quiet output)
+make fix             # Run format + lint-fix (quiet output)
 ```
 
 ## Architecture
@@ -53,8 +55,8 @@ Uses Dexie.js (IndexedDB wrapper) for client-side storage:
 
 - `src/layout/AppShell.tsx` - Main orchestrator component
 - `src/components/chat/ChatContainer.tsx` - Chat UI container
-- `src/components/chat/FloatingChatInput.tsx` - Message input with file upload
-- `src/layout/ModelSettingsPanel.tsx` - Provider/model selection sidebar
+- `src/components/chat/AIChatInput.tsx` - Message input with file attachments
+- `src/components/sidebar/Sidebar.tsx` - Provider/model selection sidebar
 
 ### Hooks
 
@@ -66,7 +68,7 @@ Uses Dexie.js (IndexedDB wrapper) for client-side storage:
 ## Code Conventions
 
 - Follow Conventional Commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`
-- Use Cloudscape Design System components
+- Use shadcn/ui components (Radix UI primitives + Tailwind CSS)
 - TypeScript strict mode; avoid `any`
 - Use type imports: `import type { Type } from 'module'`
 - Functional components with hooks only

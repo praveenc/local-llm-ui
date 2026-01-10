@@ -17,8 +17,6 @@ import {
 import type { ChangeEvent, DragEvent, KeyboardEvent } from 'react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
-import type { SelectProps } from '@cloudscape-design/components';
-
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -40,6 +38,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Slider } from '@/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import type { ModelOption } from '@/types';
 
 type SamplingParameter = 'temperature' | 'topP';
 type ChatStatus = 'idle' | 'streaming' | 'submitted';
@@ -52,7 +51,7 @@ interface AIChatInputMessage {
 interface AIChatInputProps {
   onSubmit: (message: AIChatInputMessage) => void;
   status?: ChatStatus;
-  selectedModel: SelectProps.Option | null;
+  selectedModel: ModelOption | null;
   // Model parameters
   maxTokens: number;
   setMaxTokens: (tokens: number) => void;

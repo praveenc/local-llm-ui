@@ -5,10 +5,9 @@ import { Bot } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 
-import type { SelectProps } from '@cloudscape-design/components';
-
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import type { ModelOption } from '@/types';
 
 import { FittedContainer, ScrollableContainer } from '../../components/layout';
 import type { Provider } from '../../db';
@@ -39,7 +38,7 @@ interface ErrorState {
 type SamplingParameter = 'temperature' | 'topP';
 
 interface ChatContainerProps {
-  selectedModel: SelectProps.Option | null;
+  selectedModel: ModelOption | null;
   selectedProvider?: Provider;
   maxTokens: number;
   setMaxTokens: (tokens: number) => void;
@@ -63,7 +62,7 @@ interface ChatContainerProps {
 }
 
 // Helper to determine provider from model description (fallback)
-const getProviderFromModel = (model: SelectProps.Option | null): Provider => {
+const getProviderFromModel = (model: ModelOption | null): Provider => {
   if (model?.description?.toLowerCase().includes('ollama')) return 'ollama';
   if (model?.description?.toLowerCase().includes('bedrock-mantle')) return 'bedrock-mantle';
   if (model?.description?.toLowerCase().includes('bedrock')) return 'bedrock';
@@ -73,7 +72,7 @@ const getProviderFromModel = (model: SelectProps.Option | null): Provider => {
 };
 
 // Helper to get provider info
-const getProviderInfo = (model: SelectProps.Option | null) => {
+const getProviderInfo = (model: ModelOption | null) => {
   const desc = model?.description?.toLowerCase() ?? '';
   if (desc.includes('bedrock-mantle'))
     return { icon: '/bedrock-color.svg', name: 'Bedrock Mantle' };
