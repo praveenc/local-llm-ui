@@ -1,3 +1,4 @@
+export { default as AIChatInput } from './AIChatInput';
 export { ChatAvatar } from './ChatAvatar';
 export { ChatBubble } from './ChatBubble';
 export { default as ChatContainer } from './ChatContainer';

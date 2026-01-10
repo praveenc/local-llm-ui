@@ -20,7 +20,7 @@ import {
   useSavedPrompts,
 } from '../../hooks';
 import { SavePromptModal } from '../prompts';
-import FloatingChatInput from './FloatingChatInput';
+import AIChatInput from './AIChatInput';
 import MessageList from './MessageList';
 import OptimizePromptModal from './OptimizePromptModal';
 
@@ -112,7 +112,6 @@ const ChatContainer = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
   const [error, setError] = useState<ErrorState | null>(null);
-  const [files, setFiles] = useState<File[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const [sessionId] = useState<string>(
     () => `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -500,8 +499,8 @@ const ChatContainer = ({
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || !selectedModel || isLoading) return;
+  const handleSendMessage = async (message: { text: string; files?: File[] }) => {
+    if (!message.text.trim() || !selectedModel || isLoading) return;
 
     const provider = selectedProvider;
     const modelId = selectedModel.value || '';
@@ -519,11 +518,10 @@ const ChatContainer = ({
     const userMessage: Message = {
       id: Date.now(),
       role: 'user',
-      content: inputValue,
+      content: message.text,
     };
 
     setMessages((prevMessages) => [...prevMessages, userMessage]);
-    setInputValue('');
     setIsLoading(true);
 
     // Persist user message to DB
@@ -565,8 +563,9 @@ const ChatContainer = ({
         format: string;
         bytes: string;
       }> = [];
-      if (files.length > 0 && provider === 'bedrock') {
-        const { processedFiles: processed, errors } = await processFilesForBedrock(files);
+      const messageFiles = message.files || [];
+      if (messageFiles.length > 0 && provider === 'bedrock') {
+        const { processedFiles: processed, errors } = await processFilesForBedrock(messageFiles);
 
         if (errors.length > 0) {
           // Show error for file validation failures
@@ -583,7 +582,7 @@ const ChatContainer = ({
 
         processedFiles = processed;
         console.log(`Bedrock: Processed ${processedFiles.length} files for upload`);
-      } else if (files.length > 0) {
+      } else if (messageFiles.length > 0) {
         console.log(`File upload not supported for ${provider}`);
       }
 
@@ -849,7 +848,6 @@ const ChatContainer = ({
       }
     } finally {
       setIsLoading(false);
-      setFiles([]);
       abortControllerRef.current = null;
     }
   };
@@ -966,14 +964,10 @@ const ChatContainer = ({
         </FittedContainer>
 
         {/* Floating Input Panel - positioned within the chat container */}
-        <FloatingChatInput
-          inputValue={inputValue}
-          onInputValueChange={setInputValue}
-          onSendMessage={handleSendMessage}
-          onStopGeneration={handleStopGeneration}
-          isLoading={isLoading}
+        <AIChatInput
+          onSubmit={handleSendMessage}
+          status={isLoading ? 'streaming' : 'idle'}
           selectedModel={selectedModel}
-          onFilesChange={setFiles}
           maxTokens={maxTokens}
           setMaxTokens={setMaxTokens}
           temperature={temperature}
@@ -982,14 +976,16 @@ const ChatContainer = ({
           setTopP={setTopP}
           samplingParameter={samplingParameter}
           setSamplingParameter={setSamplingParameter}
+          inputValue={inputValue}
+          onInputValueChange={setInputValue}
           showOptimizeButton={showOptimizeButton}
           onOptimizePrompt={handleOptimizeClick}
           isOptimizing={isOptimizing}
-          modelStatus={modelStatus}
-          onDismissModelStatus={onDismissModelStatus}
+          onStopGeneration={handleStopGeneration}
           onClearConversation={handleClearHistory}
           hasMessages={messages.length > 0}
-          onSavePrompt={handleSavePromptClick}
+          modelStatus={modelStatus}
+          onDismissModelStatus={onDismissModelStatus}
         />
       </div>
     </>
