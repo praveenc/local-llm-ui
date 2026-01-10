@@ -1,15 +1,15 @@
-import { Slot } from '@radix-ui/react-slot';
 import { type VariantProps } from 'class-variance-authority';
 
 import * as React from 'react';
+
+import { Slot } from '@radix-ui/react-slot';
 
 import { cn } from '@/styleguide-shadcn/lib/utils';
 
 import { buttonVariants } from './button-variants';
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
   asChild?: boolean;
 }
 

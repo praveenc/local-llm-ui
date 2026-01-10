@@ -14,8 +14,6 @@ import {
 import type { ChangeEvent, DragEvent, KeyboardEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { SelectProps } from '@cloudscape-design/components';
-
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,6 +31,7 @@ import { Slider } from '@/components/ui/slider';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import type { ModelOption } from '@/types';
 
 type SamplingParameter = 'temperature' | 'topP';
 
@@ -42,7 +41,7 @@ interface FloatingChatInputProps {
   onSendMessage: () => void;
   onStopGeneration: () => void;
   isLoading: boolean;
-  selectedModel: SelectProps.Option | null;
+  selectedModel: ModelOption | null;
   onFilesChange?: (files: File[]) => void;
   maxTokens: number;
   setMaxTokens: (tokens: number) => void;
