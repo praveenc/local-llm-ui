@@ -206,8 +206,8 @@ const FloatingChatInput = ({
     <TooltipProvider>
       {/* Model Status Alert - positioned above input */}
       {modelStatus && (
-        <div className="absolute bottom-36 left-0 right-0 z-[999] px-4 md:px-8 pointer-events-none">
-          <div className="max-w-[900px] mx-auto pointer-events-auto">
+        <div className="absolute bottom-36 left-0 right-0 z-[999] px-2 md:px-4">
+          <div className="max-w-4xl mx-auto">
             <Alert
               variant={modelStatus.type === 'error' ? 'destructive' : 'default'}
               className="relative"
@@ -229,10 +229,10 @@ const FloatingChatInput = ({
         </div>
       )}
 
-      <div className="absolute bottom-0 left-0 right-0 z-[1000] p-2 md:p-4 pointer-events-none">
+      <div className="absolute bottom-0 left-0 right-0 z-[1000] p-2 md:p-4">
         <div
           className={cn(
-            'max-w-[900px] mx-auto pointer-events-auto',
+            'max-w-4xl mx-auto',
             'bg-background/95 backdrop-blur-md',
             'border border-border rounded-lg shadow-lg',
             'overflow-hidden'

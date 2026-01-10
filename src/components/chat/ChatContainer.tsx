@@ -912,11 +912,11 @@ const ChatContainer = ({
         existingCategories={categories}
       />
 
-      <div className="flex flex-col h-full">
+      <div className="relative flex flex-col h-full">
         {/* Messages Area */}
         <FittedContainer>
           <ScrollableContainer ref={scrollContainerRef}>
-            <div className="p-4 pb-40">
+            <div className="p-4 pb-44">
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full min-h-[400px] gap-4">
                   {selectedModel ? (
@@ -964,34 +964,34 @@ const ChatContainer = ({
             </div>
           </ScrollableContainer>
         </FittedContainer>
-      </div>
 
-      {/* Floating Input Panel */}
-      <FloatingChatInput
-        inputValue={inputValue}
-        onInputValueChange={setInputValue}
-        onSendMessage={handleSendMessage}
-        onStopGeneration={handleStopGeneration}
-        isLoading={isLoading}
-        selectedModel={selectedModel}
-        onFilesChange={setFiles}
-        maxTokens={maxTokens}
-        setMaxTokens={setMaxTokens}
-        temperature={temperature}
-        setTemperature={setTemperature}
-        topP={topP}
-        setTopP={setTopP}
-        samplingParameter={samplingParameter}
-        setSamplingParameter={setSamplingParameter}
-        showOptimizeButton={showOptimizeButton}
-        onOptimizePrompt={handleOptimizeClick}
-        isOptimizing={isOptimizing}
-        modelStatus={modelStatus}
-        onDismissModelStatus={onDismissModelStatus}
-        onClearConversation={handleClearHistory}
-        hasMessages={messages.length > 0}
-        onSavePrompt={handleSavePromptClick}
-      />
+        {/* Floating Input Panel - positioned within the chat container */}
+        <FloatingChatInput
+          inputValue={inputValue}
+          onInputValueChange={setInputValue}
+          onSendMessage={handleSendMessage}
+          onStopGeneration={handleStopGeneration}
+          isLoading={isLoading}
+          selectedModel={selectedModel}
+          onFilesChange={setFiles}
+          maxTokens={maxTokens}
+          setMaxTokens={setMaxTokens}
+          temperature={temperature}
+          setTemperature={setTemperature}
+          topP={topP}
+          setTopP={setTopP}
+          samplingParameter={samplingParameter}
+          setSamplingParameter={setSamplingParameter}
+          showOptimizeButton={showOptimizeButton}
+          onOptimizePrompt={handleOptimizeClick}
+          isOptimizing={isOptimizing}
+          modelStatus={modelStatus}
+          onDismissModelStatus={onDismissModelStatus}
+          onClearConversation={handleClearHistory}
+          hasMessages={messages.length > 0}
+          onSavePrompt={handleSavePromptClick}
+        />
+      </div>
     </>
   );
 };

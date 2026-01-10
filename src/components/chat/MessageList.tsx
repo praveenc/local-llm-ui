@@ -358,7 +358,7 @@ const MessageList = ({
             avatar={<ChatAvatar type="ai" loading={true} />}
           >
             {streamingMessage.content ? (
-              <div className="py-1">
+              <div className="py-1 min-h-[1.5rem]">
                 {(() => {
                   const { thinkingContent, mainContent } = parseThinkingContent(
                     streamingMessage.content
@@ -382,9 +382,11 @@ const MessageList = ({
                           </AccordionItem>
                         </Accordion>
                       )}
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                        {mainContent}
-                      </ReactMarkdown>
+                      <div className="prose prose-sm dark:prose-invert max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                          {mainContent}
+                        </ReactMarkdown>
+                      </div>
                       <span className="inline-block w-2 h-4 bg-primary animate-pulse" />
                     </div>
                   );
