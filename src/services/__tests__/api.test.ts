@@ -2,6 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { apiService } from '../api';
 
+// Mock localStorage
+const localStorageMock = {
+  getItem: vi.fn(() => null),
+  setItem: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
+};
+Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock });
+
 // Mock the service modules
 vi.mock('../lmstudio', () => ({
   lmstudioService: {
@@ -36,6 +45,9 @@ describe('APIService', () => {
         lmstudio: true,
         ollama: true,
         bedrock: false,
+        'bedrock-mantle': false,
+        groq: false,
+        cerebras: false,
       });
     });
 
@@ -52,6 +64,9 @@ describe('APIService', () => {
         lmstudio: false,
         ollama: false,
         bedrock: false,
+        'bedrock-mantle': false,
+        groq: false,
+        cerebras: false,
       });
     });
   });
@@ -85,9 +100,7 @@ describe('APIService', () => {
       vi.mocked(lmstudioService.getModels).mockRejectedValue(new Error('Not available'));
       vi.mocked(ollamaService.getModels).mockRejectedValue(new Error('Not available'));
 
-      await expect(apiService.getAllModels()).rejects.toThrow(
-        'No AI services available. Please start LMStudio or Ollama.'
-      );
+      await expect(apiService.getAllModels()).rejects.toThrow('No AI services available.');
     });
   });
 });

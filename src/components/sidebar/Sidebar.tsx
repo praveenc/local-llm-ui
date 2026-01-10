@@ -232,7 +232,7 @@ export function Sidebar({
       <Separator />
 
       {/* Footer Actions */}
-      <div className="p-2 space-y-1">
+      <div className="p-2 space-y-1 bg-sidebar-accent/30 border-t border-sidebar-border">
         <Button
           variant="ghost"
           className="w-full justify-start gap-2 h-9"

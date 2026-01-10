@@ -80,13 +80,36 @@ export function ConversationList({
   const { deleteConversation, updateConversationTitle } = useConversationMutations();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    Today: true,
-    Yesterday: true,
-    'This Week': true,
-  });
 
   const grouped = groupConversationsByDate(conversations ?? []);
+
+  // Determine which groups should be open by default
+  // Only "Today" is expanded, unless there are no today conversations, then expand "Yesterday"
+  const getDefaultOpenGroups = (): Record<string, boolean> => {
+    const hasTodayConversations = grouped.some(
+      (g) => g.label === 'Today' && g.conversations.length > 0
+    );
+    if (hasTodayConversations) {
+      return { Today: true } as Record<string, boolean>;
+    }
+    // If no today conversations, expand yesterday
+    const hasYesterdayConversations = grouped.some(
+      (g) => g.label === 'Yesterday' && g.conversations.length > 0
+    );
+    if (hasYesterdayConversations) {
+      return { Yesterday: true } as Record<string, boolean>;
+    }
+    // If neither, expand the first group
+    if (grouped.length > 0) {
+      return { [grouped[0].label]: true } as Record<string, boolean>;
+    }
+    return {};
+  };
+
+  // Initialize open groups based on available conversations
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
+    getDefaultOpenGroups()
+  );
 
   const handleRename = (id: string, currentTitle: string) => {
     setEditingId(id);
