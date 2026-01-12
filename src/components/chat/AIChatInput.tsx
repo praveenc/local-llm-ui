@@ -349,7 +349,7 @@ const AIChatInput = ({
           )}
 
           {/* Input Body */}
-          <div className="p-3">
+          <div className="p-3 max-h-[240px] overflow-hidden">
             <textarea
               ref={textareaRef}
               id={inputId}
@@ -363,7 +363,8 @@ const AIChatInput = ({
                 'text-sm placeholder:text-muted-foreground',
                 'focus:outline-none',
                 'disabled:cursor-not-allowed disabled:opacity-50',
-                'min-h-[48px] max-h-[192px]'
+                'min-h-[48px] max-h-[192px] overflow-y-auto',
+                'whitespace-pre-wrap break-words'
               )}
               rows={2}
             />
