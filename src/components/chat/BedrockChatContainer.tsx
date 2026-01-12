@@ -14,7 +14,6 @@ import { Fragment, useRef, useState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { ModelOption } from '@/types';
 
-import type { Provider } from '../../db';
 import { useBedrockChat } from '../../hooks/useBedrockChat';
 import { getReasoningContent, getTextContent, hasReasoning } from '../../types/ai-messages';
 import {
@@ -39,11 +38,6 @@ import {
   PromptInputAttachments,
   PromptInputButton,
   PromptInputFooter,
-  PromptInputSelect,
-  PromptInputSelectContent,
-  PromptInputSelectItem,
-  PromptInputSelectTrigger,
-  PromptInputSelectValue,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
@@ -56,6 +50,32 @@ import { FittedContainer, ScrollableContainer } from '../layout';
  * Chat container using AI Elements components and useBedrockChat hook.
  * This is the new UI for Bedrock chat with AI SDK integration.
  */
+
+type SamplingParameter = 'temperature' | 'topP';
+
+interface BedrockChatContainerProps {
+  selectedModel: ModelOption | null;
+  maxTokens: number;
+  setMaxTokens: (tokens: number) => void;
+  temperature: number;
+  setTemperature: (temp: number) => void;
+  topP: number;
+  setTopP: (topP: number) => void;
+  samplingParameter: SamplingParameter;
+  setSamplingParameter: (param: SamplingParameter) => void;
+  avatarInitials?: string;
+  conversationId?: string | null;
+  onConversationChange?: (id: string | null) => void;
+}
+
+// Helper to get provider info for display
+const getProviderInfo = (model: ModelOption | null) => {
+  const desc = model?.description?.toLowerCase() ?? '';
+  if (desc.includes('bedrock-mantle'))
+    return { icon: '/bedrock-color.svg', name: 'Bedrock Mantle' };
+  if (desc.includes('bedrock')) return { icon: '/bedrock_bw.svg', name: 'Amazon Bedrock' };
+  return null;
+};
 
 // Helper function to get file format from media type
 function getFormatFromMediaType(mediaType: string): string {
@@ -77,42 +97,6 @@ function getFormatFromMediaType(mediaType: string): string {
   return typeMap[mediaType] || 'bin';
 }
 
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
-
-type SamplingParameter = 'temperature' | 'topP';
-
-interface BedrockChatContainerProps {
-  selectedModel: ModelOption | null;
-  selectedProvider?: Provider;
-  maxTokens: number;
-  setMaxTokens: (tokens: number) => void;
-  temperature: number;
-  setTemperature: (temp: number) => void;
-  topP: number;
-  setTopP: (topP: number) => void;
-  samplingParameter: SamplingParameter;
-  setSamplingParameter: (param: SamplingParameter) => void;
-  avatarInitials?: string;
-  conversationId?: string | null;
-  onConversationChange?: (id: string | null) => void;
-  models?: ModelOption[];
-  onModelChange?: (model: ModelOption) => void;
-}
-
-// Helper to get provider info for display
-const getProviderInfo = (model: ModelOption | null) => {
-  const desc = model?.description?.toLowerCase() ?? '';
-  if (desc.includes('bedrock-mantle'))
-    return { icon: '/bedrock-color.svg', name: 'Bedrock Mantle' };
-  if (desc.includes('bedrock')) return { icon: '/bedrock_bw.svg', name: 'Amazon Bedrock' };
-  return null;
-};
-
 const BedrockChatContainer = ({
   selectedModel,
   maxTokens,
@@ -121,8 +105,6 @@ const BedrockChatContainer = ({
   samplingParameter,
   conversationId: externalConversationId,
   onConversationChange,
-  models = [],
-  onModelChange,
 }: BedrockChatContainerProps) => {
   const [inputValue, setInputValue] = useState('');
   const [messageFeedback, setMessageFeedback] = useState<Record<string, string>>({});
@@ -150,35 +132,17 @@ const BedrockChatContainer = ({
   const isLoading = status === 'streaming' || status === 'submitted';
   const providerInfo = getProviderInfo(selectedModel);
 
-  // Filter models to only show Bedrock models for the selector
-  const bedrockModels = models.filter((m) => {
-    const desc = m.description?.toLowerCase() ?? '';
-    return desc.includes('bedrock');
-  });
-
   const handleSubmit = async (message: {
     text: string;
     files: Array<{ url?: string; mediaType?: string; filename?: string }>;
   }) => {
     if (!message.text.trim() || isLoading) return;
-
     setInputValue('');
 
-    // Convert file attachments to the format expected by sendMessage
-    const fileAttachments = message.files
-      .filter((f) => f.url && f.mediaType && f.filename)
-      .map((f) => ({
-        name: f.filename!,
-        format: getFormatFromMediaType(f.mediaType!),
-        bytes: '', // Will be populated from data URL
-      }));
-
-    // If there are files, we need to convert data URLs to base64
-    if (fileAttachments.length > 0 && message.files.length > 0) {
+    if (message.files.length > 0) {
       const filesWithData = await Promise.all(
         message.files.map(async (f) => {
           if (f.url?.startsWith('data:')) {
-            // Extract base64 from data URL
             const base64 = f.url.split(',')[1] || '';
             return {
               name: f.filename || 'file',
@@ -198,18 +162,8 @@ const BedrockChatContainer = ({
     }
   };
 
-  const handleModelSelect = (modelValue: string) => {
-    const model = bedrockModels.find((m) => m.value === modelValue);
-    if (model && onModelChange) {
-      onModelChange(model);
-    }
-  };
-
   const handleFeedback = (messageId: string, feedbackType: string) => {
-    setMessageFeedback((prev) => ({
-      ...prev,
-      [messageId]: feedbackType,
-    }));
+    setMessageFeedback((prev) => ({ ...prev, [messageId]: feedbackType }));
   };
 
   const handleCopy = async (content: string) => {
@@ -220,7 +174,6 @@ const BedrockChatContainer = ({
     }
   };
 
-  // Find last assistant message index
   const lastAssistantIndex = messages.reduce(
     (lastIdx, msg, idx) => (msg.role === 'assistant' ? idx : lastIdx),
     -1
@@ -234,9 +187,7 @@ const BedrockChatContainer = ({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-
       <div className="relative flex flex-col h-full">
-        {/* Messages Area */}
         <FittedContainer>
           <ScrollableContainer ref={scrollContainerRef}>
             <div className="p-4 pb-44">
@@ -255,8 +206,6 @@ const BedrockChatContainer = ({
                             <MessageResponse>{getTextContent(message)}</MessageResponse>
                           </MessageContent>
                         </Message>
-
-                        {/* Actions for assistant messages */}
                         {message.role === 'assistant' && (
                           <MessageActions className="ml-0">
                             <MessageAction
@@ -290,8 +239,6 @@ const BedrockChatContainer = ({
                             </MessageAction>
                           </MessageActions>
                         )}
-
-                        {/* Metadata for last assistant message */}
                         {message.role === 'assistant' &&
                           index === lastAssistantIndex &&
                           metadata && <MetadataRow metadata={metadata} />}
@@ -304,22 +251,17 @@ const BedrockChatContainer = ({
             </div>
           </ScrollableContainer>
         </FittedContainer>
-
-        {/* Input Area */}
         <div className="absolute bottom-0 left-0 right-0 z-[1000] p-2 md:p-4">
           <PromptInput
             onSubmit={handleSubmit}
             accept="image/*,.pdf,.txt,.html,.md,.csv,.doc,.docx,.xls,.xlsx"
             multiple
-            maxFileSize={4.5 * 1024 * 1024} // 4.5MB max per Bedrock limits
+            maxFileSize={4.5 * 1024 * 1024}
             className="max-w-4xl mx-auto bg-background/95 backdrop-blur-md border border-border rounded-xl shadow-lg"
           >
-            {/* Attachments preview */}
             <PromptInputAttachments>
               {(attachment) => <PromptInputAttachment data={attachment} />}
             </PromptInputAttachments>
-
-            {/* Textarea */}
             <PromptInputTextarea
               value={inputValue}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
@@ -330,47 +272,24 @@ const BedrockChatContainer = ({
               }
               disabled={isLoading || !selectedModel}
             />
-
-            {/* Footer with tools and submit */}
             <PromptInputFooter className="px-3 pb-3">
               <PromptInputTools>
-                {/* Action menu for attachments */}
                 <PromptInputActionMenu>
                   <PromptInputActionMenuTrigger />
                   <PromptInputActionMenuContent>
                     <PromptInputActionAddAttachments label="Add photos or files" />
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>
-
-                {/* Model selector */}
-                {bedrockModels.length > 0 && (
-                  <PromptInputSelect
-                    value={selectedModel?.value || ''}
-                    onValueChange={handleModelSelect}
-                  >
-                    <PromptInputSelectTrigger className="w-auto min-w-[120px] max-w-[200px] h-8">
-                      <div className="flex items-center gap-1.5">
-                        {providerInfo && (
-                          <img
-                            src={providerInfo.icon}
-                            alt={providerInfo.name}
-                            className="w-4 h-4 shrink-0"
-                          />
-                        )}
-                        <PromptInputSelectValue placeholder="Select model" />
-                      </div>
-                    </PromptInputSelectTrigger>
-                    <PromptInputSelectContent>
-                      {bedrockModels.map((model) => (
-                        <PromptInputSelectItem key={model.value} value={model.value}>
-                          {model.label}
-                        </PromptInputSelectItem>
-                      ))}
-                    </PromptInputSelectContent>
-                  </PromptInputSelect>
+                {selectedModel && providerInfo && (
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50 text-muted-foreground">
+                    <img
+                      src={providerInfo.icon}
+                      alt={providerInfo.name}
+                      className="w-4 h-4 shrink-0"
+                    />
+                    <span className="text-xs truncate max-w-[150px]">{selectedModel.label}</span>
+                  </div>
                 )}
-
-                {/* Clear button */}
                 {messages.length > 0 && (
                   <PromptInputButton
                     onClick={clearMessages}
@@ -381,8 +300,6 @@ const BedrockChatContainer = ({
                   </PromptInputButton>
                 )}
               </PromptInputTools>
-
-              {/* Submit/Stop button */}
               <PromptInputSubmit
                 status={isLoading ? 'streaming' : 'ready'}
                 disabled={!inputValue.trim() || !selectedModel}
@@ -396,7 +313,6 @@ const BedrockChatContainer = ({
   );
 };
 
-// Empty state component
 const EmptyState = ({
   selectedModel,
   providerInfo,
@@ -431,7 +347,6 @@ const EmptyState = ({
   </div>
 );
 
-// Reasoning block component (for thinking models)
 const ReasoningBlock = ({ content }: { content: string }) => (
   <details className="mb-3 rounded-lg bg-muted/50 p-3">
     <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
@@ -441,7 +356,6 @@ const ReasoningBlock = ({ content }: { content: string }) => (
   </details>
 );
 
-// Metadata row component
 const MetadataRow = ({
   metadata,
 }: {
