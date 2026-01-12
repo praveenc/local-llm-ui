@@ -1,9 +1,24 @@
-import { ChevronRight, MessageSquare, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronRight,
+  MessageSquare,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,6 +95,11 @@ export function ConversationList({
   const { deleteConversation, updateConversationTitle } = useConversationMutations();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
 
   const grouped = groupConversationsByDate(conversations ?? []);
 
@@ -124,11 +144,25 @@ export function ConversationList({
     setEditTitle('');
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteConversation(id);
-    if (activeConversationId === id) {
-      onNewChat();
+  const handleDeleteClick = (conv: { id: string; title: string }) => {
+    setConversationToDelete(conv);
+    setDeleteModalVisible(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (conversationToDelete) {
+      await deleteConversation(conversationToDelete.id);
+      if (activeConversationId === conversationToDelete.id) {
+        onNewChat();
+      }
     }
+    setDeleteModalVisible(false);
+    setConversationToDelete(null);
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteModalVisible(false);
+    setConversationToDelete(null);
   };
 
   const toggleGroup = (label: string) => {
@@ -217,7 +251,7 @@ export function ConversationList({
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive"
-                            onClick={() => handleDelete(conv.id)}
+                            onClick={() => handleDeleteClick(conv)}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
                             Delete
@@ -232,6 +266,30 @@ export function ConversationList({
           </CollapsibleContent>
         </Collapsible>
       ))}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteModalVisible} onOpenChange={setDeleteModalVisible}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete conversation</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{conversationToDelete?.title}"?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-500">
+            <AlertTriangle className="h-4 w-4" />
+            <span>Once deleted, this conversation cannot be restored.</span>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={handleCancelDelete}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

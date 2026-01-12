@@ -23,22 +23,22 @@ export function ChatBubble({
 
   return (
     <div
-      className={cn('flex gap-3 w-full', isIncoming ? 'justify-start' : 'justify-end', className)}
+      className={cn('w-full', isIncoming ? 'pr-[25%]' : 'pl-[25%]', className)}
       role="article"
       aria-label={ariaLabel}
     >
-      <div className={cn('flex gap-3 max-w-[75%]', isIncoming ? 'flex-row' : 'flex-row-reverse')}>
+      <div className={cn('flex gap-3', isIncoming ? 'flex-row' : 'flex-row-reverse')}>
         {avatar && <div className="flex-shrink-0 pt-1">{avatar}</div>}
-        <div className={cn('flex flex-col gap-1', !isIncoming && 'items-end')}>
+        <div className={cn('flex flex-col gap-1 min-w-0', !isIncoming && 'items-end')}>
           <div
             className={cn(
-              'rounded-2xl px-4 py-3 text-sm',
+              'rounded-2xl px-4 py-3 text-sm max-w-full overflow-hidden',
               isIncoming
                 ? 'bg-muted text-foreground rounded-tl-sm'
                 : 'bg-primary text-primary-foreground rounded-tr-sm'
             )}
           >
-            <div className="prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed [&>p]:mb-3 [&>p:last-child]:mb-0">
+            <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed [&>p]:mb-3 [&>p:last-child]:mb-0 overflow-hidden">
               {children}
             </div>
           </div>

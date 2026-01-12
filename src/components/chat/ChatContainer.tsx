@@ -501,6 +501,9 @@ const ChatContainer = ({
   const handleSendMessage = async (message: { text: string; files?: File[] }) => {
     if (!message.text.trim() || !selectedModel || isLoading) return;
 
+    // Clear input immediately after capturing the message
+    setInputValue('');
+
     const provider = selectedProvider;
     const modelId = selectedModel.value || '';
     const modelName = selectedModel.label || modelId;
