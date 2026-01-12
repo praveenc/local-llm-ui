@@ -7,12 +7,11 @@
 
 'use client';
 
-import { Bot, Copy, RefreshCw, Square, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { Bot, Copy, RefreshCw, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react';
 
 import { Fragment, useRef, useState } from 'react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
 import type { ModelOption } from '@/types';
 
 import type { Provider } from '../../db';
@@ -32,12 +31,51 @@ import {
 } from '../ai-elements/message';
 import {
   PromptInput,
+  PromptInputActionAddAttachments,
+  PromptInputActionMenu,
+  PromptInputActionMenuContent,
+  PromptInputActionMenuTrigger,
+  PromptInputAttachment,
+  PromptInputAttachments,
+  PromptInputButton,
   PromptInputFooter,
+  PromptInputSelect,
+  PromptInputSelectContent,
+  PromptInputSelectItem,
+  PromptInputSelectTrigger,
+  PromptInputSelectValue,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
 } from '../ai-elements/prompt-input';
 import { FittedContainer, ScrollableContainer } from '../layout';
+
+/**
+ * BedrockChatContainer
+ *
+ * Chat container using AI Elements components and useBedrockChat hook.
+ * This is the new UI for Bedrock chat with AI SDK integration.
+ */
+
+// Helper function to get file format from media type
+function getFormatFromMediaType(mediaType: string): string {
+  const typeMap: Record<string, string> = {
+    'application/pdf': 'pdf',
+    'text/plain': 'txt',
+    'text/html': 'html',
+    'text/markdown': 'md',
+    'text/csv': 'csv',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/vnd.ms-excel': 'xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+  };
+  return typeMap[mediaType] || 'bin';
+}
 
 /**
  * BedrockChatContainer
@@ -62,6 +100,8 @@ interface BedrockChatContainerProps {
   avatarInitials?: string;
   conversationId?: string | null;
   onConversationChange?: (id: string | null) => void;
+  models?: ModelOption[];
+  onModelChange?: (model: ModelOption) => void;
 }
 
 // Helper to get provider info for display
@@ -81,6 +121,8 @@ const BedrockChatContainer = ({
   samplingParameter,
   conversationId: externalConversationId,
   onConversationChange,
+  models = [],
+  onModelChange,
 }: BedrockChatContainerProps) => {
   const [inputValue, setInputValue] = useState('');
   const [messageFeedback, setMessageFeedback] = useState<Record<string, string>>({});
@@ -108,6 +150,12 @@ const BedrockChatContainer = ({
   const isLoading = status === 'streaming' || status === 'submitted';
   const providerInfo = getProviderInfo(selectedModel);
 
+  // Filter models to only show Bedrock models for the selector
+  const bedrockModels = models.filter((m) => {
+    const desc = m.description?.toLowerCase() ?? '';
+    return desc.includes('bedrock');
+  });
+
   const handleSubmit = async (message: {
     text: string;
     files: Array<{ url?: string; mediaType?: string; filename?: string }>;
@@ -115,7 +163,46 @@ const BedrockChatContainer = ({
     if (!message.text.trim() || isLoading) return;
 
     setInputValue('');
-    await sendMessage(message.text);
+
+    // Convert file attachments to the format expected by sendMessage
+    const fileAttachments = message.files
+      .filter((f) => f.url && f.mediaType && f.filename)
+      .map((f) => ({
+        name: f.filename!,
+        format: getFormatFromMediaType(f.mediaType!),
+        bytes: '', // Will be populated from data URL
+      }));
+
+    // If there are files, we need to convert data URLs to base64
+    if (fileAttachments.length > 0 && message.files.length > 0) {
+      const filesWithData = await Promise.all(
+        message.files.map(async (f) => {
+          if (f.url?.startsWith('data:')) {
+            // Extract base64 from data URL
+            const base64 = f.url.split(',')[1] || '';
+            return {
+              name: f.filename || 'file',
+              format: getFormatFromMediaType(f.mediaType || ''),
+              bytes: base64,
+            };
+          }
+          return null;
+        })
+      );
+      const validFiles = filesWithData.filter(
+        (f): f is { name: string; format: string; bytes: string } => f !== null
+      );
+      await sendMessage(message.text, validFiles);
+    } else {
+      await sendMessage(message.text);
+    }
+  };
+
+  const handleModelSelect = (modelValue: string) => {
+    const model = bedrockModels.find((m) => m.value === modelValue);
+    if (model && onModelChange) {
+      onModelChange(model);
+    }
   };
 
   const handleFeedback = (messageId: string, feedbackType: string) => {
@@ -222,61 +309,85 @@ const BedrockChatContainer = ({
         <div className="absolute bottom-0 left-0 right-0 z-[1000] p-2 md:p-4">
           <PromptInput
             onSubmit={handleSubmit}
+            accept="image/*,.pdf,.txt,.html,.md,.csv,.doc,.docx,.xls,.xlsx"
+            multiple
+            maxFileSize={4.5 * 1024 * 1024} // 4.5MB max per Bedrock limits
             className="max-w-4xl mx-auto bg-background/95 backdrop-blur-md border border-border rounded-xl shadow-lg"
           >
-            <div className="p-3">
-              <PromptInputTextarea
-                value={inputValue}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  setInputValue(e.target.value)
-                }
-                placeholder={
-                  selectedModel ? 'Send a message...' : 'Select a model to start chatting'
-                }
-                disabled={isLoading || !selectedModel}
-                className="min-h-[48px] max-h-[192px]"
-              />
-            </div>
+            {/* Attachments preview */}
+            <PromptInputAttachments>
+              {(attachment) => <PromptInputAttachment data={attachment} />}
+            </PromptInputAttachments>
+
+            {/* Textarea */}
+            <PromptInputTextarea
+              value={inputValue}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                setInputValue(e.target.value)
+              }
+              placeholder={
+                selectedModel ? 'What would you like to know?' : 'Select a model to start chatting'
+              }
+              disabled={isLoading || !selectedModel}
+            />
+
+            {/* Footer with tools and submit */}
             <PromptInputFooter className="px-3 pb-3">
               <PromptInputTools>
-                {/* Model indicator */}
-                {selectedModel && providerInfo && (
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50">
-                    <img src={providerInfo.icon} alt={providerInfo.name} className="w-4 h-4" />
-                    <span className="text-xs text-muted-foreground truncate max-w-[150px]">
-                      {selectedModel.label}
-                    </span>
-                  </div>
+                {/* Action menu for attachments */}
+                <PromptInputActionMenu>
+                  <PromptInputActionMenuTrigger />
+                  <PromptInputActionMenuContent>
+                    <PromptInputActionAddAttachments label="Add photos or files" />
+                  </PromptInputActionMenuContent>
+                </PromptInputActionMenu>
+
+                {/* Model selector */}
+                {bedrockModels.length > 0 && (
+                  <PromptInputSelect
+                    value={selectedModel?.value || ''}
+                    onValueChange={handleModelSelect}
+                  >
+                    <PromptInputSelectTrigger className="w-auto min-w-[120px] max-w-[200px] h-8">
+                      <div className="flex items-center gap-1.5">
+                        {providerInfo && (
+                          <img
+                            src={providerInfo.icon}
+                            alt={providerInfo.name}
+                            className="w-4 h-4 shrink-0"
+                          />
+                        )}
+                        <PromptInputSelectValue placeholder="Select model" />
+                      </div>
+                    </PromptInputSelectTrigger>
+                    <PromptInputSelectContent>
+                      {bedrockModels.map((model) => (
+                        <PromptInputSelectItem key={model.value} value={model.value}>
+                          {model.label}
+                        </PromptInputSelectItem>
+                      ))}
+                    </PromptInputSelectContent>
+                  </PromptInputSelect>
                 )}
+
+                {/* Clear button */}
                 {messages.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <PromptInputButton
                     onClick={clearMessages}
                     disabled={isLoading}
-                    className="text-xs"
+                    className="text-muted-foreground hover:text-foreground"
                   >
-                    Clear
-                  </Button>
+                    <Trash2 className="h-4 w-4" />
+                  </PromptInputButton>
                 )}
               </PromptInputTools>
-              <div className="flex items-center gap-2">
-                {isLoading ? (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={stopGeneration}
-                  >
-                    <Square className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <PromptInputSubmit
-                    status={isLoading ? 'streaming' : 'ready'}
-                    disabled={!inputValue.trim() || !selectedModel}
-                  />
-                )}
-              </div>
+
+              {/* Submit/Stop button */}
+              <PromptInputSubmit
+                status={isLoading ? 'streaming' : 'ready'}
+                disabled={!inputValue.trim() || !selectedModel}
+                onClick={isLoading ? stopGeneration : undefined}
+              />
             </PromptInputFooter>
           </PromptInput>
         </div>
