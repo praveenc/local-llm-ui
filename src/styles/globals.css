@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* Required for AI Elements MessageResponse component (Streamdown) */
+@source "../node_modules/streamdown/dist/*.js";
+
 @custom-variant dark (&:is(.dark *));
 
 /* Cosmic Night Theme from tweakcn.com */

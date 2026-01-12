@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
 
+import { handleBedrockAISDKRequest } from './server/bedrock-aisdk-proxy';
 import { handleBedrockRequest } from './server/bedrock-proxy';
 import { handleLMStudioRequest } from './server/lmstudio-proxy';
 import { handleMantleRequest } from './server/mantle-proxy';
@@ -30,7 +31,10 @@ export default defineConfig({
       name: 'bedrock-proxy',
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
-          if (req.url?.startsWith('/api/bedrock')) {
+          // Route AI SDK requests to the new proxy
+          if (req.url?.startsWith('/api/bedrock-aisdk')) {
+            await handleBedrockAISDKRequest(req, res);
+          } else if (req.url?.startsWith('/api/bedrock')) {
             await handleBedrockRequest(req, res);
           } else {
             next();

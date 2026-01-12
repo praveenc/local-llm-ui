@@ -3,10 +3,14 @@ import { toast } from 'sonner';
 import React, { useEffect, useState } from 'react';
 
 import { ChatContainer } from '../components/chat';
+import BedrockChatContainer from '../components/chat/BedrockChatContainer';
 import { Sidebar } from '../components/sidebar';
 import { loadPreferences } from '../utils/preferences';
 import type { Provider, UserPreferences } from '../utils/preferences';
 import { AppLayout } from './AppLayout';
+
+// Feature flag for AI Elements UI (set via environment variable)
+const USE_AI_ELEMENTS = import.meta.env.VITE_USE_AI_ELEMENTS === 'true';
 
 // Simple model type for the new Sidebar
 interface SimpleModel {
@@ -122,25 +126,45 @@ export default function AppShell() {
       }
     >
       <div className="flex h-full flex-col">
-        <ChatContainer
-          selectedModel={toSelectOption(selectedModel)}
-          selectedProvider={selectedProvider}
-          maxTokens={maxTokens}
-          setMaxTokens={setMaxTokens}
-          temperature={temperature}
-          setTemperature={setTemperature}
-          topP={topP}
-          setTopP={setTopP}
-          samplingParameter={samplingParameter}
-          setSamplingParameter={setSamplingParameter}
-          onClearHistoryRef={clearHistoryRef}
-          avatarInitials={userPreferences.avatarInitials}
-          onConnectionError={handleConnectionError}
-          modelStatus={modelStatus}
-          onDismissModelStatus={handleDismissModelStatus}
-          conversationId={activeConversationId}
-          onConversationChange={handleConversationChange}
-        />
+        {/* Use AI Elements UI for Bedrock when feature flag is enabled */}
+        {USE_AI_ELEMENTS &&
+        (selectedProvider === 'bedrock' || selectedProvider === 'bedrock-mantle') ? (
+          <BedrockChatContainer
+            selectedModel={toSelectOption(selectedModel)}
+            selectedProvider={selectedProvider}
+            maxTokens={maxTokens}
+            setMaxTokens={setMaxTokens}
+            temperature={temperature}
+            setTemperature={setTemperature}
+            topP={topP}
+            setTopP={setTopP}
+            samplingParameter={samplingParameter}
+            setSamplingParameter={setSamplingParameter}
+            avatarInitials={userPreferences.avatarInitials}
+            conversationId={activeConversationId}
+            onConversationChange={handleConversationChange}
+          />
+        ) : (
+          <ChatContainer
+            selectedModel={toSelectOption(selectedModel)}
+            selectedProvider={selectedProvider}
+            maxTokens={maxTokens}
+            setMaxTokens={setMaxTokens}
+            temperature={temperature}
+            setTemperature={setTemperature}
+            topP={topP}
+            setTopP={setTopP}
+            samplingParameter={samplingParameter}
+            setSamplingParameter={setSamplingParameter}
+            onClearHistoryRef={clearHistoryRef}
+            avatarInitials={userPreferences.avatarInitials}
+            onConnectionError={handleConnectionError}
+            modelStatus={modelStatus}
+            onDismissModelStatus={handleDismissModelStatus}
+            conversationId={activeConversationId}
+            onConversationChange={handleConversationChange}
+          />
+        )}
       </div>
     </AppLayout>
   );
