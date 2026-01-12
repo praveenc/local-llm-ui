@@ -26,7 +26,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
   const lines = code.split('\n');
 
   return (
-    <div className="relative group rounded-lg border bg-muted/50 overflow-hidden my-2">
+    <div className="relative group rounded-lg border bg-muted/50 my-2 w-full overflow-hidden">
       {/* Header with language and copy button */}
       <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/80">
         <span className="text-xs font-medium text-muted-foreground uppercase">
@@ -43,21 +43,21 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ code, language }) => {
         </Button>
       </div>
 
-      {/* Code content with line numbers */}
+      {/* Code content with line numbers - scrollable */}
       <div className="overflow-x-auto">
-        <pre className="p-4 text-sm font-mono">
+        <pre className="p-4 text-sm font-mono w-fit min-w-full">
           <code>
             {lines.map((line, index) => (
               <div key={index} className="flex">
                 <span
                   className={cn(
-                    'select-none pr-4 text-right min-w-[3rem]',
+                    'select-none pr-4 text-right min-w-[3rem] flex-shrink-0',
                     'text-muted-foreground/50'
                   )}
                 >
                   {index + 1}
                 </span>
-                <span className="flex-1 whitespace-pre">{line || ' '}</span>
+                <span className="whitespace-pre">{line || ' '}</span>
               </div>
             ))}
           </code>
