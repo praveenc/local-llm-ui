@@ -34,11 +34,18 @@ interface UsageMetadata {
   latencyMs?: number;
 }
 
+interface CumulativeUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
 interface UseBedrockChatReturn {
   messages: UIMessage[];
   status: ChatStatus;
   error: string | null;
   metadata: UsageMetadata | null;
+  cumulativeUsage: CumulativeUsage;
   sendMessage: (
     content: string,
     files?: Array<{ name: string; format: string; bytes: string }>
@@ -46,6 +53,7 @@ interface UseBedrockChatReturn {
   regenerate: (messageIndex: number) => Promise<void>;
   stopGeneration: () => void;
   clearMessages: () => void;
+  resetUsage: () => void;
 }
 
 export function useBedrockChat({
@@ -61,6 +69,11 @@ export function useBedrockChat({
   const [status, setStatus] = useState<ChatStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<UsageMetadata | null>(null);
+  const [cumulativeUsage, setCumulativeUsage] = useState<CumulativeUsage>({
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+  });
   const [internalConversationId, setInternalConversationId] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -104,10 +117,17 @@ export function useBedrockChat({
   const clearMessages = useCallback(() => {
     setMessages([]);
     setMetadata(null);
+    setCumulativeUsage({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
     setError(null);
     setInternalConversationId(null);
     onConversationChange?.(null);
   }, [onConversationChange]);
+
+  // Reset usage (for model changes)
+  const resetUsage = useCallback(() => {
+    setCumulativeUsage({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
+    setMetadata(null);
+  }, []);
 
   // Send message
   const sendMessage = useCallback(
@@ -310,6 +330,12 @@ export function useBedrockChat({
         // Set usage metadata if available
         if (usageData) {
           setMetadata(usageData);
+          // Update cumulative usage
+          setCumulativeUsage((prev) => ({
+            inputTokens: prev.inputTokens + (usageData.inputTokens || 0),
+            outputTokens: prev.outputTokens + (usageData.outputTokens || 0),
+            totalTokens: prev.totalTokens + (usageData.totalTokens || 0),
+          }));
         }
 
         // Persist assistant message to DB
@@ -403,10 +429,12 @@ export function useBedrockChat({
     status,
     error,
     metadata,
+    cumulativeUsage,
     sendMessage,
     regenerate,
     stopGeneration,
     clearMessages,
+    resetUsage,
   };
 }
 

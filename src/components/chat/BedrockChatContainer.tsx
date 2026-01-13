@@ -16,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
 import { useBedrockChat } from '../../hooks/useBedrockChat';
 import { getReasoningContent, getTextContent, hasReasoning } from '../../types/ai-messages';
+import { getModelContextLimits } from '../../utils/modelContext';
 import {
   Conversation,
   ConversationContent,
@@ -44,8 +45,23 @@ import {
   PromptInputTools,
   usePromptInputAttachments,
 } from '../ai-elements/prompt-input';
-import { FittedContainer, ScrollableContainer } from '../layout';
+import { FittedContainer } from '../layout';
+import { ContextIndicator } from './ContextIndicator';
 import { ModelSelectorButton } from './ModelSelectorButton';
+
+/**
+ * BedrockChatContainer
+ *
+ * Chat container using AI Elements components and useBedrockChat hook.
+ * This is the new UI for Bedrock chat with AI SDK integration.
+ */
+
+/**
+ * BedrockChatContainer
+ *
+ * Chat container using AI Elements components and useBedrockChat hook.
+ * This is the new UI for Bedrock chat with AI SDK integration.
+ */
 
 /**
  * BedrockChatContainer
@@ -154,7 +170,6 @@ const BedrockChatContainer = ({
   const [inputValue, setInputValue] = useState('');
   const [messageFeedback, setMessageFeedback] = useState<Record<string, string>>({});
   const [fileError, setFileError] = useState<string | null>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Convert UnifiedModel to ModelOption for the hook
   const modelOption = toModelOption(selectedModel);
@@ -164,10 +179,12 @@ const BedrockChatContainer = ({
     status,
     error,
     metadata,
+    cumulativeUsage,
     sendMessage,
     regenerate,
     stopGeneration,
     clearMessages,
+    resetUsage,
   } = useBedrockChat({
     conversationId: externalConversationId ?? null,
     selectedModel: modelOption,
@@ -179,6 +196,23 @@ const BedrockChatContainer = ({
   });
 
   const isLoading = status === 'streaming' || status === 'submitted';
+
+  // Get context limits for current model
+  const contextLimits = selectedModel
+    ? getModelContextLimits(selectedModel.id, selectedModel.provider)
+    : null;
+
+  // Reset usage when model changes
+  const prevModelRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (selectedModel && prevModelRef.current !== selectedModel.id) {
+      if (prevModelRef.current !== null) {
+        // Model changed, reset usage
+        resetUsage();
+      }
+      prevModelRef.current = selectedModel.id;
+    }
+  }, [selectedModel, resetUsage]);
 
   // Connect clearMessages to parent's ref for "New Conversation" button
   useEffect(() => {
@@ -267,68 +301,66 @@ const BedrockChatContainer = ({
       )}
       <div className="relative flex flex-col h-full">
         <FittedContainer>
-          <ScrollableContainer ref={scrollContainerRef}>
-            <div className="p-4 pb-44">
-              {messages.length === 0 ? (
-                <EmptyState selectedModel={selectedModel} />
-              ) : (
-                <Conversation className="max-w-4xl mx-auto">
-                  <ConversationContent>
-                    {messages.map((message, index) => (
-                      <Fragment key={message.id}>
-                        <Message from={message.role}>
-                          <MessageContent>
-                            {hasReasoning(message) && (
-                              <ReasoningBlock content={getReasoningContent(message) || ''} />
-                            )}
-                            <MessageResponse>{getTextContent(message)}</MessageResponse>
-                          </MessageContent>
-                        </Message>
-                        {message.role === 'assistant' && !isLoading && (
-                          <MessageActions className="ml-0">
-                            <MessageAction
-                              tooltip="Helpful"
-                              onClick={() => handleFeedback(message.id, 'helpful')}
-                            >
-                              <ThumbsUp
-                                className={`h-3 w-3 ${messageFeedback[message.id] === 'helpful' ? 'fill-current' : ''}`}
-                              />
-                            </MessageAction>
-                            <MessageAction
-                              tooltip="Not helpful"
-                              onClick={() => handleFeedback(message.id, 'not-helpful')}
-                            >
-                              <ThumbsDown
-                                className={`h-3 w-3 ${messageFeedback[message.id] === 'not-helpful' ? 'fill-current' : ''}`}
-                              />
-                            </MessageAction>
-                            <MessageAction
-                              tooltip="Copy"
-                              onClick={() => handleCopy(getTextContent(message))}
-                            >
-                              <Copy className="h-3 w-3" />
-                            </MessageAction>
-                            <MessageAction
-                              tooltip="Regenerate"
-                              onClick={() => regenerate(index)}
-                              disabled={isLoading}
-                            >
-                              <RefreshCw className="h-3 w-3" />
-                            </MessageAction>
-                          </MessageActions>
-                        )}
-                        {message.role === 'assistant' &&
-                          index === lastAssistantIndex &&
-                          metadata && <MetadataRow metadata={metadata} />}
-                      </Fragment>
-                    ))}
-                    {isLoading && <GeneratingIndicator />}
-                  </ConversationContent>
-                  <ConversationScrollButton />
-                </Conversation>
-              )}
-            </div>
-          </ScrollableContainer>
+          <div className="h-full pb-44">
+            {messages.length === 0 ? (
+              <EmptyState selectedModel={selectedModel} />
+            ) : (
+              <Conversation className="h-full max-w-4xl mx-auto">
+                <ConversationContent className="p-4">
+                  {messages.map((message, index) => (
+                    <Fragment key={message.id}>
+                      <Message from={message.role}>
+                        <MessageContent>
+                          {hasReasoning(message) && (
+                            <ReasoningBlock content={getReasoningContent(message) || ''} />
+                          )}
+                          <MessageResponse>{getTextContent(message)}</MessageResponse>
+                        </MessageContent>
+                      </Message>
+                      {message.role === 'assistant' && !isLoading && (
+                        <MessageActions className="ml-0">
+                          <MessageAction
+                            tooltip="Helpful"
+                            onClick={() => handleFeedback(message.id, 'helpful')}
+                          >
+                            <ThumbsUp
+                              className={`h-3 w-3 ${messageFeedback[message.id] === 'helpful' ? 'fill-current' : ''}`}
+                            />
+                          </MessageAction>
+                          <MessageAction
+                            tooltip="Not helpful"
+                            onClick={() => handleFeedback(message.id, 'not-helpful')}
+                          >
+                            <ThumbsDown
+                              className={`h-3 w-3 ${messageFeedback[message.id] === 'not-helpful' ? 'fill-current' : ''}`}
+                            />
+                          </MessageAction>
+                          <MessageAction
+                            tooltip="Copy"
+                            onClick={() => handleCopy(getTextContent(message))}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </MessageAction>
+                          <MessageAction
+                            tooltip="Regenerate"
+                            onClick={() => regenerate(index)}
+                            disabled={isLoading}
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                          </MessageAction>
+                        </MessageActions>
+                      )}
+                      {message.role === 'assistant' && index === lastAssistantIndex && metadata && (
+                        <MetadataRow metadata={metadata} />
+                      )}
+                    </Fragment>
+                  ))}
+                  {isLoading && <GeneratingIndicator />}
+                </ConversationContent>
+                <ConversationScrollButton />
+              </Conversation>
+            )}
+          </div>
         </FittedContainer>
         <div className="absolute bottom-0 left-0 right-0 z-[1000] p-2 md:p-4">
           <PromptInput
@@ -378,6 +410,15 @@ const BedrockChatContainer = ({
                   >
                     <Trash2 className="h-4 w-4" />
                   </PromptInputButton>
+                )}
+                {contextLimits && cumulativeUsage.totalTokens > 0 && (
+                  <ContextIndicator
+                    usedTokens={cumulativeUsage.totalTokens}
+                    maxTokens={contextLimits.contextWindow}
+                    inputTokens={cumulativeUsage.inputTokens}
+                    outputTokens={cumulativeUsage.outputTokens}
+                    modelId={contextLimits.tokenlensModelId || undefined}
+                  />
                 )}
               </PromptInputTools>
               <PromptInputSubmitWithAttachments
