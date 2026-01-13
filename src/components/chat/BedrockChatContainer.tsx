@@ -12,8 +12,8 @@ import { Bot, Copy, Loader2, RefreshCw, ThumbsDown, ThumbsUp, Trash2 } from 'luc
 import { Fragment, useEffect, useRef, useState } from 'react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import type { ModelOption } from '@/types';
 
+import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
 import { useBedrockChat } from '../../hooks/useBedrockChat';
 import { getReasoningContent, getTextContent, hasReasoning } from '../../types/ai-messages';
 import {
@@ -45,34 +45,7 @@ import {
   usePromptInputAttachments,
 } from '../ai-elements/prompt-input';
 import { FittedContainer, ScrollableContainer } from '../layout';
-
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
-
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
-
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
-
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
+import { ModelSelectorButton } from './ModelSelectorButton';
 
 /**
  * BedrockChatContainer
@@ -82,33 +55,24 @@ import { FittedContainer, ScrollableContainer } from '../layout';
  */
 
 // Bedrock file size limits
-const BEDROCK_DOC_MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for documents (images are 3.75MB but we use doc limit as max)
-
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
-
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
-
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
+const BEDROCK_DOC_MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for documents
 
 type SamplingParameter = 'temperature' | 'topP';
 
+// Internal model option type for useBedrockChat compatibility
+interface ModelOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
 interface BedrockChatContainerProps {
-  selectedModel: ModelOption | null;
+  // Model selection via ModelSelector
+  providers: ProviderModels[];
+  selectedModel: UnifiedModel | null;
+  onSelectModel: (model: UnifiedModel) => void;
+  isLoadingModels?: boolean;
+  // Chat parameters
   maxTokens: number;
   setMaxTokens: (tokens: number) => void;
   temperature: number;
@@ -123,13 +87,14 @@ interface BedrockChatContainerProps {
   onClearHistoryRef?: React.MutableRefObject<(() => void) | null>;
 }
 
-// Helper to get provider info for display
-const getProviderInfo = (model: ModelOption | null) => {
-  const desc = model?.description?.toLowerCase() ?? '';
-  if (desc.includes('bedrock-mantle'))
-    return { icon: '/bedrock-color.svg', name: 'Bedrock Mantle' };
-  if (desc.includes('bedrock')) return { icon: '/bedrock_bw.svg', name: 'Amazon Bedrock' };
-  return null;
+// Convert UnifiedModel to ModelOption for useBedrockChat
+const toModelOption = (model: UnifiedModel | null): ModelOption | null => {
+  if (!model) return null;
+  return {
+    value: model.id,
+    label: model.name,
+    description: model.provider,
+  };
 };
 
 // Helper function to get file format from media type
@@ -153,7 +118,10 @@ function getFormatFromMediaType(mediaType: string): string {
 }
 
 const BedrockChatContainer = ({
+  providers,
   selectedModel,
+  onSelectModel,
+  isLoadingModels,
   maxTokens,
   temperature,
   topP,
@@ -167,6 +135,9 @@ const BedrockChatContainer = ({
   const [fileError, setFileError] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Convert UnifiedModel to ModelOption for the hook
+  const modelOption = toModelOption(selectedModel);
+
   const {
     messages,
     status,
@@ -178,7 +149,7 @@ const BedrockChatContainer = ({
     clearMessages,
   } = useBedrockChat({
     conversationId: externalConversationId ?? null,
-    selectedModel,
+    selectedModel: modelOption,
     temperature,
     topP,
     maxTokens,
@@ -187,7 +158,6 @@ const BedrockChatContainer = ({
   });
 
   const isLoading = status === 'streaming' || status === 'submitted';
-  const providerInfo = getProviderInfo(selectedModel);
 
   // Connect clearMessages to parent's ref for "New Conversation" button
   useEffect(() => {
@@ -279,7 +249,7 @@ const BedrockChatContainer = ({
           <ScrollableContainer ref={scrollContainerRef}>
             <div className="p-4 pb-44">
               {messages.length === 0 ? (
-                <EmptyState selectedModel={selectedModel} providerInfo={providerInfo} />
+                <EmptyState selectedModel={selectedModel} />
               ) : (
                 <Conversation className="max-w-4xl mx-auto">
                   <ConversationContent>
@@ -372,16 +342,13 @@ const BedrockChatContainer = ({
                     <PromptInputActionAddAttachments label="Add photos or files" />
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>
-                {selectedModel && providerInfo && (
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50 text-muted-foreground">
-                    <img
-                      src={providerInfo.icon}
-                      alt={providerInfo.name}
-                      className="w-4 h-4 shrink-0"
-                    />
-                    <span className="text-xs truncate max-w-[150px]">{selectedModel.label}</span>
-                  </div>
-                )}
+                <ModelSelectorButton
+                  providers={providers}
+                  selectedModel={selectedModel}
+                  onSelectModel={onSelectModel}
+                  isLoading={isLoadingModels}
+                  disabled={isLoading}
+                />
                 {messages.length > 0 && (
                   <PromptInputButton
                     onClick={clearMessages}
@@ -406,23 +373,15 @@ const BedrockChatContainer = ({
   );
 };
 
-const EmptyState = ({
-  selectedModel,
-  providerInfo,
-}: {
-  selectedModel: ModelOption | null;
-  providerInfo: { icon: string; name: string } | null;
-}) => (
+const EmptyState = ({ selectedModel }: { selectedModel: UnifiedModel | null }) => (
   <div className="flex flex-col items-center justify-center h-full min-h-[400px] gap-4">
     {selectedModel ? (
       <>
-        {providerInfo && (
-          <img src={providerInfo.icon} alt={providerInfo.name} className="w-16 h-16 opacity-50" />
-        )}
+        <Bot className="h-16 w-16 text-muted-foreground/50" />
         <div className="text-center">
           <h3 className="text-lg font-medium text-muted-foreground">Ready to chat</h3>
           <p className="text-sm text-muted-foreground mt-1">
-            Send a message to start chatting with <strong>{selectedModel.label}</strong>
+            Send a message to start chatting with <strong>{selectedModel.name}</strong>
           </p>
         </div>
       </>
@@ -431,9 +390,7 @@ const EmptyState = ({
         <Bot className="h-16 w-16 text-muted-foreground/50" />
         <div className="text-center">
           <h3 className="text-lg font-medium text-muted-foreground">No model selected</h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            Select a model from the sidebar to begin
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">Select a model to begin chatting</p>
         </div>
       </>
     )}
@@ -490,7 +447,7 @@ const PromptInputSubmitWithAttachments = ({
   stopGeneration,
 }: {
   inputValue: string;
-  selectedModel: ModelOption | null;
+  selectedModel: UnifiedModel | null;
   isLoading: boolean;
   stopGeneration: () => void;
 }) => {

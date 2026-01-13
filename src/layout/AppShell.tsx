@@ -5,6 +5,8 @@ import React, { useEffect, useState } from 'react';
 import { ChatContainer } from '../components/chat';
 import BedrockChatContainer from '../components/chat/BedrockChatContainer';
 import { Sidebar } from '../components/sidebar';
+import { useAllModels } from '../hooks/useAllModels';
+import type { UnifiedModel } from '../hooks/useAllModels';
 import { loadPreferences } from '../utils/preferences';
 import type { Provider, UserPreferences } from '../utils/preferences';
 import { AppLayout } from './AppLayout';
@@ -52,6 +54,17 @@ export default function AppShell() {
     header: string;
     content: string;
   } | null>(null);
+
+  // Unified model selection for AI Elements UI
+  const [unifiedSelectedModel, setUnifiedSelectedModel] = useState<UnifiedModel | null>(null);
+  const { providers, isLoading: isLoadingModels } = useAllModels(userPreferences);
+
+  // Handle unified model selection
+  const handleUnifiedModelSelect = (model: UnifiedModel) => {
+    setUnifiedSelectedModel(model);
+    // Also update the provider based on selected model
+    setSelectedProvider(model.provider);
+  };
 
   // Apply theme on mount and when preferences change
   useEffect(() => {
@@ -127,10 +140,12 @@ export default function AppShell() {
     >
       <div className="flex h-full flex-col">
         {/* Use AI Elements UI for Bedrock when feature flag is enabled */}
-        {USE_AI_ELEMENTS &&
-        (selectedProvider === 'bedrock' || selectedProvider === 'bedrock-mantle') ? (
+        {USE_AI_ELEMENTS ? (
           <BedrockChatContainer
-            selectedModel={toSelectOption(selectedModel)}
+            providers={providers}
+            selectedModel={unifiedSelectedModel}
+            onSelectModel={handleUnifiedModelSelect}
+            isLoadingModels={isLoadingModels}
             maxTokens={maxTokens}
             setMaxTokens={setMaxTokens}
             temperature={temperature}

@@ -8,3 +8,5 @@ export { useSavedPrompts } from './useSavedPrompts';
 export { usePromptMutations } from './usePromptMutations';
 export { useProviderModels } from './useProviderModels';
 export type { ModelOption, ModelGroup } from './useProviderModels';
+export { useAllModels } from './useAllModels';
+export type { UnifiedModel, ProviderModels } from './useAllModels';
