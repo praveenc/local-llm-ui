@@ -41,6 +41,8 @@ interface SidebarProps {
   ) => void;
   activeConversationId?: string | null;
   onSelectConversation?: (id: string) => void;
+  /** Hide provider/model selection when using AI Elements unified ModelSelector */
+  hideModelSelection?: boolean;
 }
 
 export function Sidebar({
@@ -56,6 +58,7 @@ export function Sidebar({
   onModelStatusChange,
   activeConversationId,
   onSelectConversation,
+  hideModelSelection = false,
 }: SidebarProps) {
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -182,33 +185,37 @@ export function Sidebar({
 
       <Separator />
 
-      {/* Provider & Model Selection */}
-      <div className="p-3 space-y-2">
-        <ProviderSelect
-          value={selectedProvider}
-          onValueChange={handleProviderChange}
-          disabled={modelLoader.isLoading}
-        />
-        <ModelSelect
-          models={models}
-          value={selectedModel?.value ?? null}
-          onValueChange={handleModelSelect}
-          isLoading={status === 'loading' || modelLoader.isLoading}
-          error={error}
-          disabled={modelLoader.isLoading}
-        />
-        {modelLoader.isLoading && (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              <span>Loading model... {modelLoader.progress.toFixed(0)}%</span>
-            </div>
-            <Progress value={modelLoader.progress} className="h-1" />
+      {/* Provider & Model Selection - hidden when using AI Elements ModelSelector */}
+      {!hideModelSelection && (
+        <>
+          <div className="p-3 space-y-2">
+            <ProviderSelect
+              value={selectedProvider}
+              onValueChange={handleProviderChange}
+              disabled={modelLoader.isLoading}
+            />
+            <ModelSelect
+              models={models}
+              value={selectedModel?.value ?? null}
+              onValueChange={handleModelSelect}
+              isLoading={status === 'loading' || modelLoader.isLoading}
+              error={error}
+              disabled={modelLoader.isLoading}
+            />
+            {modelLoader.isLoading && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>Loading model... {modelLoader.progress.toFixed(0)}%</span>
+                </div>
+                <Progress value={modelLoader.progress} className="h-1" />
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      <Separator />
+          <Separator />
+        </>
+      )}
 
       {/* Conversations */}
       <div className="flex-1 flex flex-col min-h-0">

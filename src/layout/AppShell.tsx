@@ -135,6 +135,7 @@ export default function AppShell() {
           onModelStatusChange={handleModelStatusChange}
           activeConversationId={activeConversationId}
           onSelectConversation={handleSelectConversation}
+          hideModelSelection={USE_AI_ELEMENTS}
         />
       }
     >

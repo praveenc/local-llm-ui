@@ -54,6 +54,27 @@ import { ModelSelectorButton } from './ModelSelectorButton';
  * This is the new UI for Bedrock chat with AI SDK integration.
  */
 
+/**
+ * BedrockChatContainer
+ *
+ * Chat container using AI Elements components and useBedrockChat hook.
+ * This is the new UI for Bedrock chat with AI SDK integration.
+ */
+
+/**
+ * BedrockChatContainer
+ *
+ * Chat container using AI Elements components and useBedrockChat hook.
+ * This is the new UI for Bedrock chat with AI SDK integration.
+ */
+
+/**
+ * BedrockChatContainer
+ *
+ * Chat container using AI Elements components and useBedrockChat hook.
+ * This is the new UI for Bedrock chat with AI SDK integration.
+ */
+
 // Bedrock file size limits
 const BEDROCK_DOC_MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for documents
 

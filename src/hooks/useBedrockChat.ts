@@ -1,9 +1,9 @@
 /**
  * useBedrockChat Hook
  *
- * Custom hook for managing Bedrock chat with AI SDK streaming.
+ * Custom hook for managing chat with AI SDK streaming.
  * Handles message state, streaming, and conversation persistence.
- * Supports both standard Bedrock and Bedrock Mantle (OpenAI-compatible) endpoints.
+ * Supports Bedrock, Bedrock Mantle, Groq, and Cerebras providers.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -12,6 +12,7 @@ import { mantleService } from '../services';
 import type { ModelOption } from '../types';
 import type { MessagePart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
+import { loadPreferences } from '../utils/preferences';
 import { useConversation, useConversationMutations } from './index';
 
 export type ChatStatus = 'idle' | 'streaming' | 'submitted' | 'error';
@@ -78,11 +79,15 @@ export function useBedrockChat({
     }
   }, [dbMessages]);
 
-  // Get provider from model
+  // Get provider from model description
   const getProvider = useCallback((): Provider => {
     const desc = selectedModel?.description?.toLowerCase() ?? '';
     if (desc.includes('bedrock-mantle')) return 'bedrock-mantle';
     if (desc.includes('bedrock')) return 'bedrock';
+    if (desc.includes('groq')) return 'groq';
+    if (desc.includes('cerebras')) return 'cerebras';
+    if (desc.includes('lmstudio')) return 'lmstudio';
+    if (desc.includes('ollama')) return 'ollama';
     return 'bedrock';
   }, [selectedModel]);
 
@@ -202,14 +207,14 @@ export function useBedrockChat({
         };
 
         // Route to appropriate endpoint based on provider
-        const isMantle = provider === 'bedrock-mantle';
-        const endpoint = isMantle ? '/api/mantle/chat' : '/api/bedrock-aisdk/chat';
-
-        // Build headers - Mantle needs API key and region
+        let endpoint: string;
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
         };
-        if (isMantle) {
+
+        // Build provider-specific request
+        if (provider === 'bedrock-mantle') {
+          endpoint = '/api/mantle/chat';
           const apiKey = mantleService.getApiKey();
           if (!apiKey) {
             throw new Error(
@@ -218,6 +223,21 @@ export function useBedrockChat({
           }
           headers['X-Mantle-Api-Key'] = apiKey;
           headers['X-Mantle-Region'] = mantleService.getRegion();
+        } else if (provider === 'groq' || provider === 'cerebras') {
+          endpoint = '/api/aisdk/chat';
+          const prefs = loadPreferences();
+          const apiKey = provider === 'groq' ? prefs.groqApiKey : prefs.cerebrasApiKey;
+          if (!apiKey) {
+            throw new Error(
+              `${provider === 'groq' ? 'Groq' : 'Cerebras'} API key is required. Please configure it in preferences.`
+            );
+          }
+          headers['X-Api-Key'] = apiKey;
+          // Add provider to request body for AI SDK proxy
+          (requestBody as Record<string, unknown>).provider = provider;
+        } else {
+          // Default to Bedrock
+          endpoint = '/api/bedrock-aisdk/chat';
         }
 
         const response = await fetch(endpoint, {
