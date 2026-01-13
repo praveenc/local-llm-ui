@@ -3,10 +3,12 @@
  *
  * Custom hook for managing Bedrock chat with AI SDK streaming.
  * Handles message state, streaming, and conversation persistence.
+ * Supports both standard Bedrock and Bedrock Mantle (OpenAI-compatible) endpoints.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { Provider } from '../db/types';
+import { mantleService } from '../services';
 import type { ModelOption } from '../types';
 import type { MessagePart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
@@ -199,9 +201,28 @@ export function useBedrockChat({
             : { temperature, top_p: topP }),
         };
 
-        const response = await fetch('/api/bedrock-aisdk/chat', {
+        // Route to appropriate endpoint based on provider
+        const isMantle = provider === 'bedrock-mantle';
+        const endpoint = isMantle ? '/api/mantle/chat' : '/api/bedrock-aisdk/chat';
+
+        // Build headers - Mantle needs API key and region
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (isMantle) {
+          const apiKey = mantleService.getApiKey();
+          if (!apiKey) {
+            throw new Error(
+              'Bedrock Mantle API key is required. Please configure it in preferences.'
+            );
+          }
+          headers['X-Mantle-Api-Key'] = apiKey;
+          headers['X-Mantle-Region'] = mantleService.getRegion();
+        }
+
+        const response = await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify(requestBody),
           signal: abortControllerRef.current.signal,
         });
@@ -211,47 +232,65 @@ export function useBedrockChat({
           throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
         }
 
-        // Process plain text stream from toTextStreamResponse()
+        // Process stream - different formats for Bedrock vs Mantle
         const reader = response.body?.getReader();
         if (!reader) throw new Error('Response body is not readable');
 
         const decoder = new TextDecoder();
         let fullContent = '';
+        let usageData: UsageMetadata | null = null;
+        const startTime = Date.now();
 
+        // Both Bedrock and Mantle now use SSE format: data: {"content": "..."} or data: {"metadata": {...}}
+        let buffer = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          // Plain text - just append directly
-          const chunk = decoder.decode(value, { stream: true });
-          fullContent += chunk;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
 
-          // Update the streaming message
-          assistantMessage.parts = [{ type: 'text', text: fullContent }];
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            const lastIdx = newMessages.length - 1;
-            if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
-              newMessages[lastIdx] = { ...assistantMessage };
-            } else {
-              newMessages.push({ ...assistantMessage });
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') continue;
+
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.content) {
+                  fullContent += parsed.content;
+                  // Update the streaming message
+                  assistantMessage.parts = [{ type: 'text', text: fullContent }];
+                  setMessages((prev) => {
+                    const newMessages = [...prev];
+                    const lastIdx = newMessages.length - 1;
+                    if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
+                      newMessages[lastIdx] = { ...assistantMessage };
+                    } else {
+                      newMessages.push({ ...assistantMessage });
+                    }
+                    return newMessages;
+                  });
+                } else if (parsed.metadata?.usage) {
+                  usageData = {
+                    inputTokens: parsed.metadata.usage.inputTokens,
+                    outputTokens: parsed.metadata.usage.outputTokens,
+                    totalTokens: parsed.metadata.usage.totalTokens,
+                    latencyMs: parsed.metadata.latencyMs || Date.now() - startTime,
+                  };
+                }
+              } catch {
+                // Skip malformed JSON
+              }
             }
-            return newMessages;
-          });
+          }
         }
 
-        // Finalize assistant message
-        assistantMessage.parts = [{ type: 'text', text: fullContent }];
-        setMessages((prev) => {
-          const newMessages = [...prev];
-          const lastIdx = newMessages.length - 1;
-          if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
-            newMessages[lastIdx] = { ...assistantMessage };
-          } else {
-            newMessages.push({ ...assistantMessage });
-          }
-          return newMessages;
-        });
+        // Set usage metadata if available
+        if (usageData) {
+          setMetadata(usageData);
+        }
 
         // Persist assistant message to DB
         const assistantSequence = await getNextSequence(currentConversationId);
@@ -265,7 +304,7 @@ export function useBedrockChat({
           modelId,
           modelName,
           parameters: { temperature, topP, maxTokens },
-          usage: metadata || undefined,
+          usage: usageData || undefined,
         });
 
         setStatus('idle');
@@ -297,7 +336,6 @@ export function useBedrockChat({
       addMessage,
       getNextSequence,
       onConversationChange,
-      metadata,
     ]
   );
 

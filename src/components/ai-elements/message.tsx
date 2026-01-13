@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps, @typescript-eslint/no-unused-vars */
 'use client';
 
 import type { FileUIPart, UIMessage } from 'ai';

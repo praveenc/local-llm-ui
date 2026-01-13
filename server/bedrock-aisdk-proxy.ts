@@ -156,7 +156,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     const result = streamText({
       model: bedrock(model),
       messages: transformedMessages,
-      maxTokens: max_tokens ?? 2048,
+      maxOutputTokens: max_tokens ?? 2048,
       // Handle Claude 4.5 temperature/topP constraints
       ...(isClaude45
         ? temperature !== undefined
@@ -170,28 +170,39 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
           }),
     });
 
-    // Return plain text stream response
-    const response = result.toTextStreamResponse();
-
-    // Copy headers from AI SDK response
-    res.setHeader('Content-Type', response.headers.get('Content-Type') || 'text/plain');
+    // Use SSE format to stream text and then send usage metadata
+    res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    // Stream the response body
-    if (response.body) {
-      const reader = response.body.getReader();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          res.write(value);
-        }
-      } finally {
-        reader.releaseLock();
-      }
+    const startTime = Date.now();
+
+    // Stream text chunks
+    for await (const chunk of result.textStream) {
+      res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
     }
 
+    // Get usage after stream completes
+    const usage = await result.usage;
+    const latencyMs = Date.now() - startTime;
+
+    // Send usage metadata
+    if (usage) {
+      res.write(
+        `data: ${JSON.stringify({
+          metadata: {
+            usage: {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              totalTokens: usage.totalTokens,
+            },
+            latencyMs,
+          },
+        })}\n\n`
+      );
+    }
+
+    res.write('data: [DONE]\n\n');
     res.end();
   } catch (error) {
     console.error('Bedrock AI SDK: Stream error:', error);

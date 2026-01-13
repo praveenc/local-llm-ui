@@ -51,6 +51,20 @@ import { FittedContainer, ScrollableContainer } from '../layout';
  * This is the new UI for Bedrock chat with AI SDK integration.
  */
 
+/**
+ * BedrockChatContainer
+ *
+ * Chat container using AI Elements components and useBedrockChat hook.
+ * This is the new UI for Bedrock chat with AI SDK integration.
+ */
+
+/**
+ * BedrockChatContainer
+ *
+ * Chat container using AI Elements components and useBedrockChat hook.
+ * This is the new UI for Bedrock chat with AI SDK integration.
+ */
+
 type SamplingParameter = 'temperature' | 'topP';
 
 interface BedrockChatContainerProps {
@@ -274,7 +288,7 @@ const BedrockChatContainer = ({
             />
             <PromptInputFooter className="px-3 pb-3">
               <PromptInputTools>
-                <PromptInputActionMenu>
+                <PromptInputActionMenu modal={false}>
                   <PromptInputActionMenuTrigger />
                   <PromptInputActionMenuContent>
                     <PromptInputActionAddAttachments label="Add photos or files" />

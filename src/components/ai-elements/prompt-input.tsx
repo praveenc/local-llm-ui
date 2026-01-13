@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 'use client';
 
 import type { ChatStatus, FileUIPart } from 'ai';
