@@ -9,7 +9,7 @@
 
 import { Bot, Copy, Loader2, RefreshCw, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react';
 
-import { Fragment, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { ModelOption } from '@/types';
@@ -45,6 +45,13 @@ import {
   usePromptInputAttachments,
 } from '../ai-elements/prompt-input';
 import { FittedContainer, ScrollableContainer } from '../layout';
+
+/**
+ * BedrockChatContainer
+ *
+ * Chat container using AI Elements components and useBedrockChat hook.
+ * This is the new UI for Bedrock chat with AI SDK integration.
+ */
 
 /**
  * BedrockChatContainer
@@ -92,6 +99,7 @@ interface BedrockChatContainerProps {
   avatarInitials?: string;
   conversationId?: string | null;
   onConversationChange?: (id: string | null) => void;
+  onClearHistoryRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 // Helper to get provider info for display
@@ -131,6 +139,7 @@ const BedrockChatContainer = ({
   samplingParameter,
   conversationId: externalConversationId,
   onConversationChange,
+  onClearHistoryRef,
 }: BedrockChatContainerProps) => {
   const [inputValue, setInputValue] = useState('');
   const [messageFeedback, setMessageFeedback] = useState<Record<string, string>>({});
@@ -158,6 +167,18 @@ const BedrockChatContainer = ({
 
   const isLoading = status === 'streaming' || status === 'submitted';
   const providerInfo = getProviderInfo(selectedModel);
+
+  // Connect clearMessages to parent's ref for "New Conversation" button
+  useEffect(() => {
+    if (onClearHistoryRef) {
+      onClearHistoryRef.current = clearMessages;
+    }
+    return () => {
+      if (onClearHistoryRef) {
+        onClearHistoryRef.current = null;
+      }
+    };
+  }, [onClearHistoryRef, clearMessages]);
 
   const handleSubmit = async (message: {
     text: string;

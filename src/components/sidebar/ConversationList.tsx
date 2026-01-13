@@ -7,7 +7,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -103,33 +103,33 @@ export function ConversationList({
 
   const grouped = groupConversationsByDate(conversations ?? []);
 
-  // Determine which groups should be open by default
-  // Only "Today" is expanded, unless there are no today conversations, then expand "Yesterday"
-  const getDefaultOpenGroups = (): Record<string, boolean> => {
-    const hasTodayConversations = grouped.some(
-      (g) => g.label === 'Today' && g.conversations.length > 0
-    );
-    if (hasTodayConversations) {
-      return { Today: true } as Record<string, boolean>;
-    }
-    // If no today conversations, expand yesterday
-    const hasYesterdayConversations = grouped.some(
-      (g) => g.label === 'Yesterday' && g.conversations.length > 0
-    );
-    if (hasYesterdayConversations) {
-      return { Yesterday: true } as Record<string, boolean>;
-    }
-    // If neither, expand the first group
-    if (grouped.length > 0) {
-      return { [grouped[0].label]: true } as Record<string, boolean>;
-    }
-    return {};
-  };
-
   // Initialize open groups based on available conversations
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
-    getDefaultOpenGroups()
-  );
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const hasInitializedGroups = useRef(false);
+
+  // Set default open groups when conversations first load
+  useEffect(() => {
+    if (!hasInitializedGroups.current && grouped.length > 0) {
+      // Determine which groups should be open by default
+      // Only "Today" is expanded, unless there are no today conversations, then expand "Yesterday"
+      const hasTodayConversations = grouped.some(
+        (g) => g.label === 'Today' && g.conversations.length > 0
+      );
+      if (hasTodayConversations) {
+        setOpenGroups({ Today: true });
+      } else {
+        const hasYesterdayConversations = grouped.some(
+          (g) => g.label === 'Yesterday' && g.conversations.length > 0
+        );
+        if (hasYesterdayConversations) {
+          setOpenGroups({ Yesterday: true });
+        } else if (grouped.length > 0) {
+          setOpenGroups({ [grouped[0].label]: true });
+        }
+      }
+      hasInitializedGroups.current = true;
+    }
+  }, [grouped]);
 
   const handleRename = (id: string, currentTitle: string) => {
     setEditingId(id);

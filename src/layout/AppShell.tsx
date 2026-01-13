@@ -131,7 +131,6 @@ export default function AppShell() {
         (selectedProvider === 'bedrock' || selectedProvider === 'bedrock-mantle') ? (
           <BedrockChatContainer
             selectedModel={toSelectOption(selectedModel)}
-            selectedProvider={selectedProvider}
             maxTokens={maxTokens}
             setMaxTokens={setMaxTokens}
             temperature={temperature}
@@ -143,6 +142,7 @@ export default function AppShell() {
             avatarInitials={userPreferences.avatarInitials}
             conversationId={activeConversationId}
             onConversationChange={handleConversationChange}
+            onClearHistoryRef={clearHistoryRef}
           />
         ) : (
           <ChatContainer
