@@ -7,7 +7,7 @@
 
 'use client';
 
-import { Bot, Copy, RefreshCw, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react';
+import { Bot, Copy, Loader2, RefreshCw, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react';
 
 import { Fragment, useRef, useState } from 'react';
 
@@ -38,11 +38,23 @@ import {
   PromptInputAttachments,
   PromptInputButton,
   PromptInputFooter,
+  PromptInputHeader,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  usePromptInputAttachments,
 } from '../ai-elements/prompt-input';
 import { FittedContainer, ScrollableContainer } from '../layout';
+
+/**
+ * BedrockChatContainer
+ *
+ * Chat container using AI Elements components and useBedrockChat hook.
+ * This is the new UI for Bedrock chat with AI SDK integration.
+ */
+
+// Bedrock file size limits
+const BEDROCK_DOC_MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for documents (images are 3.75MB but we use doc limit as max)
 
 /**
  * BedrockChatContainer
@@ -122,6 +134,7 @@ const BedrockChatContainer = ({
 }: BedrockChatContainerProps) => {
   const [inputValue, setInputValue] = useState('');
   const [messageFeedback, setMessageFeedback] = useState<Record<string, string>>({});
+  const [fileError, setFileError] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -150,8 +163,12 @@ const BedrockChatContainer = ({
     text: string;
     files: Array<{ url?: string; mediaType?: string; filename?: string }>;
   }) => {
-    if (!message.text.trim() || isLoading) return;
+    // Allow submit with files even without text
+    if (!message.text.trim() && message.files.length === 0) return;
+    if (isLoading) return;
+
     setInputValue('');
+    setFileError(null);
 
     if (message.files.length > 0) {
       const filesWithData = await Promise.all(
@@ -170,10 +187,18 @@ const BedrockChatContainer = ({
       const validFiles = filesWithData.filter(
         (f): f is { name: string; format: string; bytes: string } => f !== null
       );
-      await sendMessage(message.text, validFiles);
+      // Use default text if only files are provided
+      const text = message.text.trim() || 'Please analyze the attached file(s).';
+      await sendMessage(text, validFiles);
     } else {
       await sendMessage(message.text);
     }
+  };
+
+  const handleFileError = (err: { code: string; message: string }) => {
+    setFileError(err.message);
+    // Clear error after 5 seconds
+    setTimeout(() => setFileError(null), 5000);
   };
 
   const handleFeedback = (messageId: string, feedbackType: string) => {
@@ -201,6 +226,12 @@ const BedrockChatContainer = ({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+      {fileError && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>File Error</AlertTitle>
+          <AlertDescription>{fileError}</AlertDescription>
+        </Alert>
+      )}
       <div className="relative flex flex-col h-full">
         <FittedContainer>
           <ScrollableContainer ref={scrollContainerRef}>
@@ -220,7 +251,7 @@ const BedrockChatContainer = ({
                             <MessageResponse>{getTextContent(message)}</MessageResponse>
                           </MessageContent>
                         </Message>
-                        {message.role === 'assistant' && (
+                        {message.role === 'assistant' && !isLoading && (
                           <MessageActions className="ml-0">
                             <MessageAction
                               tooltip="Helpful"
@@ -258,6 +289,7 @@ const BedrockChatContainer = ({
                           metadata && <MetadataRow metadata={metadata} />}
                       </Fragment>
                     ))}
+                    {isLoading && <GeneratingIndicator />}
                   </ConversationContent>
                   <ConversationScrollButton />
                 </Conversation>
@@ -268,14 +300,18 @@ const BedrockChatContainer = ({
         <div className="absolute bottom-0 left-0 right-0 z-[1000] p-2 md:p-4">
           <PromptInput
             onSubmit={handleSubmit}
+            onError={handleFileError}
             accept="image/*,.pdf,.txt,.html,.md,.csv,.doc,.docx,.xls,.xlsx"
             multiple
-            maxFileSize={4.5 * 1024 * 1024}
+            maxFileSize={BEDROCK_DOC_MAX_SIZE}
+            maxFiles={20}
             className="max-w-4xl mx-auto bg-background/95 backdrop-blur-md border border-border rounded-xl shadow-lg"
           >
-            <PromptInputAttachments>
-              {(attachment) => <PromptInputAttachment data={attachment} />}
-            </PromptInputAttachments>
+            <PromptInputHeader>
+              <PromptInputAttachments>
+                {(attachment) => <PromptInputAttachment data={attachment} />}
+              </PromptInputAttachments>
+            </PromptInputHeader>
             <PromptInputTextarea
               value={inputValue}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
@@ -314,10 +350,11 @@ const BedrockChatContainer = ({
                   </PromptInputButton>
                 )}
               </PromptInputTools>
-              <PromptInputSubmit
-                status={isLoading ? 'streaming' : 'ready'}
-                disabled={!inputValue.trim() || !selectedModel}
-                onClick={isLoading ? stopGeneration : undefined}
+              <PromptInputSubmitWithAttachments
+                inputValue={inputValue}
+                selectedModel={selectedModel}
+                isLoading={isLoading}
+                stopGeneration={stopGeneration}
               />
             </PromptInputFooter>
           </PromptInput>
@@ -399,6 +436,40 @@ const MetadataRow = ({
         )}
         {metadata.latencyMs !== undefined && <span>⏱ {metadata.latencyMs}ms</span>}
       </div>
+    </div>
+  </div>
+);
+
+// Submit button that checks both text input and attachments
+const PromptInputSubmitWithAttachments = ({
+  inputValue,
+  selectedModel,
+  isLoading,
+  stopGeneration,
+}: {
+  inputValue: string;
+  selectedModel: ModelOption | null;
+  isLoading: boolean;
+  stopGeneration: () => void;
+}) => {
+  const attachments = usePromptInputAttachments();
+  const hasContent = inputValue.trim().length > 0 || attachments.files.length > 0;
+
+  return (
+    <PromptInputSubmit
+      status={isLoading ? 'streaming' : 'ready'}
+      disabled={!hasContent || !selectedModel}
+      onClick={isLoading ? stopGeneration : undefined}
+    />
+  );
+};
+
+// Loading indicator shown during AI response generation
+const GeneratingIndicator = () => (
+  <div className="flex items-center gap-2 py-2">
+    <div className="flex items-center gap-2 text-muted-foreground">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      <span className="text-sm">Generating response...</span>
     </div>
   </div>
 );
