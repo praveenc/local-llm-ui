@@ -1,4 +1,4 @@
-export { default as BedrockChatContainer } from './BedrockChatContainer';
+export { default as ChatContainer } from './ChatContainer';
 export { ContextIndicator } from './ContextIndicator';
 export { InferenceSettings } from './InferenceSettings';
 export { ModelSelectorButton } from './ModelSelectorButton';

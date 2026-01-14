@@ -2,7 +2,7 @@ import { toast } from 'sonner';
 
 import React, { useEffect, useState } from 'react';
 
-import { BedrockChatContainer } from '../components/chat';
+import { ChatContainer } from '../components/chat';
 import { Sidebar } from '../components/sidebar';
 import { useAllModels } from '../hooks/useAllModels';
 import type { UnifiedModel } from '../hooks/useAllModels';
@@ -72,7 +72,7 @@ export default function AppShell() {
       }
     >
       <div className="flex h-full flex-col">
-        <BedrockChatContainer
+        <ChatContainer
           providers={providers}
           selectedModel={selectedModel}
           onSelectModel={setSelectedModel}

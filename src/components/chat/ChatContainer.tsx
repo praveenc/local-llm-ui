@@ -1,8 +1,8 @@
 /**
- * BedrockChatContainer
+ * ChatContainer
  *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
  */
 
 'use client';
@@ -50,6 +50,13 @@ import { FittedContainer } from '../layout';
 import { ContextIndicator } from './ContextIndicator';
 import { InferenceSettings } from './InferenceSettings';
 import { ModelSelectorButton } from './ModelSelectorButton';
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
 
 /**
  * BedrockChatContainer
@@ -121,7 +128,7 @@ function getFormatFromMediaType(mediaType: string): string {
   return typeMap[mediaType] || 'bin';
 }
 
-const BedrockChatContainer = ({
+const ChatContainer = ({
   providers,
   selectedModel,
   onSelectModel,
@@ -525,4 +532,4 @@ const GeneratingIndicator = () => (
   </div>
 );
 
-export default BedrockChatContainer;
+export default ChatContainer;
