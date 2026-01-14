@@ -45,44 +45,11 @@ import {
   PromptInputTools,
   usePromptInputAttachments,
 } from '../ai-elements/prompt-input';
+import { Reasoning, ReasoningContent, ReasoningTrigger } from '../ai-elements/reasoning';
 import { FittedContainer } from '../layout';
 import { ContextIndicator } from './ContextIndicator';
+import { InferenceSettings } from './InferenceSettings';
 import { ModelSelectorButton } from './ModelSelectorButton';
-
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
-
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
-
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
-
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
-
-/**
- * BedrockChatContainer
- *
- * Chat container using AI Elements components and useBedrockChat hook.
- * This is the new UI for Bedrock chat with AI SDK integration.
- */
 
 /**
  * BedrockChatContainer
@@ -160,9 +127,13 @@ const BedrockChatContainer = ({
   onSelectModel,
   isLoadingModels,
   maxTokens,
+  setMaxTokens,
   temperature,
+  setTemperature,
   topP,
+  setTopP,
   samplingParameter,
+  setSamplingParameter,
   conversationId: externalConversationId,
   onConversationChange,
   onClearHistoryRef,
@@ -307,55 +278,72 @@ const BedrockChatContainer = ({
             ) : (
               <Conversation className="h-full max-w-4xl mx-auto">
                 <ConversationContent className="p-4">
-                  {messages.map((message, index) => (
-                    <Fragment key={message.id}>
-                      <Message from={message.role}>
-                        <MessageContent>
-                          {hasReasoning(message) && (
-                            <ReasoningBlock content={getReasoningContent(message) || ''} />
-                          )}
-                          <MessageResponse>{getTextContent(message)}</MessageResponse>
-                        </MessageContent>
-                      </Message>
-                      {message.role === 'assistant' && !isLoading && (
-                        <MessageActions className="ml-0">
-                          <MessageAction
-                            tooltip="Helpful"
-                            onClick={() => handleFeedback(message.id, 'helpful')}
-                          >
-                            <ThumbsUp
-                              className={`h-3 w-3 ${messageFeedback[message.id] === 'helpful' ? 'fill-current' : ''}`}
-                            />
-                          </MessageAction>
-                          <MessageAction
-                            tooltip="Not helpful"
-                            onClick={() => handleFeedback(message.id, 'not-helpful')}
-                          >
-                            <ThumbsDown
-                              className={`h-3 w-3 ${messageFeedback[message.id] === 'not-helpful' ? 'fill-current' : ''}`}
-                            />
-                          </MessageAction>
-                          <MessageAction
-                            tooltip="Copy"
-                            onClick={() => handleCopy(getTextContent(message))}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </MessageAction>
-                          <MessageAction
-                            tooltip="Regenerate"
-                            onClick={() => regenerate(index)}
-                            disabled={isLoading}
-                          >
-                            <RefreshCw className="h-3 w-3" />
-                          </MessageAction>
-                        </MessageActions>
-                      )}
-                      {message.role === 'assistant' && index === lastAssistantIndex && metadata && (
-                        <MetadataRow metadata={metadata} />
-                      )}
-                    </Fragment>
-                  ))}
-                  {isLoading && <GeneratingIndicator />}
+                  {messages.map((message, index) => {
+                    // Determine if this message's reasoning is still streaming
+                    const isLastMessage = index === messages.length - 1;
+                    const isReasoningStreaming =
+                      isLastMessage &&
+                      isLoading &&
+                      hasReasoning(message) &&
+                      !getTextContent(message);
+
+                    return (
+                      <Fragment key={message.id}>
+                        <Message from={message.role}>
+                          <MessageContent>
+                            {hasReasoning(message) && (
+                              <Reasoning className="w-full" isStreaming={isReasoningStreaming}>
+                                <ReasoningTrigger />
+                                <ReasoningContent>
+                                  {getReasoningContent(message) || ''}
+                                </ReasoningContent>
+                              </Reasoning>
+                            )}
+                            <MessageResponse>{getTextContent(message)}</MessageResponse>
+                          </MessageContent>
+                        </Message>
+                        {message.role === 'assistant' && !isLoading && (
+                          <MessageActions className="ml-0">
+                            <MessageAction
+                              tooltip="Helpful"
+                              onClick={() => handleFeedback(message.id, 'helpful')}
+                            >
+                              <ThumbsUp
+                                className={`h-3 w-3 ${messageFeedback[message.id] === 'helpful' ? 'fill-current' : ''}`}
+                              />
+                            </MessageAction>
+                            <MessageAction
+                              tooltip="Not helpful"
+                              onClick={() => handleFeedback(message.id, 'not-helpful')}
+                            >
+                              <ThumbsDown
+                                className={`h-3 w-3 ${messageFeedback[message.id] === 'not-helpful' ? 'fill-current' : ''}`}
+                              />
+                            </MessageAction>
+                            <MessageAction
+                              tooltip="Copy"
+                              onClick={() => handleCopy(getTextContent(message))}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </MessageAction>
+                            <MessageAction
+                              tooltip="Regenerate"
+                              onClick={() => regenerate(index)}
+                              disabled={isLoading}
+                            >
+                              <RefreshCw className="h-3 w-3" />
+                            </MessageAction>
+                          </MessageActions>
+                        )}
+                        {message.role === 'assistant' &&
+                          index === lastAssistantIndex &&
+                          metadata && <MetadataRow metadata={metadata} />}
+                      </Fragment>
+                    );
+                  })}
+                  {isLoading && !hasReasoning(messages[messages.length - 1] || { parts: [] }) && (
+                    <GeneratingIndicator />
+                  )}
                 </ConversationContent>
                 <ConversationScrollButton />
               </Conversation>
@@ -400,6 +388,17 @@ const BedrockChatContainer = ({
                   selectedModel={selectedModel}
                   onSelectModel={onSelectModel}
                   isLoading={isLoadingModels}
+                  disabled={isLoading}
+                />
+                <InferenceSettings
+                  temperature={temperature}
+                  setTemperature={setTemperature}
+                  topP={topP}
+                  setTopP={setTopP}
+                  maxTokens={maxTokens}
+                  setMaxTokens={setMaxTokens}
+                  samplingParameter={samplingParameter}
+                  setSamplingParameter={setSamplingParameter}
                   disabled={isLoading}
                 />
                 {messages.length > 0 && (
@@ -457,15 +456,6 @@ const EmptyState = ({ selectedModel }: { selectedModel: UnifiedModel | null }) =
       </>
     )}
   </div>
-);
-
-const ReasoningBlock = ({ content }: { content: string }) => (
-  <details className="mb-3 rounded-lg bg-muted/50 p-3">
-    <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
-      Thinking Process
-    </summary>
-    <div className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{content}</div>
-  </details>
 );
 
 const MetadataRow = ({

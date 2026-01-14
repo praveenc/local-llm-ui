@@ -289,12 +289,16 @@ async function handleChat(
 
   console.log(`Mantle: Chat request for model: ${model} in region: ${region}`);
   console.log(`Mantle: Messages count: ${messages?.length || 0}`);
+  console.log(
+    `Mantle: Inference config: temperature=${temperature}, max_tokens=${max_tokens}, top_p=${top_p}`
+  );
 
   // Build request body for OpenAI-compatible API
   const requestBody: {
     model: string;
     messages: Array<{ role: string; content: string }>;
     stream: boolean;
+    stream_options?: { include_usage: boolean };
     temperature?: number;
     max_tokens?: number;
     top_p?: number;
@@ -305,6 +309,8 @@ async function handleChat(
       content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
     })),
     stream,
+    // Request usage data in streaming mode
+    ...(stream && { stream_options: { include_usage: true } }),
   };
 
   // Add optional parameters if provided
@@ -365,6 +371,14 @@ async function handleChat(
 
             try {
               const parsed = JSON.parse(data);
+
+              // Handle reasoning content (e.g., MiniMax models)
+              const reasoning = parsed.choices?.[0]?.delta?.reasoning;
+              if (reasoning) {
+                res.write(`data: ${JSON.stringify({ reasoning })}\n\n`);
+              }
+
+              // Handle regular content
               const content = parsed.choices?.[0]?.delta?.content;
               if (content) {
                 res.write(`data: ${JSON.stringify({ content })}\n\n`);
@@ -372,6 +386,7 @@ async function handleChat(
 
               // Check for usage info in the final chunk
               if (parsed.usage) {
+                console.log('Mantle: Received usage data:', parsed.usage);
                 res.write(
                   `data: ${JSON.stringify({
                     metadata: {

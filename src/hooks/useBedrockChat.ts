@@ -278,8 +278,21 @@ export function useBedrockChat({
 
         const decoder = new TextDecoder();
         let fullContent = '';
+        let fullReasoning = '';
         let usageData: UsageMetadata | null = null;
         const startTime = Date.now();
+
+        // Helper to build parts array with reasoning and content
+        const buildParts = (): MessagePart[] => {
+          const parts: MessagePart[] = [];
+          if (fullReasoning) {
+            parts.push({ type: 'reasoning', reasoning: fullReasoning } as MessagePart);
+          }
+          if (fullContent) {
+            parts.push({ type: 'text', text: fullContent });
+          }
+          return parts;
+        };
 
         // Both Bedrock and Mantle now use SSE format: data: {"content": "..."} or data: {"metadata": {...}}
         let buffer = '';
@@ -298,10 +311,27 @@ export function useBedrockChat({
 
               try {
                 const parsed = JSON.parse(data);
+
+                // Handle reasoning content (e.g., MiniMax models)
+                if (parsed.reasoning) {
+                  fullReasoning += parsed.reasoning;
+                  assistantMessage.parts = buildParts();
+                  setMessages((prev) => {
+                    const newMessages = [...prev];
+                    const lastIdx = newMessages.length - 1;
+                    if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
+                      newMessages[lastIdx] = { ...assistantMessage };
+                    } else {
+                      newMessages.push({ ...assistantMessage });
+                    }
+                    return newMessages;
+                  });
+                }
+
+                // Handle regular content
                 if (parsed.content) {
                   fullContent += parsed.content;
-                  // Update the streaming message
-                  assistantMessage.parts = [{ type: 'text', text: fullContent }];
+                  assistantMessage.parts = buildParts();
                   setMessages((prev) => {
                     const newMessages = [...prev];
                     const lastIdx = newMessages.length - 1;

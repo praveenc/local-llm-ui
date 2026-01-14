@@ -24,6 +24,15 @@ const DEFAULT_CONTEXT_LIMITS: Record<string, number> = {
   // Cerebras models (free tier limited)
   'llama-3.3-70b': 8192,
   'llama3.1-8b': 8192,
+  // Bedrock Mantle models (common defaults)
+  'nvidia.nemotron-nano-9b-v2': 32768,
+  'nvidia.nemotron-mini-4b-instruct': 32768,
+  'mistral.mistral-large-2407': 128000,
+  'mistral.mistral-small-2409': 32768,
+  'qwen.qwen2.5-72b-instruct': 131072,
+  'qwen.qwen2.5-32b-instruct': 131072,
+  'meta.llama3-70b-instruct': 8192,
+  'meta.llama3-8b-instruct': 8192,
   // Default fallback
   default: 128000,
 };
@@ -53,6 +62,43 @@ function toTokenlensModelId(modelId: string, provider: Provider): string | null 
     if (modelId.includes('llama')) {
       return 'meta-llama/llama-3.3-70b-instruct';
     }
+  }
+
+  // Bedrock Mantle models - OpenAI-compatible endpoint with various providers
+  if (provider === 'bedrock-mantle') {
+    // NVIDIA models
+    if (modelId.includes('nvidia')) {
+      return null; // Not in tokenlens, use defaults
+    }
+    // Mistral models
+    if (modelId.includes('mistral')) {
+      if (modelId.includes('large')) {
+        return 'mistral/mistral-large-latest';
+      }
+      if (modelId.includes('small')) {
+        return 'mistral/mistral-small-latest';
+      }
+      return 'mistral/mistral-medium-latest';
+    }
+    // Qwen models
+    if (modelId.includes('qwen')) {
+      return null; // Not in tokenlens, use defaults
+    }
+    // Meta Llama models
+    if (modelId.includes('meta') || modelId.includes('llama')) {
+      return 'meta-llama/llama-3.3-70b-instruct';
+    }
+    // OpenAI models (if available via Mantle)
+    if (modelId.includes('openai') || modelId.includes('gpt')) {
+      if (modelId.includes('gpt-4o')) {
+        return 'openai/gpt-4o';
+      }
+      if (modelId.includes('gpt-4')) {
+        return 'openai/gpt-4-turbo';
+      }
+      return 'openai/gpt-3.5-turbo';
+    }
+    return null; // Unknown Mantle model, use defaults
   }
 
   // Groq models
