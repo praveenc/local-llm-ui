@@ -4,113 +4,85 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Local LLM UI is a React chat interface for interacting with multiple LLM providers: Ollama, LM Studio, Amazon Bedrock, Groq, and Cerebras. Built with TypeScript, Vite, shadcn/ui, and Tailwind CSS.
+Local LLM UI is a React chat interface for interacting with multiple LLM providers: Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Groq, and Cerebras. Built with TypeScript, Vite, shadcn/ui (Radix primitives + Tailwind CSS), and Dexie.js for client-side persistence.
 
-## Common Commands
+## Commands
 
 ```bash
-npm run dev          # Start dev server (http://localhost:5173)
-npm run build        # TypeScript check + production build
-npm run lint         # ESLint check
-npm run lint:fix     # ESLint auto-fix
-npm run format       # Prettier format
-npm run test         # Run tests in watch mode
-npm run test:run     # Run tests once
-npm run test:ui      # Run tests with UI
-make check           # Run lint + tests (quiet output)
-make fix             # Run format + lint-fix (quiet output)
+# Development
+npm run dev              # Start dev server (http://localhost:5173)
+npm run build            # TypeScript check + production build
+
+# Quality
+npm run lint             # ESLint check
+npm run lint:fix         # ESLint auto-fix
+npm run format           # Prettier format
+
+# Testing
+npm run test             # Watch mode
+npm run test:run         # Single run
+npm run test:ui          # With Vitest UI
+npm test -- path/file.test.ts  # Single test file
+
+# Make shortcuts (quiet output)
+make check               # lint + test:run
+make fix                 # format + lint:fix
 ```
 
 ## Architecture
 
 ### Provider Service Pattern
 
-The app uses a unified API service (`src/services/api.ts`) that orchestrates multiple provider-specific services:
+The app uses `APIService` (`src/services/api.ts`) to orchestrate provider-specific services. Each service implements: `getModels()`, `chat()` (async generator for streaming), `checkConnection()`.
 
-- `ollama.ts` - Ollama API (localhost:11434)
-- `lmstudio.ts` - LM Studio API (localhost:1234)
-- `bedrock.ts` - AWS Bedrock via server proxy
-- `mantle.ts` - Bedrock Mantle (OpenAI-compatible)
-- `aisdk.ts` - Groq and Cerebras via Vercel AI SDK
+| Service | Provider | Port/Target |
+|---------|----------|-------------|
+| `ollama.ts` | Ollama | localhost:11434 |
+| `lmstudio.ts` | LM Studio | localhost:1234 |
+| `bedrock.ts` | AWS Bedrock | AWS SDK (server proxy) |
+| `mantle.ts` | Bedrock Mantle | OpenAI-compatible |
+| `aisdk.ts` | Groq, Cerebras | Vercel AI SDK |
 
-Each service implements: `getModels()`, `chat()` (async generator for streaming), `checkConnection()`.
+### Server Proxies (vite.config.ts)
 
-### Server Proxies
-
-Vite dev server includes custom middleware proxies in `vite.config.ts`:
-- `/api/bedrock` → AWS SDK calls (handles credentials server-side)
-- `/api/mantle` → Bedrock Mantle proxy
+Custom Vite middleware handles AWS credentials and SDK operations server-side:
+- `/api/bedrock`, `/api/bedrock-aisdk` → AWS SDK calls
+- `/api/mantle` → Bedrock Mantle
 - `/api/lmstudio-sdk` → LM Studio SDK operations
-- `/api/lmstudio` → Direct proxy to localhost:1234
-- `/api/ollama` → Direct proxy to localhost:11434
+- `/api/lmstudio`, `/api/ollama` → Direct proxies
 
-### Data Persistence
+### Data Persistence (Dexie.js/IndexedDB)
 
-Uses Dexie.js (IndexedDB wrapper) for client-side storage:
 - `src/db/schema.ts` - Database schema (conversations, messages, savedPrompts)
-- `src/services/conversationService.ts` - Conversation CRUD operations
+- `src/services/conversationService.ts` - Conversation CRUD
 - `src/services/promptsService.ts` - Saved prompts operations
 
-### Key Component Structure
+### Component Structure
 
-- `src/layout/AppShell.tsx` - Main orchestrator component
+- `src/layout/AppShell.tsx` - Main orchestrator, manages state
+- `src/layout/AppLayout.tsx` - Layout wrapper with sidebar
 - `src/components/chat/ChatContainer.tsx` - Chat UI container
-- `src/components/chat/AIChatInput.tsx` - Message input with file attachments
-- `src/components/sidebar/Sidebar.tsx` - Provider/model selection sidebar
+- `src/components/ai-elements/` - Reusable AI UI components (prompt-input, message, model-selector, reasoning, context)
+- `src/components/sidebar/Sidebar.tsx` - Provider/model selection, conversation list
+- `src/components/ui/` - shadcn/ui components
 
-### Hooks
+### Key Hooks
 
-- `useConversation.ts` / `useConversations.ts` - Conversation state management
-- `usePromptOptimizer.ts` - Claude 4.5 prompt optimization feature
-- `useModelLoader.ts` - LM Studio model loading with progress
-- `useSavedPrompts.ts` - Saved prompts with Dexie hooks
+- `useAllModels.ts` - Aggregates models from all providers
+- `useConversation.ts`, `useConversations.ts` - Conversation state/CRUD
+- `usePromptOptimizer.ts` - Claude 4.5 prompt optimization (Bedrock only)
+- `useSavedPrompts.ts` - Saved prompts with Dexie reactive queries
 
 ## Code Conventions
 
-- Follow Conventional Commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`
-- Use shadcn/ui components (Radix UI primitives + Tailwind CSS)
-- TypeScript strict mode; avoid `any`
-- Use type imports: `import type { Type } from 'module'`
-- Functional components with hooks only
-- Husky pre-commit runs lint-staged (ESLint + Prettier)
-
-## Testing
-
-Tests use Vitest with React Testing Library. Test files are co-located with source:
-- `src/services/__tests__/api.test.ts`
-- `src/utils/__tests__/fileUtils.test.ts`
-
-Run a single test file: `npm test -- src/services/__tests__/api.test.ts`
-
-## Container Requirement
-
-**All git operations (commit, push, tag) must run inside the git-workspace container.**
-
-### Setup
-1. **Check if running**: `docker ps --filter name=my-git-workspace --format '{{.Names}}'`
-2. **Start only if not running**: `docker compose run -d --rm --name my-git-workspace git-workspace`
-
-### Verify Git Identity
-
-Before any commit, verify git config:
-
-```bash
-docker exec my-git-workspace git-test
-```
-
-Expected: username `praveenc`, email `1090396+praveenc@users.noreply.github.com`
-
-### Running Git Commands
-
-```bash
-docker exec my-git-workspace git -C /workspace/repos/copt <command>
-docker exec my-git-workspace gh <command>
-```
-
-Repo path inside container: `/workspace/repos/local-llm-ui`
+- **Commits**: Conventional Commits (`feat(scope):`, `fix(scope):`, `refactor(scope):`)
+- **Components**: shadcn/ui (Radix UI + Tailwind), functional with hooks
+- **TypeScript**: Strict mode, avoid `any`, use type imports (`import type { T }`)
+- **Path alias**: `@/` maps to `src/`
+- **Pre-commit**: Husky runs lint-staged (ESLint + Prettier)
 
 ## Provider-Specific Notes
 
-- **Claude 4.5 models**: Don't support both `temperature` and `top_p` simultaneously
-- **Bedrock document upload**: Supports PDF, TXT, HTML, MD, CSV, DOC(X), XLS(X); max 4.5MB per file
+- **Claude 4.5 models**: Don't support both `temperature` and `top_p` simultaneously; UI provides radio toggle
+- **Bedrock document upload**: PDF, TXT, HTML, MD, CSV, DOC(X), XLS(X); max 4.5MB per file
 - **LM Studio**: Supports JIT model loading with progress tracking via SDK
