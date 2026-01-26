@@ -54,6 +54,7 @@
   "dependencies": {
     "@ai-sdk/cerebras": "^2.0.2",
     "@ai-sdk/groq": "^3.0.1",
+    "@ai-sdk/openai": "^3.0.18",
     "@aws-sdk/client-bedrock": "^3.901.0",
     "@aws-sdk/client-bedrock-runtime": "^3.901.0",
     "@lmstudio/sdk": "^1.5.0",

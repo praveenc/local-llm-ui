@@ -1,14 +1,18 @@
 /**
  * AI SDK Service - Unified provider integration using Vercel AI SDK
- * Supports: Groq, Cerebras (and easily extensible to other AI SDK providers)
+ * Supports: Groq, Cerebras, LM Studio (via OpenAI provider)
  */
 import { createCerebras } from '@ai-sdk/cerebras';
 import { createGroq } from '@ai-sdk/groq';
+import { createOpenAI } from '@ai-sdk/openai';
 import { streamText } from 'ai';
 
 import type { ChatRequest, ModelInfo } from './types';
 
-type AISDKProvider = 'groq' | 'cerebras';
+type AISDKProvider = 'groq' | 'cerebras' | 'lmstudio';
+
+// LM Studio base URL (use proxy in development, direct connection in production)
+const LMSTUDIO_BASE_URL = import.meta.env.DEV ? '/api/lmstudio/v1' : 'http://localhost:1234/v1';
 
 // Available models for each provider
 const GROQ_MODELS = [
@@ -25,7 +29,8 @@ const CEREBRAS_MODELS = [
 ];
 
 // API key storage keys (used directly in localStorage for runtime access)
-const API_KEY_STORAGE = {
+// LM Studio doesn't require an API key
+const API_KEY_STORAGE: Record<Exclude<AISDKProvider, 'lmstudio'>, string> = {
   groq: 'GROQ_API_KEY',
   cerebras: 'CEREBRAS_API_KEY',
 } as const;
@@ -55,6 +60,9 @@ export class AISDKService {
    * Get the API key from localStorage
    */
   private getApiKey(): string | null {
+    if (this.provider === 'lmstudio') {
+      return null; // LM Studio doesn't use API keys
+    }
     const key = API_KEY_STORAGE[this.provider];
     return localStorage.getItem(key);
   }
@@ -63,6 +71,9 @@ export class AISDKService {
    * Set the API key in localStorage
    */
   static setApiKey(provider: AISDKProvider, apiKey: string): void {
+    if (provider === 'lmstudio') {
+      return; // LM Studio doesn't use API keys
+    }
     const key = API_KEY_STORAGE[provider];
     localStorage.setItem(key, apiKey);
   }
@@ -71,6 +82,9 @@ export class AISDKService {
    * Remove the API key from localStorage
    */
   static removeApiKey(provider: AISDKProvider): void {
+    if (provider === 'lmstudio') {
+      return; // LM Studio doesn't use API keys
+    }
     const key = API_KEY_STORAGE[provider];
     localStorage.removeItem(key);
   }
@@ -79,6 +93,10 @@ export class AISDKService {
    * Check if API key is configured
    */
   hasApiKey(): boolean {
+    // LM Studio doesn't require an API key
+    if (this.provider === 'lmstudio') {
+      return true;
+    }
     const apiKey = this.getApiKey();
     return !!apiKey && apiKey.trim().length > 0;
   }
@@ -87,16 +105,27 @@ export class AISDKService {
    * Create the AI SDK provider instance
    */
   private createProvider() {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      throw new Error(`API key not configured for ${this.provider}`);
-    }
-
     switch (this.provider) {
-      case 'groq':
+      case 'groq': {
+        const apiKey = this.getApiKey();
+        if (!apiKey) {
+          throw new Error(`API key not configured for ${this.provider}`);
+        }
         return createGroq({ apiKey });
-      case 'cerebras':
+      }
+      case 'cerebras': {
+        const apiKey = this.getApiKey();
+        if (!apiKey) {
+          throw new Error(`API key not configured for ${this.provider}`);
+        }
         return createCerebras({ apiKey });
+      }
+      case 'lmstudio':
+        // LM Studio doesn't require an API key, uses local server
+        return createOpenAI({
+          baseURL: LMSTUDIO_BASE_URL,
+          apiKey: 'lm-studio', // Required by SDK but not used by LM Studio
+        });
       default:
         throw new Error(`Unknown provider: ${this.provider}`);
     }
@@ -106,6 +135,11 @@ export class AISDKService {
    * Get available models for this provider
    */
   getModels(): ModelInfo[] {
+    // LM Studio models are fetched dynamically, not hardcoded
+    if (this.provider === 'lmstudio') {
+      return [];
+    }
+
     // Only return models if API key is configured
     if (!this.hasApiKey()) {
       return [];
@@ -143,6 +177,22 @@ export class AISDKService {
         abortSignal: request.signal,
       });
 
+      // Stream reasoning tokens first (if available)
+      // Note: reasoning is a Promise, not an async iterable
+      try {
+        const reasoningParts = await result.reasoning;
+        if (reasoningParts && reasoningParts.length > 0) {
+          yield '__REASONING_START__';
+          for (const part of reasoningParts) {
+            yield part.text;
+          }
+          yield '__REASONING_END__';
+        }
+      } catch {
+        // Reasoning may not be available for all models
+        console.log(`${this.provider}: No reasoning available`);
+      }
+
       // Stream the text content
       for await (const chunk of result.textStream) {
         yield chunk;
@@ -175,6 +225,19 @@ export class AISDKService {
    * Check if the provider is accessible (API key valid)
    */
   async checkConnection(): Promise<boolean> {
+    // LM Studio: Check if server is running
+    if (this.provider === 'lmstudio') {
+      try {
+        const response = await fetch(`${LMSTUDIO_BASE_URL}/models`, {
+          method: 'GET',
+        });
+        return response.ok;
+      } catch {
+        return false;
+      }
+    }
+
+    // Groq/Cerebras: Check API key
     if (!this.hasApiKey()) {
       return false;
     }
@@ -194,3 +257,4 @@ export class AISDKService {
 // Export singleton instances for each provider
 export const groqService = new AISDKService('groq');
 export const cerebrasService = new AISDKService('cerebras');
+export const lmstudioAISDKService = new AISDKService('lmstudio');

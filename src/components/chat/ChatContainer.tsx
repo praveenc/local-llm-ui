@@ -27,6 +27,7 @@ interface Message {
   id: number;
   role: 'user' | 'assistant';
   content: string;
+  reasoning?: string;
 }
 
 interface ErrorState {
@@ -145,6 +146,7 @@ const ChatContainer = ({
         id: idx + 1,
         role: m.role as 'user' | 'assistant',
         content: m.content,
+        reasoning: m.reasoning,
       }));
       setMessages(localMessages);
     }
@@ -369,6 +371,8 @@ const ChatContainer = ({
       }));
 
       let fullContent = '';
+      let reasoningContent = '';
+      let isInReasoningSection = false;
       let capturedUsage: {
         inputTokens?: number;
         outputTokens?: number;
@@ -398,6 +402,16 @@ const ChatContainer = ({
 
       // Stream the response
       for await (const chunk of apiService.chat(provider, chatRequest)) {
+        // Handle reasoning markers
+        if (chunk === '__REASONING_START__') {
+          isInReasoningSection = true;
+          continue;
+        }
+        if (chunk === '__REASONING_END__') {
+          isInReasoningSection = false;
+          continue;
+        }
+
         // Handle metadata chunks
         if (
           chunk.startsWith('__BEDROCK_METADATA__') ||
@@ -436,7 +450,13 @@ const ChatContainer = ({
           continue;
         }
 
-        fullContent += chunk;
+        // Accumulate content based on section
+        if (isInReasoningSection) {
+          reasoningContent += chunk;
+        } else {
+          fullContent += chunk;
+        }
+
         setStreamingMessage({
           id: streamingId,
           role: 'assistant',
@@ -460,6 +480,7 @@ const ChatContainer = ({
         conversationId: currentConversationId,
         role: 'assistant',
         content: fullContent,
+        reasoning: reasoningContent || undefined,
         sequence: assistantSequence,
         createdAt: new Date(),
         provider,
@@ -619,6 +640,8 @@ const ChatContainer = ({
       }
 
       let fullContent = '';
+      let reasoningContent = '';
+      let isInReasoningSection = false;
       let capturedUsage: {
         inputTokens?: number;
         outputTokens?: number;
@@ -649,6 +672,16 @@ const ChatContainer = ({
 
       // Stream the response
       for await (const chunk of apiService.chat(provider, chatRequest)) {
+        // Handle reasoning markers
+        if (chunk === '__REASONING_START__') {
+          isInReasoningSection = true;
+          continue;
+        }
+        if (chunk === '__REASONING_END__') {
+          isInReasoningSection = false;
+          continue;
+        }
+
         // Check if this is Bedrock metadata
         if (chunk.startsWith('__BEDROCK_METADATA__')) {
           try {
@@ -773,7 +806,13 @@ const ChatContainer = ({
           continue;
         }
 
-        fullContent += chunk;
+        // Accumulate content based on section
+        if (isInReasoningSection) {
+          reasoningContent += chunk;
+        } else {
+          fullContent += chunk;
+        }
+
         setStreamingMessage({
           id: streamingId,
           role: 'assistant',
@@ -796,6 +835,7 @@ const ChatContainer = ({
         conversationId: currentConversationId,
         role: 'assistant',
         content: fullContent,
+        reasoning: reasoningContent || undefined,
         sequence: assistantSequence,
         createdAt: new Date(),
         provider,

@@ -1,3 +1,4 @@
+import { lmstudioAISDKService } from './aisdk';
 import type { ChatRequest, LoadProgressEvent, ModelInfo } from './types';
 
 // Use proxy in development, direct connection in production
@@ -209,87 +210,8 @@ export class LMStudioService {
   }
 
   async *chat(request: ChatRequest): AsyncGenerator<string, void, unknown> {
-    const startTime = Date.now();
-    try {
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: request.model,
-          messages: request.messages,
-          temperature: request.temperature ?? 0.7,
-          max_tokens: request.max_tokens ?? 2048,
-          top_p: request.top_p ?? 0.9,
-          stream: true,
-          stream_options: {
-            include_usage: true,
-          },
-        }),
-        signal: request.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('Response body is not readable');
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
-              console.log('LMStudio: Stream completed with [DONE]');
-              continue;
-            }
-
-            try {
-              const parsed = JSON.parse(data);
-              console.log('LMStudio: Parsed chunk:', parsed);
-
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) {
-                yield content;
-              }
-
-              // Extract usage information from streaming response
-              if (parsed.usage) {
-                const latencyMs = Date.now() - startTime;
-                console.log('LMStudio: Usage data found:', parsed.usage, `Latency: ${latencyMs}ms`);
-                yield `__LMSTUDIO_METADATA__${JSON.stringify({
-                  usage: {
-                    promptTokens: parsed.usage.prompt_tokens,
-                    completionTokens: parsed.usage.completion_tokens,
-                    totalTokens: parsed.usage.total_tokens,
-                  },
-                  latencyMs,
-                })}`;
-              }
-            } catch (e) {
-              console.error('Failed to parse SSE data:', e);
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('LMStudio: Chat error:', error);
-      throw error;
-    }
+    // Delegate to AI SDK service for chat streaming with reasoning support
+    yield* lmstudioAISDKService.chat(request);
   }
 
   async *loadModelWithProgress(

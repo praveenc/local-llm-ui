@@ -41,4 +41,12 @@ db.version(2).stores({
   savedPrompts: 'id, name, category, createdAt',
 });
 
+// Version 3: Add reasoning field to messages (schema-less, no migration needed)
+// Dexie automatically handles new fields without schema changes
+db.version(3).stores({
+  conversations: 'id, createdAt, updatedAt, status, *providers, *models',
+  messages: 'id, conversationId, [conversationId+sequence], createdAt',
+  savedPrompts: 'id, name, category, createdAt',
+});
+
 export { db };

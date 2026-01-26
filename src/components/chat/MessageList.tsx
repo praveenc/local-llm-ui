@@ -36,6 +36,7 @@ interface Message {
   id: number;
   role: 'user' | 'assistant';
   content: string;
+  reasoning?: string; // Reasoning/thinking tokens from models like DeepSeek R1
 }
 
 interface UsageMetadata {
@@ -107,19 +108,6 @@ const MessageList = ({
   const handleRegenerateCancel = () => {
     setRegenerateModalVisible(false);
     setPendingRegenerateIndex(null);
-  };
-
-  const parseThinkingContent = (content: string) => {
-    const thinkRegex = /<think>(.*?)<\/think>/s;
-    const match = content.match(thinkRegex);
-
-    if (match) {
-      const thinkingContent = match[1].trim();
-      const mainContent = content.replace(thinkRegex, '').trim();
-      return { thinkingContent, mainContent };
-    }
-
-    return { thinkingContent: null, mainContent: content };
   };
 
   const handleFeedback = (messageId: number, feedbackType: string) => {
@@ -261,35 +249,32 @@ const MessageList = ({
               }
             >
               {message.role === 'assistant' ? (
-                (() => {
-                  const { thinkingContent, mainContent } = parseThinkingContent(message.content);
-                  return thinkingContent ? (
-                    <div className="flex flex-col gap-3">
-                      <Accordion type="single" collapsible className="w-full">
-                        <AccordionItem value="thinking" className="border-none">
-                          <AccordionTrigger className="py-2 text-sm font-medium hover:no-underline">
-                            Thinking Process
-                          </AccordionTrigger>
-                          <AccordionContent>
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={markdownComponents}
-                            >
-                              {thinkingContent}
-                            </ReactMarkdown>
-                          </AccordionContent>
-                        </AccordionItem>
-                      </Accordion>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                        {mainContent}
-                      </ReactMarkdown>
-                    </div>
-                  ) : (
+                message.reasoning ? (
+                  <div className="flex flex-col gap-3">
+                    <Accordion type="single" collapsible className="w-full">
+                      <AccordionItem value="reasoning" className="border-none">
+                        <AccordionTrigger className="py-2 text-sm font-medium hover:no-underline">
+                          Reasoning Process
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={markdownComponents}
+                          >
+                            {message.reasoning}
+                          </ReactMarkdown>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                      {mainContent}
+                      {message.content}
                     </ReactMarkdown>
-                  );
-                })()
+                  </div>
+                ) : (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                    {message.content}
+                  </ReactMarkdown>
+                )
               ) : (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -359,38 +344,12 @@ const MessageList = ({
           >
             {streamingMessage.content ? (
               <div className="py-1 min-h-[1.5rem]">
-                {(() => {
-                  const { thinkingContent, mainContent } = parseThinkingContent(
-                    streamingMessage.content
-                  );
-                  return (
-                    <div className="flex flex-col gap-3">
-                      {thinkingContent && (
-                        <Accordion type="single" collapsible className="w-full">
-                          <AccordionItem value="thinking" className="border-none">
-                            <AccordionTrigger className="py-2 text-sm font-medium hover:no-underline">
-                              Thinking Process
-                            </AccordionTrigger>
-                            <AccordionContent>
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={markdownComponents}
-                              >
-                                {thinkingContent}
-                              </ReactMarkdown>
-                            </AccordionContent>
-                          </AccordionItem>
-                        </Accordion>
-                      )}
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                          {mainContent}
-                        </ReactMarkdown>
-                      </div>
-                      <span className="inline-block w-2 h-4 bg-primary animate-pulse" />
-                    </div>
-                  );
-                })()}
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                    {streamingMessage.content}
+                  </ReactMarkdown>
+                </div>
+                <span className="inline-block w-2 h-4 bg-primary animate-pulse" />
               </div>
             ) : (
               <span className="text-muted-foreground">Generating a response</span>

@@ -30,6 +30,7 @@ export interface Message {
   conversationId: string;
   role: MessageRole;
   content: string;
+  reasoning?: string; // Reasoning/thinking tokens from models like DeepSeek R1
   sequence: number;
   createdAt: Date;
   provider: Provider;
