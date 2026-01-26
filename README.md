@@ -6,22 +6,24 @@
 [![Vite](https://img.shields.io/badge/Vite-7-646cff.svg)](https://vitejs.dev/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-A modern, responsive UI for interacting with Large Language Models (LLMs). Built with React, TypeScript, Vite, and AWS Cloudscape Design System, this application provides a beautiful interface for chatting with AI models through Ollama, LM Studio, and Amazon Bedrock.
+A modern, responsive UI for interacting with Large Language Models (LLMs). Built with React, TypeScript, Vite, and shadcn/ui (Radix primitives + Tailwind CSS), this application provides a beautiful interface for chatting with AI models through multiple providers.
 
 ## Features
 
-- **Modern UI**: Built with AWS Cloudscape Design System for a professional, accessible interface
-- **Multiple AI Providers**: Support for Ollama, LM Studio, and Amazon Bedrock
-- **Real-time Streaming**: Stream responses from AI models in real-time with loading indicators
+- **Modern UI**: Built with shadcn/ui components (Radix UI + Tailwind CSS) for a clean, accessible interface
+- **Multiple AI Providers**: Support for Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Groq, and Cerebras
+- **Real-time Streaming**: Stream responses from AI models in real-time with smooth animations
+- **Reasoning/Thinking Support**: Display thinking process for reasoning models (MiniMax, DeepSeek-R1, NemoTron, etc.)
+- **Unified Model Selector**: Searchable model picker in chat input, grouped by provider
+- **Inference Settings**: Adjust temperature, top-p, and max tokens via popover in chat input
+- **Context Window Indicator**: Track token usage against model context limits
 - **Prompt Optimizer**: Optimize prompts for Claude 4.5 models using best practices (Bedrock only)
-- **Model Configuration**: Adjust temperature, top-p, and max tokens for fine-tuned responses
-- **User Preferences**: Persistent settings for preferred AI provider and custom avatar initials
-- **Visual Provider Indicators**: Clear icons showing which AI provider is active in the header
 - **Document Upload**: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) with Bedrock models
 - **Usage Metrics**: View token usage and latency displayed after each AI response
-- **Connection Error Handling**: Flashbar notifications for provider connection issues
-- **Visual Mode & Density**: Toggle between light/dark mode and comfortable/compact density
-- **Chat History**: Manage multiple chat sessions with automatic history tracking *(Coming soon)*
+- **Chat History**: Manage multiple chat sessions with automatic history tracking via IndexedDB
+- **Saved Prompts**: Save and reuse frequently used prompts
+- **User Preferences**: Persistent settings for preferred AI provider and custom avatar initials
+- **Dark/Light Mode**: Toggle between visual modes
 - **Responsive Design**: Works seamlessly across desktop and mobile devices
 
 ## Prerequisites
@@ -31,9 +33,12 @@ Before running this application, ensure you have the following installed:
 - **Node.js**: Version 18.x or higher
 - **npm**: Version 9.x or higher (comes with Node.js)
 - **AI Provider** (at least one):
-  - [Ollama](https://ollama.ai) - Local AI models (recommended)
-  - [LM Studio](https://lmstudio.ai) - Alternative local AI platform
+  - [Ollama](https://ollama.ai) - Local AI models
+  - [LM Studio](https://lmstudio.ai) - Local AI platform with model management
   - [Amazon Bedrock](https://aws.amazon.com/bedrock/) - AWS cloud AI service (requires AWS credentials)
+  - [Bedrock Mantle](https://aws.amazon.com/bedrock/) - OpenAI-compatible Bedrock endpoint
+  - [Groq](https://groq.com) - Fast cloud inference (requires API key)
+  - [Cerebras](https://cerebras.ai) - Cloud inference (requires API key)
 
 ## Installation
 
@@ -52,7 +57,7 @@ Before running this application, ensure you have the following installed:
 
 ## AI Provider Setup
 
-### Option 1: Ollama (Recommended)
+### Option 1: Ollama
 
 1. Download and install Ollama from [ollama.com](https://ollama.com)
 
@@ -60,11 +65,6 @@ Before running this application, ensure you have the following installed:
 
    ```bash
    ollama pull qwen3-8b-8k:latest
-   ```
-
-   ```bash
-   # or an ollama cloud model
-   ollama pull minimax-m2:cloud
    ```
 
 3. Verify Ollama is running:
@@ -127,11 +127,27 @@ Before running this application, ensure you have the following installed:
    - Navigate to "Model access"
    - Request access to desired models (e.g., Claude, Llama)
 
-4. **Verify Setup**:
+### Option 4: Bedrock Mantle
 
-   ```bash
-   aws bedrock list-foundation-models --region us-west-2
-   ```
+Bedrock Mantle provides an OpenAI-compatible endpoint for Bedrock models.
+
+1. Configure in the app's Preferences:
+   - Set your Mantle API key
+   - Set your Mantle region
+
+### Option 5: Groq
+
+1. Get an API key from [console.groq.com](https://console.groq.com)
+
+2. Configure in the app's Preferences:
+   - Enter your Groq API key
+
+### Option 6: Cerebras
+
+1. Get an API key from [cloud.cerebras.ai](https://cloud.cerebras.ai)
+
+2. Configure in the app's Preferences:
+   - Enter your Cerebras API key
 
 ## Running the Application
 
@@ -165,87 +181,60 @@ npm run preview
 
 1. **Start the Application**: Run `npm run dev`
 
-2. **Select AI Provider**:
-   - Open the sidebar (Model Settings)
-   - Choose between Ollama, LM Studio, or Amazon Bedrock
-   - The app will automatically detect available models
+2. **Select a Model**:
+   - Click the model selector button in the chat input
+   - Browse models grouped by provider
+   - Use the search to filter models
 
-3. **Select a Model**:
-   - Choose from the dropdown list of available models
-   - Models are filtered to show only chat-capable models
-
-4. **Start Chatting**:
+3. **Start Chatting**:
    - Type your message in the input field
    - Press Enter or click the send button
    - Watch the AI response stream in real-time
 
 ### Model Configuration
 
-Adjust model parameters in the expandable settings panel:
+Adjust model parameters via the settings icon in the chat input:
 
 - **Temperature** (0.0 - 1.0): Controls randomness
   - Lower values (0.1-0.3): More focused and deterministic
   - Higher values (0.7-1.0): More creative and varied
 
 - **Top P** (0.0 - 1.0): Controls diversity via nucleus sampling
-  - Lower values: More focused responses
-  - Higher values: More diverse responses
 
 - **Max Tokens**: Maximum length of the response
-  - Default: 4096 tokens
-  - Adjust based on your needs and model capabilities
 
-> **Note for Claude 4.5 Models**: Claude 4.5 models (Sonnet, Haiku, Opus) don't support both temperature and topP simultaneously. When using these models, a radio button appears allowing you to choose which sampling parameter to use.
+> **Note for Claude 4.5 Models**: Claude 4.5 models don't support both temperature and topP simultaneously. The UI provides a toggle to choose which parameter to use.
 
-### Managing Chats
+### Reasoning Models
 
-- **New Chat**: Click the "New Chat" button in the sidebar to start fresh
-- **Clear History**: Clears the current conversation while keeping the session
+When using reasoning/thinking models (MiniMax, DeepSeek-R1, NemoTron, etc.):
 
-### User Preferences
-
-Customize your experience with persistent preferences:
-
-1. **Access Preferences**: Click the settings icon at the bottom of the sidebar
-2. **Preferred Provider**: Set your default AI provider (Ollama, LM Studio, or Bedrock)
-   - The app will automatically select this provider on startup
-3. **Avatar Initials**: Customize your chat avatar with 2 alphanumeric characters
-   - Automatically converted to uppercase
-   - Appears next to your messages in the chat
-4. **Save**: Click "Save" to persist your preferences
-   - Settings are stored in browser localStorage
-   - Preferences persist across sessions
+- A collapsible "Thinking" section appears showing the model's reasoning process
+- Click to expand/collapse the reasoning content
+- Reasoning is persisted with the conversation
 
 ### Document Upload (Bedrock Only)
 
-When using Amazon Bedrock models, you can upload documents:
+When using Amazon Bedrock models:
 
-1. Click the attachment icon in the chat input
-2. Select up to 5 files (max 4.5 MB each)
-3. Supported formats: PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX
-4. Send your message with the attached documents
-5. The AI will analyze and respond based on the document content
+1. Click the + button in the chat input
+2. Select "Add photos or files"
+3. Choose files (max 4.5 MB each)
+4. Supported formats: PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX, images
+5. Send your message with the attached documents
 
-### Usage Metrics
+### Context Window
 
-For all AI providers, view usage metrics displayed after each AI response:
+The context indicator in the chat input shows:
+- Current token usage vs model's context limit
+- Hover for detailed breakdown (input/output tokens)
 
-- **Input Tokens**: Tokens in your prompt
-- **Output Tokens**: Tokens in the AI response
-- **Total Tokens**: Combined token count
-- **Latency**: Response time in milliseconds
+### Saved Prompts
 
-Metrics appear with subtle icons below each assistant message.
-
-### Prompt Optimizer (Bedrock Claude 4.5 Only)
-
-When using Claude 4.5 models (Sonnet, Haiku, Opus) with Amazon Bedrock:
-
-1. A "Prompt Optimizer Available" badge appears in the chat header
-2. Click the optimize button (gen-ai icon) next to the send button
-3. Confirm the optimization in the modal dialog
-4. Your prompt is sent to Claude Opus 4.5 for optimization using best practices
-5. The optimized prompt replaces your original (undo available with Ctrl+Z)
+Save frequently used prompts:
+1. Open the Saved Prompts panel from the sidebar
+2. Create new prompts with categories
+3. Click to insert saved prompts into the chat input
 
 ## Project Structure
 
@@ -253,30 +242,29 @@ When using Claude 4.5 models (Sonnet, Haiku, Opus) with Amazon Bedrock:
 local-llm-ui/
 ├── src/
 │   ├── components/
-│   │   ├── chat/              # Chat-related components
-│   │   │   ├── ChatContainer.tsx
-│   │   │   ├── FloatingChatInput.tsx
-│   │   │   ├── MessageList.tsx
-│   │   │   ├── CodeBlock.tsx
-│   │   │   └── ...
-│   │   └── layout/            # Layout components
-│   ├── layout/
-│   │   ├── AppShell.tsx       # Main app shell/orchestrator
-│   │   └── ModelSettingsPanel.tsx  # Model settings panel
-│   ├── services/
-│   │   ├── api.ts             # API service orchestrator
-│   │   ├── ollama.ts          # Ollama integration
-│   │   ├── lmstudio.ts        # LM Studio integration
-│   │   ├── bedrock.ts         # Amazon Bedrock integration
-│   │   └── types.ts           # TypeScript types
-│   ├── utils/
-│   │   ├── preferences.ts     # User preferences management
-│   │   └── ...                # Other utility functions
+│   │   ├── ai-elements/       # AI UI components (conversation, message, prompt-input, reasoning, context)
+│   │   ├── chat/              # Chat container and related components
+│   │   ├── layout/            # Layout components
+│   │   ├── prompts/           # Saved prompts components
+│   │   ├── sidebar/           # Sidebar components
+│   │   ├── shared/            # Shared components
+│   │   └── ui/                # shadcn/ui components
+│   ├── db/                    # Dexie.js database schema
+│   ├── hooks/                 # React hooks
+│   ├── layout/                # App shell and layout
+│   ├── services/              # API services for each provider
+│   ├── types/                 # TypeScript types
+│   ├── utils/                 # Utility functions
 │   └── main.tsx               # Application entry point
 ├── server/
-│   └── bedrock-proxy.ts       # Bedrock proxy server
+│   ├── aisdk-proxy.ts         # Groq/Cerebras proxy
+│   ├── bedrock-aisdk-proxy.ts # Bedrock AI SDK proxy
+│   ├── bedrock-proxy.ts       # Bedrock models proxy
+│   ├── lmstudio-aisdk-proxy.ts # LM Studio chat proxy
+│   ├── lmstudio-proxy.ts      # LM Studio SDK proxy
+│   └── mantle-proxy.ts        # Bedrock Mantle proxy
 ├── public/                    # Static assets
-├── vite.config.ts             # Vite configuration
+├── vite.config.ts             # Vite configuration with proxy middleware
 └── package.json               # Dependencies and scripts
 ```
 
@@ -284,19 +272,13 @@ local-llm-ui/
 
 ### Environment Variables
 
-The application uses Vite's environment variable system. Create a `.env` file in the root directory if you need custom configuration:
+Create a `.env` file for custom configuration (optional):
 
 ```env
-# Optional: Custom Ollama URL
-VITE_OLLAMA_URL=http://localhost:11434
-
-# Optional: Custom LM Studio URL
-VITE_LMSTUDIO_URL=http://localhost:1234
-
-# Optional: AWS Configuration (if not using AWS CLI or credentials file)
-AWS_ACCESS_KEY_ID=your_access_key_id
-AWS_SECRET_ACCESS_KEY=your_secret_access_key
+# AWS Configuration (if not using AWS CLI or credentials file)
 AWS_REGION=us-west-2
+# AWS_ACCESS_KEY_ID=your_access_key_id
+# AWS_SECRET_ACCESS_KEY=your_secret_access_key
 ```
 
 ### Proxy Configuration
@@ -305,28 +287,23 @@ The Vite development server proxies requests to AI services:
 
 - `/api/ollama` → `http://localhost:11434`
 - `/api/lmstudio` → `http://localhost:1234`
-- `/api/bedrock` → Handled by server-side proxy (AWS SDK)
-
-This configuration is in `vite.config.ts` and handles CORS automatically. The Bedrock proxy runs server-side to securely handle AWS credentials.
+- `/api/bedrock`, `/api/bedrock-aisdk` → Server-side AWS SDK proxy
+- `/api/mantle` → Bedrock Mantle proxy
+- `/api/aisdk` → Groq/Cerebras proxy
+- `/api/lmstudio-sdk`, `/api/lmstudio-aisdk` → LM Studio proxies
 
 ## Troubleshooting
 
 ### No Models Available
 
-**Problem**: The model dropdown is empty
+**Problem**: The model selector shows no models
 
 **Solutions**:
 
 - **Ollama**: Ensure Ollama is running and you've pulled at least one model
-
-  ```bash
-  ollama list
-  ollama pull llama2
-  ```
-
-- **LM Studio**: Ensure the server is running and a model is loaded or JIT Loading is enabled
-
-- **Amazon Bedrock**: Verify AWS credentials are configured and you have model access
+- **LM Studio**: Ensure the server is running on port 1234
+- **Bedrock**: Verify AWS credentials and model access
+- **Groq/Cerebras**: Check API key in Preferences
 
 ### Connection Failed
 
@@ -334,24 +311,18 @@ This configuration is in `vite.config.ts` and handles CORS automatically. The Be
 
 **Solutions**:
 
-- **Ollama/LM Studio**: Verify the AI service is running on the correct port
-- **Ollama/LM Studio**: Check firewall settings
-- **Ollama/LM Studio**: Ensure no other application is using the port
-- **Ollama/LM Studio**: Restart the AI service
-- **Bedrock**: Verify AWS credentials are configured correctly
-- **Bedrock**: Check IAM permissions for Bedrock access
-- **Bedrock**: Ensure you have requested model access in AWS console
+- Verify the AI service is running on the correct port
+- Check firewall settings
+- For cloud providers, verify API keys are configured correctly
 
-### Slow Responses
+### Reasoning Not Showing
 
-**Problem**: AI responses are very slow
+**Problem**: Thinking/reasoning content not displayed
 
 **Solutions**:
 
-- Use a smaller model (e.g., `llama2:7b` instead of `llama2:70b`)
-- Reduce `max_tokens` setting
-- Ensure your system meets the model's hardware requirements
-- Close other resource-intensive applications
+- Ensure you're using a reasoning model (MiniMax, DeepSeek-R1, NemoTron, etc.)
+- Check that the model outputs reasoning in a supported format
 
 ## Development
 
@@ -361,44 +332,31 @@ This configuration is in `vite.config.ts` and handles CORS automatically. The Be
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
 - `npm run lint` - Run ESLint
+- `npm run lint:fix` - Fix ESLint issues
+- `npm run format` - Format with Prettier
+- `npm run test` - Run tests in watch mode
+- `npm run test:run` - Run tests once
 
 ### Code Style
 
 This project uses:
 
 - **ESLint**: For code linting
+- **Prettier**: For code formatting
 - **TypeScript**: For type safety
-- **Cloudscape Design System**: For UI components
-
-### Adding New Features
-
-1. Follow the existing component structure
-2. Use Cloudscape components for consistency
-3. Maintain TypeScript types
-4. Test with Ollama, LM Studio, and Bedrock (if applicable)
-
-## Screenshots
-
-### Chat Interface with Ollama/LM Studio
-
-![Local LLM UI Main Interface](.github/images/local-llm-ui-ex1.png)
-
-*Chat interface with model selection, settings panel, and real-time streaming responses*
-
-### Amazon Bedrock Features
-
-![Local LLM UI Amazon Bedrock Features](.github/images/local-llm-ui-ex2.png)
-
-*Bedrock integration with Claude 4.5 prompt optimizer, usage metrics, and document upload*
+- **Husky**: Pre-commit hooks for lint-staged
 
 ## Technologies Used
 
 - **React 19**: UI framework
-- **TypeScript**: Type safety
-- **Vite**: Build tool and dev server
-- **Cloudscape Design System**: AWS UI component library
-- **AWS SDK**: Bedrock integration (@aws-sdk/client-bedrock, @aws-sdk/client-bedrock-runtime)
-- **React Markdown**: Markdown rendering in chat
+- **TypeScript 5.9**: Type safety
+- **Vite 7**: Build tool and dev server
+- **shadcn/ui**: UI component library (Radix UI + Tailwind CSS)
+- **Tailwind CSS 4**: Utility-first CSS
+- **Dexie.js**: IndexedDB wrapper for persistence
+- **AI SDK**: Vercel AI SDK for streaming (@ai-sdk/amazon-bedrock, @ai-sdk/openai-compatible, etc.)
+- **Streamdown**: Markdown rendering in chat
+- **Lucide React**: Icons
 
 ## License
 
@@ -411,10 +369,10 @@ For issues or questions:
 1. Check the troubleshooting section
 2. Verify your AI provider is properly configured
 3. Check the browser console for error messages
-4. Ensure all dependencies are installed correctly
+4. Open an issue on GitHub
 
 ## Acknowledgments
 
-- UI built with [AWS Cloudscape Design System](https://cloudscape.design/)
-- Supports [Ollama](https://ollama.ai), [LM Studio](https://lmstudio.ai), and [Amazon Bedrock](https://aws.amazon.com/bedrock/)
-- Powered by [Vite](https://vitejs.dev/) and [React](https://react.dev/)
+- UI built with [shadcn/ui](https://ui.shadcn.com/) and [Radix UI](https://www.radix-ui.com/)
+- Supports [Ollama](https://ollama.ai), [LM Studio](https://lmstudio.ai), [Amazon Bedrock](https://aws.amazon.com/bedrock/), [Groq](https://groq.com), and [Cerebras](https://cerebras.ai)
+- Powered by [Vite](https://vitejs.dev/), [React](https://react.dev/), and [Vercel AI SDK](https://sdk.vercel.ai/)
