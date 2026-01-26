@@ -59,6 +59,13 @@ import { ModelSelectorButton } from './ModelSelectorButton';
  */
 
 /**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
  * BedrockChatContainer
  *
  * Chat container using AI Elements components and useBedrockChat hook.
@@ -299,7 +306,11 @@ const ChatContainer = ({
                         <Message from={message.role}>
                           <MessageContent>
                             {hasReasoning(message) && (
-                              <Reasoning className="w-full" isStreaming={isReasoningStreaming}>
+                              <Reasoning
+                                className="w-full"
+                                isStreaming={isReasoningStreaming}
+                                defaultOpen={false}
+                              >
                                 <ReasoningTrigger />
                                 <ReasoningContent>
                                   {getReasoningContent(message) || ''}

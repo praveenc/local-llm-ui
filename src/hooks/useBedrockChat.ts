@@ -368,12 +368,16 @@ export function useBedrockChat({
           }));
         }
 
-        // Persist assistant message to DB
+        // Persist assistant message to DB - include reasoning in <think> tags
         const assistantSequence = await getNextSequence(currentConversationId);
+        let dbContent = fullContent;
+        if (fullReasoning) {
+          dbContent = `<think>${fullReasoning}</think>\n${fullContent}`;
+        }
         await addMessage({
           conversationId: currentConversationId,
           role: 'assistant',
-          content: fullContent,
+          content: dbContent,
           sequence: assistantSequence,
           createdAt: new Date(),
           provider,
