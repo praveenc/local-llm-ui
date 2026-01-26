@@ -8,6 +8,8 @@
 
 A modern, responsive UI for interacting with Large Language Models (LLMs). Built with React, TypeScript, Vite, and shadcn/ui (Radix primitives + Tailwind CSS), this application provides a beautiful interface for chatting with AI models through multiple providers.
 
+![Local LLM UI](.github/images/local-llm-ui-ex1.png)
+
 ## Features
 
 - **Modern UI**: Built with shadcn/ui components (Radix UI + Tailwind CSS) for a clean, accessible interface
