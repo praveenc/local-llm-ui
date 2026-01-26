@@ -1,33 +1,51 @@
 .PHONY: dev build lint lint-fix format test test-run test-ui check fix clean help
 
-# Quiet mode - only show last N lines or errors
+# Configuration
 TAIL_LINES ?= 10
+VERBOSE ?= 0
+
+# Helper to run commands with controlled output
+# Usage: $(call run,command,success_message)
+define run
+	@if [ "$(VERBOSE)" = "1" ]; then \
+		$(1); \
+	else \
+		OUTPUT=$$($(1) 2>&1); \
+		EXIT_CODE=$$?; \
+		if [ $$EXIT_CODE -ne 0 ]; then \
+			echo "$$OUTPUT" | tail -n 20; \
+			exit $$EXIT_CODE; \
+		else \
+			echo "$$OUTPUT" | tail -n $(TAIL_LINES); \
+			[ -n "$(2)" ] && echo "$(2)"; \
+		fi; \
+	fi
+endef
 
 # Development (interactive - no suppression)
 dev:
 	npm run dev
 
-# Build - show last lines (includes errors)
+# Build
 build:
-	@npm run build 2>&1 | tail -n $(TAIL_LINES) || (npm run build; exit 1)
+	$(call run,npm run build,✓ Build complete)
 
-# Linting - show last lines
+# Linting
 lint:
-	@npm run lint 2>&1 | tail -n $(TAIL_LINES) || (npm run lint; exit 1)
+	$(call run,npm run lint,✓ Lint passed)
 
 lint-fix:
-	@npm run lint:fix 2>&1 | tail -n $(TAIL_LINES) || (npm run lint:fix; exit 1)
+	$(call run,npm run lint:fix,✓ Lint fixes applied)
 
-# Formatting - show summary only
+# Formatting - with proper summary
 format:
-	@OUTPUT=$$(npm run format 2>&1); \
-	CHANGED=$$(echo "$$OUTPUT" | grep -c '(changed)' || true); \
-	UNCHANGED=$$(echo "$$OUTPUT" | grep -c '(unchanged)' || true); \
-	echo "✓ Formatted: $$CHANGED changed, $$UNCHANGED unchanged"
+	@OUTPUT=$$(npm run format 2>&1) || { echo "$$OUTPUT" | tail -n 20; exit 1; }; \
+	echo "$$OUTPUT" | grep -E '\.(js|ts|jsx|tsx|json|css|md)' | tail -n $(TAIL_LINES); \
+	echo "✓ Format complete"
 
-# Testing - show summary
+# Testing
 test-run:
-	@npm run test:run 2>&1 | grep -E '(✓|✗|FAIL|PASS|Error|error|Tests|Duration)' | tail -n $(TAIL_LINES) || (npm run test:run; exit 1)
+	$(call run,npm run test:run)
 
 test:
 	npm run test
@@ -35,40 +53,43 @@ test:
 test-ui:
 	npm run test:ui
 
-# Combined commands - quiet with summary
+# Combined commands with proper error handling
 check:
-	@echo "Running lint..."
-	@npm run lint 2>&1 | tail -n 5
-	@echo "Running tests..."
-	@npm run test:run 2>&1 | grep -E '(✓|✗|FAIL|PASS|Test Files|Tests|Duration)' | tail -n 5
-	@echo "✓ All checks passed"
+	@echo "→ Linting..."; \
+	npm run lint 2>&1 | tail -n 5 || exit 1; \
+	echo "→ Testing..."; \
+	npm run test:run 2>&1 | tail -n 5 || exit 1; \
+	echo "✓ All checks passed"
 
 fix:
-	@echo "Formatting..."
-	@npm run format 2>&1 | grep -c 'changed\|unchanged' | xargs -I {} echo "  {} files processed"
-	@echo "Fixing lint issues..."
-	@npm run lint:fix 2>&1 | tail -n 3
-	@echo "✓ Fixes applied"
+	@echo "→ Formatting..."; \
+	npm run format 2>&1 | tail -n 3 || exit 1; \
+	echo "→ Fixing lint issues..."; \
+	npm run lint:fix 2>&1 | tail -n 3 || exit 1; \
+	echo "✓ All fixes applied"
 
 # Clean
 clean:
-	@rm -rf dist node_modules/.cache
+	@rm -rf dist node_modules/.cache .eslintcache
 	@echo "✓ Cleaned"
 
-# Help
+# Help (auto-generated from comments would be better, but keeping simple)
 help:
-	@echo "Available targets:"
-	@echo "  dev       - Start development server"
-	@echo "  build     - Build for production"
-	@echo "  lint      - Run ESLint (quiet)"
-	@echo "  lint-fix  - Run ESLint with auto-fix (quiet)"
-	@echo "  format    - Run Prettier (quiet)"
-	@echo "  test      - Run tests in watch mode"
-	@echo "  test-run  - Run tests once (quiet)"
-	@echo "  test-ui   - Run tests with UI"
-	@echo "  check     - Run lint and tests (quiet)"
-	@echo "  fix       - Run format and lint-fix (quiet)"
-	@echo "  clean     - Remove build artifacts"
-	@echo "  help      - Show this help"
+	@echo "Usage: make [target] [VERBOSE=1] [TAIL_LINES=N]"
 	@echo ""
-	@echo "Set TAIL_LINES=N to adjust output (default: 10)"
+	@echo "Targets:"
+	@echo "  dev       Start development server (interactive)"
+	@echo "  build     Build for production"
+	@echo "  lint      Run ESLint"
+	@echo "  lint-fix  Run ESLint with auto-fix"
+	@echo "  format    Run Prettier"
+	@echo "  test      Run tests (watch mode)"
+	@echo "  test-run  Run tests once"
+	@echo "  test-ui   Run tests with UI"
+	@echo "  check     Run lint + tests"
+	@echo "  fix       Run format + lint-fix"
+	@echo "  clean     Remove build artifacts"
+	@echo ""
+	@echo "Options:"
+	@echo "  VERBOSE=1      Show full output"
+	@echo "  TAIL_LINES=N   Lines to show (default: 10)"

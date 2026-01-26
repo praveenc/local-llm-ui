@@ -173,13 +173,13 @@ async function handleListModels(
     data?: Array<{ id: string; owned_by?: string; created?: number }>;
   };
 
-  // Transform OpenAI models format to our format
+  // Transform OpenAI models format to our format with friendly names
   const models = (data.data || []).map(
     (model: { id: string; owned_by?: string; created?: number }) => ({
       modelId: model.id,
-      modelName: model.id,
+      modelName: formatModelName(model.id),
       provider: 'bedrock-mantle',
-      modelFamily: 'Bedrock Mantle',
+      modelFamily: getModelFamily(model.id),
       ownedBy: model.owned_by,
     })
   );
@@ -188,6 +188,88 @@ async function handleListModels(
 
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({ models }));
+}
+
+/**
+ * Format model ID into a friendly display name
+ * e.g., "nvidia.nemotron-nano-9b-v2" -> "NVIDIA Nemotron Nano 9B v2"
+ */
+function formatModelName(modelId: string): string {
+  // Split by dot to separate provider from model name
+  const parts = modelId.split('.');
+  const provider = parts[0];
+  const modelPart = parts.slice(1).join('.');
+
+  // Format provider name
+  const providerName = formatProviderName(provider);
+
+  // Format model name
+  const modelName = modelPart
+    .split('-')
+    .map((word) => {
+      // Handle size indicators (e.g., 9b, 30b, 120b)
+      if (/^\d+b$/i.test(word)) {
+        return word.toUpperCase();
+      }
+      // Handle version indicators (e.g., v2, v3)
+      if (/^v\d+$/i.test(word)) {
+        return word.toLowerCase();
+      }
+      // Handle year/date indicators (e.g., 2507)
+      if (/^\d{4}$/.test(word)) {
+        return word;
+      }
+      // Handle common abbreviations
+      if (['a3b', 'a22b', 'oss'].includes(word.toLowerCase())) {
+        return word.toUpperCase();
+      }
+      // Capitalize first letter
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ');
+
+  return `${providerName} ${modelName}`.trim();
+}
+
+/**
+ * Format provider prefix into display name
+ */
+function formatProviderName(provider: string): string {
+  const providerNames: Record<string, string> = {
+    nvidia: 'NVIDIA',
+    openai: 'OpenAI',
+    mistral: 'Mistral',
+    qwen: 'Qwen',
+    minimax: 'MiniMax',
+    meta: 'Meta',
+    anthropic: 'Anthropic',
+    cohere: 'Cohere',
+    ai21: 'AI21',
+    amazon: 'Amazon',
+  };
+  return (
+    providerNames[provider.toLowerCase()] || provider.charAt(0).toUpperCase() + provider.slice(1)
+  );
+}
+
+/**
+ * Extract model family from model ID
+ */
+function getModelFamily(modelId: string): string {
+  const provider = modelId.split('.')[0].toLowerCase();
+  const familyMap: Record<string, string> = {
+    nvidia: 'NVIDIA',
+    openai: 'OpenAI',
+    mistral: 'Mistral AI',
+    qwen: 'Alibaba Qwen',
+    minimax: 'MiniMax',
+    meta: 'Meta AI',
+    anthropic: 'Anthropic',
+    cohere: 'Cohere',
+    ai21: 'AI21 Labs',
+    amazon: 'Amazon',
+  };
+  return familyMap[provider] || 'Bedrock Mantle';
 }
 
 async function handleChat(
@@ -207,12 +289,16 @@ async function handleChat(
 
   console.log(`Mantle: Chat request for model: ${model} in region: ${region}`);
   console.log(`Mantle: Messages count: ${messages?.length || 0}`);
+  console.log(
+    `Mantle: Inference config: temperature=${temperature}, max_tokens=${max_tokens}, top_p=${top_p}`
+  );
 
   // Build request body for OpenAI-compatible API
   const requestBody: {
     model: string;
     messages: Array<{ role: string; content: string }>;
     stream: boolean;
+    stream_options?: { include_usage: boolean };
     temperature?: number;
     max_tokens?: number;
     top_p?: number;
@@ -223,6 +309,8 @@ async function handleChat(
       content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
     })),
     stream,
+    // Request usage data in streaming mode
+    ...(stream && { stream_options: { include_usage: true } }),
   };
 
   // Add optional parameters if provided
@@ -283,6 +371,14 @@ async function handleChat(
 
             try {
               const parsed = JSON.parse(data);
+
+              // Handle reasoning content (e.g., MiniMax models)
+              const reasoning = parsed.choices?.[0]?.delta?.reasoning;
+              if (reasoning) {
+                res.write(`data: ${JSON.stringify({ reasoning })}\n\n`);
+              }
+
+              // Handle regular content
               const content = parsed.choices?.[0]?.delta?.content;
               if (content) {
                 res.write(`data: ${JSON.stringify({ content })}\n\n`);
@@ -290,6 +386,7 @@ async function handleChat(
 
               // Check for usage info in the final chunk
               if (parsed.usage) {
+                console.log('Mantle: Received usage data:', parsed.usage);
                 res.write(
                   `data: ${JSON.stringify({
                     metadata: {
