@@ -255,6 +255,9 @@ export function useBedrockChat({
           headers['X-Api-Key'] = apiKey;
           // Add provider to request body for AI SDK proxy
           (requestBody as Record<string, unknown>).provider = provider;
+        } else if (provider === 'lmstudio') {
+          endpoint = '/api/lmstudio-aisdk/chat';
+          // No API key needed for local LM Studio
         } else {
           // Default to Bedrock
           endpoint = '/api/bedrock-aisdk/chat';

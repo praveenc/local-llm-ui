@@ -6,6 +6,7 @@ import { defineConfig } from 'vite';
 import { createAISDKProxy } from './server/aisdk-proxy';
 import { handleBedrockAISDKRequest } from './server/bedrock-aisdk-proxy';
 import { handleBedrockRequest } from './server/bedrock-proxy';
+import { createLMStudioAISDKProxy } from './server/lmstudio-aisdk-proxy';
 import { handleLMStudioRequest } from './server/lmstudio-proxy';
 import { handleMantleRequest } from './server/mantle-proxy';
 
@@ -61,6 +62,13 @@ export default defineConfig({
       name: 'aisdk-proxy',
       configureServer(server) {
         server.middlewares.use(createAISDKProxy());
+      },
+    },
+    // LMStudio AI SDK proxy for chat
+    {
+      name: 'lmstudio-aisdk-proxy',
+      configureServer(server) {
+        server.middlewares.use(createLMStudioAISDKProxy());
       },
     },
     // LMStudio SDK proxy for model management
