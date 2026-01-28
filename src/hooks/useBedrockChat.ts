@@ -258,6 +258,9 @@ export function useBedrockChat({
         } else if (provider === 'lmstudio') {
           endpoint = '/api/lmstudio-aisdk/chat';
           // No API key needed for local LM Studio
+        } else if (provider === 'ollama') {
+          endpoint = '/api/ollama-aisdk/chat';
+          // No API key needed for local Ollama
         } else {
           // Default to Bedrock
           endpoint = '/api/bedrock-aisdk/chat';

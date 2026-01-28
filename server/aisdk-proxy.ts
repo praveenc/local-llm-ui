@@ -76,8 +76,6 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       return;
     }
 
-    console.log(`AI SDK Proxy: ${request.provider} chat request for model ${request.model}`);
-
     try {
       const provider = createProvider(request.provider, apiKey);
       const startTime = Date.now();

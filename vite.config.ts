@@ -9,6 +9,7 @@ import { handleBedrockRequest } from './server/bedrock-proxy';
 import { createLMStudioAISDKProxy } from './server/lmstudio-aisdk-proxy';
 import { handleLMStudioRequest } from './server/lmstudio-proxy';
 import { handleMantleRequest } from './server/mantle-proxy';
+import { createOllamaAISDKProxy } from './server/ollama-aisdk-proxy';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -69,6 +70,13 @@ export default defineConfig({
       name: 'lmstudio-aisdk-proxy',
       configureServer(server) {
         server.middlewares.use(createLMStudioAISDKProxy());
+      },
+    },
+    // Ollama AI SDK proxy for chat
+    {
+      name: 'ollama-aisdk-proxy',
+      configureServer(server) {
+        server.middlewares.use(createOllamaAISDKProxy());
       },
     },
     // LMStudio SDK proxy for model management

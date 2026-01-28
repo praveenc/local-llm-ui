@@ -4,7 +4,7 @@
  * Client-side service for interacting with Amazon Bedrock Mantle endpoints
  * which provide OpenAI-compatible APIs.
  */
-import type { ChatRequest, ModelInfo } from './types';
+import type { ModelInfo } from './types';
 
 const MANTLE_BASE_URL = '/api/mantle';
 
@@ -75,8 +75,6 @@ export class MantleService {
       }
 
       const data = await response.json();
-      console.log(`Mantle: Received ${data.models?.length || 0} models from ${this.region}`);
-
       return data.models || [];
     } catch (error) {
       const err = error as Error;
@@ -89,82 +87,6 @@ export class MantleService {
       throw new Error(
         `Cannot connect to Bedrock Mantle in ${this.region}. Please check your API key.`
       );
-    }
-  }
-
-  async *chat(request: ChatRequest): AsyncGenerator<string, void, unknown> {
-    if (!this.hasApiKey()) {
-      throw new Error(
-        'Bedrock Mantle API key is required. Please configure it in the preferences.'
-      );
-    }
-
-    try {
-      const response = await fetch(`${MANTLE_BASE_URL}/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Mantle-Api-Key': this.apiKey!,
-          'X-Mantle-Region': this.region,
-        },
-        body: JSON.stringify({
-          model: request.model,
-          messages: request.messages.map((msg) => ({
-            role: msg.role,
-            content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
-          })),
-          temperature: request.temperature,
-          max_tokens: request.max_tokens,
-          top_p: request.top_p,
-          stream: true,
-        }),
-        signal: request.signal,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('Response body is not readable');
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') continue;
-
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.content) {
-                yield parsed.content;
-              } else if (parsed.metadata) {
-                // Yield metadata as a special marker
-                yield `__MANTLE_METADATA__${JSON.stringify(parsed.metadata)}`;
-              }
-            } catch {
-              // Skip malformed JSON
-            }
-          }
-        }
-      }
-    } catch (error) {
-      const err = error as Error;
-      console.error('Mantle: Chat error:', error);
-      throw err;
     }
   }
 

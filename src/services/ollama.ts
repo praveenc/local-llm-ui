@@ -1,4 +1,4 @@
-import type { ChatRequest, ModelInfo } from './types';
+import type { ModelInfo } from './types';
 
 // Use proxy in development, direct connection in production
 const OLLAMA_BASE_URL = import.meta.env.DEV ? '/api/ollama' : 'http://localhost:11434';
@@ -27,84 +27,6 @@ export class OllamaService {
         }));
     } catch (error) {
       console.error('Ollama: Failed to fetch models:', error);
-      throw error;
-    }
-  }
-
-  async *chat(request: ChatRequest): AsyncGenerator<string, void, unknown> {
-    const startTime = Date.now();
-    try {
-      const response = await fetch(`${this.baseUrl}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: request.model,
-          messages: request.messages,
-          options: {
-            temperature: request.temperature ?? 0.7,
-            num_predict: request.max_tokens ?? 2048,
-            top_p: request.top_p ?? 0.9,
-          },
-          stream: true,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('Response body is not readable');
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.trim()) {
-            try {
-              const parsed = JSON.parse(line);
-              const content = parsed.message?.content;
-              if (content) {
-                yield content;
-              }
-
-              // Ollama sends usage info in the final chunk when done=true
-              if (parsed.done && (parsed.prompt_eval_count || parsed.eval_count)) {
-                const latencyMs = Date.now() - startTime;
-                console.log('Ollama: Usage data found:', {
-                  prompt_eval_count: parsed.prompt_eval_count,
-                  eval_count: parsed.eval_count,
-                  latencyMs,
-                });
-                yield `__OLLAMA_METADATA__${JSON.stringify({
-                  usage: {
-                    promptTokens: parsed.prompt_eval_count,
-                    completionTokens: parsed.eval_count,
-                    totalTokens: (parsed.prompt_eval_count || 0) + (parsed.eval_count || 0),
-                  },
-                  latencyMs,
-                })}`;
-              }
-            } catch (e) {
-              console.error('Failed to parse Ollama response:', e);
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Ollama: Chat error:', error);
       throw error;
     }
   }

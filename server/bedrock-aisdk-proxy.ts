@@ -98,20 +98,12 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
 
   const { model, messages, temperature, max_tokens, top_p }: ChatRequest = JSON.parse(body);
 
-  console.log(`Bedrock AI SDK: Chat request for model: ${model}`);
-  console.log(`Bedrock AI SDK: Messages count: ${messages?.length || 0}`);
-
   // Claude 4.5 models don't support both temperature and topP simultaneously
   const isClaude45 =
     model.includes('sonnet-4-5') || model.includes('haiku-4-5') || model.includes('opus-4-5');
 
   if (isClaude45) {
-    // For Claude 4.5, only use one sampling parameter
-    if (temperature !== undefined) {
-      console.log(`Bedrock AI SDK: Using temperature=${temperature} for Claude 4.5`);
-    } else if (top_p !== undefined) {
-      console.log(`Bedrock AI SDK: Using top_p=${top_p} for Claude 4.5`);
-    }
+    // For Claude 4.5, only use one sampling parameter (handled below)
   }
 
   // Transform messages to AI SDK format with file support

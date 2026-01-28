@@ -4,39 +4,6 @@ export interface Model {
   provider: 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle' | 'groq' | 'cerebras';
 }
 
-export interface DocumentBlock {
-  name: string;
-  format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
-  source: {
-    bytes: string; // base64 encoded
-  };
-}
-
-export interface ContentBlock {
-  text?: string;
-  document?: DocumentBlock;
-}
-
-export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string | ContentBlock[];
-  files?: Array<{
-    name: string;
-    format: string;
-    bytes: string;
-  }>;
-}
-
-export interface ChatRequest {
-  model: string;
-  messages: ChatMessage[];
-  temperature?: number;
-  max_tokens?: number;
-  top_p?: number;
-  stream?: boolean;
-  signal?: AbortSignal;
-}
-
 export interface ModelInfo {
   modelId: string;
   modelName: string;
