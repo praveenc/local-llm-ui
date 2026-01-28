@@ -4,9 +4,8 @@
  */
 import { createCerebras } from '@ai-sdk/cerebras';
 import { createGroq } from '@ai-sdk/groq';
-import { streamText } from 'ai';
 
-import type { ChatRequest, ModelInfo } from './types';
+import type { ModelInfo } from './types';
 
 type AISDKProvider = 'groq' | 'cerebras';
 
@@ -118,57 +117,6 @@ export class AISDKService {
       modelName: model.name,
       provider: this.provider,
     }));
-  }
-
-  /**
-   * Stream chat completion using AI SDK
-   */
-  async *chat(request: ChatRequest): AsyncGenerator<string, void, unknown> {
-    const provider = this.createProvider();
-    const startTime = Date.now();
-
-    // Convert messages to AI SDK format
-    const messages = request.messages.map((msg) => ({
-      role: msg.role as 'user' | 'assistant' | 'system',
-      content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
-    }));
-
-    try {
-      const result = streamText({
-        model: provider(request.model),
-        messages,
-        temperature: request.temperature,
-        maxOutputTokens: request.max_tokens,
-        topP: request.top_p,
-        abortSignal: request.signal,
-      });
-
-      // Stream the text content
-      for await (const chunk of result.textStream) {
-        yield chunk;
-      }
-
-      // Calculate latency
-      const latencyMs = Date.now() - startTime;
-
-      // After streaming completes, get usage data
-      const usage = await result.usage;
-      console.log(`${this.provider}: Usage data:`, usage, `Latency: ${latencyMs}ms`);
-
-      // Yield metadata in the same format as LM Studio for consistency
-      yield `__AISDK_METADATA__${JSON.stringify({
-        usage: {
-          promptTokens: usage?.inputTokens,
-          completionTokens: usage?.outputTokens,
-          totalTokens: (usage?.inputTokens || 0) + (usage?.outputTokens || 0),
-        },
-        latencyMs,
-      })}`;
-    } catch (error) {
-      const err = error as Error;
-      console.error(`${this.provider}: Chat error:`, err);
-      throw err;
-    }
   }
 
   /**

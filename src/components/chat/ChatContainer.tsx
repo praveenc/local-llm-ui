@@ -58,6 +58,41 @@ import { ModelSelectorButton } from './ModelSelectorButton';
  * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
  */
 
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
 // Bedrock file size limits
 const BEDROCK_DOC_MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for documents
 

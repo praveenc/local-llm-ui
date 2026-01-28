@@ -24,6 +24,32 @@ const DEFAULT_CONTEXT_LIMITS: Record<string, number> = {
   // Cerebras models (free tier limited)
   'llama-3.3-70b': 8192,
   'llama3.1-8b': 8192,
+  // Ollama models (common defaults)
+  'llama3.2:latest': 131072,
+  'llama3.2:3b': 131072,
+  'llama3.2:1b': 131072,
+  'llama3.1:latest': 131072,
+  'llama3.1:8b': 131072,
+  'llama3.1:70b': 131072,
+  'mistral:latest': 32768,
+  'mistral:7b': 32768,
+  'qwen2.5:latest': 131072,
+  'qwen2.5:7b': 131072,
+  'qwen2.5:14b': 131072,
+  'qwen2.5:32b': 131072,
+  'qwen2.5:72b': 131072,
+  'qwen3:latest': 131072,
+  'qwen3:4b': 131072,
+  'qwen3:8b': 131072,
+  'deepseek-r1:latest': 131072,
+  'deepseek-r1:7b': 131072,
+  'deepseek-r1:14b': 131072,
+  'phi4:latest': 16384,
+  'gemma2:latest': 8192,
+  'gemma2:9b': 8192,
+  // LM Studio models (common defaults)
+  'lmstudio-community/llama-3.2-3b-instruct': 131072,
+  'lmstudio-community/qwen2.5-7b-instruct': 131072,
   // Bedrock Mantle models (common defaults)
   'nvidia.nemotron-nano-9b-v2': 32768,
   'nvidia.nemotron-mini-4b-instruct': 32768,
@@ -109,6 +135,51 @@ function toTokenlensModelId(modelId: string, provider: Provider): string | null 
   // Cerebras models
   if (provider === 'cerebras') {
     return `cerebras/${modelId}`;
+  }
+
+  // Ollama models - map to meta-llama or other providers where possible
+  if (provider === 'ollama') {
+    const modelLower = modelId.toLowerCase();
+    if (modelLower.includes('llama')) {
+      return 'meta-llama/llama-3.3-70b-instruct';
+    }
+    if (modelLower.includes('mistral')) {
+      return 'mistral/mistral-7b-instruct-v0.3';
+    }
+    if (modelLower.includes('qwen')) {
+      return null; // Not in tokenlens, use defaults
+    }
+    if (modelLower.includes('deepseek')) {
+      return null; // Not in tokenlens, use defaults
+    }
+    if (modelLower.includes('phi')) {
+      return null; // Not in tokenlens, use defaults
+    }
+    if (modelLower.includes('gemma')) {
+      return 'google/gemma-2-9b-it';
+    }
+    return null; // Unknown Ollama model, use defaults
+  }
+
+  // LM Studio models - similar mapping
+  if (provider === 'lmstudio') {
+    const modelLower = modelId.toLowerCase();
+    if (modelLower.includes('llama')) {
+      return 'meta-llama/llama-3.3-70b-instruct';
+    }
+    if (modelLower.includes('mistral')) {
+      return 'mistral/mistral-7b-instruct-v0.3';
+    }
+    if (modelLower.includes('qwen')) {
+      return null; // Not in tokenlens, use defaults
+    }
+    if (modelLower.includes('deepseek')) {
+      return null; // Not in tokenlens, use defaults
+    }
+    if (modelLower.includes('nemotron')) {
+      return null; // Not in tokenlens, use defaults
+    }
+    return null; // Unknown LM Studio model, use defaults
   }
 
   return null;

@@ -3,7 +3,7 @@ import { bedrockService } from './bedrock';
 import { lmstudioService } from './lmstudio';
 import { mantleService } from './mantle';
 import { ollamaService } from './ollama';
-import type { ChatRequest, ModelInfo } from './types';
+import type { ModelInfo } from './types';
 
 export type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle' | 'groq' | 'cerebras';
 
@@ -16,7 +16,7 @@ class APIService {
       const lmstudioModels = await lmstudioService.getModels();
       models.push(...lmstudioModels);
     } catch {
-      console.log('LMStudio not available');
+      // LMStudio not available
     }
 
     // Try Ollama
@@ -24,7 +24,7 @@ class APIService {
       const ollamaModels = await ollamaService.getModels();
       models.push(...ollamaModels);
     } catch {
-      console.log('Ollama not available');
+      // Ollama not available
     }
 
     // Try Bedrock
@@ -32,7 +32,7 @@ class APIService {
       const bedrockModels = await bedrockService.getModels();
       models.push(...bedrockModels);
     } catch {
-      console.log('Bedrock not available');
+      // Bedrock not available
     }
 
     // Try Groq (AI SDK)
@@ -40,7 +40,7 @@ class APIService {
       const groqModels = groqService.getModels();
       models.push(...groqModels);
     } catch {
-      console.log('Groq not available');
+      // Groq not available
     }
 
     // Try Cerebras (AI SDK)
@@ -48,7 +48,7 @@ class APIService {
       const cerebrasModels = cerebrasService.getModels();
       models.push(...cerebrasModels);
     } catch {
-      console.log('Cerebras not available');
+      // Cerebras not available
     }
 
     if (models.length === 0) {
@@ -58,31 +58,6 @@ class APIService {
     }
 
     return models;
-  }
-
-  async *chat(provider: Provider, request: ChatRequest): AsyncGenerator<string, void, unknown> {
-    switch (provider) {
-      case 'lmstudio':
-        yield* lmstudioService.chat(request);
-        break;
-      case 'ollama':
-        yield* ollamaService.chat(request);
-        break;
-      case 'bedrock-mantle':
-        yield* mantleService.chat(request);
-        break;
-      case 'bedrock':
-        yield* bedrockService.chat(request);
-        break;
-      case 'groq':
-        yield* groqService.chat(request);
-        break;
-      case 'cerebras':
-        yield* cerebrasService.chat(request);
-        break;
-      default:
-        throw new Error(`Unknown provider: ${provider}`);
-    }
   }
 
   async checkConnections(): Promise<{

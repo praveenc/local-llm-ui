@@ -155,8 +155,6 @@ async function handleListModels(
 ): Promise<void> {
   const baseUrl = getMantleBaseUrl(region);
 
-  console.log(`Mantle: Fetching models from ${baseUrl}/models`);
-
   const response = await fetch(`${baseUrl}/models`, {
     method: 'GET',
     headers: {
@@ -183,8 +181,6 @@ async function handleListModels(
       ownedBy: model.owned_by,
     })
   );
-
-  console.log(`Mantle: Found ${models.length} models in ${region}`);
 
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({ models }));
@@ -287,12 +283,6 @@ async function handleChat(
 
   const baseUrl = getMantleBaseUrl(region);
 
-  console.log(`Mantle: Chat request for model: ${model} in region: ${region}`);
-  console.log(`Mantle: Messages count: ${messages?.length || 0}`);
-  console.log(
-    `Mantle: Inference config: temperature=${temperature}, max_tokens=${max_tokens}, top_p=${top_p}`
-  );
-
   // Build request body for OpenAI-compatible API
   const requestBody: {
     model: string;
@@ -386,7 +376,6 @@ async function handleChat(
 
               // Check for usage info in the final chunk
               if (parsed.usage) {
-                console.log('Mantle: Received usage data:', parsed.usage);
                 res.write(
                   `data: ${JSON.stringify({
                     metadata: {

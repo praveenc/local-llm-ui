@@ -42,8 +42,6 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
       return;
     }
 
-    console.log(`LMStudio AI SDK: Chat request for model ${request.model}`);
-
     try {
       const startTime = Date.now();
 
@@ -51,9 +49,6 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-
-      // Make direct fetch to LM Studio to see raw response format
-      console.log('LMStudio AI SDK: Making direct request with stream_options.include_usage...');
 
       const directResponse = await fetch('http://localhost:1234/v1/chat/completions', {
         method: 'POST',
@@ -78,7 +73,6 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
 
       const decoder = new TextDecoder();
       let buffer = '';
-      let chunkCount = 0;
       let usageData: {
         prompt_tokens?: number;
         completion_tokens?: number;
@@ -103,18 +97,11 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
           if (line.startsWith('data: ')) {
             const data = line.slice(6).trim();
             if (data === '[DONE]') {
-              console.log('LMStudio AI SDK: Received [DONE]');
               continue;
             }
 
             try {
               const parsed = JSON.parse(data);
-              chunkCount++;
-
-              // Log first few chunks to see structure
-              if (chunkCount <= 3) {
-                console.log(`LMStudio AI SDK: Chunk ${chunkCount}:`, JSON.stringify(parsed));
-              }
 
               const delta = parsed.choices?.[0]?.delta;
 
@@ -143,7 +130,6 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
                     }
                   }
                   inThinkBlock = true;
-                  console.log('LMStudio AI SDK: Entered <think> block');
                 }
 
                 if (inThinkBlock) {
@@ -163,7 +149,6 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
                     }
 
                     inThinkBlock = false;
-                    console.log('LMStudio AI SDK: Exited </think> block');
 
                     // Reset for content after </think>
                     const afterThink = accumulatedContent.substring(thinkEnd + 8);
@@ -195,21 +180,16 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
 
               // Check for usage in the chunk (LM Studio sends this at the end with stream_options)
               if (parsed.usage) {
-                console.log('LMStudio AI SDK: Found usage in chunk:', parsed.usage);
                 usageData = parsed.usage;
               }
             } catch {
-              console.error('LMStudio AI SDK: Failed to parse chunk:', data.substring(0, 100));
+              // Skip malformed chunks
             }
           }
         }
       }
 
       const latencyMs = Date.now() - startTime;
-      console.log(
-        `LMStudio AI SDK: Stream completed. Total chunks: ${chunkCount}, Latency: ${latencyMs}ms`
-      );
-      console.log('LMStudio AI SDK: Final usage data:', usageData);
 
       // Send metadata with usage
       res.write(
