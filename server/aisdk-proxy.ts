@@ -3,10 +3,12 @@
  *
  * Handles chat requests using Vercel AI SDK with SSE streaming format.
  * API keys are passed from client via headers (stored in localStorage).
+ * Supports optional Tavily web search tool integration.
  */
 import { createCerebras } from '@ai-sdk/cerebras';
 import { createGroq } from '@ai-sdk/groq';
-import { streamText } from 'ai';
+import { tavilySearch } from '@tavily/ai-sdk';
+import { stepCountIs, streamText } from 'ai';
 import type { Connect } from 'vite';
 
 type AISDKProvider = 'groq' | 'cerebras';
@@ -23,6 +25,7 @@ interface ChatRequest {
   temperature?: number;
   top_p?: number;
   max_tokens?: number;
+  enableWebSearch?: boolean;
 }
 
 function createProvider(providerType: AISDKProvider, apiKey: string) {
@@ -76,6 +79,15 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       return;
     }
 
+    // Get Tavily API key if web search is enabled
+    const tavilyApiKey = req.headers['x-tavily-api-key'] as string;
+    if (request.enableWebSearch && !tavilyApiKey) {
+      res.statusCode = 401;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Tavily API key required for web search' }));
+      return;
+    }
+
     try {
       const provider = createProvider(request.provider, apiKey);
       const startTime = Date.now();
@@ -85,17 +97,55 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
+      // Configure tools if web search is enabled
+      const tools =
+        request.enableWebSearch && tavilyApiKey
+          ? { webSearch: tavilySearch({ apiKey: tavilyApiKey }) }
+          : undefined;
+
+      // Create abort controller to cancel streamText when client disconnects
+      const abortController = new AbortController();
+      req.on('close', () => {
+        abortController.abort();
+      });
+
       const result = await streamText({
         model: provider(request.model),
         messages: request.messages,
         temperature: request.temperature,
         maxOutputTokens: request.max_tokens,
         topP: request.top_p,
+        tools,
+        abortSignal: abortController.signal,
+        // stopWhen required for multi-step tool use (agentic behavior)
+        ...(tools && { stopWhen: stepCountIs(5) }),
       });
 
-      // Stream text chunks
-      for await (const chunk of result.textStream) {
-        res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+      // Stream text chunks and handle tool calls
+      for await (const part of result.fullStream) {
+        if (part.type === 'text-delta') {
+          res.write(`data: ${JSON.stringify({ content: part.text })}\n\n`);
+        } else if (part.type === 'tool-call') {
+          res.write(
+            `data: ${JSON.stringify({
+              toolCall: {
+                id: part.toolCallId,
+                name: part.toolName,
+                args: 'input' in part ? part.input : {},
+              },
+            })}\n\n`
+          );
+        } else if (part.type === 'tool-result') {
+          res.write(
+            `data: ${JSON.stringify({
+              toolResult: {
+                id: part.toolCallId,
+                name: part.toolName,
+                result: 'output' in part ? part.output : part,
+              },
+            })}\n\n`
+          );
+        }
       }
 
       // Get usage data after stream completes

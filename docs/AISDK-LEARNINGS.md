@@ -268,3 +268,118 @@ src/services/
 ├── ollama.ts     # Ollama (getModels, checkConnection)
 └── types.ts      # Shared types (ModelInfo, LoadProgressEvent)
 ```
+
+
+---
+
+## Tavily Web Search Integration (@tavily/ai-sdk)
+
+**Date**: 2026-01-29
+
+**Package**: `@tavily/ai-sdk`
+
+**Setup**:
+```typescript
+import { tavilySearch } from '@tavily/ai-sdk';
+import { stepCountIs, streamText } from 'ai';
+
+// Pass API key when creating the tool
+const tools = {
+  webSearch: tavilySearch({ apiKey: tavilyApiKey })
+};
+
+const result = streamText({
+  model: provider(modelId),
+  messages,
+  tools,
+  stopWhen: stepCountIs(5), // Required for multi-step tool use
+  abortSignal: abortController.signal, // For cancellation support
+});
+```
+
+**Key Learnings**:
+
+1. **API Key Passing**: The Tavily API key must be passed directly to `tavilySearch()` function, not via environment variables in the browser context.
+
+2. **stopWhen for Multi-Step Tool Use**: AI SDK v5+ uses `stopWhen: stepCountIs(N)` instead of `maxSteps`. Without it, the model will call the tool but won't continue generating a response based on the tool results.
+
+3. **Stream Part Types**: When using `fullStream`, tool-related parts have these types:
+   - `tool-call`: Contains `toolCallId`, `toolName`, `input` (not `args`)
+   - `tool-result`: Contains `toolCallId`, `toolName`, `output` (not `result`)
+   - `text-delta`: Contains `text` (not `textDelta`)
+
+4. **SSE Format for Tools**: Extended SSE format to include tool events:
+   ```
+   data: {"content": "Let me search..."}\n\n
+   data: {"toolCall": {"id": "...", "name": "webSearch", "args": {...}}}\n\n
+   data: {"toolResult": {"id": "...", "name": "webSearch", "result": {...}}}\n\n
+   data: {"content": "Based on my search..."}\n\n
+   ```
+
+5. **Client-Side Tool Call Handling**: Track pending tool calls and update their status when results arrive. Use a Map to track tool calls by ID.
+
+6. **Abort Signal Support**: Pass `abortSignal` to `streamText()` to support cancellation. On the server, listen for `req.on('close')` to abort when client disconnects.
+
+**Available Tavily Tools**:
+- `tavilySearch()` - Real-time web search
+- `tavilyExtract()` - Content extraction from URLs
+- `tavilyCrawl()` - Website crawling
+- `tavilyMap()` - Site structure mapping
+
+**Configuration Options for tavilySearch**:
+- `searchDepth`: "basic" | "advanced"
+- `topic`: "general" | "news" | "finance"
+- `includeAnswer`: boolean
+- `maxResults`: number (default: 5)
+- `timeRange`: "year" | "month" | "week" | "day"
+
+**Files**:
+- `server/aisdk-proxy.ts` - Groq/Cerebras with Tavily
+- `server/bedrock-aisdk-proxy.ts` - Bedrock with Tavily
+- `server/ollama-aisdk-proxy.ts` - Ollama with Tavily
+- `src/components/ai-elements/tool-call.tsx` - Tool call UI component
+- `src/components/chat/WebSearchToggle.tsx` - Toggle button
+
+---
+
+## Abort Signal / Stop Generation
+
+**Date**: 2026-01-29
+
+**Key Learnings**:
+
+1. **Server-Side Abort**: Pass `abortSignal` to `streamText()` to enable cancellation:
+   ```typescript
+   const abortController = new AbortController();
+   req.on('close', () => abortController.abort());
+
+   const result = streamText({
+     model: provider(modelId),
+     messages,
+     abortSignal: abortController.signal,
+   });
+   ```
+
+2. **Client-Side Abort**: Use `AbortController` with fetch and track interrupted state:
+   ```typescript
+   const abortControllerRef = useRef<AbortController | null>(null);
+
+   const stopGeneration = () => {
+     abortControllerRef.current?.abort();
+     setWasInterrupted(true);
+     setStatus('idle');
+   };
+   ```
+
+3. **UI Button Type**: When streaming, change submit button from `type="submit"` to `type="button"` to prevent form submission and allow the stop handler to work.
+
+4. **Disabled State**: Keep the stop button enabled during streaming while other controls remain disabled.
+
+**Files**:
+- `server/bedrock-aisdk-proxy.ts` - Server-side abort
+- `server/aisdk-proxy.ts` - Server-side abort
+- `server/ollama-aisdk-proxy.ts` - Server-side abort
+- `server/lmstudio-aisdk-proxy.ts` - Server-side abort (fetch signal)
+- `src/hooks/useBedrockChat.ts` - Client-side abort + wasInterrupted state
+- `src/components/ai-elements/prompt-input.tsx` - Button type switching
+- `src/components/chat/ChatContainer.tsx` - InterruptedIndicator component

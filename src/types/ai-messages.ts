@@ -34,9 +34,21 @@ export interface FilePart {
 }
 
 /**
+ * Tool call part (for web search, etc.)
+ */
+export interface ToolCallPart {
+  type: 'tool-call';
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  result?: unknown;
+  status: 'pending' | 'complete' | 'error';
+}
+
+/**
  * Union of all message part types
  */
-export type MessagePart = TextPart | ReasoningPart | FilePart;
+export type MessagePart = TextPart | ReasoningPart | FilePart | ToolCallPart;
 
 /**
  * UI Message format compatible with AI SDK and AI Elements

@@ -24,6 +24,7 @@ interface UseBedrockChatOptions {
   topP: number;
   maxTokens: number;
   samplingParameter: 'temperature' | 'topP';
+  enableWebSearch?: boolean;
   onConversationChange?: (id: string | null) => void;
 }
 
@@ -46,6 +47,7 @@ interface UseBedrockChatReturn {
   error: string | null;
   metadata: UsageMetadata | null;
   cumulativeUsage: CumulativeUsage;
+  wasInterrupted: boolean;
   sendMessage: (
     content: string,
     files?: Array<{ name: string; format: string; bytes: string }>
@@ -63,6 +65,7 @@ export function useBedrockChat({
   topP,
   maxTokens,
   samplingParameter,
+  enableWebSearch = false,
   onConversationChange,
 }: UseBedrockChatOptions): UseBedrockChatReturn {
   const [messages, setMessages] = useState<UIMessage[]>([]);
@@ -75,6 +78,7 @@ export function useBedrockChat({
     totalTokens: 0,
   });
   const [internalConversationId, setInternalConversationId] = useState<string | null>(null);
+  const [wasInterrupted, setWasInterrupted] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -109,6 +113,7 @@ export function useBedrockChat({
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
+      setWasInterrupted(true);
       setStatus('idle');
     }
   }, []);
@@ -119,6 +124,7 @@ export function useBedrockChat({
     setMetadata(null);
     setCumulativeUsage({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
     setError(null);
+    setWasInterrupted(false);
     setInternalConversationId(null);
     onConversationChange?.(null);
   }, [onConversationChange]);
@@ -133,6 +139,9 @@ export function useBedrockChat({
   const sendMessage = useCallback(
     async (content: string, files?: Array<{ name: string; format: string; bytes: string }>) => {
       if (!content.trim() || !selectedModel || status === 'streaming') return;
+
+      // Reset interrupted state when starting a new message
+      setWasInterrupted(false);
 
       const provider = getProvider();
       const modelId = selectedModel.value || '';
@@ -219,6 +228,7 @@ export function useBedrockChat({
           model: modelId,
           messages: chatMessages,
           max_tokens: maxTokens,
+          enableWebSearch,
           ...(isClaude45
             ? samplingParameter === 'temperature'
               ? { temperature }
@@ -231,6 +241,12 @@ export function useBedrockChat({
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
         };
+
+        // Add Tavily API key if web search is enabled
+        const prefs = loadPreferences();
+        if (enableWebSearch && prefs.tavilyApiKey) {
+          headers['X-Tavily-Api-Key'] = prefs.tavilyApiKey;
+        }
 
         // Build provider-specific request
         if (provider === 'bedrock-mantle') {
@@ -288,11 +304,33 @@ export function useBedrockChat({
         let usageData: UsageMetadata | null = null;
         const startTime = Date.now();
 
-        // Helper to build parts array with reasoning and content
+        // Track pending tool calls
+        const toolCalls: Map<
+          string,
+          {
+            toolName: string;
+            args: Record<string, unknown>;
+            status: 'pending' | 'complete' | 'error';
+            result?: unknown;
+          }
+        > = new Map();
+
+        // Helper to build parts array with reasoning, tool calls, and content
         const buildParts = (): MessagePart[] => {
           const parts: MessagePart[] = [];
           if (fullReasoning) {
             parts.push({ type: 'reasoning', reasoning: fullReasoning } as MessagePart);
+          }
+          // Add tool calls
+          for (const [id, tc] of toolCalls) {
+            parts.push({
+              type: 'tool-call',
+              toolCallId: id,
+              toolName: tc.toolName,
+              args: tc.args,
+              result: tc.result,
+              status: tc.status,
+            } as MessagePart);
           }
           if (fullContent) {
             parts.push({ type: 'text', text: fullContent });
@@ -332,6 +370,43 @@ export function useBedrockChat({
                     }
                     return newMessages;
                   });
+                }
+
+                // Handle tool call
+                if (parsed.toolCall) {
+                  const { id, name, args } = parsed.toolCall;
+                  toolCalls.set(id, { toolName: name, args, status: 'pending' });
+                  assistantMessage.parts = buildParts();
+                  setMessages((prev) => {
+                    const newMessages = [...prev];
+                    const lastIdx = newMessages.length - 1;
+                    if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
+                      newMessages[lastIdx] = { ...assistantMessage };
+                    } else {
+                      newMessages.push({ ...assistantMessage });
+                    }
+                    return newMessages;
+                  });
+                }
+
+                // Handle tool result
+                if (parsed.toolResult) {
+                  const { id, result } = parsed.toolResult;
+                  const existing = toolCalls.get(id);
+                  if (existing) {
+                    toolCalls.set(id, { ...existing, result, status: 'complete' });
+                    assistantMessage.parts = buildParts();
+                    setMessages((prev) => {
+                      const newMessages = [...prev];
+                      const lastIdx = newMessages.length - 1;
+                      if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
+                        newMessages[lastIdx] = { ...assistantMessage };
+                      } else {
+                        newMessages.push({ ...assistantMessage });
+                      }
+                      return newMessages;
+                    });
+                  }
                 }
 
                 // Handle regular content
@@ -417,6 +492,7 @@ export function useBedrockChat({
       topP,
       maxTokens,
       samplingParameter,
+      enableWebSearch,
       getProvider,
       createConversation,
       addMessage,
@@ -470,6 +546,7 @@ export function useBedrockChat({
     error,
     metadata,
     cumulativeUsage,
+    wasInterrupted,
     sendMessage,
     regenerate,
     stopGeneration,
