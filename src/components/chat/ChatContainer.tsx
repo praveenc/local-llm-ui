@@ -78,6 +78,27 @@ import { WebSearchToggle } from './WebSearchToggle';
  * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
  */
 
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
 // Helper to extract tool calls from message parts
 const getToolCalls = (message: { parts: Array<{ type: string }> }): ToolCallPart[] => {
   return message.parts.filter((p): p is ToolCallPart => p.type === 'tool-call');

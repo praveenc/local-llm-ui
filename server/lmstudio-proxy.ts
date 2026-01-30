@@ -121,13 +121,8 @@ export async function handleLMStudioRequest(
 async function handleListModels(res: ServerResponse): Promise<void> {
   const lmstudio = await getClient();
 
-  console.log('LMStudio SDK: Client connected, fetching downloaded models...');
-
   // Get all downloaded models (not just loaded ones)
   const downloadedModels = await lmstudio.system.listDownloadedModels();
-
-  console.log(`LMStudio SDK: Found ${downloadedModels.length} downloaded models`);
-  console.log('LMStudio SDK: Raw downloaded models:', JSON.stringify(downloadedModels, null, 2));
 
   // Filter out embedding models and map to our format
   const models = downloadedModels
@@ -142,7 +137,7 @@ async function handleListModels(res: ServerResponse): Promise<void> {
       paramsString: model.paramsString,
     }));
 
-  console.log(`LMStudio SDK: Returning ${models.length} LLM models`);
+  console.log(`LMStudio SDK: Found ${models.length} LLM models`);
 
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({ models }));

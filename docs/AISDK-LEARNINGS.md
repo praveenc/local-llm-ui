@@ -188,6 +188,76 @@ const baseUrl = `https://bedrock-mantle.${region}.api.aws/v1`;
 
 ---
 
+### Anthropic (@ai-sdk/anthropic)
+
+**Date**: 2026-01-29
+
+**Package**: `@ai-sdk/anthropic`
+
+**Setup**:
+```typescript
+import { createAnthropic } from '@ai-sdk/anthropic';
+
+const anthropic = createAnthropic({ apiKey });
+```
+
+**Extended Thinking Support**:
+Claude 4.5 models support extended thinking via `providerOptions`:
+
+```typescript
+const result = streamText({
+  model: anthropic(modelId),
+  messages,
+  providerOptions: {
+    anthropic: {
+      thinking: { type: 'enabled', budgetTokens: 12000 },
+    },
+  },
+});
+```
+
+**Reasoning Stream Part**:
+When thinking is enabled, reasoning content comes via `reasoning-delta` part type:
+
+```typescript
+for await (const part of result.fullStream) {
+  if (part.type === 'reasoning-delta') {
+    // part.text contains thinking content
+  }
+}
+```
+
+**Implementation Notes**:
+1. API key passed via `X-Api-Key` header from client
+2. Uses standard AI SDK `streamText()` pattern
+3. Supports Tavily web search tool integration
+4. Supports abort signal for stop generation
+5. Models that support thinking: All Claude 4.5 models
+
+**Available Models (Claude 4.5 Series)**:
+- `claude-opus-4-5-20251101` - Claude Opus 4.5 ($5/$25 per MTok)
+- `claude-sonnet-4-5-20250929` - Claude Sonnet 4.5 ($3/$15 per MTok)
+- `claude-haiku-4-5-20251001` - Claude Haiku 4.5 ($1/$5 per MTok)
+- `claude-sonnet-4-20250514` - Claude Sonnet 4 Legacy ($3/$15 per MTok)
+
+**Custom Pricing Implementation**:
+The `tokenlens` library doesn't recognize Claude 4.5 model IDs, so custom pricing was implemented:
+- `src/utils/anthropicPricing.ts` - Pricing calculation for Anthropic models
+- `src/components/ai-elements/context.tsx` - Uses `isAnthropicModel()` to route to custom pricing
+
+**Cost Display Fix**:
+Small token costs (fractions of a cent) were displaying as `$0.00` due to currency formatting rounding. Fixed by using adaptive precision:
+- < $0.01: Show 4 decimal places (`$0.0001`)
+- < $1.00: Show 3 decimal places (`$0.123`)
+- >= $1.00: Standard currency format (`$1.23`)
+
+**Files**:
+- `server/anthropic-aisdk-proxy.ts` - Server-side proxy
+- `src/services/aisdk.ts` - Client service (getModels, checkConnection)
+- `src/utils/anthropicPricing.ts` - Custom pricing calculation
+
+---
+
 ## Common Pitfalls
 
 ### 1. Stream Format Confusion
@@ -222,14 +292,15 @@ const baseUrl = `https://bedrock-mantle.${region}.api.aws/v1`;
 
 ## Provider Comparison
 
-| Feature | Bedrock | Mantle | Groq | Cerebras | LM Studio | Ollama |
-|---------|---------|--------|------|----------|-----------|--------|
-| Package | @ai-sdk/amazon-bedrock | fetch (OpenAI) | @ai-sdk/groq | @ai-sdk/cerebras | @ai-sdk/openai-compatible | ollama-ai-provider-v2 |
-| Auth | AWS credentials | API key | API key | API key | None | None |
-| Port | N/A | N/A | N/A | N/A | 1234 | 11434 |
-| Stream Format | SSE | SSE | SSE | SSE | SSE | SSE (converted) |
-| Reasoning | N/A | delta.reasoning | N/A | N/A | Multiple formats | think option |
-| Usage Location | After stream | stream_options | After stream | After stream | stream_options | After stream |
+| Feature | Bedrock | Mantle | Groq | Cerebras | LM Studio | Ollama | Anthropic |
+|---------|---------|--------|------|----------|-----------|--------|-----------|
+| Package | @ai-sdk/amazon-bedrock | fetch (OpenAI) | @ai-sdk/groq | @ai-sdk/cerebras | @ai-sdk/openai-compatible | ollama-ai-provider-v2 | @ai-sdk/anthropic |
+| Auth | AWS credentials | API key | API key | API key | None | None | API key |
+| Port | N/A | N/A | N/A | N/A | 1234 | 11434 | N/A |
+| Stream Format | SSE | SSE | SSE | SSE | SSE | SSE (converted) | SSE |
+| Reasoning | N/A | delta.reasoning | N/A | N/A | Multiple formats | think option | reasoning-delta |
+| Usage Location | After stream | stream_options | After stream | After stream | stream_options | After stream | After stream |
+| Custom Pricing | No (tokenlens) | No (tokenlens) | No (tokenlens) | No (tokenlens) | No | No | Yes (anthropicPricing.ts) |
 
 ---
 
@@ -252,6 +323,7 @@ When implementing a new provider:
 ```
 server/
 ├── aisdk-proxy.ts          # Groq & Cerebras
+├── anthropic-aisdk-proxy.ts # Anthropic Claude
 ├── bedrock-aisdk-proxy.ts  # Amazon Bedrock
 ├── bedrock-proxy.ts        # Legacy Bedrock (model listing)
 ├── lmstudio-aisdk-proxy.ts # LM Studio chat
@@ -261,7 +333,7 @@ server/
 
 src/services/
 ├── api.ts        # APIService (model aggregation, connection checks)
-├── aisdk.ts      # Groq/Cerebras (getModels, checkConnection)
+├── aisdk.ts      # Groq/Cerebras/Anthropic (getModels, checkConnection)
 ├── bedrock.ts    # Bedrock (getModels, checkConnection)
 ├── lmstudio.ts   # LM Studio (getModels, checkConnection, JIT loading)
 ├── mantle.ts     # Mantle (getModels, checkConnection)

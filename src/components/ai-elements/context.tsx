@@ -9,12 +9,36 @@ import { Button } from '@/components/ui/button';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { calculateAnthropicCost, isAnthropicModel } from '@/utils/anthropicPricing';
 
 const PERCENT_MAX = 100;
 const ICON_RADIUS = 10;
 const ICON_VIEWBOX = 24;
 const ICON_CENTER = 12;
 const ICON_STROKE_WIDTH = 2;
+
+/**
+ * Format cost with appropriate precision for small amounts
+ * Shows more decimal places for sub-cent amounts
+ */
+function formatCost(cost: number): string {
+  if (cost === 0) {
+    return '$0.00';
+  }
+  // For very small amounts (< $0.01), show 4 decimal places
+  if (cost < 0.01) {
+    return `$${cost.toFixed(4)}`;
+  }
+  // For small amounts (< $1), show 3 decimal places
+  if (cost < 1) {
+    return `$${cost.toFixed(3)}`;
+  }
+  // For larger amounts, use standard currency formatting
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(cost);
+}
 
 type ModelId = string;
 
@@ -176,19 +200,27 @@ export const ContextContentFooter = ({
   ...props
 }: ContextContentFooterProps) => {
   const { modelId, usage } = useContextValue();
-  const costUSD = modelId
-    ? getUsage({
-        modelId,
-        usage: {
-          input: usage?.inputTokens ?? 0,
-          output: usage?.outputTokens ?? 0,
-        },
-      }).costUSD?.totalUSD
-    : undefined;
-  const totalCost = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(costUSD ?? 0);
+
+  // Calculate cost - use custom Anthropic pricing or tokenlens
+  let costUSD: number | undefined;
+  if (modelId && isAnthropicModel(modelId)) {
+    const anthropicCost = calculateAnthropicCost(
+      modelId,
+      usage?.inputTokens ?? 0,
+      usage?.outputTokens ?? 0
+    );
+    costUSD = anthropicCost?.totalCost;
+  } else if (modelId) {
+    costUSD = getUsage({
+      modelId,
+      usage: {
+        input: usage?.inputTokens ?? 0,
+        output: usage?.outputTokens ?? 0,
+      },
+    }).costUSD?.totalUSD;
+  }
+
+  const totalCost = formatCost(costUSD ?? 0);
 
   return (
     <div
@@ -222,16 +254,19 @@ export const ContextInputUsage = ({ className, children, ...props }: ContextInpu
     return null;
   }
 
-  const inputCost = modelId
-    ? getUsage({
-        modelId,
-        usage: { input: inputTokens, output: 0 },
-      }).costUSD?.totalUSD
-    : undefined;
-  const inputCostText = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(inputCost ?? 0);
+  // Calculate input cost - use custom Anthropic pricing or tokenlens
+  let inputCost: number | undefined;
+  if (modelId && isAnthropicModel(modelId)) {
+    const anthropicCost = calculateAnthropicCost(modelId, inputTokens, 0);
+    inputCost = anthropicCost?.inputCost;
+  } else if (modelId) {
+    inputCost = getUsage({
+      modelId,
+      usage: { input: inputTokens, output: 0 },
+    }).costUSD?.totalUSD;
+  }
+
+  const inputCostText = formatCost(inputCost ?? 0);
 
   return (
     <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
@@ -255,16 +290,19 @@ export const ContextOutputUsage = ({ className, children, ...props }: ContextOut
     return null;
   }
 
-  const outputCost = modelId
-    ? getUsage({
-        modelId,
-        usage: { input: 0, output: outputTokens },
-      }).costUSD?.totalUSD
-    : undefined;
-  const outputCostText = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(outputCost ?? 0);
+  // Calculate output cost - use custom Anthropic pricing or tokenlens
+  let outputCost: number | undefined;
+  if (modelId && isAnthropicModel(modelId)) {
+    const anthropicCost = calculateAnthropicCost(modelId, 0, outputTokens);
+    outputCost = anthropicCost?.outputCost;
+  } else if (modelId) {
+    outputCost = getUsage({
+      modelId,
+      usage: { input: 0, output: outputTokens },
+    }).costUSD?.totalUSD;
+  }
+
+  const outputCostText = formatCost(outputCost ?? 0);
 
   return (
     <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
@@ -298,10 +336,7 @@ export const ContextReasoningUsage = ({
         usage: { reasoningTokens },
       }).costUSD?.totalUSD
     : undefined;
-  const reasoningCostText = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(reasoningCost ?? 0);
+  const reasoningCostText = formatCost(reasoningCost ?? 0);
 
   return (
     <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
@@ -331,10 +366,7 @@ export const ContextCacheUsage = ({ className, children, ...props }: ContextCach
         usage: { cacheReads: cacheTokens, input: 0, output: 0 },
       }).costUSD?.totalUSD
     : undefined;
-  const cacheCostText = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cacheCost ?? 0);
+  const cacheCostText = formatCost(cacheCost ?? 0);
 
   return (
     <div className={cn('flex items-center justify-between text-xs', className)} {...props}>

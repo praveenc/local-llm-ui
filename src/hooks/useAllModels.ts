@@ -6,7 +6,12 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 
-import { cerebrasService, groqService, syncApiKeysFromPreferences } from '../services/aisdk';
+import {
+  anthropicService,
+  cerebrasService,
+  groqService,
+  syncApiKeysFromPreferences,
+} from '../services/aisdk';
 import { loadPreferences } from '../utils/preferences';
 import type { Provider, UserPreferences } from '../utils/preferences';
 
@@ -38,6 +43,7 @@ const PROVIDER_NAMES: Record<Provider, string> = {
   'bedrock-mantle': 'Bedrock Mantle',
   groq: 'Groq',
   cerebras: 'Cerebras',
+  anthropic: 'Anthropic',
   lmstudio: 'LM Studio',
   ollama: 'Ollama',
 };
@@ -51,7 +57,11 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
   useEffect(() => {
     const fetchAllModels = async () => {
       // Sync AI SDK API keys
-      syncApiKeysFromPreferences(preferences.groqApiKey, preferences.cerebrasApiKey);
+      syncApiKeysFromPreferences(
+        preferences.groqApiKey,
+        preferences.cerebrasApiKey,
+        preferences.anthropicApiKey
+      );
 
       const { lmstudioService, ollamaService, bedrockService, mantleService } =
         await import('../services');
@@ -78,6 +88,11 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
       // Cerebras if API key is configured
       if (preferences.cerebrasApiKey) {
         providersToFetch.push('cerebras');
+      }
+
+      // Anthropic if API key is configured
+      if (preferences.anthropicApiKey) {
+        providersToFetch.push('anthropic');
       }
 
       // Always try local providers
@@ -115,6 +130,9 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
                 break;
               case 'cerebras':
                 rawModels = cerebrasService.getModels();
+                break;
+              case 'anthropic':
+                rawModels = anthropicService.getModels();
                 break;
               default:
                 throw new Error('Invalid provider');
@@ -175,6 +193,7 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
     preferences.bedrockMantleRegion,
     preferences.groqApiKey,
     preferences.cerebrasApiKey,
+    preferences.anthropicApiKey,
     refetchTrigger,
   ]);
 

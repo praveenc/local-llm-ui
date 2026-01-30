@@ -2,7 +2,14 @@
  * Database types for conversation persistence
  */
 
-export type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle' | 'groq' | 'cerebras';
+export type Provider =
+  | 'lmstudio'
+  | 'ollama'
+  | 'bedrock'
+  | 'bedrock-mantle'
+  | 'groq'
+  | 'cerebras'
+  | 'anthropic';
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type ConversationStatus = 'active' | 'archived';
 
