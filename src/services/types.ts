@@ -1,13 +1,27 @@
 export interface Model {
   id: string;
   name: string;
-  provider: 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle' | 'groq' | 'cerebras';
+  provider:
+    | 'lmstudio'
+    | 'ollama'
+    | 'bedrock'
+    | 'bedrock-mantle'
+    | 'groq'
+    | 'cerebras'
+    | 'anthropic';
 }
 
 export interface ModelInfo {
   modelId: string;
   modelName: string;
-  provider: 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle' | 'groq' | 'cerebras';
+  provider:
+    | 'lmstudio'
+    | 'ollama'
+    | 'bedrock'
+    | 'bedrock-mantle'
+    | 'groq'
+    | 'cerebras'
+    | 'anthropic';
   profileType?: string; // For Bedrock: SYSTEM_DEFINED, etc.
   modelFamily?: string; // For Bedrock: Anthropic Claude, Meta Llama, etc.
   ownedBy?: string; // For Mantle: model owner

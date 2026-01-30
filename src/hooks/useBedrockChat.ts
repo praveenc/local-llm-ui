@@ -103,6 +103,7 @@ export function useBedrockChat({
     if (desc.includes('bedrock')) return 'bedrock';
     if (desc.includes('groq')) return 'groq';
     if (desc.includes('cerebras')) return 'cerebras';
+    if (desc.includes('anthropic')) return 'anthropic';
     if (desc.includes('lmstudio')) return 'lmstudio';
     if (desc.includes('ollama')) return 'ollama';
     return 'bedrock';
@@ -271,6 +272,13 @@ export function useBedrockChat({
           headers['X-Api-Key'] = apiKey;
           // Add provider to request body for AI SDK proxy
           (requestBody as Record<string, unknown>).provider = provider;
+        } else if (provider === 'anthropic') {
+          endpoint = '/api/anthropic/chat';
+          const prefs = loadPreferences();
+          if (!prefs.anthropicApiKey) {
+            throw new Error('Anthropic API key is required. Please configure it in preferences.');
+          }
+          headers['X-Api-Key'] = prefs.anthropicApiKey;
         } else if (provider === 'lmstudio') {
           endpoint = '/api/lmstudio-aisdk/chat';
           // No API key needed for local LM Studio

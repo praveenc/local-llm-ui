@@ -1,13 +1,14 @@
 /**
  * AI SDK Service - Unified provider integration using Vercel AI SDK
- * Supports: Groq, Cerebras (and easily extensible to other AI SDK providers)
+ * Supports: Groq, Cerebras, Anthropic (and easily extensible to other AI SDK providers)
  */
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { createCerebras } from '@ai-sdk/cerebras';
 import { createGroq } from '@ai-sdk/groq';
 
 import type { ModelInfo } from './types';
 
-type AISDKProvider = 'groq' | 'cerebras';
+type AISDKProvider = 'groq' | 'cerebras' | 'anthropic';
 
 // Available models for each provider
 const GROQ_MODELS = [
@@ -23,14 +24,26 @@ const CEREBRAS_MODELS = [
   { id: 'llama3.1-8b', name: 'Llama 3.1 8B' },
 ];
 
+const ANTHROPIC_MODELS = [
+  { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5' },
+  { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5' },
+  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
+  { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4 (Legacy)' },
+];
+
 // API key storage keys (used directly in localStorage for runtime access)
 const API_KEY_STORAGE = {
   groq: 'GROQ_API_KEY',
   cerebras: 'CEREBRAS_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
 } as const;
 
 // Sync API keys from preferences to localStorage (call on app init or preference change)
-export function syncApiKeysFromPreferences(groqApiKey?: string, cerebrasApiKey?: string): void {
+export function syncApiKeysFromPreferences(
+  groqApiKey?: string,
+  cerebrasApiKey?: string,
+  anthropicApiKey?: string
+): void {
   if (groqApiKey) {
     localStorage.setItem(API_KEY_STORAGE.groq, groqApiKey);
   } else {
@@ -40,6 +53,11 @@ export function syncApiKeysFromPreferences(groqApiKey?: string, cerebrasApiKey?:
     localStorage.setItem(API_KEY_STORAGE.cerebras, cerebrasApiKey);
   } else {
     localStorage.removeItem(API_KEY_STORAGE.cerebras);
+  }
+  if (anthropicApiKey) {
+    localStorage.setItem(API_KEY_STORAGE.anthropic, anthropicApiKey);
+  } else {
+    localStorage.removeItem(API_KEY_STORAGE.anthropic);
   }
 }
 
@@ -96,6 +114,8 @@ export class AISDKService {
         return createGroq({ apiKey });
       case 'cerebras':
         return createCerebras({ apiKey });
+      case 'anthropic':
+        return createAnthropic({ apiKey });
       default:
         throw new Error(`Unknown provider: ${this.provider}`);
     }
@@ -110,7 +130,20 @@ export class AISDKService {
       return [];
     }
 
-    const models = this.provider === 'groq' ? GROQ_MODELS : CEREBRAS_MODELS;
+    let models: Array<{ id: string; name: string }>;
+    switch (this.provider) {
+      case 'groq':
+        models = GROQ_MODELS;
+        break;
+      case 'cerebras':
+        models = CEREBRAS_MODELS;
+        break;
+      case 'anthropic':
+        models = ANTHROPIC_MODELS;
+        break;
+      default:
+        models = [];
+    }
 
     return models.map((model) => ({
       modelId: model.id,
@@ -142,3 +175,4 @@ export class AISDKService {
 // Export singleton instances for each provider
 export const groqService = new AISDKService('groq');
 export const cerebrasService = new AISDKService('cerebras');
+export const anthropicService = new AISDKService('anthropic');

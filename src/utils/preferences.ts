@@ -2,7 +2,14 @@
  * User preferences management utilities
  */
 
-export type Provider = 'ollama' | 'lmstudio' | 'bedrock' | 'bedrock-mantle' | 'groq' | 'cerebras';
+export type Provider =
+  | 'ollama'
+  | 'lmstudio'
+  | 'bedrock'
+  | 'bedrock-mantle'
+  | 'groq'
+  | 'cerebras'
+  | 'anthropic';
 export type VisualMode = 'light' | 'dark';
 export type ContentDensity = 'comfortable' | 'compact';
 
@@ -17,6 +24,7 @@ export interface UserPreferences {
   // AI SDK provider settings
   groqApiKey?: string;
   cerebrasApiKey?: string;
+  anthropicApiKey?: string;
   // Tavily web search
   tavilyApiKey?: string;
   webSearchEnabledByDefault?: boolean;

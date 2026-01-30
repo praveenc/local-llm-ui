@@ -6,6 +6,7 @@
 import { getContextWindow } from 'tokenlens';
 
 import type { Provider } from '../utils/preferences';
+import { getAnthropicContextWindow, isAnthropicModel } from './anthropicPricing';
 
 // Default context limits for models not in tokenlens
 const DEFAULT_CONTEXT_LIMITS: Record<string, number> = {
@@ -15,6 +16,11 @@ const DEFAULT_CONTEXT_LIMITS: Record<string, number> = {
   'anthropic.claude-3-haiku-20240307-v1:0': 200000,
   'anthropic.claude-3-sonnet-20240229-v1:0': 200000,
   'anthropic.claude-3-opus-20240229-v1:0': 200000,
+  // Anthropic direct API models (Claude 4.5 series)
+  'claude-opus-4-5-20251101': 200000,
+  'claude-sonnet-4-5-20250929': 200000,
+  'claude-haiku-4-5-20251001': 200000,
+  'claude-sonnet-4-20250514': 200000,
   // Groq models
   'llama-3.3-70b-versatile': 131072,
   'llama-3.1-8b-instant': 131072,
@@ -67,6 +73,12 @@ const DEFAULT_CONTEXT_LIMITS: Record<string, number> = {
  * Maps our internal model ID to tokenlens model ID format
  */
 function toTokenlensModelId(modelId: string, provider: Provider): string | null {
+  // Anthropic direct API - return model ID for custom pricing calculation
+  // We don't use tokenlens for Anthropic, we use our custom pricing
+  if (provider === 'anthropic') {
+    return modelId; // Return as-is, will be handled by anthropicPricing.ts
+  }
+
   // Bedrock models - map to Anthropic format
   if (provider === 'bedrock') {
     if (modelId.includes('claude-3-5-haiku')) {
@@ -195,6 +207,15 @@ export interface ContextLimits {
  * Gets context window limits for a model
  */
 export function getModelContextLimits(modelId: string, provider: Provider): ContextLimits {
+  // Special handling for Anthropic direct API
+  if (provider === 'anthropic' && isAnthropicModel(modelId)) {
+    return {
+      contextWindow: getAnthropicContextWindow(),
+      outputMax: 8192,
+      tokenlensModelId: modelId, // Pass through for custom pricing
+    };
+  }
+
   const tokenlensId = toTokenlensModelId(modelId, provider);
 
   if (tokenlensId) {

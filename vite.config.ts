@@ -4,6 +4,7 @@ import { resolve } from 'path';
 import { defineConfig } from 'vite';
 
 import { createAISDKProxy } from './server/aisdk-proxy';
+import { createAnthropicProxy } from './server/anthropic-aisdk-proxy';
 import { handleBedrockAISDKRequest } from './server/bedrock-aisdk-proxy';
 import { handleBedrockRequest } from './server/bedrock-proxy';
 import { createLMStudioAISDKProxy } from './server/lmstudio-aisdk-proxy';
@@ -63,6 +64,13 @@ export default defineConfig({
       name: 'aisdk-proxy',
       configureServer(server) {
         server.middlewares.use(createAISDKProxy());
+      },
+    },
+    // Anthropic AI SDK proxy for Claude models
+    {
+      name: 'anthropic-aisdk-proxy',
+      configureServer(server) {
+        server.middlewares.use(createAnthropicProxy());
       },
     },
     // LMStudio AI SDK proxy for chat
