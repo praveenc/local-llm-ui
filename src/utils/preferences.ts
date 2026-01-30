@@ -17,6 +17,9 @@ export interface UserPreferences {
   // AI SDK provider settings
   groqApiKey?: string;
   cerebrasApiKey?: string;
+  // Tavily web search
+  tavilyApiKey?: string;
+  webSearchEnabledByDefault?: boolean;
 }
 
 const STORAGE_KEY = 'local-llm-ui-preferences';

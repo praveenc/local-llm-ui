@@ -188,6 +188,28 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
                 placeholder="Enter API key"
               />
             </div>
+
+            <div className="space-y-3">
+              <Label htmlFor="tavily-key">Tavily API Key (Web Search)</Label>
+              <Input
+                id="tavily-key"
+                type="password"
+                value={preferences.tavilyApiKey || ''}
+                onChange={(e) => updatePreference('tavilyApiKey', e.target.value)}
+                placeholder="Enter API key for web search"
+              />
+              <p className="text-xs text-muted-foreground">
+                Get your API key at{' '}
+                <a
+                  href="https://tavily.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  tavily.com
+                </a>
+              </p>
+            </div>
           </TabsContent>
 
           <TabsContent value="display" className="space-y-4 mt-4">

@@ -50,6 +50,12 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
+      // Create abort controller to cancel fetch when client disconnects
+      const abortController = new AbortController();
+      req.on('close', () => {
+        abortController.abort();
+      });
+
       const directResponse = await fetch('http://localhost:1234/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -62,6 +68,7 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
           stream: true,
           stream_options: { include_usage: true },
         }),
+        signal: abortController.signal,
       });
 
       if (!directResponse.ok) {

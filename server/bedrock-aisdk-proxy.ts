@@ -3,10 +3,12 @@
  *
  * Server-side proxy using @ai-sdk/amazon-bedrock for streaming chat.
  * Returns responses in AI SDK UIMessage stream format.
+ * Supports optional Tavily web search tool integration.
  */
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
-import { streamText } from 'ai';
+import { tavilySearch } from '@tavily/ai-sdk';
+import { stepCountIs, streamText } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'http';
 
 // Initialize Bedrock provider with credential chain
@@ -31,6 +33,7 @@ interface ChatRequest {
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
+  enableWebSearch?: boolean;
 }
 
 export async function handleBedrockAISDKRequest(
@@ -96,7 +99,18 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     body += chunk;
   }
 
-  const { model, messages, temperature, max_tokens, top_p }: ChatRequest = JSON.parse(body);
+  const { model, messages, temperature, max_tokens, top_p, enableWebSearch }: ChatRequest =
+    JSON.parse(body);
+
+  // Get Tavily API key from header if web search is enabled
+  const tavilyApiKey = req.headers['x-tavily-api-key'] as string;
+
+  if (enableWebSearch && !tavilyApiKey) {
+    res.statusCode = 401;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: 'Tavily API key required for web search' }));
+    return;
+  }
 
   // Claude 4.5 models don't support both temperature and topP simultaneously
   const isClaude45 =
@@ -144,11 +158,27 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     return { role: 'user' as const, content: msg.content };
   });
 
+  // Configure tools if web search is enabled
+  const tools =
+    enableWebSearch && tavilyApiKey
+      ? { webSearch: tavilySearch({ apiKey: tavilyApiKey }) }
+      : undefined;
+
+  // Create abort controller to cancel streamText when client disconnects
+  const abortController = new AbortController();
+  req.on('close', () => {
+    abortController.abort();
+  });
+
   try {
     const result = streamText({
       model: bedrock(model),
       messages: transformedMessages,
       maxOutputTokens: max_tokens ?? 2048,
+      tools,
+      abortSignal: abortController.signal,
+      // stopWhen required for multi-step tool use (agentic behavior)
+      ...(tools && { stopWhen: stepCountIs(5) }),
       // Handle Claude 4.5 temperature/topP constraints
       ...(isClaude45
         ? temperature !== undefined
@@ -169,9 +199,31 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
 
     const startTime = Date.now();
 
-    // Stream text chunks
-    for await (const chunk of result.textStream) {
-      res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+    // Stream text chunks and handle tool calls
+    for await (const part of result.fullStream) {
+      if (part.type === 'text-delta') {
+        res.write(`data: ${JSON.stringify({ content: part.text })}\n\n`);
+      } else if (part.type === 'tool-call') {
+        res.write(
+          `data: ${JSON.stringify({
+            toolCall: {
+              id: part.toolCallId,
+              name: part.toolName,
+              args: 'input' in part ? part.input : {},
+            },
+          })}\n\n`
+        );
+      } else if (part.type === 'tool-result') {
+        res.write(
+          `data: ${JSON.stringify({
+            toolResult: {
+              id: part.toolCallId,
+              name: part.toolName,
+              result: 'output' in part ? part.output : part,
+            },
+          })}\n\n`
+        );
+      }
     }
 
     // Get usage after stream completes

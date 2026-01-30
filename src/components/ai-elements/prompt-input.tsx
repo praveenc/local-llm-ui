@@ -997,12 +997,16 @@ export const PromptInputSubmit = ({
     Icon = <XIcon className="size-4" />;
   }
 
+  // When streaming, use type="button" to prevent form submission
+  // and allow the onClick handler to stop generation
+  const buttonType = status === 'streaming' ? 'button' : 'submit';
+
   return (
     <InputGroupButton
-      aria-label="Submit"
+      aria-label={status === 'streaming' ? 'Stop' : 'Submit'}
       className={cn(className)}
       size={size}
-      type="submit"
+      type={buttonType}
       variant={variant}
       {...props}
     >

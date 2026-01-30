@@ -7,7 +7,16 @@
 
 'use client';
 
-import { Bot, Copy, Loader2, RefreshCw, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react';
+import {
+  Bot,
+  Copy,
+  Loader2,
+  RefreshCw,
+  StopCircle,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
+} from 'lucide-react';
 
 import { Fragment, useEffect, useRef, useState } from 'react';
 
@@ -15,8 +24,10 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
 import { useBedrockChat } from '../../hooks/useBedrockChat';
+import type { ToolCallPart } from '../../types/ai-messages';
 import { getReasoningContent, getTextContent, hasReasoning } from '../../types/ai-messages';
 import { getModelContextLimits } from '../../utils/modelContext';
+import { loadPreferences } from '../../utils/preferences';
 import {
   Conversation,
   ConversationContent,
@@ -46,10 +57,12 @@ import {
   usePromptInputAttachments,
 } from '../ai-elements/prompt-input';
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '../ai-elements/reasoning';
+import { ToolCall } from '../ai-elements/tool-call';
 import { FittedContainer } from '../layout';
 import { ContextIndicator } from './ContextIndicator';
 import { InferenceSettings } from './InferenceSettings';
 import { ModelSelectorButton } from './ModelSelectorButton';
+import { WebSearchToggle } from './WebSearchToggle';
 
 /**
  * ChatContainer
@@ -65,33 +78,10 @@ import { ModelSelectorButton } from './ModelSelectorButton';
  * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
  */
 
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
+// Helper to extract tool calls from message parts
+const getToolCalls = (message: { parts: Array<{ type: string }> }): ToolCallPart[] => {
+  return message.parts.filter((p): p is ToolCallPart => p.type === 'tool-call');
+};
 
 // Bedrock file size limits
 const BEDROCK_DOC_MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for documents
@@ -176,6 +166,11 @@ const ChatContainer = ({
   const [inputValue, setInputValue] = useState('');
   const [messageFeedback, setMessageFeedback] = useState<Record<string, string>>({});
   const [fileError, setFileError] = useState<string | null>(null);
+  const [enableWebSearch, setEnableWebSearch] = useState(false);
+
+  // Check if Tavily API key is configured
+  const prefs = loadPreferences();
+  const hasTavilyApiKey = Boolean(prefs.tavilyApiKey);
 
   // Convert UnifiedModel to ModelOption for the hook
   const modelOption = toModelOption(selectedModel);
@@ -186,6 +181,7 @@ const ChatContainer = ({
     error,
     metadata,
     cumulativeUsage,
+    wasInterrupted,
     sendMessage,
     regenerate,
     stopGeneration,
@@ -198,6 +194,7 @@ const ChatContainer = ({
     topP,
     maxTokens,
     samplingParameter,
+    enableWebSearch,
     onConversationChange,
   });
 
@@ -338,6 +335,9 @@ const ChatContainer = ({
                                 </ReasoningContent>
                               </Reasoning>
                             )}
+                            {getToolCalls(message).map((toolCall) => (
+                              <ToolCall key={toolCall.toolCallId} toolCall={toolCall} />
+                            ))}
                             <MessageResponse>{getTextContent(message)}</MessageResponse>
                           </MessageContent>
                         </Message>
@@ -377,6 +377,9 @@ const ChatContainer = ({
                         {message.role === 'assistant' &&
                           index === lastAssistantIndex &&
                           metadata && <MetadataRow metadata={metadata} />}
+                        {message.role === 'assistant' &&
+                          index === lastAssistantIndex &&
+                          wasInterrupted && <InterruptedIndicator />}
                       </Fragment>
                     );
                   })}
@@ -439,6 +442,12 @@ const ChatContainer = ({
                   samplingParameter={samplingParameter}
                   setSamplingParameter={setSamplingParameter}
                   disabled={isLoading}
+                />
+                <WebSearchToggle
+                  enabled={enableWebSearch}
+                  onToggle={setEnableWebSearch}
+                  disabled={isLoading}
+                  hasApiKey={hasTavilyApiKey}
                 />
                 {messages.length > 0 && (
                   <PromptInputButton
@@ -545,10 +554,14 @@ const PromptInputSubmitWithAttachments = ({
   const attachments = usePromptInputAttachments();
   const hasContent = inputValue.trim().length > 0 || attachments.files.length > 0;
 
+  // When streaming, the stop button should always be enabled
+  // When not streaming, require content and a selected model
+  const isDisabled = isLoading ? false : !hasContent || !selectedModel;
+
   return (
     <PromptInputSubmit
       status={isLoading ? 'streaming' : 'ready'}
-      disabled={!hasContent || !selectedModel}
+      disabled={isDisabled}
       onClick={isLoading ? stopGeneration : undefined}
     />
   );
@@ -561,6 +574,14 @@ const GeneratingIndicator = () => (
       <Loader2 className="h-4 w-4 animate-spin" />
       <span className="text-sm">Generating response...</span>
     </div>
+  </div>
+);
+
+// Indicator shown when response generation was manually stopped
+const InterruptedIndicator = () => (
+  <div className="flex items-center gap-1.5 mt-2 text-muted-foreground/70">
+    <StopCircle className="h-3 w-3" />
+    <span className="text-xs italic">Response stopped</span>
   </div>
 );
 
