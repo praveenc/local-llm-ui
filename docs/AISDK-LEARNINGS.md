@@ -17,7 +17,7 @@ data: [DONE]\n\n
 ### Key Parameters
 
 - Use `maxOutputTokens` (not `maxTokens`) for AI SDK
-- Claude 4.5 models don't support both `temperature` and `top_p` simultaneously
+- Claude 4.x models (4, 4.5, 4.6+) don't support both `temperature` and `top_p` simultaneously
 - Always filter empty messages before sending to API
 
 ### Usage Metrics
@@ -129,7 +129,7 @@ const bedrock = createAmazonBedrock({
 
 **Implementation Notes**:
 1. Credentials via AWS SDK credential provider chain
-2. Claude 4.x models require either `temperature` OR `topP`, not both
+2. Claude 4.x models require either `temperature` OR `topP`, not both (applies to all Claude 4.x family: 4, 4.5, 4.6, etc.)
 3. File attachments converted to `{ type: 'file', data: Uint8Array, mediaType }` format
 
 **Files**:

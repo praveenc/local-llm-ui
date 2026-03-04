@@ -218,19 +218,16 @@ export function useBedrockChat({
               })),
           }));
 
-        // Determine which sampling parameter to send for Claude 4.5
+        // Determine which sampling parameter to send for Claude 4.x
         const modelIdLower = modelId.toLowerCase();
-        const isClaude45 =
-          modelIdLower.includes('sonnet-4-5') ||
-          modelIdLower.includes('haiku-4-5') ||
-          modelIdLower.includes('opus-4-5');
+        const isClaude4x = /claude[.-](?:sonnet|haiku|opus)-4(?:[.-]|$)/i.test(modelIdLower);
 
         const requestBody = {
           model: modelId,
           messages: chatMessages,
           max_tokens: maxTokens,
           enableWebSearch,
-          ...(isClaude45
+          ...(isClaude4x
             ? samplingParameter === 'temperature'
               ? { temperature }
               : { top_p: topP }

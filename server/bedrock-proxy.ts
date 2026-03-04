@@ -216,10 +216,9 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
   console.log(`Bedrock: Messages count: ${messages?.length || 0}`);
   // console.log(`Bedrock: Messages:`, JSON.stringify(messages, null, 2));
 
-  // Claude Sonnet 4.5, Haiku 4.5 and Opus 4.5 don't support both temperature and topP simultaneously
+  // Claude 4.x models don't support both temperature and topP simultaneously
   // The client sends only one of them based on user's choice
-  const isClaude45 =
-    model.includes('sonnet-4-5') || model.includes('haiku-4-5') || model.includes('opus-4-5');
+  const isClaude4x = /claude[.-](?:sonnet|haiku|opus)-4(?:[.-]|$)/i.test(model);
 
   const inferenceConfig: {
     temperature?: number;
@@ -229,7 +228,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     maxTokens: max_tokens ?? 2048,
   };
 
-  if (isClaude45) {
+  if (isClaude4x) {
     // For Claude 4.5, use whichever parameter was sent by the client
     if (temperature !== undefined) {
       inferenceConfig.temperature = temperature;

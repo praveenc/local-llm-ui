@@ -112,12 +112,11 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     return;
   }
 
-  // Claude 4.5 models don't support both temperature and topP simultaneously
-  const isClaude45 =
-    model.includes('sonnet-4-5') || model.includes('haiku-4-5') || model.includes('opus-4-5');
+  // Claude 4.x models don't support both temperature and topP simultaneously
+  const isClaude4x = /claude[.-](?:sonnet|haiku|opus)-4(?:[.-]|$)/i.test(model);
 
-  if (isClaude45) {
-    // For Claude 4.5, only use one sampling parameter (handled below)
+  if (isClaude4x) {
+    // For Claude 4.x, only use one sampling parameter (handled below)
   }
 
   // Transform messages to AI SDK format with file support
@@ -179,8 +178,8 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
       abortSignal: abortController.signal,
       // stopWhen required for multi-step tool use (agentic behavior)
       ...(tools && { stopWhen: stepCountIs(5) }),
-      // Handle Claude 4.5 temperature/topP constraints
-      ...(isClaude45
+      // Handle Claude 4.x temperature/topP constraints
+      ...(isClaude4x
         ? temperature !== undefined
           ? { temperature }
           : top_p !== undefined
