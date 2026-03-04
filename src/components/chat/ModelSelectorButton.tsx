@@ -24,16 +24,7 @@ import {
   ModelSelectorName,
   ModelSelectorTrigger,
 } from '../ai-elements/model-selector';
-
-// Map provider to ModelSelectorLogo provider name
-const PROVIDER_LOGO_MAP: Record<string, string> = {
-  bedrock: 'amazon-bedrock',
-  'bedrock-mantle': 'amazon-bedrock',
-  groq: 'groq',
-  cerebras: 'cerebras',
-  lmstudio: 'lmstudio',
-  ollama: 'llama',
-};
+import { PROVIDER_LOGO_MAP } from './provider-logos';
 
 interface ModelSelectorButtonProps {
   providers: ProviderModels[];
@@ -82,7 +73,12 @@ export function ModelSelectorButton({
                 provider={PROVIDER_LOGO_MAP[selectedModel.provider] || selectedModel.provider}
                 className="h-3 w-3"
               />
-              <span className="text-xs truncate max-w-[120px]">{selectedModel.name}</span>
+              <span
+                className="text-xs truncate max-w-[200px] sm:max-w-[280px]"
+                title={selectedModel.name}
+              >
+                {selectedModel.name}
+              </span>
               <ChevronDown className="h-3 w-3 opacity-50" />
             </>
           ) : (
