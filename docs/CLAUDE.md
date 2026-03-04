@@ -83,6 +83,6 @@ Custom Vite middleware handles AWS credentials and SDK operations server-side:
 
 ## Provider-Specific Notes
 
-- **Claude 4.5 models**: Don't support both `temperature` and `top_p` simultaneously; UI provides radio toggle
+- **Claude 4.x models**: Don't support both `temperature` and `top_p` simultaneously; UI provides radio toggle
 - **Bedrock document upload**: PDF, TXT, HTML, MD, CSV, DOC(X), XLS(X); max 4.5MB per file
 - **LM Studio**: Supports JIT model loading with progress tracking via SDK

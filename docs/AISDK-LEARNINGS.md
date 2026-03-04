@@ -129,7 +129,7 @@ const bedrock = createAmazonBedrock({
 
 **Implementation Notes**:
 1. Credentials via AWS SDK credential provider chain
-2. Claude 4.5 models require either `temperature` OR `topP`, not both
+2. Claude 4.x models require either `temperature` OR `topP`, not both
 3. File attachments converted to `{ type: 'file', data: Uint8Array, mediaType }` format
 
 **Files**:
