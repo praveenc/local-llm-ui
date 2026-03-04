@@ -59,10 +59,18 @@ import {
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '../ai-elements/reasoning';
 import { ToolCall } from '../ai-elements/tool-call';
 import { FittedContainer } from '../layout';
+import { ActiveModelBadge } from './ActiveModelBadge';
 import { ContextIndicator } from './ContextIndicator';
 import { InferenceSettings } from './InferenceSettings';
 import { ModelSelectorButton } from './ModelSelectorButton';
 import { WebSearchToggle } from './WebSearchToggle';
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
 
 /**
  * ChatContainer
@@ -331,6 +339,7 @@ const ChatContainer = ({
             ) : (
               <Conversation className="h-full max-w-4xl mx-auto">
                 <ConversationContent className="p-4">
+                  {selectedModel && <ActiveModelBadge model={selectedModel} />}
                   {messages.map((message, index) => {
                     // Determine if this message's reasoning is still streaming
                     const isLastMessage = index === messages.length - 1;

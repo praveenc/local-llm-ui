@@ -24,16 +24,7 @@ import {
   ModelSelectorName,
   ModelSelectorTrigger,
 } from '../ai-elements/model-selector';
-
-// Map provider to ModelSelectorLogo provider name
-const PROVIDER_LOGO_MAP: Record<string, string> = {
-  bedrock: 'amazon-bedrock',
-  'bedrock-mantle': 'amazon-bedrock',
-  groq: 'groq',
-  cerebras: 'cerebras',
-  lmstudio: 'lmstudio',
-  ollama: 'llama',
-};
+import { PROVIDER_LOGO_MAP } from './provider-logos';
 
 interface ModelSelectorButtonProps {
   providers: ProviderModels[];

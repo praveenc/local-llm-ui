@@ -1,3 +1,4 @@
+export { ActiveModelBadge } from './ActiveModelBadge';
 export { default as ChatContainer } from './ChatContainer';
 export { ContextIndicator } from './ContextIndicator';
 export { InferenceSettings } from './InferenceSettings';
