@@ -112,12 +112,24 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
           }
         : undefined;
 
+      // Claude 4.x models don't support both temperature and topP simultaneously
+      const isClaude4x = /claude[.-](?:sonnet|haiku|opus)-4(?:[.-]|$)/i.test(request.model);
+      const samplingConfig = isClaude4x
+        ? request.temperature !== undefined
+          ? { temperature: request.temperature }
+          : request.top_p !== undefined
+            ? { topP: request.top_p }
+            : { temperature: 0.3 }
+        : {
+            temperature: request.temperature ?? 0.3,
+            topP: request.top_p ?? 0.95,
+          };
+
       const result = await streamText({
         model: anthropic(request.model),
         messages: request.messages,
-        temperature: request.temperature,
+        ...samplingConfig,
         maxOutputTokens: request.max_tokens,
-        topP: request.top_p,
         tools,
         abortSignal: abortController.signal,
         providerOptions,
