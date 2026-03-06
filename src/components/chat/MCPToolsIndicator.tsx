@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { MCPServerConfig } from '@/types/mcp';
-import { loadPreferences } from '@/utils/preferences';
+import { PREFERENCES_CHANGED_EVENT, loadPreferences } from '@/utils/preferences';
 
 interface MCPServerStatus {
   name: string;
@@ -45,8 +45,13 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
   useEffect(() => {
     refreshConfigs();
     const handler = () => refreshConfigs();
+    // Listen for both cross-tab (storage) and same-tab (custom event) changes
     window.addEventListener('storage', handler);
-    return () => window.removeEventListener('storage', handler);
+    window.addEventListener(PREFERENCES_CHANGED_EVENT, handler);
+    return () => {
+      window.removeEventListener('storage', handler);
+      window.removeEventListener(PREFERENCES_CHANGED_EVENT, handler);
+    };
   }, [refreshConfigs]);
 
   // Fetch MCP status when enabled configs change

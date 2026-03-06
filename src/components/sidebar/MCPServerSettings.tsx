@@ -188,7 +188,7 @@ interface ServerConfigFormProps {
 }
 
 function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: ServerConfigFormProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const validationError = validateMCPServerConfig(config);
 
   const updateField = <K extends keyof MCPServerConfig>(key: K, value: MCPServerConfig[K]) => {

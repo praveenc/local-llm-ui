@@ -65,9 +65,13 @@ export const loadPreferences = (): UserPreferences => {
 /**
  * Save user preferences to localStorage
  */
+export const PREFERENCES_CHANGED_EVENT = 'preferences-changed';
+
 export const savePreferences = (preferences: UserPreferences): void => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+    // Notify same-tab listeners (window.storage only fires cross-tab)
+    window.dispatchEvent(new CustomEvent(PREFERENCES_CHANGED_EVENT));
   } catch (error) {
     console.error('Failed to save preferences:', error);
   }
