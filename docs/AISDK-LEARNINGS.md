@@ -129,7 +129,7 @@ const bedrock = createAmazonBedrock({
 
 **Implementation Notes**:
 1. Credentials via AWS SDK credential provider chain
-2. Claude 4.x models require either `temperature` OR `topP`, not both (applies to all Claude 4.x family: 4, 4.5, 4.6, etc.)
+2. Claude 4.x models require either `temperature` OR `topP`, not both — see [Claude 4.x Temperature/TopP Mutual Exclusion](#claude-4x-temperaturetopp-mutual-exclusion) below
 3. File attachments converted to `{ type: 'file', data: Uint8Array, mediaType }` format
 
 **Files**:
@@ -142,15 +142,6 @@ const bedrock = createAmazonBedrock({
 **Date**: 2026-01-13
 
 **Packages**: `@ai-sdk/groq`, `@ai-sdk/cerebras`
-
-**Setup**:
-```typescript
-import { createGroq } from '@ai-sdk/groq';
-import { createCerebras } from '@ai-sdk/cerebras';
-
-const groq = createGroq({ apiKey });
-const cerebras = createCerebras({ apiKey });
-```
 
 **Implementation Notes**:
 1. API keys passed via `X-Api-Key` header from client
@@ -232,13 +223,7 @@ for await (const part of result.fullStream) {
 2. Uses standard AI SDK `streamText()` pattern
 3. Supports Tavily web search tool integration
 4. Supports abort signal for stop generation
-5. Models that support thinking: All Claude 4.5 models
-
-**Available Models (Claude 4.5 Series)**:
-- `claude-opus-4-5-20251101` - Claude Opus 4.5 ($5/$25 per MTok)
-- `claude-sonnet-4-5-20250929` - Claude Sonnet 4.5 ($3/$15 per MTok)
-- `claude-haiku-4-5-20251001` - Claude Haiku 4.5 ($1/$5 per MTok)
-- `claude-sonnet-4-20250514` - Claude Sonnet 4 Legacy ($3/$15 per MTok)
+5. Models that support thinking: Claude 4.5+ (all tiers: Haiku, Sonnet, Opus)
 
 **Custom Pricing Implementation**:
 The `tokenlens` library doesn't recognize Claude 4.5 model IDs, so custom pricing was implemented:
@@ -372,7 +357,10 @@ When implementing a new provider:
 - [ ] Context window tracking works
 - [ ] Error handling for connection failures
 - [ ] Model listing works
-- [ ] Stop generation works
+- [ ] Stop generation (abort) works
+- [ ] Web search (Tavily) works when enabled
+- [ ] MCP tools are passed through and results stream correctly
+- [ ] Cleanup runs after response (success and error paths)
 
 ---
 
@@ -394,9 +382,12 @@ src/services/
 ├── api.ts        # APIService (model aggregation, connection checks)
 ├── aisdk.ts      # Groq/Cerebras/Anthropic (getModels, checkConnection)
 ├── bedrock.ts    # Bedrock (getModels, checkConnection)
+├── conversationService.ts  # Conversation persistence (Dexie/IndexedDB)
 ├── lmstudio.ts   # LM Studio (getModels, checkConnection, JIT loading)
 ├── mantle.ts     # Mantle (getModels, checkConnection)
 ├── ollama.ts     # Ollama (getModels, checkConnection)
+├── promptOptimizer.ts  # Prompt optimization
+├── promptsService.ts   # Saved prompts (Dexie/IndexedDB)
 └── types.ts      # Shared types (ModelInfo, LoadProgressEvent)
 ```
 
@@ -452,17 +443,8 @@ const result = streamText({
 6. **Abort Signal Support**: Pass `abortSignal` to `streamText()` to support cancellation. On the server, listen for `req.on('close')` to abort when client disconnects.
 
 **Available Tavily Tools**:
-- `tavilySearch()` - Real-time web search
-- `tavilyExtract()` - Content extraction from URLs
-- `tavilyCrawl()` - Website crawling
-- `tavilyMap()` - Site structure mapping
-
-**Configuration Options for tavilySearch**:
-- `searchDepth`: "basic" | "advanced"
-- `topic`: "general" | "news" | "finance"
-- `includeAnswer`: boolean
-- `maxResults`: number (default: 5)
-- `timeRange`: "year" | "month" | "week" | "day"
+- `tavilySearch()` — real-time web search (primary tool used)
+- `tavilyExtract()`, `tavilyCrawl()`, `tavilyMap()` — see Tavily docs
 
 **Files**:
 - `server/aisdk-proxy.ts` - Groq/Cerebras with Tavily
@@ -491,16 +473,7 @@ const result = streamText({
    });
    ```
 
-2. **Client-Side Abort**: Use `AbortController` with fetch and track interrupted state:
-   ```typescript
-   const abortControllerRef = useRef<AbortController | null>(null);
-
-   const stopGeneration = () => {
-     abortControllerRef.current?.abort();
-     setWasInterrupted(true);
-     setStatus('idle');
-   };
-   ```
+2. **Client-Side Abort**: Use `AbortController` with fetch; track interrupted state with `wasInterrupted` boolean to show an indicator in the UI.
 
 3. **UI Button Type**: When streaming, change submit button from `type="submit"` to `type="button"` to prevent form submission and allow the stop handler to work.
 
