@@ -14,6 +14,7 @@ import type { Connect } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp';
 import { getMCPTools } from './mcp-manager';
+import { capMaxTokens, readBodyWithLimit } from './security';
 
 type AISDKProvider = 'groq' | 'cerebras';
 
@@ -51,15 +52,13 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       return next();
     }
 
-    // Parse request body
-    let body = '';
-    for await (const chunk of req) {
-      body += chunk;
-    }
+    // Parse request body (SEC-07: size-limited)
+    const rawBody = await readBodyWithLimit(req, res);
+    if (rawBody === null) return; // 413 already sent
 
     let request: ChatRequest;
     try {
-      request = JSON.parse(body);
+      request = JSON.parse(rawBody);
     } catch {
       res.statusCode = 400;
       res.setHeader('Content-Type', 'application/json');
@@ -128,7 +127,7 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
         model: provider(request.model),
         messages: request.messages,
         temperature: request.temperature,
-        maxOutputTokens: request.max_tokens,
+        maxOutputTokens: capMaxTokens(request.max_tokens),
         topP: request.top_p,
         tools,
         abortSignal: abortController.signal,

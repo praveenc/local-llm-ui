@@ -7,6 +7,8 @@ import {
 import { BedrockRuntimeClient, ConverseStreamCommand } from '@aws-sdk/client-bedrock-runtime';
 import type { IncomingMessage, ServerResponse } from 'http';
 
+import { capMaxTokens, setCORSHeaders } from './security';
+
 interface InferenceProfileModel {
   modelArn?: string;
   modelName?: string;
@@ -38,10 +40,8 @@ export async function handleBedrockRequest(
   const url = new URL(req.url || '', `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // Set CORS headers (SEC-05: restricted to dev server origins)
+  setCORSHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 200;
@@ -208,6 +208,12 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
   let body = '';
   for await (const chunk of req) {
     body += chunk;
+    if (body.length > 10 * 1024 * 1024) {
+      res.statusCode = 413;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Request body too large' }));
+      return;
+    }
   }
 
   const { model, messages, temperature, max_tokens, top_p } = JSON.parse(body);
@@ -225,7 +231,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     maxTokens?: number;
     topP?: number;
   } = {
-    maxTokens: max_tokens ?? 2048,
+    maxTokens: capMaxTokens(max_tokens),
   };
 
   if (isClaude4x) {

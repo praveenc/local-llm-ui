@@ -14,6 +14,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 
 import type { MCPServerConfig } from '../src/types/mcp';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager';
+import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security';
 
 // Initialize Bedrock provider with credential chain
 const bedrock = createAmazonBedrock({
@@ -48,10 +49,8 @@ export async function handleBedrockAISDKRequest(
   const url = new URL(req.url || '', `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // Set CORS headers (SEC-05: restricted to dev server origins)
+  setCORSHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 200;
@@ -110,11 +109,8 @@ async function handleMCPStatus(req: IncomingMessage, res: ServerResponse): Promi
     return;
   }
 
-  const body = await new Promise<string>((resolve) => {
-    let data = '';
-    req.on('data', (chunk: Buffer) => (data += chunk.toString()));
-    req.on('end', () => resolve(data));
-  });
+  const body = await readBodyWithLimit(req, res);
+  if (body === null) return; // 413 already sent
 
   const { mcpServers } = JSON.parse(body || '{}') as {
     mcpServers?: MCPServerConfig[];
@@ -127,10 +123,8 @@ async function handleMCPStatus(req: IncomingMessage, res: ServerResponse): Promi
 }
 
 async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  let body = '';
-  for await (const chunk of req) {
-    body += chunk;
-  }
+  const body = await readBodyWithLimit(req, res);
+  if (body === null) return; // 413 already sent
 
   const {
     model,
@@ -223,7 +217,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     const result = streamText({
       model: bedrock(model),
       messages: transformedMessages,
-      maxOutputTokens: max_tokens ?? 2048,
+      maxOutputTokens: capMaxTokens(max_tokens),
       tools,
       abortSignal: abortController.signal,
       // stopWhen required for multi-step tool use (agentic behavior)

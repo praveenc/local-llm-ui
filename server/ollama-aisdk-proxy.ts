@@ -13,6 +13,7 @@ import type { Connect } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp';
 import { getMCPTools } from './mcp-manager';
+import { capMaxTokens, readBodyWithLimit } from './security';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -41,15 +42,13 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
       return next();
     }
 
-    // Parse request body
-    let body = '';
-    for await (const chunk of req) {
-      body += chunk;
-    }
+    // Parse request body (SEC-07: size-limited)
+    const rawBody = await readBodyWithLimit(req, res);
+    if (rawBody === null) return; // 413 already sent
 
     let request: ChatRequest;
     try {
-      request = JSON.parse(body);
+      request = JSON.parse(rawBody);
     } catch {
       res.statusCode = 400;
       res.setHeader('Content-Type', 'application/json');
@@ -109,7 +108,7 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
           content: m.content,
         })),
         temperature: request.temperature ?? 0.7,
-        maxOutputTokens: request.max_tokens ?? 2048,
+        maxOutputTokens: capMaxTokens(request.max_tokens),
         topP: request.top_p ?? 0.9,
         tools,
         abortSignal: abortController.signal,
