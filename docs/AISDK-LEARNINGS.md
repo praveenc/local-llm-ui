@@ -455,3 +455,136 @@ const result = streamText({
 - `src/hooks/useBedrockChat.ts` - Client-side abort + wasInterrupted state
 - `src/components/ai-elements/prompt-input.tsx` - Button type switching
 - `src/components/chat/ChatContainer.tsx` - InterruptedIndicator component
+
+---
+
+## MCP (Model Context Protocol) Integration (@ai-sdk/mcp)
+
+**Date**: 2026-03-06
+
+**Packages**: `@ai-sdk/mcp`, `@modelcontextprotocol/sdk`
+
+**Setup**:
+```typescript
+import { createMCPClient } from '@ai-sdk/mcp';
+import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
+
+// Stdio (local server)
+const client = await createMCPClient({
+  transport: new Experimental_StdioMCPTransport({
+    command: 'node',
+    args: ['server.js'],
+    env: { ...process.env, MY_VAR: 'value' },
+  }),
+});
+
+// HTTP (remote server)
+const client = await createMCPClient({
+  transport: { type: 'http', url: 'https://server.com/mcp', headers: { Authorization: 'Bearer ...' } },
+});
+
+// SSE (remote server)
+const client = await createMCPClient({
+  transport: { type: 'sse', url: 'https://server.com/sse' },
+});
+
+// Get tools compatible with streamText
+const tools = await client.tools();
+```
+
+**Key Learnings**:
+
+1. **Three Transport Types**: stdio (local child process), HTTP (Streamable HTTP, recommended for production), and SSE (Server-Sent Events). Stdio cannot be deployed to production — local development only.
+
+2. **Client Lifecycle Management**: MCP clients must be explicitly closed. For streaming, close in `onFinish` callback. For non-streaming, use try/finally. Failure to close leaves child processes (stdio) or connections (HTTP/SSE) dangling.
+
+3. **Tool Namespacing is Essential**: When connecting multiple MCP servers, tool name collisions are likely (e.g., two servers both exposing `search`). We prefix tools with `serverName__toolName` using double underscore as separator. The server name is sanitized (lowercase, non-alphanumeric → underscore).
+
+4. **Config-Based Client Caching**: Creating MCP clients is expensive (spawns processes for stdio, establishes connections for HTTP/SSE). Cache clients by server ID with a config hash — reuse if unchanged, recreate if config changed. Hash includes transport-specific fields: command/args/env for stdio, url/headers for HTTP/SSE.
+
+5. **Partial Failure Tolerance**: Use `Promise.allSettled` when connecting to multiple servers. One broken server shouldn't prevent tools from healthy servers from being available. Log warnings for failed connections.
+
+6. **Stdio Transport Import Path**: The stdio transport is at `@ai-sdk/mcp/mcp-stdio`, NOT `@ai-sdk/mcp`. This is an `Experimental_` prefixed export — API may change.
+
+7. **Env Inheritance for Stdio**: Stdio servers often need the parent process's PATH and other env vars. Always spread `process.env` before user-defined env: `{ ...process.env, ...config.env }`.
+
+8. **Tool Merging with Existing Tools**: MCP tools are plain objects compatible with `streamText({ tools })`. They can be spread alongside other tools (e.g., Tavily): `{ ...webSearchTools, ...mcpTools }`. Pass `undefined` (not `{}`) when no tools are configured to avoid unnecessary tool-use behavior.
+
+9. **Cleanup Strategy**: The `cleanup` function returned by `getMCPTools` closes stale clients (those no longer in the active config set) while keeping active ones cached. This runs after every request — on success AND on error.
+
+10. **MCP Servers Config Per-Request**: Configs are sent from client in the request body rather than stored server-side. This keeps the server stateless and the client (localStorage preferences) as the single source of truth.
+
+**Architecture**:
+```
+Client (useBedrockChat.ts)
+  → sends mcpServers[] in request body (enabled servers only)
+  → Server proxy (bedrock-aisdk-proxy.ts, etc.)
+    → mcp-manager.ts: getMCPTools(configs)
+      → creates/reuses cached MCP clients
+      → collects namespaced tools from all servers
+    → streamText({ tools: { ...webSearchTools, ...mcpTools } })
+    → cleanup stale clients after response
+```
+
+**Configuration UI**:
+Zed editor-inspired form in Preferences → MCP Servers tab:
+- Collapsible card per server with transport icon, name, enable/disable toggle
+- Transport selector (stdio/HTTP/SSE) with appropriate fields
+- Key-value editors for env vars and headers
+- Validation indicators for missing required fields
+
+**Common Pitfalls**:
+- Forgetting to close MCP clients → leaked child processes (stdio)
+- Not handling `mcpServers: undefined` in request body → existing requests break
+- Tool name collisions without namespacing → unpredictable tool selection
+- Sending `tools: {}` instead of `tools: undefined` → some models enter tool-use mode unnecessarily
+
+**Files**:
+- `server/mcp-manager.ts` - Client lifecycle, caching, tool namespacing
+- `src/types/mcp.ts` - MCPServerConfig types (stdio/http/sse union)
+- `src/components/sidebar/MCPServerSettings.tsx` - Configuration UI
+- `src/components/sidebar/PreferencesDialog.tsx` - MCP Servers tab
+- `src/utils/preferences.ts` - mcpServers in UserPreferences
+- All server proxies (`server/*-proxy.ts`) - MCP tool integration
+
+---
+
+## Claude 4.x Temperature/TopP Mutual Exclusion
+
+**Date**: 2026-03-04
+
+**Affected Models**: All Claude 4.x family — Claude 4, Claude 4.5 (Sonnet/Opus/Haiku), Claude 4.6+
+
+**The Problem**: Claude 4.x models return an error when both `temperature` and `topP` are set in the same request. This is an API-level constraint from Anthropic — you must send one OR the other, never both.
+
+**Detection Regex**: 
+```typescript
+const isClaude4x = /claude[.-](?:sonnet|haiku|opus)-4(?:[.-]|$)/i.test(modelId);
+```
+
+This regex is future-proofed for 4.7, 4.8, etc. It matches model IDs like:
+- `anthropic.claude-sonnet-4-20250514-v1:0` (Bedrock)
+- `claude-opus-4-5-20251101` (Anthropic direct)
+- `us.anthropic.claude-haiku-4-6-20260101-v1:0` (Bedrock inference profile)
+
+**Fix Pattern** (applied in all 4 affected files):
+```typescript
+...(isClaude4x
+  ? temperature !== undefined
+    ? { temperature }
+    : top_p !== undefined
+      ? { topP: top_p }
+      : { temperature: 0.3 }  // sensible default
+  : {
+      temperature: temperature ?? 0.3,
+      topP: top_p ?? 0.95,
+    }),
+```
+
+**Key Learning**: The original code only checked for `sonnet-4-5` as a hardcoded string. When Claude 4.6 was released, the same error reappeared. Using a regex that matches the entire 4.x family prevents this class of regression.
+
+**Files**:
+- `server/bedrock-aisdk-proxy.ts`
+- `server/bedrock-proxy.ts`
+- `server/anthropic-aisdk-proxy.ts`
+- `src/hooks/useBedrockChat.ts`
