@@ -246,6 +246,14 @@ export function useBedrockChat({
           headers['X-Tavily-Api-Key'] = prefs.tavilyApiKey;
         }
 
+        // Add enabled MCP server configs
+        const enabledMCPServers = prefs.mcpServers
+          ? Object.values(prefs.mcpServers).filter((s) => s.enabled)
+          : [];
+        if (enabledMCPServers.length > 0) {
+          (requestBody as Record<string, unknown>).mcpServers = enabledMCPServers;
+        }
+
         // Build provider-specific request
         if (provider === 'bedrock-mantle') {
           endpoint = '/api/mantle/chat';

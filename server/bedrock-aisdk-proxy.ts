@@ -9,7 +9,11 @@ import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
 import { tavilySearch } from '@tavily/ai-sdk';
 import { stepCountIs, streamText } from 'ai';
+import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'http';
+
+import type { MCPServerConfig } from '../src/types/mcp';
+import { getMCPServerStatus, getMCPTools } from './mcp-manager';
 
 // Initialize Bedrock provider with credential chain
 const bedrock = createAmazonBedrock({
@@ -34,6 +38,7 @@ interface ChatRequest {
   max_tokens?: number;
   top_p?: number;
   enableWebSearch?: boolean;
+  mcpServers?: MCPServerConfig[];
 }
 
 export async function handleBedrockAISDKRequest(
@@ -57,6 +62,8 @@ export async function handleBedrockAISDKRequest(
   try {
     if (pathname === '/api/bedrock-aisdk/chat') {
       await handleChat(req, res);
+    } else if (pathname === '/api/bedrock-aisdk/mcp-status') {
+      await handleMCPStatus(req, res);
     } else {
       res.statusCode = 404;
       res.end(JSON.stringify({ error: 'Not found' }));
@@ -93,14 +100,47 @@ export async function handleBedrockAISDKRequest(
   }
 }
 
+/**
+ * Handle MCP server status check — returns per-server connectivity and tool list.
+ */
+async function handleMCPStatus(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (req.method !== 'POST') {
+    res.statusCode = 405;
+    res.end(JSON.stringify({ error: 'Method not allowed' }));
+    return;
+  }
+
+  const body = await new Promise<string>((resolve) => {
+    let data = '';
+    req.on('data', (chunk: Buffer) => (data += chunk.toString()));
+    req.on('end', () => resolve(data));
+  });
+
+  const { mcpServers } = JSON.parse(body || '{}') as {
+    mcpServers?: MCPServerConfig[];
+  };
+
+  const servers = await getMCPServerStatus(mcpServers ?? []);
+
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({ servers }));
+}
+
 async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<void> {
   let body = '';
   for await (const chunk of req) {
     body += chunk;
   }
 
-  const { model, messages, temperature, max_tokens, top_p, enableWebSearch }: ChatRequest =
-    JSON.parse(body);
+  const {
+    model,
+    messages,
+    temperature,
+    max_tokens,
+    top_p,
+    enableWebSearch,
+    mcpServers,
+  }: ChatRequest = JSON.parse(body);
 
   // Get Tavily API key from header if web search is enabled
   const tavilyApiKey = req.headers['x-tavily-api-key'] as string;
@@ -157,11 +197,21 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     return { role: 'user' as const, content: msg.content };
   });
 
-  // Configure tools if web search is enabled
-  const tools =
-    enableWebSearch && tavilyApiKey
-      ? { webSearch: tavilySearch({ apiKey: tavilyApiKey }) }
-      : undefined;
+  // Get MCP tools if configured
+  let mcpTools: Record<string, unknown> = {};
+  let mcpCleanup: (() => Promise<void>) | undefined;
+  if (mcpServers && mcpServers.length > 0) {
+    const mcp = await getMCPTools(mcpServers);
+    mcpTools = mcp.tools;
+    mcpCleanup = mcp.cleanup;
+  }
+
+  // Configure tools - merge web search and MCP tools
+  const allTools: ToolSet = { ...mcpTools } as ToolSet;
+  if (enableWebSearch && tavilyApiKey) {
+    allTools.webSearch = tavilySearch({ apiKey: tavilyApiKey });
+  }
+  const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 
   // Create abort controller to cancel streamText when client disconnects
   const abortController = new AbortController();
@@ -247,7 +297,16 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
 
     res.write('data: [DONE]\n\n');
     res.end();
+
+    // Clean up stale MCP clients
+    if (mcpCleanup) {
+      mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
+    }
   } catch (error) {
+    // Clean up MCP clients on error too
+    if (mcpCleanup) {
+      mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
+    }
     console.error('Bedrock AI SDK: Stream error:', error);
     throw error;
   }

@@ -28,6 +28,7 @@ import type {
   UserPreferences,
   VisualMode,
 } from '../../utils/preferences';
+import { MCPServerSettings } from './MCPServerSettings';
 
 const MANTLE_REGIONS = [
   { label: 'US East (N. Virginia)', value: 'us-east-1' },
@@ -66,16 +67,17 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Preferences</DialogTitle>
           <DialogDescription>Configure your chat experience and API settings.</DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="provider" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="provider">Provider</TabsTrigger>
             <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+            <TabsTrigger value="mcp">MCP Servers</TabsTrigger>
             <TabsTrigger value="display">Display</TabsTrigger>
           </TabsList>
 
@@ -238,6 +240,13 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
                 </a>
               </p>
             </div>
+          </TabsContent>
+
+          <TabsContent value="mcp" className="space-y-4 mt-4">
+            <MCPServerSettings
+              servers={preferences.mcpServers || {}}
+              onChange={(mcpServers) => updatePreference('mcpServers', mcpServers)}
+            />
           </TabsContent>
 
           <TabsContent value="display" className="space-y-4 mt-4">

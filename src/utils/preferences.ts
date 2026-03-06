@@ -1,6 +1,7 @@
 /**
  * User preferences management utilities
  */
+import type { MCPServersMap } from '../types/mcp';
 
 export type Provider =
   | 'ollama'
@@ -28,6 +29,8 @@ export interface UserPreferences {
   // Tavily web search
   tavilyApiKey?: string;
   webSearchEnabledByDefault?: boolean;
+  // MCP Servers
+  mcpServers?: MCPServersMap;
 }
 
 const STORAGE_KEY = 'local-llm-ui-preferences';

@@ -7,8 +7,12 @@
  */
 import { tavilySearch } from '@tavily/ai-sdk';
 import { stepCountIs, streamText } from 'ai';
+import type { ToolSet } from 'ai';
 import { createOllama } from 'ollama-ai-provider-v2';
 import type { Connect } from 'vite';
+
+import type { MCPServerConfig } from '../src/types/mcp';
+import { getMCPTools } from './mcp-manager';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -22,6 +26,7 @@ interface ChatRequest {
   top_p?: number;
   max_tokens?: number;
   enableWebSearch?: boolean;
+  mcpServers?: MCPServerConfig[];
 }
 
 // Create Ollama provider instance
@@ -52,6 +57,7 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
       return;
     }
 
+    let mcpCleanup: (() => Promise<void>) | undefined;
     try {
       const startTime = Date.now();
 
@@ -74,11 +80,20 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
         return;
       }
 
-      // Configure tools if web search is enabled
-      const tools =
-        request.enableWebSearch && tavilyApiKey
-          ? { webSearch: tavilySearch({ apiKey: tavilyApiKey }) }
-          : undefined;
+      // Get MCP tools if configured
+      let mcpTools: Record<string, unknown> = {};
+      if (request.mcpServers && request.mcpServers.length > 0) {
+        const mcp = await getMCPTools(request.mcpServers);
+        mcpTools = mcp.tools;
+        mcpCleanup = mcp.cleanup;
+      }
+
+      // Configure tools - merge web search and MCP tools
+      const allTools: ToolSet = { ...mcpTools } as ToolSet;
+      if (request.enableWebSearch && tavilyApiKey) {
+        allTools.webSearch = tavilySearch({ apiKey: tavilyApiKey });
+      }
+      const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 
       // Create abort controller to cancel streamText when client disconnects
       const abortController = new AbortController();
@@ -231,7 +246,16 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
 
       res.write('data: [DONE]\n\n');
       res.end();
+
+      // Clean up stale MCP clients
+      if (mcpCleanup) {
+        mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
+      }
     } catch (error) {
+      // Clean up MCP clients on error too
+      if (mcpCleanup) {
+        mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
+      }
       console.error('Ollama AI SDK Proxy error:', error);
 
       // If headers already sent, we can't change status code
