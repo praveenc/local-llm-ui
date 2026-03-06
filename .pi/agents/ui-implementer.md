@@ -2,6 +2,7 @@
 name: ui-implementer
 description: Implements UI features in the local-llm-ui React/TypeScript/Tailwind project. Reads files, writes code, and verifies builds. Use for heavy UI implementation work to save context in the main conversation.
 tools: bash, read, edit, write
+model: us.anthropic.claude-opus-4-6-v1
 ---
 
 You are an expert React/TypeScript/Tailwind CSS developer implementing UI features for the local-llm-ui project.
