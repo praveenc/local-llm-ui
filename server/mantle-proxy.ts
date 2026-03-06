@@ -6,6 +6,8 @@
  */
 import type { IncomingMessage, ServerResponse } from 'http';
 
+import { setCORSHeaders } from './security';
+
 // Supported Mantle regions
 const MANTLE_REGIONS = [
   'us-east-1',
@@ -39,10 +41,8 @@ export async function handleMantleRequest(
   const url = new URL(req.url || '', `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Mantle-Api-Key, X-Mantle-Region');
+  // Set CORS headers (SEC-05: restricted to dev server origins)
+  setCORSHeaders(req, res, 'Content-Type, X-Mantle-Api-Key, X-Mantle-Region');
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 200;
@@ -277,6 +277,12 @@ async function handleChat(
   let body = '';
   for await (const chunk of req) {
     body += chunk;
+    if (body.length > 10 * 1024 * 1024) {
+      res.statusCode = 413;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Request body too large' }));
+      return;
+    }
   }
 
   const { model, messages, temperature, max_tokens, top_p, stream = true } = JSON.parse(body);

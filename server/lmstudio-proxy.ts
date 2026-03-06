@@ -1,6 +1,8 @@
 import { LMStudioClient } from '@lmstudio/sdk';
 import type { IncomingMessage, ServerResponse } from 'http';
 
+import { setCORSHeaders } from './security';
+
 // LMStudio SDK client - connects via WebSocket to LM Studio
 let client: LMStudioClient | null = null;
 let clientConnectionFailed = false;
@@ -57,10 +59,8 @@ export async function handleLMStudioRequest(
   const url = new URL(req.url || '', `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // Set CORS headers (SEC-05: restricted to dev server origins)
+  setCORSHeaders(req, res);
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 200;
@@ -147,6 +147,12 @@ async function handleLoadModel(req: IncomingMessage, res: ServerResponse): Promi
   let body = '';
   for await (const chunk of req) {
     body += chunk;
+    if (body.length > 1024 * 1024) {
+      res.statusCode = 413;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Request body too large' }));
+      return;
+    }
   }
 
   const { modelPath, contextLength, ttl } = JSON.parse(body);
@@ -219,6 +225,12 @@ async function handleLoadModelWithProgress(
   let body = '';
   for await (const chunk of req) {
     body += chunk;
+    if (body.length > 1024 * 1024) {
+      res.statusCode = 413;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Request body too large' }));
+      return;
+    }
   }
 
   const { modelPath, contextLength, ttl } = JSON.parse(body);
@@ -234,7 +246,6 @@ async function handleLoadModelWithProgress(
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
 
   // Helper to send SSE events
   const sendEvent = (data: object) => {
@@ -345,6 +356,12 @@ async function handleGetModelInfo(req: IncomingMessage, res: ServerResponse): Pr
   let body = '';
   for await (const chunk of req) {
     body += chunk;
+    if (body.length > 1024 * 1024) {
+      res.statusCode = 413;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Request body too large' }));
+      return;
+    }
   }
 
   const { modelPath } = JSON.parse(body || '{}');

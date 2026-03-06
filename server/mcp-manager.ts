@@ -3,6 +3,13 @@
  *
  * Manages MCP client lifecycle with config-based caching. Clients are reused
  * when their config hasn't changed and recreated when it has.
+ *
+ * Security hardening (SEC-01 through SEC-11):
+ * - Command allowlist for stdio transports (SEC-01)
+ * - Safe env var allowlist — no process.env leak (SEC-02)
+ * - SSRF protection for HTTP/SSE URLs (SEC-03)
+ * - Connection timeout on client creation (SEC-10)
+ * - Runtime validation of MCP config structure (SEC-11)
  */
 import { createMCPClient } from '@ai-sdk/mcp';
 import type { MCPClient } from '@ai-sdk/mcp';
@@ -17,6 +24,201 @@ import type {
 
 /** Separator used to namespace tool names: serverName__toolName */
 const TOOL_NS_SEP = '__';
+
+/** SEC-10: Connection timeout for MCP client creation (ms) */
+const MCP_CONNECT_TIMEOUT_MS = 15_000;
+
+// ─── Security: Command Allowlist (SEC-01) ────────────────────────────────────
+
+/**
+ * Allowlisted commands for stdio MCP servers.
+ * Only these executables can be spawned as child processes.
+ * Add to this list as needed — keep it minimal.
+ */
+const ALLOWED_STDIO_COMMANDS = new Set([
+  'node',
+  'npx',
+  'python',
+  'python3',
+  'uvx',
+  'uv',
+  'docker',
+  'deno',
+  'bun',
+  'bunx',
+]);
+
+/** Shell metacharacters that could enable command injection in args */
+const SHELL_METACHAR_PATTERN = /[;&|`$(){}!<>]/;
+
+/**
+ * SEC-01: Validate stdio MCP config — command allowlist + arg sanitization.
+ * Throws if the command is not allowed or args contain shell metacharacters.
+ */
+function validateStdioSecurity(config: MCPStdioConfig): void {
+  const cmd = config.command.trim().toLowerCase();
+
+  // Block absolute/relative paths — only bare command names allowed
+  if (cmd.includes('/') || cmd.includes('\\')) {
+    throw new Error(
+      `[MCP Security] Command paths are not allowed: '${config.command}'. Use a bare command name (e.g., 'node', 'uvx').`
+    );
+  }
+
+  if (!ALLOWED_STDIO_COMMANDS.has(cmd)) {
+    throw new Error(
+      `[MCP Security] Command '${config.command}' is not in the allowlist. ` +
+        `Allowed: ${[...ALLOWED_STDIO_COMMANDS].join(', ')}`
+    );
+  }
+
+  for (const arg of config.args) {
+    if (SHELL_METACHAR_PATTERN.test(arg)) {
+      throw new Error(`[MCP Security] Argument contains shell metacharacters: '${arg}'`);
+    }
+  }
+}
+
+// ─── Security: Safe Environment Variables (SEC-02) ───────────────────────────
+
+/**
+ * SEC-02: Only these env vars are inherited from process.env.
+ * AWS credentials, API keys, and other secrets are NOT passed to MCP children.
+ */
+const SAFE_ENV_KEYS = [
+  'PATH',
+  'HOME',
+  'USER',
+  'LANG',
+  'LC_ALL',
+  'TERM',
+  'SHELL',
+  'NODE_ENV',
+  'TMPDIR',
+  'XDG_RUNTIME_DIR',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+];
+
+function getSafeEnv(): Record<string, string> {
+  const safe: Record<string, string> = {};
+  for (const key of SAFE_ENV_KEYS) {
+    if (process.env[key]) safe[key] = process.env[key]!;
+  }
+  return safe;
+}
+
+// ─── Security: SSRF Protection (SEC-03) ──────────────────────────────────────
+
+/**
+ * SEC-03: Validate HTTP/SSE URLs to prevent SSRF attacks.
+ * Blocks cloud metadata endpoints, private IPs, and localhost.
+ */
+function validateUrlSecurity(urlString: string): void {
+  let url: URL;
+  try {
+    url = new URL(urlString);
+  } catch {
+    throw new Error(`[MCP Security] Invalid URL: '${urlString}'`);
+  }
+
+  // Only allow http/https schemes
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error(`[MCP Security] Only http/https URLs are allowed, got: '${url.protocol}'`);
+  }
+
+  const hostname = url.hostname.toLowerCase();
+
+  // Block cloud metadata endpoints (AWS, GCP, Azure)
+  const metadataHosts = ['169.254.169.254', '169.254.170.2', 'metadata.google.internal'];
+  if (metadataHosts.includes(hostname)) {
+    throw new Error(`[MCP Security] Cloud metadata endpoints are blocked: '${hostname}'`);
+  }
+
+  // Block localhost and loopback
+  if (
+    hostname === 'localhost' ||
+    hostname === '[::1]' ||
+    hostname === '::1' ||
+    hostname === '127.0.0.1'
+  ) {
+    throw new Error(
+      `[MCP Security] Localhost URLs are not allowed for remote MCP servers: '${hostname}'`
+    );
+  }
+
+  // Block private IP ranges (RFC 1918 + link-local)
+  const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (ipMatch) {
+    const [, a, b] = ipMatch.map(Number);
+    if (
+      a === 10 || // 10.0.0.0/8
+      (a === 172 && b >= 16 && b <= 31) || // 172.16.0.0/12
+      (a === 192 && b === 168) || // 192.168.0.0/16
+      (a === 169 && b === 254) // 169.254.0.0/16 (link-local)
+    ) {
+      throw new Error(`[MCP Security] Private IP addresses are blocked: '${hostname}'`);
+    }
+  }
+}
+
+// ─── Security: Runtime Config Validation (SEC-11) ────────────────────────────
+
+/**
+ * SEC-11: Validate MCP config structure at runtime.
+ * TypeScript types only provide compile-time safety; this catches malformed
+ * configs from the request body.
+ */
+function validateConfigStructure(config: unknown): config is MCPServerConfig {
+  if (!config || typeof config !== 'object') return false;
+  const c = config as Record<string, unknown>;
+
+  if (typeof c.id !== 'string' || !c.id) return false;
+  if (typeof c.name !== 'string' || !c.name) return false;
+  if (!['stdio', 'http', 'sse'].includes(c.transport as string)) return false;
+
+  switch (c.transport) {
+    case 'stdio':
+      if (typeof c.command !== 'string' || !c.command) return false;
+      if (!Array.isArray(c.args) || !c.args.every((a: unknown) => typeof a === 'string'))
+        return false;
+      if (c.env !== undefined && (typeof c.env !== 'object' || c.env === null)) return false;
+      break;
+    case 'http':
+    case 'sse':
+      if (typeof c.url !== 'string' || !c.url) return false;
+      if (c.headers !== undefined && (typeof c.headers !== 'object' || c.headers === null))
+        return false;
+      break;
+  }
+
+  return true;
+}
+
+/**
+ * Validate a single MCP config — structure, security, and transport-specific rules.
+ * Throws descriptive errors on failure.
+ */
+function validateMCPConfig(config: unknown): asserts config is MCPServerConfig {
+  if (!validateConfigStructure(config)) {
+    throw new Error(
+      `[MCP Security] Invalid MCP config structure: ${JSON.stringify(config)?.slice(0, 200)}`
+    );
+  }
+
+  // Transport-specific security validation
+  switch (config.transport) {
+    case 'stdio':
+      validateStdioSecurity(config as MCPStdioConfig);
+      break;
+    case 'http':
+    case 'sse':
+      validateUrlSecurity((config as MCPHTTPConfig | MCPSSEConfig).url);
+      break;
+  }
+}
+
+// ─── Client Caching ──────────────────────────────────────────────────────────
 
 /** Cached client entry */
 interface CachedClient {
@@ -46,16 +248,38 @@ function computeConfigHash(config: MCPServerConfig): string {
 }
 
 /**
+ * SEC-10: Create an MCP client with a connection timeout.
+ */
+async function createClientWithTimeout(config: MCPServerConfig): Promise<MCPClient> {
+  return Promise.race([
+    createClient(config),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () =>
+          reject(
+            new Error(`[MCP] Connection timeout after ${MCP_CONNECT_TIMEOUT_MS}ms: ${config.name}`)
+          ),
+        MCP_CONNECT_TIMEOUT_MS
+      )
+    ),
+  ]);
+}
+
+/**
  * Create an MCP client for the given server config.
+ * Security validations run before client creation.
  */
 async function createClient(config: MCPServerConfig): Promise<MCPClient> {
+  // SEC-01/02/03/11: Validate before creating
+  validateMCPConfig(config);
+
   switch (config.transport) {
     case 'stdio': {
       const stdioConfig = config as MCPStdioConfig;
       const transport = new Experimental_StdioMCPTransport({
         command: stdioConfig.command,
         args: stdioConfig.args,
-        env: { ...(process.env as Record<string, string>), ...stdioConfig.env },
+        env: { ...getSafeEnv(), ...stdioConfig.env },
       });
       return createMCPClient({ transport });
     }
@@ -103,7 +327,7 @@ async function getOrCreateClient(config: MCPServerConfig): Promise<MCPClient> {
     }
   }
 
-  const client = await createClient(config);
+  const client = await createClientWithTimeout(config);
   clientCache.set(config.id, { client, configHash: hash });
   return client;
 }
