@@ -12,7 +12,7 @@ import { stepCountIs, streamText } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'http';
 
 import type { MCPServerConfig } from '../src/types/mcp';
-import { getMCPTools } from './mcp-manager';
+import { getMCPServerStatus, getMCPTools } from './mcp-manager';
 
 // Initialize Bedrock provider with credential chain
 const bedrock = createAmazonBedrock({
@@ -61,6 +61,8 @@ export async function handleBedrockAISDKRequest(
   try {
     if (pathname === '/api/bedrock-aisdk/chat') {
       await handleChat(req, res);
+    } else if (pathname === '/api/bedrock-aisdk/mcp-status') {
+      await handleMCPStatus(req, res);
     } else {
       res.statusCode = 404;
       res.end(JSON.stringify({ error: 'Not found' }));
@@ -95,6 +97,32 @@ export async function handleBedrockAISDKRequest(
       })
     );
   }
+}
+
+/**
+ * Handle MCP server status check — returns per-server connectivity and tool list.
+ */
+async function handleMCPStatus(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (req.method !== 'POST') {
+    res.statusCode = 405;
+    res.end(JSON.stringify({ error: 'Method not allowed' }));
+    return;
+  }
+
+  const body = await new Promise<string>((resolve) => {
+    let data = '';
+    req.on('data', (chunk: Buffer) => (data += chunk.toString()));
+    req.on('end', () => resolve(data));
+  });
+
+  const { mcpServers } = JSON.parse(body || '{}') as {
+    mcpServers?: MCPServerConfig[];
+  };
+
+  const servers = await getMCPServerStatus(mcpServers ?? []);
+
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({ servers }));
 }
 
 async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<void> {

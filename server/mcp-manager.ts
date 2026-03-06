@@ -174,6 +174,49 @@ export async function getMCPTools(
 }
 
 /**
+ * Check connectivity and list tools for each MCP server config.
+ * Returns per-server status (connected/error) and tool names.
+ */
+export async function getMCPServerStatus(configs: MCPServerConfig[]): Promise<
+  Array<{
+    name: string;
+    id: string;
+    status: 'connected' | 'error';
+    tools: string[];
+    error?: string;
+  }>
+> {
+  if (!configs || configs.length === 0) return [];
+
+  const results = await Promise.allSettled(
+    configs.map(async (config) => {
+      const client = await getOrCreateClient(config);
+      const serverTools = await client.tools();
+      return {
+        name: config.name,
+        id: config.id,
+        status: 'connected' as const,
+        tools: Object.keys(serverTools),
+      };
+    })
+  );
+
+  return results.map((result, i) => {
+    if (result.status === 'fulfilled') {
+      return result.value;
+    }
+    const err = result.reason as Error;
+    return {
+      name: configs[i].name,
+      id: configs[i].id,
+      status: 'error' as const,
+      tools: [],
+      error: err?.message ?? 'Unknown error',
+    };
+  });
+}
+
+/**
  * Close all cached MCP clients. Call on graceful server shutdown.
  */
 export async function closeAllMCPClients(): Promise<void> {

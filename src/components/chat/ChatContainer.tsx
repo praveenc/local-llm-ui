@@ -62,8 +62,16 @@ import { FittedContainer } from '../layout';
 import { ActiveModelBadge } from './ActiveModelBadge';
 import { ContextIndicator } from './ContextIndicator';
 import { InferenceSettings } from './InferenceSettings';
+import { MCPToolsIndicator } from './MCPToolsIndicator';
 import { ModelSelectorButton } from './ModelSelectorButton';
 import { WebSearchToggle } from './WebSearchToggle';
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
 
 /**
  * ChatContainer
@@ -479,6 +487,7 @@ const ChatContainer = ({
                   disabled={isLoading}
                   hasApiKey={hasTavilyApiKey}
                 />
+                <MCPToolsIndicator disabled={isLoading} />
                 {messages.length > 0 && (
                   <PromptInputButton
                     onClick={clearMessages}
