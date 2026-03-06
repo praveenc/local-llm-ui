@@ -11,6 +11,9 @@ import { tavilySearch } from '@tavily/ai-sdk';
 import { stepCountIs, streamText } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'http';
 
+import type { MCPServerConfig } from '../src/types/mcp';
+import { getMCPTools } from './mcp-manager';
+
 // Initialize Bedrock provider with credential chain
 const bedrock = createAmazonBedrock({
   region: process.env.AWS_REGION || process.env.VITE_AWS_REGION || 'us-west-2',
@@ -34,6 +37,7 @@ interface ChatRequest {
   max_tokens?: number;
   top_p?: number;
   enableWebSearch?: boolean;
+  mcpServers?: MCPServerConfig[];
 }
 
 export async function handleBedrockAISDKRequest(
@@ -99,8 +103,15 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     body += chunk;
   }
 
-  const { model, messages, temperature, max_tokens, top_p, enableWebSearch }: ChatRequest =
-    JSON.parse(body);
+  const {
+    model,
+    messages,
+    temperature,
+    max_tokens,
+    top_p,
+    enableWebSearch,
+    mcpServers,
+  }: ChatRequest = JSON.parse(body);
 
   // Get Tavily API key from header if web search is enabled
   const tavilyApiKey = req.headers['x-tavily-api-key'] as string;
@@ -157,11 +168,20 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     return { role: 'user' as const, content: msg.content };
   });
 
-  // Configure tools if web search is enabled
-  const tools =
-    enableWebSearch && tavilyApiKey
-      ? { webSearch: tavilySearch({ apiKey: tavilyApiKey }) }
-      : undefined;
+  // Get MCP tools if configured
+  let mcpTools: Record<string, unknown> = {};
+  let mcpCleanup: (() => Promise<void>) | undefined;
+  if (mcpServers && mcpServers.length > 0) {
+    const mcp = await getMCPTools(mcpServers);
+    mcpTools = mcp.tools;
+    mcpCleanup = mcp.cleanup;
+  }
+
+  // Configure tools - merge web search and MCP tools
+  const webSearchTools =
+    enableWebSearch && tavilyApiKey ? { webSearch: tavilySearch({ apiKey: tavilyApiKey }) } : {};
+  const allTools = { ...webSearchTools, ...mcpTools };
+  const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 
   // Create abort controller to cancel streamText when client disconnects
   const abortController = new AbortController();
@@ -247,7 +267,16 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
 
     res.write('data: [DONE]\n\n');
     res.end();
+
+    // Clean up stale MCP clients
+    if (mcpCleanup) {
+      mcpCleanup().catch((err) => console.warn('[MCP] Cleanup error:', err));
+    }
   } catch (error) {
+    // Clean up MCP clients on error too
+    if (mcpCleanup) {
+      mcpCleanup().catch((err) => console.warn('[MCP] Cleanup error:', err));
+    }
     console.error('Bedrock AI SDK: Stream error:', error);
     throw error;
   }

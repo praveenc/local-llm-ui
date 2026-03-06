@@ -6,6 +6,8 @@
  */
 import type { Connect } from 'vite';
 
+import type { MCPServerConfig } from '../src/types/mcp';
+
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -17,6 +19,7 @@ interface ChatRequest {
   temperature?: number;
   top_p?: number;
   max_tokens?: number;
+  mcpServers?: MCPServerConfig[];
 }
 
 export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {

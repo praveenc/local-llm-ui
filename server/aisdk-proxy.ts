@@ -11,6 +11,9 @@ import { tavilySearch } from '@tavily/ai-sdk';
 import { stepCountIs, streamText } from 'ai';
 import type { Connect } from 'vite';
 
+import type { MCPServerConfig } from '../src/types/mcp';
+import { getMCPTools } from './mcp-manager';
+
 type AISDKProvider = 'groq' | 'cerebras';
 
 interface ChatMessage {
@@ -26,6 +29,7 @@ interface ChatRequest {
   top_p?: number;
   max_tokens?: number;
   enableWebSearch?: boolean;
+  mcpServers?: MCPServerConfig[];
 }
 
 function createProvider(providerType: AISDKProvider, apiKey: string) {
@@ -97,11 +101,22 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      // Configure tools if web search is enabled
-      const tools =
+      // Get MCP tools if configured
+      let mcpTools: Record<string, unknown> = {};
+      let mcpCleanup: (() => Promise<void>) | undefined;
+      if (request.mcpServers && request.mcpServers.length > 0) {
+        const mcp = await getMCPTools(request.mcpServers);
+        mcpTools = mcp.tools;
+        mcpCleanup = mcp.cleanup;
+      }
+
+      // Configure tools - merge web search and MCP tools
+      const webSearchTools =
         request.enableWebSearch && tavilyApiKey
           ? { webSearch: tavilySearch({ apiKey: tavilyApiKey }) }
-          : undefined;
+          : {};
+      const allTools = { ...webSearchTools, ...mcpTools };
+      const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 
       // Create abort controller to cancel streamText when client disconnects
       const abortController = new AbortController();
@@ -168,7 +183,16 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
 
       res.write('data: [DONE]\n\n');
       res.end();
+
+      // Clean up stale MCP clients
+      if (mcpCleanup) {
+        mcpCleanup().catch((err) => console.warn('[MCP] Cleanup error:', err));
+      }
     } catch (error) {
+      // Clean up MCP clients on error too
+      if (mcpCleanup) {
+        mcpCleanup().catch((err) => console.warn('[MCP] Cleanup error:', err));
+      }
       console.error(`AI SDK Proxy error (${request.provider}):`, error);
 
       // If headers already sent, we can't change status code
