@@ -9,6 +9,7 @@ import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
 import { tavilySearch } from '@tavily/ai-sdk';
 import { stepCountIs, streamText } from 'ai';
+import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'http';
 
 import type { MCPServerConfig } from '../src/types/mcp';
@@ -206,9 +207,10 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
   }
 
   // Configure tools - merge web search and MCP tools
-  const webSearchTools =
-    enableWebSearch && tavilyApiKey ? { webSearch: tavilySearch({ apiKey: tavilyApiKey }) } : {};
-  const allTools = { ...webSearchTools, ...mcpTools };
+  const allTools: ToolSet = { ...mcpTools } as ToolSet;
+  if (enableWebSearch && tavilyApiKey) {
+    allTools.webSearch = tavilySearch({ apiKey: tavilyApiKey });
+  }
   const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 
   // Create abort controller to cancel streamText when client disconnects
@@ -298,12 +300,12 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
 
     // Clean up stale MCP clients
     if (mcpCleanup) {
-      mcpCleanup().catch((err) => console.warn('[MCP] Cleanup error:', err));
+      mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
     }
   } catch (error) {
     // Clean up MCP clients on error too
     if (mcpCleanup) {
-      mcpCleanup().catch((err) => console.warn('[MCP] Cleanup error:', err));
+      mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
     }
     console.error('Bedrock AI SDK: Stream error:', error);
     throw error;

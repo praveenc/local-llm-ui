@@ -145,7 +145,11 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
         </Tooltip>
       </TooltipProvider>
 
-      <PopoverContent className="w-[320px] max-h-[400px] overflow-y-auto p-3" align="start">
+      <PopoverContent
+        className="w-[320px] max-h-[400px] overflow-y-auto p-3 z-[1100]"
+        align="start"
+        side="top"
+      >
         <div className="space-y-3">
           <h4 className="text-sm font-semibold">MCP Servers</h4>
 

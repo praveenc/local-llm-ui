@@ -254,7 +254,9 @@ function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: Serve
         {transportIcon}
         <span className="text-sm font-medium flex-1 truncate">{config.name || 'Untitled'}</span>
         {validationError && (
-          <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" title={validationError} />
+          <span title={validationError}>
+            <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+          </span>
         )}
         <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
           {config.transport}
