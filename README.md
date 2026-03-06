@@ -13,7 +13,9 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 ## Features
 
 - **Modern UI**: Built with shadcn/ui components (Radix UI + Tailwind CSS) for a clean, accessible interface
-- **Multiple AI Providers**: Support for Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Groq, and Cerebras
+- **Multiple AI Providers**: Support for Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Anthropic, Groq, and Cerebras
+- **MCP Server Integration**: Connect external tools via [Model Context Protocol](https://modelcontextprotocol.io/) — stdio, HTTP, and SSE transports
+- **Web Search**: Built-in Tavily web search tool for grounding responses with real-time data
 - **Real-time Streaming**: Stream responses from AI models in real-time with smooth animations
 - **Reasoning/Thinking Support**: Display thinking process for reasoning models (MiniMax, DeepSeek-R1, NemoTron, etc.)
 - **Unified Model Selector**: Searchable model picker in chat input, grouped by provider
@@ -28,6 +30,17 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 - **Dark/Light Mode**: Toggle between visual modes
 - **Responsive Design**: Works seamlessly across desktop and mobile devices
 
+## MCP Server Support
+
+Connect external tools to your LLM conversations via the [Model Context Protocol](https://modelcontextprotocol.io/). Configure servers in **Preferences → MCP Servers** with support for local (stdio) and remote (HTTP/SSE) transports.
+
+| MCP Tools Status | MCP Server Configuration |
+|:---:|:---:|
+| ![](.github/images/local-llm-mcp-servers-support_1.png) | ![](.github/images/local-llm-mcp-servers-support_2.png) |
+
+- **Toolbar indicator** shows connected servers and available tools at a glance
+- **Security hardened** — command allowlists, SSRF protection, env var isolation ([details](docs/SECURITY-LEARNINGS.md))
+
 ## Prerequisites
 
 Before running this application, ensure you have the following installed:
@@ -37,6 +50,7 @@ Before running this application, ensure you have the following installed:
 - **AI Provider** (at least one):
   - [Ollama](https://ollama.ai) - Local AI models
   - [LM Studio](https://lmstudio.ai) - Local AI platform with model management
+  - [Anthropic](https://anthropic.com) - Claude models (requires API key)
   - [Amazon Bedrock](https://aws.amazon.com/bedrock/) - AWS cloud AI service (requires AWS credentials)
   - [Bedrock Mantle](https://aws.amazon.com/bedrock/) - OpenAI-compatible Bedrock endpoint
   - [Groq](https://groq.com) - Fast cloud inference (requires API key)
@@ -129,7 +143,14 @@ Before running this application, ensure you have the following installed:
    - Navigate to "Model access"
    - Request access to desired models (e.g., Claude, Llama)
 
-### Option 4: Bedrock Mantle
+### Option 4: Anthropic
+
+1. Get an API key from [console.anthropic.com](https://console.anthropic.com)
+
+2. Configure in the app's Preferences:
+   - Enter your Anthropic API key
+
+### Option 5: Bedrock Mantle
 
 Bedrock Mantle provides an OpenAI-compatible endpoint for Bedrock models.
 
@@ -137,14 +158,14 @@ Bedrock Mantle provides an OpenAI-compatible endpoint for Bedrock models.
    - Set your Mantle API key
    - Set your Mantle region
 
-### Option 5: Groq
+### Option 6: Groq
 
 1. Get an API key from [console.groq.com](https://console.groq.com)
 
 2. Configure in the app's Preferences:
    - Enter your Groq API key
 
-### Option 6: Cerebras
+### Option 7: Cerebras
 
 1. Get an API key from [cloud.cerebras.ai](https://cloud.cerebras.ai)
 
@@ -205,7 +226,7 @@ Adjust model parameters via the settings icon in the chat input:
 
 - **Max Tokens**: Maximum length of the response
 
-> **Note for Claude 4.5 Models**: Claude 4.5 models don't support both temperature and topP simultaneously. The UI provides a toggle to choose which parameter to use.
+> **Note for Claude 4.x Models**: Claude 4.x models don't support both temperature and topP simultaneously. The UI provides a toggle to choose which parameter to use.
 
 ### Reasoning Models
 
@@ -260,11 +281,15 @@ local-llm-ui/
 │   └── main.tsx               # Application entry point
 ├── server/
 │   ├── aisdk-proxy.ts         # Groq/Cerebras proxy
+│   ├── anthropic-aisdk-proxy.ts # Anthropic proxy
 │   ├── bedrock-aisdk-proxy.ts # Bedrock AI SDK proxy
 │   ├── bedrock-proxy.ts       # Bedrock models proxy
 │   ├── lmstudio-aisdk-proxy.ts # LM Studio chat proxy
 │   ├── lmstudio-proxy.ts      # LM Studio SDK proxy
-│   └── mantle-proxy.ts        # Bedrock Mantle proxy
+│   ├── mantle-proxy.ts        # Bedrock Mantle proxy
+│   ├── mcp-manager.ts         # MCP client lifecycle and tools
+│   ├── ollama-aisdk-proxy.ts  # Ollama proxy
+│   └── security.ts            # Shared security utilities
 ├── public/                    # Static assets
 ├── vite.config.ts             # Vite configuration with proxy middleware
 └── package.json               # Dependencies and scripts
@@ -290,6 +315,7 @@ The Vite development server proxies requests to AI services:
 - `/api/ollama` → `http://localhost:11434`
 - `/api/lmstudio` → `http://localhost:1234`
 - `/api/bedrock`, `/api/bedrock-aisdk` → Server-side AWS SDK proxy
+- `/api/anthropic` → Anthropic Claude proxy
 - `/api/mantle` → Bedrock Mantle proxy
 - `/api/aisdk` → Groq/Cerebras proxy
 - `/api/lmstudio-sdk`, `/api/lmstudio-aisdk` → LM Studio proxies
@@ -356,7 +382,8 @@ This project uses:
 - **shadcn/ui**: UI component library (Radix UI + Tailwind CSS)
 - **Tailwind CSS 4**: Utility-first CSS
 - **Dexie.js**: IndexedDB wrapper for persistence
-- **AI SDK**: Vercel AI SDK for streaming (@ai-sdk/amazon-bedrock, @ai-sdk/openai-compatible, etc.)
+- **AI SDK**: Vercel AI SDK for streaming (@ai-sdk/amazon-bedrock, @ai-sdk/anthropic, @ai-sdk/groq, @ai-sdk/cerebras, @ai-sdk/openai-compatible, @ai-sdk/mcp)
+- **MCP SDK**: @modelcontextprotocol/sdk for MCP server connectivity
 - **Streamdown**: Markdown rendering in chat
 - **Lucide React**: Icons
 
@@ -376,5 +403,5 @@ For issues or questions:
 ## Acknowledgments
 
 - UI built with [shadcn/ui](https://ui.shadcn.com/) and [Radix UI](https://www.radix-ui.com/)
-- Supports [Ollama](https://ollama.ai), [LM Studio](https://lmstudio.ai), [Amazon Bedrock](https://aws.amazon.com/bedrock/), [Groq](https://groq.com), and [Cerebras](https://cerebras.ai)
+- Supports [Ollama](https://ollama.ai), [LM Studio](https://lmstudio.ai), [Amazon Bedrock](https://aws.amazon.com/bedrock/), [Anthropic](https://anthropic.com), [Groq](https://groq.com), and [Cerebras](https://cerebras.ai)
 - Powered by [Vite](https://vitejs.dev/), [React](https://react.dev/), and [Vercel AI SDK](https://sdk.vercel.ai/)
