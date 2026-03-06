@@ -288,6 +288,64 @@ Small token costs (fractions of a cent) were displaying as `$0.00` due to curren
 - Regularly audit and remove unused code to reduce bundle size
 - In this project, removing dead chat methods saved ~164KB
 
+### 6. ToolSet Type Mismatch with Conditional Tools
+
+When merging optional tools (web search + MCP), using a ternary that produces `undefined` values breaks the `ToolSet` type:
+```typescript
+// ❌ BAD — { webSearch: undefined } doesn't match ToolSet index signature
+const tools = enableWebSearch ? { webSearch: tavilySearch(...) } : undefined;
+const allTools = { ...tools, ...mcpTools }; // type error
+
+// ✅ GOOD — use imperative building with proper typing
+const allTools: Record<string, unknown> = {};
+if (enableWebSearch && tavilyApiKey) {
+  allTools.webSearch = tavilySearch({ apiKey: tavilyApiKey });
+}
+Object.assign(allTools, mcpTools);
+const tools = Object.keys(allTools).length > 0 ? (allTools as ToolSet) : undefined;
+```
+Import `ToolSet` from `'ai'` for the cast. Affected files: all 4 server proxies.
+
+### 7. Variable Scoping in try/catch with Cleanup Functions
+
+When MCP cleanup functions are declared inside a `try` block, they're not accessible in the `catch` block. Always declare cleanup references before the try:
+```typescript
+// ❌ BAD — mcpCleanup not in scope in catch
+try {
+  const { tools, cleanup: mcpCleanup } = await getMCPTools(configs);
+  // ...
+} catch (err) {
+  mcpCleanup?.(); // ReferenceError!
+}
+
+// ✅ GOOD — declare before try
+let mcpCleanup: (() => Promise<void>) | undefined;
+try {
+  const mcp = await getMCPTools(configs);
+  mcpCleanup = mcp.cleanup;
+  // ...
+} catch (err) {
+  // ...
+} finally {
+  mcpCleanup?.().catch(err => console.warn('[MCP] Cleanup error:', err));
+}
+```
+
+### 8. Popover Z-Index in Stacked Layout
+
+The chat input container uses `z-[1000]`. Any popover rendered from a button inside it (like MCP tools indicator) will appear BEHIND it unless explicitly given a higher z-index. Fix: use `z-[1100]` on `PopoverContent` and `side="top"` to render above the toolbar.
+
+### 9. Lucide Icons Don't Accept `title` Prop
+
+Lucide React icon components don't have a `title` prop in their types. Wrap in a `<span title="...">` instead:
+```typescript
+// ❌ BAD — TS error
+<AlertCircle title={errorMsg} />
+
+// ✅ GOOD
+<span title={errorMsg}><AlertCircle className="h-3.5 w-3.5" /></span>
+```
+
 ---
 
 ## Provider Comparison
@@ -329,6 +387,7 @@ server/
 ├── lmstudio-aisdk-proxy.ts # LM Studio chat
 ├── lmstudio-proxy.ts       # LM Studio SDK (model management)
 ├── mantle-proxy.ts         # Bedrock Mantle
+├── mcp-manager.ts          # MCP client lifecycle, caching, tools
 └── ollama-aisdk-proxy.ts   # Ollama
 
 src/services/
@@ -538,6 +597,9 @@ Zed editor-inspired form in Preferences → MCP Servers tab:
 - Not handling `mcpServers: undefined` in request body → existing requests break
 - Tool name collisions without namespacing → unpredictable tool selection
 - Sending `tools: {}` instead of `tools: undefined` → some models enter tool-use mode unnecessarily
+- `ToolSet` type requires explicit casting when merging tools from multiple sources — use `as ToolSet` (see Common Pitfalls #6)
+- MCP status endpoint (`/api/bedrock-aisdk/mcp-status`) enables UI to show per-server connectivity without blocking chat
+- `getMCPServerStatus()` is separate from `getMCPTools()` — status is diagnostic, tools are for `streamText`
 
 **Files**:
 - `server/mcp-manager.ts` - Client lifecycle, caching, tool namespacing
