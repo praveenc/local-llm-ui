@@ -226,3 +226,6 @@ samconfig.toml
 
 # bv (beads viewer) local config and caches
 .bv/
+
+# Claude Code local settings (machine-specific permissions)
+.claude/settings.local.json
