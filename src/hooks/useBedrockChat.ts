@@ -12,6 +12,7 @@ import { mantleService } from '../services';
 import type { ModelOption } from '../types';
 import type { MessagePart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
+import { normalizeMediaType } from '../utils/fileUtils';
 import { loadPreferences } from '../utils/preferences';
 import { useConversation, useConversationMutations } from './index';
 
@@ -687,6 +688,9 @@ function getMediaTypeFromFormat(format: string): string {
 }
 
 function getFormatFromMediaType(mediaType: string): string {
+  // Normalize text-like MIME types (e.g. application/x-sh → text/plain)
+  // so they map to 'txt' instead of falling through to 'bin'
+  const normalized = normalizeMediaType(mediaType);
   const typeMap: Record<string, string> = {
     'application/pdf': 'pdf',
     'text/plain': 'txt',
@@ -702,5 +706,7 @@ function getFormatFromMediaType(mediaType: string): string {
     'image/gif': 'gif',
     'image/webp': 'webp',
   };
-  return typeMap[mediaType] || 'bin';
+  if (normalized && typeMap[normalized]) return typeMap[normalized];
+  if (normalized) return 'txt'; // normalized but not in typeMap → treat as text
+  return 'bin'; // truly unsupported binary
 }
