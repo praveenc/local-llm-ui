@@ -37,7 +37,7 @@ class APIService {
 
     // Try Groq (AI SDK)
     try {
-      const groqModels = groqService.getModels();
+      const groqModels = await groqService.getModels();
       models.push(...groqModels);
     } catch {
       // Groq not available
@@ -45,7 +45,7 @@ class APIService {
 
     // Try Cerebras (AI SDK)
     try {
-      const cerebrasModels = cerebrasService.getModels();
+      const cerebrasModels = await cerebrasService.getModels();
       models.push(...cerebrasModels);
     } catch {
       // Cerebras not available

@@ -126,13 +126,13 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
                 rawModels = await mantleService.getModels();
                 break;
               case 'groq':
-                rawModels = groqService.getModels();
+                rawModels = await groqService.getModels();
                 break;
               case 'cerebras':
-                rawModels = cerebrasService.getModels();
+                rawModels = await cerebrasService.getModels();
                 break;
               case 'anthropic':
-                rawModels = anthropicService.getModels();
+                rawModels = await anthropicService.getModels();
                 break;
               default:
                 throw new Error('Invalid provider');

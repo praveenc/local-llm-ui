@@ -10,8 +10,8 @@ import type { ModelInfo } from './types';
 
 type AISDKProvider = 'groq' | 'cerebras' | 'anthropic';
 
-// Available models for each provider
-const GROQ_MODELS = [
+// Static fallback models when remote discovery is unavailable
+const GROQ_MODELS_FALLBACK = [
   { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile' },
   { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant' },
   { id: 'llama-3.1-70b-versatile', name: 'Llama 3.1 70B Versatile' },
@@ -59,6 +59,13 @@ export function syncApiKeysFromPreferences(
   } else {
     localStorage.removeItem(API_KEY_STORAGE.anthropic);
   }
+}
+
+interface ProviderModelResponse {
+  models?: Array<{
+    id: string;
+    ownedBy?: string;
+  }>;
 }
 
 export class AISDKService {
@@ -121,19 +128,59 @@ export class AISDKService {
     }
   }
 
+  private async fetchRemoteModels(): Promise<ModelInfo[]> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      throw new Error(`API key not configured for ${this.provider}`);
+    }
+
+    const response = await fetch(`/api/aisdk/models?provider=${this.provider}`, {
+      method: 'GET',
+      headers: {
+        'X-Api-Key': apiKey,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(errorData.error || `Failed to fetch ${this.provider} models`);
+    }
+
+    const data = (await response.json()) as ProviderModelResponse;
+    if (!Array.isArray(data.models)) {
+      throw new Error(`Invalid ${this.provider} models response`);
+    }
+
+    return data.models.map((model) => ({
+      modelId: model.id,
+      modelName: model.id,
+      provider: this.provider,
+      ownedBy: model.ownedBy,
+    }));
+  }
+
   /**
    * Get available models for this provider
    */
-  getModels(): ModelInfo[] {
+  async getModels(): Promise<ModelInfo[]> {
     // Only return models if API key is configured
     if (!this.hasApiKey()) {
       return [];
     }
 
+    // Groq and Cerebras support runtime model discovery via proxy
+    if (this.provider === 'groq' || this.provider === 'cerebras') {
+      try {
+        return await this.fetchRemoteModels();
+      } catch (error) {
+        console.warn(`Failed to fetch ${this.provider} models remotely, using fallback:`, error);
+      }
+    }
+
     let models: Array<{ id: string; name: string }>;
     switch (this.provider) {
       case 'groq':
-        models = GROQ_MODELS;
+        models = GROQ_MODELS_FALLBACK;
         break;
       case 'cerebras':
         models = CEREBRAS_MODELS;

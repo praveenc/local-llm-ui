@@ -60,11 +60,19 @@ import { Reasoning, ReasoningContent, ReasoningTrigger } from '../ai-elements/re
 import { ToolCall } from '../ai-elements/tool-call';
 import { FittedContainer } from '../layout';
 import { ActiveModelBadge } from './ActiveModelBadge';
+import { ChatErrorAlert } from './ChatErrorAlert';
 import { ContextIndicator } from './ContextIndicator';
 import { InferenceSettings } from './InferenceSettings';
 import { MCPToolsIndicator } from './MCPToolsIndicator';
 import { ModelSelectorButton } from './ModelSelectorButton';
 import { WebSearchToggle } from './WebSearchToggle';
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
 
 /**
  * ChatContainer
@@ -327,12 +335,7 @@ const ChatContainer = ({
 
   return (
     <>
-      {error && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {error && <ChatErrorAlert error={error} />}
       {fileError && (
         <Alert variant="destructive" className="mb-4">
           <AlertTitle>File Error</AlertTitle>
