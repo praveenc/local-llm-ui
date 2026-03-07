@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "name": "ESLint Auto-Fix on Save",
+  "description": "Runs ESLint with auto-fix on JavaScript and TypeScript files when saved, reports any remaining issues, and suggests fixes for complex problems",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "*.js",
+      "*.jsx",
+      "*.ts",
+      "*.tsx"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Run `npx eslint --fix {{filePath}}` to auto-fix any linting issues in the saved file. After running the fix, check if there are any remaining ESLint errors or warnings that couldn't be automatically fixed. If there are remaining issues, report them clearly and suggest specific code fixes for each complex issue that ESLint couldn't resolve automatically."
+  }
+}

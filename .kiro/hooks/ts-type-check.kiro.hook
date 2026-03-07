@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "name": "TypeScript Type Check",
+  "description": "Runs TypeScript type checking when you save .ts or .tsx files and reports any type errors",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "*.ts",
+      "*.tsx"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Run `npx tsc --noEmit` to check for TypeScript type errors. If there are any errors, report them and suggest fixes."
+  }
+}

@@ -170,7 +170,7 @@ sketch
 
 # Custom excludes
 docs/tmp_docs/
-.kiro/
+# .kiro/
 
 # Development artifacts
 docs/IMPLEMENTATION_PLAN*.md

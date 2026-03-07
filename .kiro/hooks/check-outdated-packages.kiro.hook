@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Check Outdated NPM Packages",
+  "description": "Checks for outdated npm packages when package.json is modified",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Run `npm outdated` to check for outdated packages and report which dependencies have newer versions available. Summarize any packages that should be updated."
+  }
+}
