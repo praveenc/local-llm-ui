@@ -17,6 +17,93 @@ const SUPPORTED_FORMATS = {
 
 type SupportedFormat = (typeof SUPPORTED_FORMATS)[keyof typeof SUPPORTED_FORMATS];
 
+/**
+ * Text-like MIME types that should be normalized to 'text/plain' for Bedrock.
+ * These are code, scripts, configs, and data formats that are fundamentally text.
+ */
+const TEXT_LIKE_MIME_TYPES = new Set([
+  // text/* variants not already in SUPPORTED_FORMATS
+  'text/x-python',
+  'text/x-script.python',
+  'text/javascript',
+  'text/x-javascript',
+  'text/typescript',
+  'text/x-typescript',
+  'text/x-sh',
+  'text/x-bash',
+  'text/x-zsh',
+  'text/x-ruby',
+  'text/x-perl',
+  'text/xml',
+  'text/x-yaml',
+  'text/x-log',
+  'text/x-csrc',
+  'text/x-c',
+  'text/x-c++src',
+  'text/x-java-source',
+  'text/x-makefile',
+  'text/x-diff',
+  'text/x-patch',
+  'text/x-ini',
+  'text/x-toml',
+  // application/* types that are actually text
+  'application/x-sh',
+  'application/x-csh',
+  'application/x-bash',
+  'application/x-python',
+  'application/x-python-code',
+  'application/javascript',
+  'application/x-javascript',
+  'application/typescript',
+  'application/json',
+  'application/xml',
+  'application/x-xml',
+  'application/x-yaml',
+  'application/yaml',
+  'application/x-perl',
+  'application/x-ruby',
+  'application/x-php',
+  'application/x-httpd-php',
+  'application/x-awk',
+  'application/x-sed',
+  'application/x-tcl',
+  'application/x-lua',
+  'application/x-powershell',
+  'application/x-bat',
+  'application/x-msdos-program',
+  'application/x-env',
+  'application/x-makefile',
+  'application/x-dockerfile',
+  'application/x-toml',
+]);
+
+/**
+ * Bedrock Converse API supported document MIME types (authoritative list from @ai-sdk/amazon-bedrock).
+ */
+const BEDROCK_SUPPORTED_MIME_TYPES = new Set([
+  'application/pdf',
+  'text/csv',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/html',
+  'text/plain',
+  'text/markdown',
+]);
+
+/**
+ * Normalizes a browser MIME type to a Bedrock-supported MIME type.
+ * Returns the normalized MIME type, or null if truly unsupported (binary).
+ */
+export function normalizeMediaType(mimeType: string): string | null {
+  if (BEDROCK_SUPPORTED_MIME_TYPES.has(mimeType)) return mimeType;
+  if (TEXT_LIKE_MIME_TYPES.has(mimeType)) return 'text/plain';
+  if (mimeType.startsWith('text/')) return 'text/plain';
+  if (mimeType.startsWith('image/')) return mimeType; // images handled separately
+  return null;
+}
+
 export interface FileValidationError {
   file: File;
   error: string;

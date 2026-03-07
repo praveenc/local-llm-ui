@@ -12,6 +12,7 @@ import { mantleService } from '../services';
 import type { ModelOption } from '../types';
 import type { MessagePart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
+import { normalizeMediaType } from '../utils/fileUtils';
 import { loadPreferences } from '../utils/preferences';
 import { useConversation, useConversationMutations } from './index';
 
@@ -673,6 +674,10 @@ function getMediaTypeFromFormat(format: string): string {
     html: 'text/html',
     md: 'text/markdown',
     csv: 'text/csv',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     png: 'image/png',
     jpg: 'image/jpeg',
     jpeg: 'image/jpeg',
@@ -683,16 +688,25 @@ function getMediaTypeFromFormat(format: string): string {
 }
 
 function getFormatFromMediaType(mediaType: string): string {
+  // Normalize text-like MIME types (e.g. application/x-sh → text/plain)
+  // so they map to 'txt' instead of falling through to 'bin'
+  const normalized = normalizeMediaType(mediaType);
   const typeMap: Record<string, string> = {
     'application/pdf': 'pdf',
     'text/plain': 'txt',
     'text/html': 'html',
     'text/markdown': 'md',
     'text/csv': 'csv',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/vnd.ms-excel': 'xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
     'image/png': 'png',
     'image/jpeg': 'jpg',
     'image/gif': 'gif',
     'image/webp': 'webp',
   };
-  return typeMap[mediaType] || 'bin';
+  if (normalized && typeMap[normalized]) return typeMap[normalized];
+  if (normalized) return 'txt'; // normalized but not in typeMap → treat as text
+  return 'bin'; // truly unsupported binary
 }

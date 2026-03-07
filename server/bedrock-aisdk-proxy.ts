@@ -85,6 +85,28 @@ export async function handleBedrockAISDKRequest(
     } else if (err.name === 'AccessDeniedException' || err.message?.includes('Access Denied')) {
       errorMessage = 'Access denied to Amazon Bedrock. Check IAM permissions.';
       statusCode = 403;
+    } else if ('statusCode' in err && (err as { statusCode?: number }).statusCode === 400) {
+      // Surface Bedrock validation errors (e.g. unsupported MIME type) with the actual message
+      const apiErr = err as {
+        statusCode: number;
+        data?: { message?: string };
+        responseBody?: string;
+      };
+      const bedrockMessage =
+        apiErr.data?.message ||
+        (apiErr.responseBody
+          ? (() => {
+              try {
+                return JSON.parse(apiErr.responseBody!).message;
+              } catch {
+                return undefined;
+              }
+            })()
+          : undefined);
+      if (bedrockMessage) {
+        errorMessage = bedrockMessage;
+      }
+      statusCode = 400;
     }
 
     res.statusCode = statusCode;
@@ -327,5 +349,11 @@ function getMediaType(format: string): string {
     webp: 'image/webp',
   };
 
-  return formatMap[format.toLowerCase()] || 'application/octet-stream';
+  const mimeType = formatMap[format.toLowerCase()];
+  if (!mimeType) {
+    throw new Error(
+      `Unsupported file format "${format}". Supported: pdf, txt, html, md, csv, doc, docx, xls, xlsx, and images.`
+    );
+  }
+  return mimeType;
 }
