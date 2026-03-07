@@ -327,5 +327,11 @@ function getMediaType(format: string): string {
     webp: 'image/webp',
   };
 
-  return formatMap[format.toLowerCase()] || 'application/octet-stream';
+  const mimeType = formatMap[format.toLowerCase()];
+  if (!mimeType) {
+    throw new Error(
+      `Unsupported file format "${format}". Supported: pdf, txt, html, md, csv, doc, docx, xls, xlsx, and images.`
+    );
+  }
+  return mimeType;
 }

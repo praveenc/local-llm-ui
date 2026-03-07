@@ -26,6 +26,7 @@ import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
 import { useBedrockChat } from '../../hooks/useBedrockChat';
 import type { ToolCallPart } from '../../types/ai-messages';
 import { getReasoningContent, getTextContent, hasReasoning } from '../../types/ai-messages';
+import { normalizeMediaType } from '../../utils/fileUtils';
 import { getModelContextLimits } from '../../utils/modelContext';
 import { loadPreferences } from '../../utils/preferences';
 import {
@@ -66,6 +67,13 @@ import { InferenceSettings } from './InferenceSettings';
 import { MCPToolsIndicator } from './MCPToolsIndicator';
 import { ModelSelectorButton } from './ModelSelectorButton';
 import { WebSearchToggle } from './WebSearchToggle';
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
 
 /**
  * ChatContainer
@@ -172,7 +180,11 @@ const toModelOption = (model: UnifiedModel | null): ModelOption | null => {
 };
 
 // Helper function to get file format from media type
-function getFormatFromMediaType(mediaType: string): string {
+function getFormatFromMediaType(mediaType: string): string | null {
+  // Normalize text-like MIME types to Bedrock-supported ones
+  const normalized = normalizeMediaType(mediaType);
+  if (!normalized) return null;
+
   const typeMap: Record<string, string> = {
     'application/pdf': 'pdf',
     'text/plain': 'txt',
@@ -188,7 +200,7 @@ function getFormatFromMediaType(mediaType: string): string {
     'image/gif': 'gif',
     'image/webp': 'webp',
   };
-  return typeMap[mediaType] || 'bin';
+  return typeMap[normalized] || 'txt';
 }
 
 const ChatContainer = ({
@@ -290,9 +302,13 @@ const ChatContainer = ({
         message.files.map(async (f) => {
           if (f.url?.startsWith('data:')) {
             const base64 = f.url.split(',')[1] || '';
+            const format = getFormatFromMediaType(f.mediaType || '');
+            if (!format) {
+              return null; // unsupported MIME type
+            }
             return {
               name: f.filename || 'file',
-              format: getFormatFromMediaType(f.mediaType || ''),
+              format,
               bytes: base64,
             };
           }
@@ -302,6 +318,12 @@ const ChatContainer = ({
       const validFiles = filesWithData.filter(
         (f): f is { name: string; format: string; bytes: string } => f !== null
       );
+      if (validFiles.length === 0 && message.files.length > 0) {
+        setFileError(
+          'Unsupported file type. Supported: PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX, and images.'
+        );
+        return;
+      }
       // Use default text if only files are provided
       const text = message.text.trim() || 'Please analyze the attached file(s).';
       await sendMessage(text, validFiles);
