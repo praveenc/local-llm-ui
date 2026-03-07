@@ -394,17 +394,19 @@ export const PromptInputActionAddAttachments = ({
     <DropdownMenuItem
       {...props}
       onSelect={(e) => {
+        // Prevent menu from auto-closing; let onClick handle the file dialog.
+        // The menu dismisses automatically when the system file picker opens
+        // (browser loses focus → Radix detects blur → menu closes).
         e.preventDefault();
-        // Debug: log to verify the handler is being called
-        console.log('PromptInputActionAddAttachments: onSelect called');
-        console.log('fileInputRef:', attachments.fileInputRef?.current);
-
-        // Try direct click on the ref if available
+      }}
+      onClick={() => {
+        // Use onClick (not onSelect) to trigger the file dialog.
+        // Radix DropdownMenuItem fires onSelect from 'pointerup', but Safari
+        // only allows programmatic input.click() on file inputs from a 'click'
+        // event handler (strict user gesture requirement).
         if (attachments.fileInputRef?.current) {
-          console.log('Clicking file input directly');
           attachments.fileInputRef.current.click();
         } else {
-          console.log('Calling openFileDialog');
           attachments.openFileDialog();
         }
       }}
