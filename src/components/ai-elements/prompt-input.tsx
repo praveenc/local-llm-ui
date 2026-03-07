@@ -939,11 +939,7 @@ export const PromptInputActionMenuTrigger = ({
   ...props
 }: PromptInputActionMenuTriggerProps) => (
   <DropdownMenuTrigger asChild>
-    <PromptInputButton
-      className={className}
-      onClick={() => console.log('PromptInputActionMenuTrigger clicked')}
-      {...props}
-    >
+    <PromptInputButton className={className} {...props}>
       {children ?? <PlusIcon className="size-4" />}
     </PromptInputButton>
   </DropdownMenuTrigger>
@@ -953,20 +949,28 @@ export type PromptInputActionMenuContentProps = ComponentProps<typeof DropdownMe
 export const PromptInputActionMenuContent = ({
   className,
   ...props
-}: PromptInputActionMenuContentProps) => (
-  // Note: We use DropdownMenuPrimitive.Content directly without Portal
-  // to keep the content within the React context tree, allowing
-  // child components to access the LocalAttachmentsContext
-  <DropdownMenuPrimitive.Content
-    align="start"
-    sideOffset={4}
-    className={cn(
-      'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border p-1 shadow-md',
-      className
-    )}
-    {...props}
-  />
-);
+}: PromptInputActionMenuContentProps) => {
+  // Capture attachment context BEFORE the portal boundary so child components
+  // (e.g. PromptInputActionAddAttachments) can still access file input refs.
+  // Portals break React context, so we re-provide it inside.
+  const attachments = useContext(LocalAttachmentsContext);
+
+  return (
+    <DropdownMenuPrimitive.Portal>
+      <LocalAttachmentsContext.Provider value={attachments}>
+        <DropdownMenuPrimitive.Content
+          align="start"
+          sideOffset={4}
+          className={cn(
+            'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-[1100] max-h-(--radix-dropdown-menu-content-available-height) min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border p-1 shadow-md',
+            className
+          )}
+          {...props}
+        />
+      </LocalAttachmentsContext.Provider>
+    </DropdownMenuPrimitive.Portal>
+  );
+};
 
 export type PromptInputActionMenuItemProps = ComponentProps<typeof DropdownMenuItem>;
 export const PromptInputActionMenuItem = ({
