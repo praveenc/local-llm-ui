@@ -57,6 +57,73 @@ function getModelsEndpoint(provider: AISDKProvider): string {
   }
 }
 
+function parseJsonSafely(value: string): unknown | null {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function extractErrorMessage(error: unknown): string {
+  const GENERIC_ERRORS = new Set([
+    'No output generated.',
+    'No output generated. Check the stream for errors.',
+    'Unknown error',
+  ]);
+  const visited = new Set<unknown>();
+
+  const walk = (value: unknown): string | undefined => {
+    if (value == null) return undefined;
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return undefined;
+
+      const parsed = parseJsonSafely(trimmed);
+      if (parsed && parsed !== value) {
+        return walk(parsed);
+      }
+
+      return GENERIC_ERRORS.has(trimmed) ? undefined : trimmed;
+    }
+
+    if (value instanceof Error) {
+      const withFields = value as Error & {
+        cause?: unknown;
+        responseBody?: unknown;
+      };
+
+      return (
+        walk(withFields.responseBody) ||
+        walk(withFields.cause) ||
+        (!GENERIC_ERRORS.has(value.message) ? value.message : undefined)
+      );
+    }
+
+    if (typeof value === 'object') {
+      if (visited.has(value)) return undefined;
+      visited.add(value);
+
+      const obj = value as Record<string, unknown>;
+
+      return (
+        walk(obj.error) ||
+        walk(obj.message) ||
+        walk(obj.responseBody) ||
+        walk(obj.cause) ||
+        walk(obj.details) ||
+        walk(obj.detail) ||
+        walk(obj.data)
+      );
+    }
+
+    return undefined;
+  };
+
+  return walk(error) || (error instanceof Error ? error.message : 'Unknown error');
+}
+
 async function handleModelsRequest(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || '', 'http://localhost');
   const provider = url.searchParams.get('provider');
@@ -113,7 +180,7 @@ async function handleModelsRequest(req: IncomingMessage, res: ServerResponse) {
     console.error(`AI SDK models proxy error (${provider}):`, error);
     res.statusCode = 500;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }));
+    res.end(JSON.stringify({ error: extractErrorMessage(error) }));
   }
 }
 
@@ -237,6 +304,9 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
               },
             })}\n\n`
           );
+        } else if (part.type === 'error') {
+          const streamError = extractErrorMessage(part.error);
+          res.write(`data: ${JSON.stringify({ error: streamError })}\n\n`);
         }
       }
 
@@ -272,13 +342,22 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       }
       console.error(`AI SDK Proxy error (${request.provider}):`, error);
 
-      // If headers already sent, we can't change status code
-      if (!res.headersSent) {
-        res.statusCode = 500;
-        res.setHeader('Content-Type', 'application/json');
+      const errorMessage = extractErrorMessage(error);
+
+      // If headers already sent, respond in SSE format so the client can parse it.
+      if (res.headersSent) {
+        try {
+          res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+        } catch {
+          res.end();
+        }
+        return;
       }
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ error: errorMessage }));
     }
   };
