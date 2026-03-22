@@ -18,7 +18,7 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 - **Web Search**: Built-in Tavily web search tool for grounding responses with real-time data
 - **Real-time Streaming**: Stream responses from AI models in real-time with smooth animations
 - **Reasoning/Thinking Support**: Display thinking process for reasoning models (MiniMax, DeepSeek-R1, NemoTron, etc.)
-- **Unified Model Selector**: Searchable model picker in chat input, grouped by provider
+- **Unified Model Selector**: Searchable model picker in chat input, grouped by provider with unavailable services clearly flagged
 - **Inference Settings**: Adjust temperature, top-p, and max tokens via popover in chat input
 - **Context Window Indicator**: Track token usage against model context limits
 - **Prompt Optimizer**: Optimize prompts for Claude 4.5 models using best practices (Bedrock only)
@@ -208,6 +208,7 @@ npm run preview
    - Click the model selector button in the chat input
    - Browse models grouped by provider
    - Use the search to filter models
+   - If a provider is unavailable, the selector shows a brief setup or connection hint
 
 3. **Start Chatting**:
    - Type your message in the input field
@@ -328,10 +329,11 @@ The Vite development server proxies requests to AI services:
 
 **Solutions**:
 
+- Check the unavailable provider messages shown in the model selector for the exact issue
 - **Ollama**: Ensure Ollama is running and you've pulled at least one model
-- **LM Studio**: Ensure the server is running on port 1234
-- **Bedrock**: Verify AWS credentials and model access
-- **Groq/Cerebras**: Check API key in Preferences
+- **LM Studio**: Start LM Studio, enable its local server, and ensure it's running on port 1234
+- **Bedrock**: Configure AWS credentials in your environment and verify model access/IAM permissions
+- **Groq/Cerebras/Anthropic/Bedrock Mantle**: Check API keys and provider settings in Preferences
 
 ### Connection Failed
 
@@ -382,6 +384,7 @@ This project uses:
 - **shadcn/ui**: UI component library (Radix UI + Tailwind CSS)
 - **Tailwind CSS 4**: Utility-first CSS
 - **Dexie.js**: IndexedDB wrapper for persistence
+- **TanStack Query**: Data fetching and caching for provider-backed UI state
 - **AI SDK**: Vercel AI SDK for streaming (@ai-sdk/amazon-bedrock, @ai-sdk/anthropic, @ai-sdk/groq, @ai-sdk/cerebras, @ai-sdk/openai-compatible, @ai-sdk/mcp)
 - **MCP SDK**: @modelcontextprotocol/sdk for MCP server connectivity
 - **Streamdown**: Markdown rendering in chat
