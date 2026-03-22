@@ -22,6 +22,7 @@ import {
   ModelSelectorList,
   ModelSelectorLogo,
   ModelSelectorName,
+  ModelSelectorSeparator,
   ModelSelectorTrigger,
 } from '../ai-elements/model-selector';
 import { PROVIDER_LOGO_MAP } from './provider-logos';
@@ -50,8 +51,8 @@ export function ModelSelectorButton({
     setOpen(false);
   };
 
-  // Filter providers that have models
-  const activeProviders = providers.filter((p) => p.models.length > 0);
+  const activeProviders = providers.filter((provider) => provider.models.length > 0);
+  const unavailableProviders = providers.filter((provider) => provider.status === 'error');
 
   return (
     <ModelSelector open={open} onOpenChange={setOpen}>
@@ -114,6 +115,36 @@ export function ModelSelectorButton({
               ))}
             </ModelSelectorGroup>
           ))}
+
+          {activeProviders.length > 0 && unavailableProviders.length > 0 && (
+            <ModelSelectorSeparator />
+          )}
+
+          {unavailableProviders.length > 0 && (
+            <ModelSelectorGroup heading="Unavailable providers">
+              {unavailableProviders.map((provider) => (
+                <ModelSelectorItem
+                  key={`unavailable-${provider.provider}`}
+                  value={`unavailable:${provider.provider}`}
+                  disabled
+                  className="cursor-default opacity-100"
+                >
+                  <ModelSelectorLogo
+                    provider={PROVIDER_LOGO_MAP[provider.provider] || provider.provider}
+                    className="h-4 w-4 opacity-60"
+                  />
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className="truncate text-sm text-foreground/80">
+                      {provider.providerName}
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {provider.error || 'Currently unavailable'}
+                    </p>
+                  </div>
+                </ModelSelectorItem>
+              ))}
+            </ModelSelectorGroup>
+          )}
         </ModelSelectorList>
       </ModelSelectorContent>
     </ModelSelector>

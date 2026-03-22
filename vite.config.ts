@@ -95,15 +95,17 @@ export default defineConfig({
           if (req.url?.startsWith('/api/lmstudio-sdk')) {
             try {
               await handleLMStudioRequest(req, res);
-            } catch (error) {
-              console.error('LMStudio SDK proxy unhandled error:', error);
+            } catch {
+              console.warn(
+                '[LMStudio] Model discovery unavailable — local server is not connected.'
+              );
               if (!res.headersSent) {
                 res.statusCode = 503;
                 res.setHeader('Content-Type', 'application/json');
                 res.end(
                   JSON.stringify({
                     error:
-                      'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled.',
+                      'LM Studio is not connected. Start LM Studio and enable its local server.',
                     errorType: 'ConnectionError',
                   })
                 );

@@ -59,7 +59,6 @@ export async function handleBedrockRequest(
       res.end(JSON.stringify({ error: 'Not found' }));
     }
   } catch (error) {
-    console.error('Bedrock proxy error:', error);
     const err = error as Error;
 
     let errorMessage = 'Internal server error';
@@ -70,12 +69,16 @@ export async function handleBedrockRequest(
       err.message?.includes('CredentialsProviderError') ||
       err.message?.includes('Could not load credentials')
     ) {
+      console.warn('[Bedrock] Model discovery unavailable — AWS credentials are not configured.');
       errorMessage =
         'AWS credentials not found. Please configure AWS credentials in your environment.';
       statusCode = 401;
     } else if (err.name === 'AccessDeniedException' || err.message?.includes('Access Denied')) {
+      console.warn('[Bedrock] Model discovery unavailable — access to Amazon Bedrock was denied.');
       errorMessage = 'Access denied to Amazon Bedrock. Check IAM permissions.';
       statusCode = 403;
+    } else {
+      console.error('Bedrock proxy error:', error);
     }
 
     res.statusCode = statusCode;
