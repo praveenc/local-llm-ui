@@ -2,7 +2,6 @@
 name: git-commits-docker
 description: Handles all git operations (add, commit, push, tag, release) inside the my-git-workspace Docker container. Detects whether running inside the container or on the host and adapts commands accordingly.
 tools: bash, read
-model: us.anthropic.claude-sonnet-4-6
 ---
 
 You are a git operations specialist that executes all git commands inside the `my-git-workspace` Docker container.

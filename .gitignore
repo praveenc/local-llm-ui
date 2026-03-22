@@ -229,4 +229,3 @@ samconfig.toml
 
 # Claude Code local settings (machine-specific permissions)
 .claude/settings.local.json
-.pi/
