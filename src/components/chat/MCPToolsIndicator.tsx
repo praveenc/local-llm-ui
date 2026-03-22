@@ -4,9 +4,10 @@
  * Toolbar button that shows MCP server connectivity and available tools
  * in a popover. Fetches status on mount and when preferences change.
  */
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plug2 } from 'lucide-react';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,66 +29,87 @@ interface MCPToolsIndicatorProps {
   disabled?: boolean;
 }
 
-export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
-  const [servers, setServers] = useState<MCPServerStatus[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [enabledConfigs, setEnabledConfigs] = useState<MCPServerConfig[]>([]);
+const MCP_STATUS_QUERY_KEY = ['mcp-status'] as const;
 
-  // Load enabled MCP server configs from preferences
+export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
+  const queryClient = useQueryClient();
+  const [enabledConfigs, setEnabledConfigs] = useState<MCPServerConfig[]>([]);
+  const [configVersion, setConfigVersion] = useState(0);
+
   const refreshConfigs = useCallback(() => {
     const prefs = loadPreferences();
     const mcpMap = prefs.mcpServers ?? {};
-    const enabled = Object.values(mcpMap).filter((s) => s.enabled);
-    setEnabledConfigs(enabled);
-  }, []);
+    const enabled = Object.values(mcpMap).filter((server) => server.enabled);
 
-  // Load configs on mount and listen for storage changes (cross-tab)
+    setEnabledConfigs(enabled);
+    setConfigVersion((previous) => previous + 1);
+
+    if (enabled.length === 0) {
+      queryClient.removeQueries({ queryKey: MCP_STATUS_QUERY_KEY });
+    }
+  }, [queryClient]);
+
   useEffect(() => {
     refreshConfigs();
-    const handler = () => refreshConfigs();
-    // Listen for both cross-tab (storage) and same-tab (custom event) changes
+
+    const handler = () => {
+      refreshConfigs();
+    };
+
     window.addEventListener('storage', handler);
     window.addEventListener(PREFERENCES_CHANGED_EVENT, handler);
+
     return () => {
       window.removeEventListener('storage', handler);
       window.removeEventListener(PREFERENCES_CHANGED_EVENT, handler);
     };
   }, [refreshConfigs]);
 
-  // Fetch MCP status when enabled configs change
-  useEffect(() => {
-    if (enabledConfigs.length === 0) {
-      setServers([]);
-      return;
-    }
+  const enabledServerKey = useMemo(
+    () => enabledConfigs.map(({ id, transport }) => ({ id, transport })),
+    [enabledConfigs]
+  );
 
-    let cancelled = false;
-    setLoading(true);
-
-    fetch('/api/bedrock-aisdk/mcp-status', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mcpServers: enabledConfigs }),
-    })
-      .then((r) => r.json())
-      .then((data: { servers: MCPServerStatus[] }) => {
-        if (!cancelled) setServers(data.servers ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setServers([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [enabledConfigs]);
-
-  const totalTools = servers.reduce((sum, s) => sum + s.tools.length, 0);
-  const connectedCount = servers.filter((s) => s.status === 'connected').length;
   const hasServers = enabledConfigs.length > 0;
+
+  const statusQuery = useQuery({
+    queryKey: [...MCP_STATUS_QUERY_KEY, configVersion, enabledServerKey],
+    enabled: hasServers,
+    staleTime: 0,
+    gcTime: 0,
+    queryFn: async (): Promise<MCPServerStatus[]> => {
+      const prefs = loadPreferences();
+      const latestEnabledConfigs = Object.values(prefs.mcpServers ?? {}).filter(
+        (server): server is MCPServerConfig => server.enabled
+      );
+
+      if (latestEnabledConfigs.length === 0) {
+        return [];
+      }
+
+      try {
+        const response = await fetch('/api/bedrock-aisdk/mcp-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mcpServers: latestEnabledConfigs }),
+        });
+
+        if (!response.ok) {
+          return [];
+        }
+
+        const data = (await response.json()) as { servers?: MCPServerStatus[] };
+        return data.servers ?? [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const servers = hasServers ? (statusQuery.data ?? []) : [];
+  const loading = hasServers && statusQuery.isFetching;
+  const totalTools = servers.reduce((sum, server) => sum + server.tools.length, 0);
+  const connectedCount = servers.filter((server) => server.status === 'connected').length;
 
   if (!hasServers) {
     return (

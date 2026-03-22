@@ -4,7 +4,9 @@
  * Aggregates models from all available providers for the unified ModelSelector.
  * Fetches models from connected providers and groups them by provider.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+
+import { useEffect, useMemo, useRef } from 'react';
 
 import {
   anthropicService,
@@ -48,15 +50,77 @@ const PROVIDER_NAMES: Record<Provider, string> = {
   ollama: 'Ollama',
 };
 
+const ALL_MODELS_QUERY_KEY = ['all-models'] as const;
+
+function hasConfiguredValue(value?: string): boolean {
+  return !!value?.trim();
+}
+
+function getProvidersToFetch(
+  preferences: UserPreferences,
+  storedPreferences: UserPreferences = preferences
+): Provider[] {
+  const providersToFetch: Provider[] = ['bedrock'];
+
+  if (hasConfiguredValue(storedPreferences.bedrockMantleApiKey)) {
+    providersToFetch.push('bedrock-mantle');
+  }
+
+  if (hasConfiguredValue(preferences.groqApiKey)) {
+    providersToFetch.push('groq');
+  }
+
+  if (hasConfiguredValue(preferences.cerebrasApiKey)) {
+    providersToFetch.push('cerebras');
+  }
+
+  if (hasConfiguredValue(preferences.anthropicApiKey)) {
+    providersToFetch.push('anthropic');
+  }
+
+  providersToFetch.push('lmstudio', 'ollama');
+
+  return providersToFetch;
+}
+
+function createLoadingProviders(providersToFetch: Provider[]): ProviderModels[] {
+  return providersToFetch.map((provider) => ({
+    provider,
+    providerName: PROVIDER_NAMES[provider],
+    models: [],
+    status: 'loading' as const,
+  }));
+}
+
 export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
-  const [providers, setProviders] = useState<ProviderModels[]>([]);
-  const [refetchTrigger, setRefetchTrigger] = useState(0);
+  const queryKey = useMemo(
+    () => [
+      ...ALL_MODELS_QUERY_KEY,
+      {
+        bedrockMantleEnabled: hasConfiguredValue(preferences.bedrockMantleApiKey),
+        bedrockMantleRegion: preferences.bedrockMantleRegion || 'us-west-2',
+        groqEnabled: hasConfiguredValue(preferences.groqApiKey),
+        cerebrasEnabled: hasConfiguredValue(preferences.cerebrasApiKey),
+        anthropicEnabled: hasConfiguredValue(preferences.anthropicApiKey),
+      },
+    ],
+    [
+      preferences.anthropicApiKey,
+      preferences.bedrockMantleApiKey,
+      preferences.bedrockMantleRegion,
+      preferences.cerebrasApiKey,
+      preferences.groqApiKey,
+    ]
+  );
 
-  const refetch = useCallback(() => setRefetchTrigger((prev) => prev + 1), []);
+  const loadingProviders = useMemo(
+    () => createLoadingProviders(getProvidersToFetch(preferences)),
+    [preferences]
+  );
 
-  useEffect(() => {
-    const fetchAllModels = async () => {
-      // Sync AI SDK API keys
+  const query = useQuery({
+    queryKey,
+    queryFn: async (): Promise<ProviderModels[]> => {
       syncApiKeysFromPreferences(
         preferences.groqApiKey,
         preferences.cerebrasApiKey,
@@ -66,48 +130,17 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
       const { lmstudioService, ollamaService, bedrockService, mantleService } =
         await import('../services');
 
-      // Define which providers to fetch based on configuration
-      const providersToFetch: Provider[] = [];
-
-      // Always try Bedrock (uses AWS credentials)
-      providersToFetch.push('bedrock');
-
-      // Bedrock Mantle if API key is configured
       const currentPrefs = loadPreferences();
+      const providersToFetch = getProvidersToFetch(preferences, currentPrefs);
+
       if (currentPrefs.bedrockMantleApiKey) {
         mantleService.setApiKey(currentPrefs.bedrockMantleApiKey);
         mantleService.setRegion(currentPrefs.bedrockMantleRegion || 'us-west-2');
-        providersToFetch.push('bedrock-mantle');
+      } else {
+        mantleService.setApiKey(null);
+        mantleService.setRegion(currentPrefs.bedrockMantleRegion || 'us-west-2');
       }
 
-      // Groq if API key is configured
-      if (preferences.groqApiKey) {
-        providersToFetch.push('groq');
-      }
-
-      // Cerebras if API key is configured
-      if (preferences.cerebrasApiKey) {
-        providersToFetch.push('cerebras');
-      }
-
-      // Anthropic if API key is configured
-      if (preferences.anthropicApiKey) {
-        providersToFetch.push('anthropic');
-      }
-
-      // Always try local providers
-      providersToFetch.push('lmstudio', 'ollama');
-
-      // Initialize all providers as loading
-      const initialProviders: ProviderModels[] = providersToFetch.map((provider) => ({
-        provider,
-        providerName: PROVIDER_NAMES[provider],
-        models: [],
-        status: 'loading' as const,
-      }));
-      setProviders(initialProviders);
-
-      // Fetch models from each provider in parallel
       const results = await Promise.allSettled(
         providersToFetch.map(async (provider): Promise<ProviderModels> => {
           try {
@@ -165,11 +198,11 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
         })
       );
 
-      // Process results
       const finalProviders: ProviderModels[] = results.map((result, index) => {
         if (result.status === 'fulfilled') {
           return result.value;
         }
+
         return {
           provider: providersToFetch[index],
           providerName: PROVIDER_NAMES[providersToFetch[index]],
@@ -179,27 +212,74 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
         };
       });
 
-      // Filter out providers with no models and no errors (not configured)
-      const activeProviders = finalProviders.filter(
-        (p) => p.models.length > 0 || p.status === 'error'
+      return finalProviders.filter(
+        (provider) => provider.models.length > 0 || provider.status === 'error'
       );
+    },
+  });
 
-      setProviders(activeProviders);
+  const { data, isFetching, refetch } = query;
+
+  const previousSecretsRef = useRef<{
+    bedrockMantleApiKey?: string;
+    bedrockMantleEnabled: boolean;
+    bedrockMantleRegion: string;
+    groqApiKey?: string;
+    groqEnabled: boolean;
+    cerebrasApiKey?: string;
+    cerebrasEnabled: boolean;
+    anthropicApiKey?: string;
+    anthropicEnabled: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    const currentSecrets = {
+      bedrockMantleApiKey: preferences.bedrockMantleApiKey,
+      bedrockMantleEnabled: hasConfiguredValue(preferences.bedrockMantleApiKey),
+      bedrockMantleRegion: preferences.bedrockMantleRegion || 'us-west-2',
+      groqApiKey: preferences.groqApiKey,
+      groqEnabled: hasConfiguredValue(preferences.groqApiKey),
+      cerebrasApiKey: preferences.cerebrasApiKey,
+      cerebrasEnabled: hasConfiguredValue(preferences.cerebrasApiKey),
+      anthropicApiKey: preferences.anthropicApiKey,
+      anthropicEnabled: hasConfiguredValue(preferences.anthropicApiKey),
     };
 
-    fetchAllModels();
+    const previousSecrets = previousSecretsRef.current;
+    previousSecretsRef.current = currentSecrets;
+
+    if (!previousSecrets) {
+      return;
+    }
+
+    const secretValuesChanged =
+      previousSecrets.bedrockMantleApiKey !== currentSecrets.bedrockMantleApiKey ||
+      previousSecrets.groqApiKey !== currentSecrets.groqApiKey ||
+      previousSecrets.cerebrasApiKey !== currentSecrets.cerebrasApiKey ||
+      previousSecrets.anthropicApiKey !== currentSecrets.anthropicApiKey;
+
+    if (secretValuesChanged) {
+      void refetch();
+    }
   }, [
+    preferences.anthropicApiKey,
     preferences.bedrockMantleApiKey,
     preferences.bedrockMantleRegion,
-    preferences.groqApiKey,
     preferences.cerebrasApiKey,
-    preferences.anthropicApiKey,
-    refetchTrigger,
+    preferences.groqApiKey,
+    refetch,
   ]);
 
-  // Flatten all models for easy access
-  const allModels = providers.flatMap((p) => p.models);
-  const isLoading = providers.some((p) => p.status === 'loading');
+  const providers = isFetching ? loadingProviders : (data ?? []);
+  const allModels = providers.flatMap((provider) => provider.models);
+  const isLoading = isFetching;
 
-  return { providers, allModels, isLoading, refetch };
+  return {
+    providers,
+    allModels,
+    isLoading,
+    refetch: () => {
+      void refetch();
+    },
+  };
 }
