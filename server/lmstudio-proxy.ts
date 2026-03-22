@@ -8,19 +8,42 @@ let client: LMStudioClient | null = null;
 let clientConnectionFailed = false;
 let lastConnectionAttempt = 0;
 const CONNECTION_RETRY_DELAY = 5000; // 5 seconds between retry attempts
+const LMSTUDIO_HTTP_MODELS_URL = 'http://127.0.0.1:1234/v1/models';
+
+async function isLMStudioReachable(): Promise<boolean> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+
+  try {
+    const response = await fetch(LMSTUDIO_HTTP_MODELS_URL, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    return response.ok || response.status >= 400;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 async function getClient(): Promise<LMStudioClient> {
   const now = Date.now();
 
   // If connection previously failed, wait before retrying
   if (clientConnectionFailed && now - lastConnectionAttempt < CONNECTION_RETRY_DELAY) {
-    throw new Error(
-      'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled.'
-    );
+    throw new Error('LM Studio is not connected. Start LM Studio and enable its local server.');
   }
 
   if (!client) {
     lastConnectionAttempt = now;
+
+    const isReachable = await isLMStudioReachable();
+    if (!isReachable) {
+      clientConnectionFailed = true;
+      throw new Error('LM Studio is not connected. Start LM Studio and enable its local server.');
+    }
+
     try {
       // Create client with error handling
       client = new LMStudioClient({
@@ -33,14 +56,10 @@ async function getClient(): Promise<LMStudioClient> {
       });
       await Promise.race([client.system.listDownloadedModels(), timeoutPromise]);
       clientConnectionFailed = false;
-    } catch (error) {
+    } catch {
       client = null;
       clientConnectionFailed = true;
-      const err = error as Error;
-      console.error('LMStudio connection error:', err.message);
-      throw new Error(
-        'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled.'
-      );
+      throw new Error('LM Studio is not connected. Start LM Studio and enable its local server.');
     }
   }
   return client;
@@ -84,7 +103,6 @@ export async function handleLMStudioRequest(
       res.end(JSON.stringify({ error: 'Not found' }));
     }
   } catch (error) {
-    console.error('LMStudio SDK proxy error:', error);
     const err = error as Error;
 
     let errorMessage = 'Internal server error';
@@ -96,14 +114,17 @@ export async function handleLMStudioRequest(
       err.message?.includes('connect') ||
       err.message?.includes('WebSocket') ||
       err.message?.includes('Cannot connect to LM Studio') ||
+      err.message?.includes('LM Studio is not connected') ||
       err.message?.includes('Failed to connect');
 
     if (isConnectionError) {
-      errorMessage =
-        'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled.';
+      console.warn('[LMStudio] Model discovery unavailable — local server is not connected.');
+      errorMessage = 'LM Studio is not connected. Start LM Studio and enable its local server.';
       statusCode = 503;
       // Reset client so next request will try to reconnect
       resetClient();
+    } else {
+      console.error('LMStudio SDK proxy error:', error);
     }
 
     res.statusCode = statusCode;

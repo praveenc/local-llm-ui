@@ -56,6 +56,42 @@ function hasConfiguredValue(value?: string): boolean {
   return !!value?.trim();
 }
 
+function getProviderErrorMessage(provider: Provider, err: unknown): string {
+  const message = err instanceof Error ? err.message : '';
+
+  if (provider === 'lmstudio' && message) {
+    return message;
+  }
+
+  if (provider === 'bedrock' && message) {
+    return message;
+  }
+
+  if (provider === 'bedrock-mantle' && message) {
+    return message;
+  }
+
+  return `Cannot connect to ${PROVIDER_NAMES[provider]}`;
+}
+
+function shouldLogProviderError(provider: Provider, err: unknown): boolean {
+  const message = err instanceof Error ? err.message.toLowerCase() : '';
+
+  if (provider === 'lmstudio') {
+    return !(
+      message.includes('cannot connect to lm studio') ||
+      message.includes('lm studio is not connected') ||
+      message.includes('no models available in lmstudio')
+    );
+  }
+
+  if (provider === 'bedrock') {
+    return !(message.includes('aws credentials') || message.includes('access denied'));
+  }
+
+  return true;
+}
+
 function getProvidersToFetch(
   preferences: UserPreferences,
   storedPreferences: UserPreferences = preferences
@@ -186,13 +222,16 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
               status: 'success',
             };
           } catch (err) {
-            console.error(`Failed to fetch ${provider} models:`, err);
+            if (shouldLogProviderError(provider, err)) {
+              console.error(`Failed to fetch ${provider} models:`, err);
+            }
+
             return {
               provider,
               providerName: PROVIDER_NAMES[provider],
               models: [],
               status: 'error',
-              error: `Cannot connect to ${PROVIDER_NAMES[provider]}`,
+              error: getProviderErrorMessage(provider, err),
             };
           }
         })

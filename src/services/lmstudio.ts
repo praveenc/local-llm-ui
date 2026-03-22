@@ -76,12 +76,17 @@ export class LMStudioService {
       // Fallback to OpenAI-compatible API (only shows loaded models)
       return this.getLoadedModels();
     } catch (error) {
-      console.error('LMStudio: Failed to fetch models:', error);
-      // Re-throw connection errors
+      // Re-throw expected connection errors without extra console noise
       const err = error as Error;
-      if (err.message?.includes('Cannot connect') || err.message?.includes('Connection')) {
+      if (
+        err.message?.includes('Cannot connect') ||
+        err.message?.includes('Connection') ||
+        err.message?.includes('LM Studio is not connected')
+      ) {
         throw error;
       }
+
+      console.error('LMStudio: Failed to fetch models:', error);
       // Try fallback for other errors
       try {
         return this.getLoadedModels();

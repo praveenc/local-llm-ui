@@ -16,12 +16,17 @@ export class BedrockService {
       return data.models || [];
     } catch (error) {
       const err = error as Error;
-      console.error('Bedrock: Failed to fetch models:', error);
 
-      // Pass through the error message from the server
-      if (err.message?.includes('credentials') || err.message?.includes('AWS')) {
+      // Pass through the error message from the server without extra console noise
+      if (
+        err.message?.includes('credentials') ||
+        err.message?.includes('AWS') ||
+        err.message?.includes('Access denied')
+      ) {
         throw err;
       }
+
+      console.error('Bedrock: Failed to fetch models:', error);
 
       throw new Error('Cannot connect to Amazon Bedrock. Please check your AWS credentials.');
     }
