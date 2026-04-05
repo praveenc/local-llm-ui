@@ -1,7 +1,6 @@
 ---
 name: aisdk-investigator
 description: "Diagnoses AI SDK issues across the local-llm-ui codebase. Traces errors through all 3 layers (server proxies, client hooks, services), checks all 7 providers for consistency, and returns a structured fix recommendation without applying changes."
-model: us.anthropic.claude-sonnet-4-6
 tools: ["bash", "read", "@fetchv2/*"]
 ---
 

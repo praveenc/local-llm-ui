@@ -1,7 +1,6 @@
 ---
 name: security-reviewer
 description: "Security reviewer for Node.js + React LLM applications. Audits code against OWASP Top 10 for LLMs (2025), Node.js security best practices, and common web app vulnerabilities. Scans server proxies, client hooks, MCP integration, input handling, and output rendering. Reports findings with severity, evidence, and remediation — does NOT apply fixes."
-model: us.anthropic.claude-opus-4-6-v1
 tools: ["bash", "read"]
 ---
 

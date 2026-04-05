@@ -1,7 +1,6 @@
 ---
 name: git-commits-local
 description: "Performs safe, consistent local git commit workflows using conventional commits, staged diff verification, and strict no-history-rewrite/no-remote-modification rules."
-model: gpt-5.3-codex
 tools: ["bash", "read"]
 ---
 
