@@ -10,7 +10,8 @@ export type Provider =
   | 'bedrock-mantle'
   | 'groq'
   | 'cerebras'
-  | 'anthropic';
+  | 'anthropic'
+  | 'openrouter';
 export type VisualMode = 'light' | 'dark';
 export type ContentDensity = 'comfortable' | 'compact';
 
@@ -26,6 +27,7 @@ export interface UserPreferences {
   groqApiKey?: string;
   cerebrasApiKey?: string;
   anthropicApiKey?: string;
+  openrouterApiKey?: string;
   // Tavily web search
   tavilyApiKey?: string;
   webSearchEnabledByDefault?: boolean;

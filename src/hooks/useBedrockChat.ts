@@ -105,6 +105,7 @@ export function useBedrockChat({
     if (desc.includes('groq')) return 'groq';
     if (desc.includes('cerebras')) return 'cerebras';
     if (desc.includes('anthropic')) return 'anthropic';
+    if (desc.includes('openrouter')) return 'openrouter';
     if (desc.includes('lmstudio')) return 'lmstudio';
     if (desc.includes('ollama')) return 'ollama';
     return 'bedrock';
@@ -285,6 +286,13 @@ export function useBedrockChat({
             throw new Error('Anthropic API key is required. Please configure it in preferences.');
           }
           headers['X-Api-Key'] = prefs.anthropicApiKey;
+        } else if (provider === 'openrouter') {
+          endpoint = '/api/openrouter/chat';
+          const prefs = loadPreferences();
+          if (!prefs.openrouterApiKey) {
+            throw new Error('OpenRouter API key is required. Please configure it in preferences.');
+          }
+          headers['X-Api-Key'] = prefs.openrouterApiKey;
         } else if (provider === 'lmstudio') {
           endpoint = '/api/lmstudio-aisdk/chat';
           // No API key needed for local LM Studio

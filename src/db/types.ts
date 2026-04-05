@@ -9,7 +9,8 @@ export type Provider =
   | 'bedrock-mantle'
   | 'groq'
   | 'cerebras'
-  | 'anthropic';
+  | 'anthropic'
+  | 'openrouter';
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type ConversationStatus = 'active' | 'archived';
 

@@ -1,7 +1,6 @@
 ---
 name: github-pr
 description: "Generates high-quality PR descriptions and optionally creates PRs via GitHub CLI. Runs git commands inside the my-git-workspace Docker container. Analyzes diffs, commit history, and changed files to produce structured PR descriptions following project conventions."
-model: us.anthropic.claude-sonnet-4-6
 tools: ["bash", "read"]
 ---
 

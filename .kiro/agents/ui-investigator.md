@@ -1,7 +1,6 @@
 ---
 name: ui-investigator
 description: "Investigates UI/UX layout, styling, and component issues in the local-llm-ui React/Tailwind project. Diagnoses truncation, overflow, responsive layout, and visual hierarchy problems. Reports structured fix recommendations — does NOT apply fixes."
-model: us.anthropic.claude-opus-4-6-v1
 tools: ["bash", "read", "@fetchv2/*"]
 ---
 

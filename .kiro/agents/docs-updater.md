@@ -1,7 +1,6 @@
 ---
 name: docs-updater
 description: "Updates project documentation files (README.md, AISDK-LEARNINGS.md, SECURITY-LEARNINGS.md, CLAUDE.md, etc.). Reads existing content to avoid duplication, matches established format and section structure, and applies changes surgically."
-model: us.anthropic.claude-sonnet-4-6
 tools: ["bash", "read", "edit", "write"]
 ---
 

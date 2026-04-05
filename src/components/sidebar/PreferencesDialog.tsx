@@ -127,6 +127,12 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
                     icon: '/claude-color.svg',
                     desc: 'API key',
                   },
+                  {
+                    value: 'openrouter',
+                    label: 'OpenRouter',
+                    icon: '/openrouter_icon.svg',
+                    desc: 'API key',
+                  },
                 ].map((provider) => (
                   <div key={provider.value} className="flex items-center space-x-3">
                     <RadioGroupItem value={provider.value} id={provider.value} />
@@ -215,6 +221,28 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
                   className="text-primary hover:underline"
                 >
                   console.anthropic.com
+                </a>
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <Label htmlFor="openrouter-key">OpenRouter API Key</Label>
+              <Input
+                id="openrouter-key"
+                type="password"
+                value={preferences.openrouterApiKey || ''}
+                onChange={(e) => updatePreference('openrouterApiKey', e.target.value.trim())}
+                placeholder="Enter API key"
+              />
+              <p className="text-xs text-muted-foreground">
+                Get your API key at{' '}
+                <a
+                  href="https://openrouter.ai/settings/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  openrouter.ai/settings/keys
                 </a>
               </p>
             </div>

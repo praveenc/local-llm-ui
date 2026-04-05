@@ -1,7 +1,6 @@
 ---
 name: make-runner
 description: "Executes Makefile targets (build, lint, format, test, check, fix, clean) and returns concise pass/fail summaries to the calling agent."
-model: us.anthropic.claude-sonnet-4-6
 tools: ["bash", "read"]
 ---
 
