@@ -3,9 +3,18 @@ import { bedrockService } from './bedrock';
 import { lmstudioService } from './lmstudio';
 import { mantleService } from './mantle';
 import { ollamaService } from './ollama';
+import { openrouterService } from './openrouter';
 import type { ModelInfo } from './types';
 
-export type Provider = 'lmstudio' | 'ollama' | 'bedrock' | 'bedrock-mantle' | 'groq' | 'cerebras';
+export type Provider =
+  | 'lmstudio'
+  | 'ollama'
+  | 'bedrock'
+  | 'bedrock-mantle'
+  | 'groq'
+  | 'cerebras'
+  | 'anthropic'
+  | 'openrouter';
 
 class APIService {
   async getAllModels(): Promise<ModelInfo[]> {
@@ -51,6 +60,23 @@ class APIService {
       // Cerebras not available
     }
 
+    // Try Anthropic (AI SDK)
+    try {
+      const { anthropicService } = await import('./aisdk');
+      const anthropicModels = await anthropicService.getModels();
+      models.push(...anthropicModels);
+    } catch {
+      // Anthropic not available
+    }
+
+    // Try OpenRouter
+    try {
+      const openrouterModels = await openrouterService.getModels();
+      models.push(...openrouterModels);
+    } catch {
+      // OpenRouter not available
+    }
+
     if (models.length === 0) {
       throw new Error(
         'No AI services available. Please start LMStudio, Ollama, or configure AWS credentials for Bedrock.'
@@ -67,17 +93,32 @@ class APIService {
     'bedrock-mantle': boolean;
     groq: boolean;
     cerebras: boolean;
+    anthropic: boolean;
+    openrouter: boolean;
   }> {
-    const [lmstudio, ollama, bedrock, bedrockMantle, groq, cerebras] = await Promise.all([
-      lmstudioService.checkConnection(),
-      ollamaService.checkConnection(),
-      bedrockService.checkConnection(),
-      mantleService.checkConnection(),
-      groqService.checkConnection(),
-      cerebrasService.checkConnection(),
-    ]);
+    const { anthropicService } = await import('./aisdk');
+    const [lmstudio, ollama, bedrock, bedrockMantle, groq, cerebras, anthropic, openrouter] =
+      await Promise.all([
+        lmstudioService.checkConnection(),
+        ollamaService.checkConnection(),
+        bedrockService.checkConnection(),
+        mantleService.checkConnection(),
+        groqService.checkConnection(),
+        cerebrasService.checkConnection(),
+        anthropicService.checkConnection(),
+        openrouterService.checkConnection(),
+      ]);
 
-    return { lmstudio, ollama, bedrock, 'bedrock-mantle': bedrockMantle, groq, cerebras };
+    return {
+      lmstudio,
+      ollama,
+      bedrock,
+      'bedrock-mantle': bedrockMantle,
+      groq,
+      cerebras,
+      anthropic,
+      openrouter,
+    };
   }
 
   async checkConnection(provider: Provider): Promise<boolean> {
@@ -94,6 +135,12 @@ class APIService {
         return groqService.checkConnection();
       case 'cerebras':
         return cerebrasService.checkConnection();
+      case 'anthropic': {
+        const { anthropicService } = await import('./aisdk');
+        return anthropicService.checkConnection();
+      }
+      case 'openrouter':
+        return openrouterService.checkConnection();
       default:
         return false;
     }

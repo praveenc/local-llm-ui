@@ -8,7 +8,8 @@ export interface Model {
     | 'bedrock-mantle'
     | 'groq'
     | 'cerebras'
-    | 'anthropic';
+    | 'anthropic'
+    | 'openrouter';
 }
 
 export interface ModelInfo {
@@ -21,7 +22,8 @@ export interface ModelInfo {
     | 'bedrock-mantle'
     | 'groq'
     | 'cerebras'
-    | 'anthropic';
+    | 'anthropic'
+    | 'openrouter';
   profileType?: string; // For Bedrock: SYSTEM_DEFINED, etc.
   modelFamily?: string; // For Bedrock: Anthropic Claude, Meta Llama, etc.
   ownedBy?: string; // For Mantle: model owner

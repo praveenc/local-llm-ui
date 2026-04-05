@@ -14,6 +14,7 @@ import {
   groqService,
   syncApiKeysFromPreferences,
 } from '../services/aisdk';
+import { openrouterService } from '../services/openrouter';
 import { loadPreferences } from '../utils/preferences';
 import type { Provider, UserPreferences } from '../utils/preferences';
 
@@ -46,6 +47,7 @@ const PROVIDER_NAMES: Record<Provider, string> = {
   groq: 'Groq',
   cerebras: 'Cerebras',
   anthropic: 'Anthropic',
+  openrouter: 'OpenRouter',
   lmstudio: 'LM Studio',
   ollama: 'Ollama',
 };
@@ -114,6 +116,10 @@ function getProvidersToFetch(
     providersToFetch.push('anthropic');
   }
 
+  if (hasConfiguredValue(preferences.openrouterApiKey)) {
+    providersToFetch.push('openrouter');
+  }
+
   providersToFetch.push('lmstudio', 'ollama');
 
   return providersToFetch;
@@ -138,6 +144,7 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
         groqEnabled: hasConfiguredValue(preferences.groqApiKey),
         cerebrasEnabled: hasConfiguredValue(preferences.cerebrasApiKey),
         anthropicEnabled: hasConfiguredValue(preferences.anthropicApiKey),
+        openrouterEnabled: hasConfiguredValue(preferences.openrouterApiKey),
       },
     ],
     [
@@ -146,6 +153,7 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
       preferences.bedrockMantleRegion,
       preferences.cerebrasApiKey,
       preferences.groqApiKey,
+      preferences.openrouterApiKey,
     ]
   );
 
@@ -177,6 +185,8 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
         mantleService.setRegion(currentPrefs.bedrockMantleRegion || 'us-west-2');
       }
 
+      openrouterService.setApiKey(currentPrefs.openrouterApiKey || null);
+
       const results = await Promise.allSettled(
         providersToFetch.map(async (provider): Promise<ProviderModels> => {
           try {
@@ -202,6 +212,9 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
                 break;
               case 'anthropic':
                 rawModels = await anthropicService.getModels();
+                break;
+              case 'openrouter':
+                rawModels = await openrouterService.getModels();
                 break;
               default:
                 throw new Error('Invalid provider');
@@ -269,6 +282,8 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
     cerebrasEnabled: boolean;
     anthropicApiKey?: string;
     anthropicEnabled: boolean;
+    openrouterApiKey?: string;
+    openrouterEnabled: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -282,6 +297,8 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
       cerebrasEnabled: hasConfiguredValue(preferences.cerebrasApiKey),
       anthropicApiKey: preferences.anthropicApiKey,
       anthropicEnabled: hasConfiguredValue(preferences.anthropicApiKey),
+      openrouterApiKey: preferences.openrouterApiKey,
+      openrouterEnabled: hasConfiguredValue(preferences.openrouterApiKey),
     };
 
     const previousSecrets = previousSecretsRef.current;
@@ -295,7 +312,8 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
       previousSecrets.bedrockMantleApiKey !== currentSecrets.bedrockMantleApiKey ||
       previousSecrets.groqApiKey !== currentSecrets.groqApiKey ||
       previousSecrets.cerebrasApiKey !== currentSecrets.cerebrasApiKey ||
-      previousSecrets.anthropicApiKey !== currentSecrets.anthropicApiKey;
+      previousSecrets.anthropicApiKey !== currentSecrets.anthropicApiKey ||
+      previousSecrets.openrouterApiKey !== currentSecrets.openrouterApiKey;
 
     if (secretValuesChanged) {
       void refetch();
@@ -306,6 +324,7 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
     preferences.bedrockMantleRegion,
     preferences.cerebrasApiKey,
     preferences.groqApiKey,
+    preferences.openrouterApiKey,
     refetch,
   ]);
 
