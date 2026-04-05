@@ -123,7 +123,7 @@ function extractOpenRouterError(rawBody: string): string | null {
   if (metadata) {
     const providerName = metadata.provider_name as string | undefined;
     const raw = metadata.raw as string | undefined;
-    if (raw?.includes('<!doctype html') || raw?.includes('403')) {
+    if (raw?.toLowerCase().includes('<!doctype html') || raw?.includes('403')) {
       return providerName
         ? `${providerName} provider blocked the request (403). Try a different model.`
         : 'Provider blocked the request (403). Try a different model.';
@@ -159,14 +159,6 @@ function getSafeErrorMessage(error: unknown, fallback: string): string {
       if (msg) return msg;
     }
 
-    // HTTP status shortcuts
-    if (err.statusCode === 403) {
-      return 'Model provider blocked this request (403). Try a different model.';
-    }
-    if (err.statusCode === 401) {
-      return 'Invalid OpenRouter API key.';
-    }
-
     // AI SDK: rawResponse.body
     if (typeof err.rawResponse?.body === 'string') {
       const msg = extractOpenRouterError(err.rawResponse.body);
@@ -180,6 +172,14 @@ function getSafeErrorMessage(error: unknown, fallback: string): string {
 
     if (nestedMessage) {
       return nestedMessage;
+    }
+
+    // Last resort: status-based generic messages
+    if (err.statusCode === 403) {
+      return 'Model provider blocked this request (403). Try a different model.';
+    }
+    if (err.statusCode === 401) {
+      return 'Invalid OpenRouter API key.';
     }
   }
 
@@ -289,10 +289,27 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
 
     const request = parsedRequest;
 
+    const MODEL_ID_MAX = 256;
+    const MODEL_ID_PATTERN = /^[a-zA-Z0-9._\-/:@]+$/;
+
     if (!request.model.trim()) {
       res.statusCode = 400;
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ error: 'Model is required' }));
+      return;
+    }
+
+    if (request.model.length > MODEL_ID_MAX) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Model ID too long' }));
+      return;
+    }
+
+    if (!MODEL_ID_PATTERN.test(request.model)) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Invalid model ID format' }));
       return;
     }
 
@@ -303,25 +320,45 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
       return;
     }
 
-    if (request.temperature !== undefined && typeof request.temperature !== 'number') {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'temperature must be a number' }));
-      return;
+    if (request.temperature !== undefined) {
+      if (
+        typeof request.temperature !== 'number' ||
+        !Number.isFinite(request.temperature) ||
+        request.temperature < 0 ||
+        request.temperature > 2
+      ) {
+        res.statusCode = 400;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'temperature must be between 0 and 2' }));
+        return;
+      }
     }
 
-    if (request.top_p !== undefined && typeof request.top_p !== 'number') {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'top_p must be a number' }));
-      return;
+    if (request.top_p !== undefined) {
+      if (
+        typeof request.top_p !== 'number' ||
+        !Number.isFinite(request.top_p) ||
+        request.top_p < 0 ||
+        request.top_p > 1
+      ) {
+        res.statusCode = 400;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'top_p must be between 0 and 1' }));
+        return;
+      }
     }
 
-    if (request.max_tokens !== undefined && typeof request.max_tokens !== 'number') {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'max_tokens must be a number' }));
-      return;
+    if (request.max_tokens !== undefined) {
+      if (
+        typeof request.max_tokens !== 'number' ||
+        !Number.isInteger(request.max_tokens) ||
+        request.max_tokens < 1
+      ) {
+        res.statusCode = 400;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'max_tokens must be a positive integer' }));
+        return;
+      }
     }
 
     if (request.enableWebSearch !== undefined && typeof request.enableWebSearch !== 'boolean') {
@@ -390,6 +427,9 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
         (message) => message.content.trim().length > 0
       );
       if (filteredMessages.length === 0) {
+        if (mcpCleanup) {
+          mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
+        }
         res.statusCode = 400;
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ error: 'At least one non-empty message is required' }));
@@ -399,8 +439,9 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
       const result = await streamText({
         model: openrouter(request.model),
         messages: filteredMessages,
-        temperature: request.temperature ?? 0.3,
-        topP: request.top_p ?? 0.95,
+        ...(request.temperature !== undefined
+          ? { temperature: request.temperature }
+          : { topP: request.top_p !== undefined ? request.top_p : 0.95 }),
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
         abortSignal: abortController.signal,

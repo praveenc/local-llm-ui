@@ -231,7 +231,7 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
                 id="openrouter-key"
                 type="password"
                 value={preferences.openrouterApiKey || ''}
-                onChange={(e) => updatePreference('openrouterApiKey', e.target.value)}
+                onChange={(e) => updatePreference('openrouterApiKey', e.target.value.trim())}
                 placeholder="Enter API key"
               />
               <p className="text-xs text-muted-foreground">

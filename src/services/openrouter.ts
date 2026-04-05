@@ -9,20 +9,18 @@ const OPENROUTER_BASE_URL = '/api/openrouter';
 const OPENROUTER_API_KEY_STORAGE = 'OPENROUTER_API_KEY';
 
 interface OpenRouterModelsResponse {
-  data?: Array<{
+  provider?: string;
+  models?: Array<{
     id: string;
     name: string;
-    pricing?: {
-      prompt?: number | string;
-      completion?: number | string;
-    };
   }>;
 }
 
 export class OpenRouterService {
   setApiKey(apiKey: string | null): void {
-    if (apiKey && apiKey.trim().length > 0) {
-      localStorage.setItem(OPENROUTER_API_KEY_STORAGE, apiKey);
+    const trimmed = apiKey?.trim();
+    if (trimmed && trimmed.length > 0) {
+      localStorage.setItem(OPENROUTER_API_KEY_STORAGE, trimmed);
     } else {
       localStorage.removeItem(OPENROUTER_API_KEY_STORAGE);
     }
@@ -55,7 +53,7 @@ export class OpenRouterService {
       }
 
       const data = (await response.json()) as OpenRouterModelsResponse;
-      return (data.data || []).map((model) => ({
+      return (data.models || []).map((model) => ({
         modelId: model.id,
         modelName: model.name,
         provider: 'openrouter',
