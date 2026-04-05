@@ -109,6 +109,35 @@ function extractApiErrorMessage(payload: unknown, fallback: string): string {
   return walk(payload) || fallback;
 }
 
+function extractOpenRouterError(rawBody: string): string | null {
+  const parsed = parseJsonSafely(rawBody);
+  if (!parsed || typeof parsed !== 'object') return null;
+
+  const obj = parsed as Record<string, unknown>;
+  const error = obj.error as Record<string, unknown> | undefined;
+  if (!error) return null;
+
+  const metadata = error.metadata as Record<string, unknown> | undefined;
+  const message = error.message as string | undefined;
+
+  if (metadata) {
+    const providerName = metadata.provider_name as string | undefined;
+    const raw = metadata.raw as string | undefined;
+    if (raw?.includes('<!doctype html') || raw?.includes('403')) {
+      return providerName
+        ? `${providerName} provider blocked the request (403). Try a different model.`
+        : 'Provider blocked the request (403). Try a different model.';
+    }
+    if (providerName && message) {
+      return `${providerName}: ${message}`;
+    }
+  }
+
+  const code = error.code as number | undefined;
+  if (message) return code ? `${message} (code: ${code})` : message;
+  return null;
+}
+
 function getSafeErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === 'object' && error !== null) {
     const err = error as {
@@ -116,10 +145,32 @@ function getSafeErrorMessage(error: unknown, fallback: string): string {
       cause?: unknown;
       responseBody?: unknown;
       body?: unknown;
+      statusCode?: number;
+      rawResponse?: { body?: string };
     };
 
     if (err.name === 'AbortError') {
       return 'Request was cancelled.';
+    }
+
+    // Extract from raw response body (OpenRouter JSON with provider errors)
+    if (typeof err.responseBody === 'string' && err.responseBody.length > 0) {
+      const msg = extractOpenRouterError(err.responseBody);
+      if (msg) return msg;
+    }
+
+    // HTTP status shortcuts
+    if (err.statusCode === 403) {
+      return 'Model provider blocked this request (403). Try a different model.';
+    }
+    if (err.statusCode === 401) {
+      return 'Invalid OpenRouter API key.';
+    }
+
+    // AI SDK: rawResponse.body
+    if (typeof err.rawResponse?.body === 'string') {
+      const msg = extractOpenRouterError(err.rawResponse.body);
+      if (msg) return msg;
     }
 
     const nestedMessage =
