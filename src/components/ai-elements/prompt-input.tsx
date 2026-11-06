@@ -189,7 +189,10 @@ export function PromptInputProvider({
 
   // Keep a ref to attachments for cleanup on unmount (avoids stale closure)
   const attachmentsRef = useRef(attachmentFiles);
-  attachmentsRef.current = attachmentFiles;
+
+  useEffect(() => {
+    attachmentsRef.current = attachmentFiles;
+  }, [attachmentFiles]);
 
   // Cleanup blob URLs on unmount to prevent memory leaks
   useEffect(() => {
@@ -465,7 +468,10 @@ export const PromptInput = ({
 
   // Keep a ref to files for cleanup on unmount (avoids stale closure)
   const filesRef = useRef(files);
-  filesRef.current = files;
+
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
 
   const openFileDialogLocal = useCallback(() => {
     inputRef.current?.click();
@@ -1076,6 +1082,10 @@ export type PromptInputSpeechButtonProps = ComponentProps<typeof PromptInputButt
   onTranscriptionChange?: (text: string) => void;
 };
 
+const isSpeechRecognitionSupported = () =>
+  typeof window !== 'undefined' &&
+  ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
 export const PromptInputSpeechButton = ({
   className,
   textareaRef,
@@ -1083,7 +1093,6 @@ export const PromptInputSpeechButton = ({
   ...props
 }: PromptInputSpeechButtonProps) => {
   const [isListening, setIsListening] = useState(false);
-  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   useEffect(() => {
@@ -1133,7 +1142,6 @@ export const PromptInputSpeechButton = ({
       };
 
       recognitionRef.current = speechRecognition;
-      setRecognition(speechRecognition);
     }
 
     return () => {
@@ -1144,6 +1152,7 @@ export const PromptInputSpeechButton = ({
   }, [textareaRef, onTranscriptionChange]);
 
   const toggleListening = useCallback(() => {
+    const recognition = recognitionRef.current;
     if (!recognition) {
       return;
     }
@@ -1153,7 +1162,7 @@ export const PromptInputSpeechButton = ({
     } else {
       recognition.start();
     }
-  }, [recognition, isListening]);
+  }, [isListening]);
 
   return (
     <PromptInputButton
@@ -1162,7 +1171,7 @@ export const PromptInputSpeechButton = ({
         isListening && 'animate-pulse bg-accent text-accent-foreground',
         className
       )}
-      disabled={!recognition}
+      disabled={!isSpeechRecognitionSupported()}
       onClick={toggleListening}
       {...props}
     >

@@ -106,20 +106,17 @@ export default function ShadcnStyleGuide() {
   const [switchChecked, setSwitchChecked] = useState(false);
   const [progress, setProgress] = useState(45);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [isDark, setIsDark] = useState(false);
+  // Start from the system preference
+  const [isDark, setIsDark] = useState(
+    () => window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
 
   useEffect(() => {
-    // Check for system preference on mount
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    setIsDark(prefersDark);
-    if (prefersDark) {
-      document.documentElement.classList.add('dark');
-    }
-  }, []);
+    document.documentElement.classList.toggle('dark', isDark);
+  }, [isDark]);
 
   const toggleTheme = () => {
     setIsDark(!isDark);
-    document.documentElement.classList.toggle('dark');
   };
 
   return (

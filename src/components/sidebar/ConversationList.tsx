@@ -7,7 +7,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -104,32 +104,28 @@ export function ConversationList({
   const grouped = groupConversationsByDate(conversations ?? []);
 
   // Initialize open groups based on available conversations
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
-  const hasInitializedGroups = useRef(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean> | null>(null);
 
-  // Set default open groups when conversations first load
-  useEffect(() => {
-    if (!hasInitializedGroups.current && grouped.length > 0) {
-      // Determine which groups should be open by default
-      // Only "Today" is expanded, unless there are no today conversations, then expand "Yesterday"
-      const hasTodayConversations = grouped.some(
-        (g) => g.label === 'Today' && g.conversations.length > 0
+  // Set default open groups when conversations first load (adjusting state during render)
+  if (openGroups === null && grouped.length > 0) {
+    // Determine which groups should be open by default
+    // Only "Today" is expanded, unless there are no today conversations, then expand "Yesterday"
+    const hasTodayConversations = grouped.some(
+      (g) => g.label === 'Today' && g.conversations.length > 0
+    );
+    if (hasTodayConversations) {
+      setOpenGroups({ Today: true });
+    } else {
+      const hasYesterdayConversations = grouped.some(
+        (g) => g.label === 'Yesterday' && g.conversations.length > 0
       );
-      if (hasTodayConversations) {
-        setOpenGroups({ Today: true });
-      } else {
-        const hasYesterdayConversations = grouped.some(
-          (g) => g.label === 'Yesterday' && g.conversations.length > 0
-        );
-        if (hasYesterdayConversations) {
-          setOpenGroups({ Yesterday: true });
-        } else if (grouped.length > 0) {
-          setOpenGroups({ [grouped[0].label]: true });
-        }
+      if (hasYesterdayConversations) {
+        setOpenGroups({ Yesterday: true });
+      } else if (grouped.length > 0) {
+        setOpenGroups({ [grouped[0].label]: true });
       }
-      hasInitializedGroups.current = true;
     }
-  }, [grouped]);
+  }
 
   const handleRename = (id: string, currentTitle: string) => {
     setEditingId(id);
@@ -166,7 +162,7 @@ export function ConversationList({
   };
 
   const toggleGroup = (label: string) => {
-    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+    setOpenGroups((prev) => ({ ...prev, [label]: !prev?.[label] }));
   };
 
   if (!conversations || conversations.length === 0) {
@@ -184,7 +180,7 @@ export function ConversationList({
       {grouped.map((group) => (
         <Collapsible
           key={group.label}
-          open={openGroups[group.label] ?? false}
+          open={openGroups?.[group.label] ?? false}
           onOpenChange={() => toggleGroup(group.label)}
         >
           <CollapsibleTrigger asChild>
@@ -192,7 +188,7 @@ export function ConversationList({
               <ChevronRight
                 className={cn(
                   'h-3 w-3 transition-transform',
-                  openGroups[group.label] && 'rotate-90'
+                  openGroups?.[group.label] && 'rotate-90'
                 )}
               />
               <span>{group.label}</span>

@@ -66,7 +66,9 @@ export class OpenRouterService {
         throw err;
       }
 
-      throw new Error('Cannot connect to OpenRouter. Please check your API key.');
+      throw new Error('Cannot connect to OpenRouter. Please check your API key.', {
+        cause: error,
+      });
     }
   }
 

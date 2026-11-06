@@ -50,7 +50,7 @@ export class MantleService {
       return data.regions || [];
     } catch (error) {
       console.error('Mantle: Failed to fetch regions:', error);
-      throw new Error('Failed to fetch Mantle regions');
+      throw new Error('Failed to fetch Mantle regions', { cause: error });
     }
   }
 
@@ -85,7 +85,8 @@ export class MantleService {
       }
 
       throw new Error(
-        `Cannot connect to Bedrock Mantle in ${this.region}. Please check your API key.`
+        `Cannot connect to Bedrock Mantle in ${this.region}. Please check your API key.`,
+        { cause: error }
       );
     }
   }
