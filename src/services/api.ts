@@ -1,4 +1,4 @@
-import { cerebrasService, groqService } from './aisdk';
+import { anthropicService, cerebrasService, groqService } from './aisdk';
 import { bedrockService } from './bedrock';
 import { lmstudioService } from './lmstudio';
 import { mantleService } from './mantle';
@@ -62,7 +62,6 @@ class APIService {
 
     // Try Anthropic (AI SDK)
     try {
-      const { anthropicService } = await import('./aisdk');
       const anthropicModels = await anthropicService.getModels();
       models.push(...anthropicModels);
     } catch {
@@ -96,7 +95,6 @@ class APIService {
     anthropic: boolean;
     openrouter: boolean;
   }> {
-    const { anthropicService } = await import('./aisdk');
     const [lmstudio, ollama, bedrock, bedrockMantle, groq, cerebras, anthropic, openrouter] =
       await Promise.all([
         lmstudioService.checkConnection(),
@@ -136,7 +134,6 @@ class APIService {
       case 'cerebras':
         return cerebrasService.checkConnection();
       case 'anthropic': {
-        const { anthropicService } = await import('./aisdk');
         return anthropicService.checkConnection();
       }
       case 'openrouter':

@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { useEffect, useMemo, useRef } from 'react';
 
+import { bedrockService, lmstudioService, mantleService, ollamaService } from '../services';
 import {
   anthropicService,
   cerebrasService,
@@ -170,9 +171,6 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
         preferences.cerebrasApiKey,
         preferences.anthropicApiKey
       );
-
-      const { lmstudioService, ollamaService, bedrockService, mantleService } =
-        await import('../services');
 
       const currentPrefs = loadPreferences();
       const providersToFetch = getProvidersToFetch(preferences, currentPrefs);

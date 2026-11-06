@@ -7,14 +7,14 @@
  */
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { tavilySearch } from '@tavily/ai-sdk';
-import { stepCountIs, streamText } from 'ai';
+import { isStepCount, streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connect } from 'vite';
 
-import type { MCPServerConfig } from '../src/types/mcp';
-import { getMCPTools } from './mcp-manager';
-import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security';
+import type { MCPServerConfig } from '../src/types/mcp.ts';
+import { getMCPTools } from './mcp-manager.ts';
+import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security.ts';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -438,6 +438,8 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
 
       const result = await streamText({
         model: openrouter(request.model),
+        // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
+        allowSystemInMessages: true,
         messages: filteredMessages,
         ...(request.temperature !== undefined
           ? { temperature: request.temperature }
@@ -445,10 +447,10 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
         abortSignal: abortController.signal,
-        ...(tools && { stopWhen: stepCountIs(5) }),
+        ...(tools && { stopWhen: isStepCount(5) }),
       });
 
-      for await (const part of result.fullStream) {
+      for await (const part of result.stream) {
         if (part.type === 'text-delta') {
           res.write(`data: ${JSON.stringify({ content: part.text })}\n\n`);
         } else if (part.type === 'reasoning-delta') {

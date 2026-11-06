@@ -1,7 +1,7 @@
 import { LMStudioClient } from '@lmstudio/sdk';
 import type { IncomingMessage, ServerResponse } from 'http';
 
-import { setCORSHeaders } from './security';
+import { setCORSHeaders } from './security.ts';
 
 // LMStudio SDK client - connects via WebSocket to LM Studio
 let client: LMStudioClient | null = null;

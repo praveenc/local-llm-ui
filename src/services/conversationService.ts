@@ -181,6 +181,19 @@ export const conversationService = {
   },
 
   /**
+   * Get the newest message, in one conversation or across all of them
+   */
+  async getLatestMessage(conversationId?: string): Promise<Message | undefined> {
+    if (conversationId) {
+      return db.messages
+        .where('[conversationId+sequence]')
+        .between([conversationId, Dexie.minKey], [conversationId, Dexie.maxKey])
+        .last();
+    }
+    return db.messages.orderBy('createdAt').last();
+  },
+
+  /**
    * Get the next sequence number for a conversation
    */
   async getNextSequence(conversationId: string): Promise<number> {

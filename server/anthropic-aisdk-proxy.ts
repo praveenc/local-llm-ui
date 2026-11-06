@@ -7,13 +7,13 @@
  */
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { tavilySearch } from '@tavily/ai-sdk';
-import { stepCountIs, streamText } from 'ai';
+import { isStepCount, streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import type { Connect } from 'vite';
 
-import type { MCPServerConfig } from '../src/types/mcp';
-import { getMCPTools } from './mcp-manager';
-import { capMaxTokens, readBodyWithLimit } from './security';
+import type { MCPServerConfig } from '../src/types/mcp.ts';
+import { getMCPTools } from './mcp-manager.ts';
+import { capMaxTokens, readBodyWithLimit } from './security.ts';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -141,6 +141,8 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
 
       const result = await streamText({
         model: anthropic(request.model),
+        // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
+        allowSystemInMessages: true,
         messages: request.messages,
         ...samplingConfig,
         maxOutputTokens: capMaxTokens(request.max_tokens),
@@ -148,11 +150,11 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
         abortSignal: abortController.signal,
         providerOptions,
         // stopWhen required for multi-step tool use (agentic behavior)
-        ...(tools && { stopWhen: stepCountIs(5) }),
+        ...(tools && { stopWhen: isStepCount(5) }),
       });
 
       // Stream text chunks and handle tool calls
-      for await (const part of result.fullStream) {
+      for await (const part of result.stream) {
         if (part.type === 'text-delta') {
           res.write(`data: ${JSON.stringify({ content: part.text })}\n\n`);
         } else if (part.type === 'reasoning-delta') {

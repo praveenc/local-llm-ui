@@ -48,6 +48,13 @@ interface PreferencesDialogProps {
 
 export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDialogProps) {
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
+  const [wasOpen, setWasOpen] = useState(open);
+
+  // Reload on open: other controls (the header theme toggle) also save preferences
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setPreferences(loadPreferences());
+  }
   const [initialsError, setInitialsError] = useState('');
 
   const handleSave = () => {

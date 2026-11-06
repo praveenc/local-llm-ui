@@ -48,6 +48,8 @@ describe('APIService', () => {
         'bedrock-mantle': false,
         groq: false,
         cerebras: false,
+        anthropic: false,
+        openrouter: false,
       });
     });
 
@@ -67,6 +69,8 @@ describe('APIService', () => {
         'bedrock-mantle': false,
         groq: false,
         cerebras: false,
+        anthropic: false,
+        openrouter: false,
       });
     });
   });

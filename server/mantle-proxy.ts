@@ -6,7 +6,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'http';
 
-import { setCORSHeaders } from './security';
+import { setCORSHeaders } from './security.ts';
 
 // Supported Mantle regions
 const MANTLE_REGIONS = [

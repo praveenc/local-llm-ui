@@ -29,7 +29,7 @@ This project follows a Code of Conduct that all contributors are expected to adh
 
 ### Prerequisites
 
-- Node.js 18.x or higher
+- Node.js 22.12 or higher
 - npm 9.x or higher
 - Ollama or LM Studio installed locally
 

@@ -8,13 +8,13 @@
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
 import { tavilySearch } from '@tavily/ai-sdk';
-import { stepCountIs, streamText } from 'ai';
+import { isStepCount, streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'http';
 
-import type { MCPServerConfig } from '../src/types/mcp';
-import { getMCPServerStatus, getMCPTools } from './mcp-manager';
-import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security';
+import type { MCPServerConfig } from '../src/types/mcp.ts';
+import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
+import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security.ts';
 
 // Initialize Bedrock provider with credential chain
 const bedrock = createAmazonBedrock({
@@ -238,12 +238,14 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
   try {
     const result = streamText({
       model: bedrock(model),
+      // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
+      allowSystemInMessages: true,
       messages: transformedMessages,
       maxOutputTokens: capMaxTokens(max_tokens),
       tools,
       abortSignal: abortController.signal,
       // stopWhen required for multi-step tool use (agentic behavior)
-      ...(tools && { stopWhen: stepCountIs(5) }),
+      ...(tools && { stopWhen: isStepCount(5) }),
       // Handle Claude 4.x temperature/topP constraints
       ...(isClaude4x
         ? temperature !== undefined
@@ -265,7 +267,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     const startTime = Date.now();
 
     // Stream text chunks and handle tool calls
-    for await (const part of result.fullStream) {
+    for await (const part of result.stream) {
       if (part.type === 'text-delta') {
         res.write(`data: ${JSON.stringify({ content: part.text })}\n\n`);
       } else if (part.type === 'tool-call') {

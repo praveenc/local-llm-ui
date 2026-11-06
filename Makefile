@@ -1,5 +1,9 @@
 .PHONY: dev build lint lint-fix format test test-run test-ui check fix clean help
 
+# Fail a pipeline when any command in it fails (so `npm ... | tail` keeps npm's exit code)
+# (SHELL with flags, since macOS GNU Make 3.81 has no .SHELLFLAGS)
+SHELL := /bin/bash -o pipefail
+
 # Configuration
 TAIL_LINES ?= 10
 VERBOSE ?= 0
@@ -56,16 +60,16 @@ test-ui:
 # Combined commands with proper error handling
 check:
 	@echo "→ Linting..."; \
-	npm run lint 2>&1 | tail -n 5 || exit 1; \
-	echo "→ Testing..."; \
-	npm run test:run 2>&1 | tail -n 5 || exit 1; \
+	npm run lint 2>&1 | tail -n 5 && \
+	echo "→ Testing..." && \
+	npm run test:run 2>&1 | tail -n 5 && \
 	echo "✓ All checks passed"
 
 fix:
 	@echo "→ Formatting..."; \
-	npm run format 2>&1 | tail -n 3 || exit 1; \
-	echo "→ Fixing lint issues..."; \
-	npm run lint:fix 2>&1 | tail -n 3 || exit 1; \
+	npm run format 2>&1 | tail -n 3 && \
+	echo "→ Fixing lint issues..." && \
+	npm run lint:fix 2>&1 | tail -n 3 && \
 	echo "✓ All fixes applied"
 
 # Clean

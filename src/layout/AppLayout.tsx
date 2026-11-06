@@ -2,18 +2,21 @@
 
 import { Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun, X } from 'lucide-react';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
+import type { VisualMode } from '@/utils/preferences';
 
 interface AppLayoutProps {
   navigation: React.ReactNode;
   children: React.ReactNode;
   navigationOpen?: boolean;
   onNavigationChange?: (open: boolean) => void;
+  theme: VisualMode;
+  onToggleTheme: () => void;
 }
 
 export function AppLayout({
@@ -21,27 +24,13 @@ export function AppLayout({
   children,
   navigationOpen = true,
   onNavigationChange,
+  theme,
+  onToggleTheme,
 }: AppLayoutProps) {
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Use the prop directly - this is a controlled component
   const sidebarOpen = navigationOpen;
-
-  useEffect(() => {
-    const root = window.document.documentElement;
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    const initialTheme = savedTheme || 'light';
-    setTheme(initialTheme);
-    root.classList.toggle('dark', initialTheme === 'dark');
-  }, []);
-
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
-    window.document.documentElement.classList.toggle('dark', newTheme === 'dark');
-  };
 
   const toggleSidebar = () => {
     onNavigationChange?.(!sidebarOpen);
@@ -131,7 +120,7 @@ export function AppLayout({
             </Button>
             <span className="text-sm font-medium text-muted-foreground">Chat</span>
           </div>
-          <Button variant="ghost" size="icon" onClick={toggleTheme}>
+          <Button variant="ghost" size="icon" onClick={onToggleTheme}>
             {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
           </Button>
         </header>
@@ -141,7 +130,7 @@ export function AppLayout({
       </div>
 
       {/* Toast Notifications */}
-      <Toaster />
+      <Toaster theme={theme} />
     </div>
   );
 }

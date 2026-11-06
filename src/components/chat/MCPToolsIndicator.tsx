@@ -31,15 +31,17 @@ interface MCPToolsIndicatorProps {
 
 const MCP_STATUS_QUERY_KEY = ['mcp-status'] as const;
 
+function getEnabledConfigs(): MCPServerConfig[] {
+  return Object.values(loadPreferences().mcpServers ?? {}).filter((server) => server.enabled);
+}
+
 export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
   const queryClient = useQueryClient();
-  const [enabledConfigs, setEnabledConfigs] = useState<MCPServerConfig[]>([]);
+  const [enabledConfigs, setEnabledConfigs] = useState<MCPServerConfig[]>(getEnabledConfigs);
   const [configVersion, setConfigVersion] = useState(0);
 
   const refreshConfigs = useCallback(() => {
-    const prefs = loadPreferences();
-    const mcpMap = prefs.mcpServers ?? {};
-    const enabled = Object.values(mcpMap).filter((server) => server.enabled);
+    const enabled = getEnabledConfigs();
 
     setEnabledConfigs(enabled);
     setConfigVersion((previous) => previous + 1);
@@ -50,8 +52,6 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
   }, [queryClient]);
 
   useEffect(() => {
-    refreshConfigs();
-
     const handler = () => {
       refreshConfigs();
     };

@@ -5,7 +5,7 @@
  * Handles message state, streaming, and conversation persistence.
  * Supports Bedrock, Bedrock Mantle, Groq, and Cerebras providers.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import type { Provider } from '../db/types';
 import { mantleService } from '../services';
@@ -90,12 +90,14 @@ export function useBedrockChat({
   const { createConversation, addMessage, getNextSequence, deleteMessagesFromSequence } =
     useConversationMutations();
 
-  // Sync DB messages to local state when conversation loads
-  useEffect(() => {
+  // Sync DB messages to local state when conversation loads (adjusting state during render)
+  const [syncedDbMessages, setSyncedDbMessages] = useState(dbMessages);
+  if (dbMessages !== syncedDbMessages) {
+    setSyncedDbMessages(dbMessages);
     if (dbMessages && dbMessages.length > 0) {
       setMessages(toUIMessages(dbMessages));
     }
-  }, [dbMessages]);
+  }
 
   // Get provider from model description
   const getProvider = useCallback((): Provider => {

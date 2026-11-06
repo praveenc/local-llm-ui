@@ -3,28 +3,28 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
 
-import { createAISDKProxy } from './server/aisdk-proxy';
-import { createAnthropicProxy } from './server/anthropic-aisdk-proxy';
-import { handleBedrockAISDKRequest } from './server/bedrock-aisdk-proxy';
-import { handleBedrockRequest } from './server/bedrock-proxy';
-import { createLMStudioAISDKProxy } from './server/lmstudio-aisdk-proxy';
-import { handleLMStudioRequest } from './server/lmstudio-proxy';
-import { handleMantleRequest } from './server/mantle-proxy';
-import { createOllamaAISDKProxy } from './server/ollama-aisdk-proxy';
-import { createOpenRouterAISDKProxy } from './server/openrouter-aisdk-proxy';
+import { createAISDKProxy } from './server/aisdk-proxy.ts';
+import { createAnthropicProxy } from './server/anthropic-aisdk-proxy.ts';
+import { handleBedrockAISDKRequest } from './server/bedrock-aisdk-proxy.ts';
+import { handleBedrockRequest } from './server/bedrock-proxy.ts';
+import { createLMStudioAISDKProxy } from './server/lmstudio-aisdk-proxy.ts';
+import { handleLMStudioRequest } from './server/lmstudio-proxy.ts';
+import { handleMantleRequest } from './server/mantle-proxy.ts';
+import { createOllamaAISDKProxy } from './server/ollama-aisdk-proxy.ts';
+import { createOpenRouterAISDKProxy } from './server/openrouter-aisdk-proxy.ts';
 
 // https://vite.dev/config/
 export default defineConfig({
   resolve: {
     alias: {
-      '@': resolve(__dirname, './src'),
+      '@': resolve(import.meta.dirname, './src'),
     },
   },
   build: {
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'index.html'),
-        'styleguide-shadcn': resolve(__dirname, 'styleguide-shadcn.html'),
+        main: resolve(import.meta.dirname, 'index.html'),
+        'styleguide-shadcn': resolve(import.meta.dirname, 'styleguide-shadcn.html'),
       },
     },
   },

@@ -28,7 +28,9 @@ export class BedrockService {
 
       console.error('Bedrock: Failed to fetch models:', error);
 
-      throw new Error('Cannot connect to Amazon Bedrock. Please check your AWS credentials.');
+      throw new Error('Cannot connect to Amazon Bedrock. Please check your AWS credentials.', {
+        cause: error,
+      });
     }
   }
 

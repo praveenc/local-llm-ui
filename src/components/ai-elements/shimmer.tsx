@@ -1,10 +1,27 @@
 'use client';
 
-import { motion } from 'motion/react';
+import { type MotionProps, motion } from 'motion/react';
 
 import { type CSSProperties, type ElementType, type JSX, memo, useMemo } from 'react';
 
 import { cn } from '@/lib/utils';
+
+type MotionHTMLProps = MotionProps & Record<string, unknown>;
+
+// Cache motion components at module level to avoid creating them during render
+const motionComponentCache = new Map<
+  keyof JSX.IntrinsicElements,
+  React.ComponentType<MotionHTMLProps>
+>();
+
+const getMotionComponent = (element: keyof JSX.IntrinsicElements) => {
+  let component = motionComponentCache.get(element);
+  if (!component) {
+    component = motion.create(element);
+    motionComponentCache.set(element, component);
+  }
+  return component;
+};
 
 export type TextShimmerProps = {
   children: string;
@@ -21,11 +38,12 @@ const ShimmerComponent = ({
   duration = 2,
   spread = 2,
 }: TextShimmerProps) => {
-  const MotionComponent = motion.create(Component as keyof JSX.IntrinsicElements);
+  const MotionComponent = getMotionComponent(Component as keyof JSX.IntrinsicElements);
 
   const dynamicSpread = useMemo(() => (children?.length ?? 0) * spread, [children, spread]);
 
   return (
+    // eslint-disable-next-line react-hooks/static-components -- cached per element, identity is stable
     <MotionComponent
       animate={{ backgroundPosition: '0% center' }}
       className={cn(

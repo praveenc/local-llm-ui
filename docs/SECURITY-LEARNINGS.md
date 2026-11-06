@@ -129,6 +129,7 @@ env: { ...getSafeEnv(), ...config.env }
 | `10.x.x.x`, `172.16-31.x.x`, `192.168.x.x` | RFC 1918 private IPs |
 | `169.254.x.x` | Link-local addresses |
 | Non-http/https schemes | `file://`, `ftp://`, etc. |
+| HTTP redirects | AI SDK 7 MCP transports default to `redirect: 'error'`, so a validated URL cannot redirect to a blocked target |
 
 ### SEC-10: Connection Timeout (LOW)
 
@@ -365,6 +366,7 @@ Items identified but not yet implemented (long-term):
 | CSP/security headers | SEC-12 | Not applicable to Vite dev server; needed for production |
 | Human-in-the-loop for MCP tools | LLM06 | Significant UX/architecture work |
 | MCP tool output sandboxing | LLM01 | Requires framework-level support |
+| zod 3.x inside `@lmstudio/sdk` (GHSA-mrhx-c7xc-m3w5, high) | Dependency | No patched zod 3 exists. `@lmstudio/sdk` 2.1.0 (latest) needs zod 3 and fails at import with zod 4 (`innerType is not a function`). It only parses responses from the local LM Studio server, not user input. Revisit when the SDK moves to zod 4. |
 
 ---
 
