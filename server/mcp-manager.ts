@@ -20,7 +20,7 @@ import type {
   MCPSSEConfig,
   MCPServerConfig,
   MCPStdioConfig,
-} from '../src/types/mcp';
+} from '../src/types/mcp.ts';
 
 /** Separator used to namespace tool names: serverName__toolName */
 const TOOL_NS_SEP = '__';

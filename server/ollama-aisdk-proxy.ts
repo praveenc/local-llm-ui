@@ -6,14 +6,14 @@
  * Supports optional Tavily web search tool integration.
  */
 import { tavilySearch } from '@tavily/ai-sdk';
-import { stepCountIs, streamText } from 'ai';
+import { isStepCount, streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import { createOllama } from 'ollama-ai-provider-v2';
 import type { Connect } from 'vite';
 
-import type { MCPServerConfig } from '../src/types/mcp';
-import { getMCPTools } from './mcp-manager';
-import { capMaxTokens, readBodyWithLimit } from './security';
+import type { MCPServerConfig } from '../src/types/mcp.ts';
+import { getMCPTools } from './mcp-manager.ts';
+import { capMaxTokens, readBodyWithLimit } from './security.ts';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -103,6 +103,8 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
       // Use AI SDK streamText with ollama provider
       const result = await streamText({
         model: ollama(request.model),
+        // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
+        allowSystemInMessages: true,
         messages: request.messages.map((m) => ({
           role: m.role,
           content: m.content,
@@ -113,7 +115,7 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
         tools,
         abortSignal: abortController.signal,
         // stopWhen required for multi-step tool use (agentic behavior)
-        ...(tools && { stopWhen: stepCountIs(5) }),
+        ...(tools && { stopWhen: isStepCount(5) }),
         // Enable thinking for supported models
         ...(isThinkingModel && {
           providerOptions: {
@@ -130,7 +132,7 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
       let sentContent = '';
 
       // Stream the response - use fullStream to handle tool calls
-      for await (const part of result.fullStream) {
+      for await (const part of result.stream) {
         if (part.type === 'text-delta') {
           const chunk = part.text;
           if (chunk) {

@@ -45,7 +45,7 @@ Connect external tools to your LLM conversations via the [Model Context Protocol
 
 Before running this application, ensure you have the following installed:
 
-- **Node.js**: Version 18.x or higher
+- **Node.js**: Version 22.12 or higher
 - **npm**: Version 9.x or higher (comes with Node.js)
 - **AI Provider** (at least one):
   - [Ollama](https://ollama.ai) - Local AI models
@@ -379,8 +379,8 @@ This project uses:
 ## Technologies Used
 
 - **React 19**: UI framework
-- **TypeScript 5.9**: Type safety
-- **Vite 7**: Build tool and dev server
+- **TypeScript 6.0**: Type safety
+- **Vite 8**: Build tool and dev server
 - **shadcn/ui**: UI component library (Radix UI + Tailwind CSS)
 - **Tailwind CSS 4**: Utility-first CSS
 - **Dexie.js**: IndexedDB wrapper for persistence

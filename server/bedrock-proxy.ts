@@ -7,7 +7,7 @@ import {
 import { BedrockRuntimeClient, ConverseStreamCommand } from '@aws-sdk/client-bedrock-runtime';
 import type { IncomingMessage, ServerResponse } from 'http';
 
-import { capMaxTokens, setCORSHeaders } from './security';
+import { capMaxTokens, setCORSHeaders } from './security.ts';
 
 interface InferenceProfileModel {
   modelArn?: string;

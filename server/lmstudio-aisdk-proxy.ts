@@ -6,8 +6,8 @@
  */
 import type { Connect } from 'vite';
 
-import type { MCPServerConfig } from '../src/types/mcp';
-import { capMaxTokens, readBodyWithLimit } from './security';
+import type { MCPServerConfig } from '../src/types/mcp.ts';
+import { capMaxTokens, readBodyWithLimit } from './security.ts';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
