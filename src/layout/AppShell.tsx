@@ -6,7 +6,7 @@ import { ChatContainer } from '../components/chat';
 import { Sidebar } from '../components/sidebar';
 import { useAllModels } from '../hooks/useAllModels';
 import type { UnifiedModel } from '../hooks/useAllModels';
-import { loadPreferences } from '../utils/preferences';
+import { loadPreferences, savePreferences } from '../utils/preferences';
 import type { UserPreferences } from '../utils/preferences';
 import { AppLayout } from './AppLayout';
 
@@ -45,6 +45,15 @@ export default function AppShell() {
     setActiveConversationId(id);
   };
 
+  const handleToggleTheme = () => {
+    const next: UserPreferences = {
+      ...loadPreferences(),
+      visualMode: userPreferences.visualMode === 'dark' ? 'light' : 'dark',
+    };
+    savePreferences(next);
+    setUserPreferences(next);
+  };
+
   const handleConversationChange = (id: string | null) => {
     setActiveConversationId(id);
   };
@@ -61,6 +70,8 @@ export default function AppShell() {
     <AppLayout
       navigationOpen={navigationOpen}
       onNavigationChange={setNavigationOpen}
+      theme={userPreferences.visualMode}
+      onToggleTheme={handleToggleTheme}
       navigation={
         <Sidebar
           onNewChat={handleNewChat}
