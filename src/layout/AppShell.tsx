@@ -6,6 +6,7 @@ import { ChatContainer } from '../components/chat';
 import { Sidebar } from '../components/sidebar';
 import { useAllModels } from '../hooks/useAllModels';
 import type { UnifiedModel } from '../hooks/useAllModels';
+import { conversationService } from '../services';
 import { loadPreferences, savePreferences } from '../utils/preferences';
 import type { UserPreferences } from '../utils/preferences';
 import { AppLayout } from './AppLayout';
@@ -28,6 +29,32 @@ export default function AppShell() {
   const [selectedModel, setSelectedModel] = useState<UnifiedModel | null>(null);
   const { providers, isLoading: isLoadingModels } = useAllModels(userPreferences);
 
+  // Model to select once the model list has loaded: the last used one, or the opened conversation's
+  const [modelToRestore, setModelToRestore] = useState<{
+    id: string;
+    provider: UnifiedModel['provider'];
+    conversationId: string | null;
+  } | null>(null);
+  if (modelToRestore && !isLoadingModels) {
+    setModelToRestore(null);
+    const match = providers
+      .flatMap((p) => p.models)
+      .find((m) => m.id === modelToRestore.id && m.provider === modelToRestore.provider);
+    // Drop a stale result when the user has since opened another conversation
+    if (match && modelToRestore.conversationId === activeConversationId) setSelectedModel(match);
+  }
+
+  useEffect(() => {
+    void conversationService.getLatestMessage().then((message) => {
+      if (message) {
+        setModelToRestore(
+          (current) =>
+            current ?? { id: message.modelId, provider: message.provider, conversationId: null }
+        );
+      }
+    });
+  }, []);
+
   // Apply theme on mount and when preferences change
   useEffect(() => {
     const root = window.document.documentElement;
@@ -43,6 +70,11 @@ export default function AppShell() {
 
   const handleSelectConversation = (id: string) => {
     setActiveConversationId(id);
+    void conversationService.getLatestMessage(id).then((message) => {
+      if (message) {
+        setModelToRestore({ id: message.modelId, provider: message.provider, conversationId: id });
+      }
+    });
   };
 
   const handleToggleTheme = () => {
