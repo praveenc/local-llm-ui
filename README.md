@@ -19,7 +19,7 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 - **Real-time Streaming**: Stream responses from AI models in real-time with smooth animations
 - **Reasoning/Thinking Support**: Display thinking process for reasoning models (MiniMax, DeepSeek-R1, NemoTron, etc.)
 - **Unified Model Selector**: Searchable model picker in chat input, grouped by provider with unavailable services clearly flagged
-- **Inference Settings**: Adjust temperature, top-p, and max tokens via popover in chat input
+- **Inference Settings**: Adjust temperature, top-p, and max tokens via popover in chat input (only the settings the selected model accepts)
 - **Context Window Indicator**: Track token usage against model context limits
 - **Prompt Optimizer**: Optimize prompts for Claude 4.5 models using best practices (Bedrock only)
 - **Document Upload**: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) with Bedrock models
@@ -227,7 +227,15 @@ Adjust model parameters via the settings icon in the chat input:
 
 - **Max Tokens**: Maximum length of the response
 
-> **Note for Claude 4.x Models**: Claude 4.x models don't support both temperature and topP simultaneously. The UI provides a toggle to choose which parameter to use.
+The settings panel shows only the controls that the selected model accepts:
+
+| Model | Temperature and Top P |
+|---|---|
+| Claude 4.7 and later (all Claude 5.x models) | Not shown. These models reject both settings. |
+| Claude 4.0 to 4.6 | A toggle. You can set one of the two. |
+| Claude 3.x and non-Claude models | Both are shown. |
+
+The app also leaves out any setting the model does not accept when it sends the request.
 
 ### Reasoning Models
 

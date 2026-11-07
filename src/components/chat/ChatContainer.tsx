@@ -29,6 +29,7 @@ import { getReasoningContent, getTextContent, hasReasoning } from '../../types/a
 import { normalizeMediaType } from '../../utils/fileUtils';
 import { getModelContextLimits } from '../../utils/modelContext';
 import { loadPreferences } from '../../utils/preferences';
+import { getSamplingSupport } from '../../utils/samplingParams';
 import {
   Conversation,
   ConversationContent,
@@ -504,6 +505,7 @@ const ChatContainer = ({
                   setMaxTokens={setMaxTokens}
                   samplingParameter={samplingParameter}
                   setSamplingParameter={setSamplingParameter}
+                  samplingSupport={selectedModel ? getSamplingSupport(selectedModel.id) : 'both'}
                   disabled={isLoading}
                 />
                 <WebSearchToggle

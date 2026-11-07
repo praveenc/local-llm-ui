@@ -14,6 +14,7 @@ import type { MessagePart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
 import { normalizeMediaType } from '../utils/fileUtils';
 import { loadPreferences } from '../utils/preferences';
+import { buildSamplingParams } from '../utils/samplingParams';
 import { useConversation, useConversationMutations } from './index';
 
 export type ChatStatus = 'idle' | 'streaming' | 'submitted' | 'error';
@@ -161,6 +162,14 @@ export function useBedrockChat({
         onConversationChange?.(currentConversationId);
       }
 
+      // Send (and record) only the sampling parameters this model accepts
+      const sampling = buildSamplingParams(modelId, {
+        temperature,
+        topP,
+        preferred: samplingParameter,
+      });
+      const parameters = { ...sampling, maxTokens };
+
       // Create user message
       const userMessage = createUIMessage('user', content);
       if (files && files.length > 0) {
@@ -189,7 +198,7 @@ export function useBedrockChat({
         provider,
         modelId,
         modelName,
-        parameters: { temperature, topP, maxTokens },
+        parameters,
       });
 
       // Create abort controller
@@ -222,20 +231,13 @@ export function useBedrockChat({
               })),
           }));
 
-        // Determine which sampling parameter to send for Claude 4.x
-        const modelIdLower = modelId.toLowerCase();
-        const isClaude4x = /claude[.-](?:sonnet|haiku|opus)-4(?:[.-]|$)/i.test(modelIdLower);
-
         const requestBody = {
           model: modelId,
           messages: chatMessages,
           max_tokens: maxTokens,
           enableWebSearch,
-          ...(isClaude4x
-            ? samplingParameter === 'temperature'
-              ? { temperature }
-              : { top_p: topP }
-            : { temperature, top_p: topP }),
+          ...(sampling.temperature !== undefined && { temperature: sampling.temperature }),
+          ...(sampling.topP !== undefined && { top_p: sampling.topP }),
         };
 
         // Route to appropriate endpoint based on provider
@@ -518,7 +520,7 @@ export function useBedrockChat({
           provider,
           modelId,
           modelName,
-          parameters: { temperature, topP, maxTokens },
+          parameters,
           usage: usageData || undefined,
         });
 
