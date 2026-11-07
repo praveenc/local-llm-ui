@@ -2,7 +2,8 @@
  * InferenceSettings Component
  *
  * Popover with inference config controls (temperature, top_p, max_tokens)
- * for the PromptInput footer.
+ * for the PromptInput footer. Only shows the sampling controls that the
+ * selected model accepts (see utils/samplingParams).
  */
 import { Settings2 } from 'lucide-react';
 
@@ -12,6 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Slider } from '@/components/ui/slider';
+
+import type { SamplingSupport } from '../../utils/samplingParams';
 
 type SamplingParameter = 'temperature' | 'topP';
 
@@ -24,6 +27,8 @@ interface InferenceSettingsProps {
   setMaxTokens: (value: number) => void;
   samplingParameter: SamplingParameter;
   setSamplingParameter: (value: SamplingParameter) => void;
+  /** Which sampling parameters the selected model accepts */
+  samplingSupport: SamplingSupport;
   disabled?: boolean;
 }
 
@@ -36,9 +41,15 @@ export function InferenceSettings({
   setMaxTokens,
   samplingParameter,
   setSamplingParameter,
+  samplingSupport,
   disabled,
 }: InferenceSettingsProps) {
   const [open, setOpen] = useState(false);
+  const showTemperature =
+    samplingSupport === 'both' ||
+    (samplingSupport === 'one' && samplingParameter === 'temperature');
+  const showTopP =
+    samplingSupport === 'both' || (samplingSupport === 'one' && samplingParameter === 'topP');
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -56,31 +67,39 @@ export function InferenceSettings({
         <div className="space-y-4">
           <div className="text-sm font-medium">Inference Settings</div>
 
-          {/* Sampling Parameter Toggle */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Sampling Parameter</Label>
-            <div className="flex gap-1">
-              <Button
-                variant={samplingParameter === 'temperature' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="flex-1 h-7 text-xs"
-                onClick={() => setSamplingParameter('temperature')}
-              >
-                Temperature
-              </Button>
-              <Button
-                variant={samplingParameter === 'topP' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="flex-1 h-7 text-xs"
-                onClick={() => setSamplingParameter('topP')}
-              >
-                Top P
-              </Button>
+          {samplingSupport === 'none' && (
+            <p className="text-xs text-muted-foreground" data-testid="sampling-not-supported">
+              This model does not accept Temperature or Top P. It uses its own sampling settings.
+            </p>
+          )}
+
+          {/* Sampling Parameter Toggle: for models that accept only one of the two */}
+          {samplingSupport === 'one' && (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Sampling Parameter</Label>
+              <div className="flex gap-1">
+                <Button
+                  variant={samplingParameter === 'temperature' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="flex-1 h-7 text-xs"
+                  onClick={() => setSamplingParameter('temperature')}
+                >
+                  Temperature
+                </Button>
+                <Button
+                  variant={samplingParameter === 'topP' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="flex-1 h-7 text-xs"
+                  onClick={() => setSamplingParameter('topP')}
+                >
+                  Top P
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Temperature Slider */}
-          {samplingParameter === 'temperature' && (
+          {showTemperature && (
             <div className="space-y-2">
               <div className="flex justify-between">
                 <Label className="text-xs text-muted-foreground">Temperature</Label>
@@ -102,7 +121,7 @@ export function InferenceSettings({
           )}
 
           {/* Top P Slider */}
-          {samplingParameter === 'topP' && (
+          {showTopP && (
             <div className="space-y-2">
               <div className="flex justify-between">
                 <Label className="text-xs text-muted-foreground">Top P</Label>

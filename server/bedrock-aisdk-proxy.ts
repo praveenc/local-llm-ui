@@ -13,6 +13,7 @@ import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'http';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
+import { buildSamplingParams } from '../src/utils/samplingParams.ts';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security.ts';
 
@@ -168,12 +169,12 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     return;
   }
 
-  // Claude 4.x models don't support both temperature and topP simultaneously
-  const isClaude4x = /claude[.-](?:sonnet|haiku|opus)-4(?:[.-]|$)/i.test(model);
-
-  if (isClaude4x) {
-    // For Claude 4.x, only use one sampling parameter (handled below)
-  }
+  // Send only the sampling parameters this model accepts
+  const samplingParams = buildSamplingParams(model, {
+    temperature: temperature ?? 0.3,
+    topP: top_p ?? 0.95,
+    preferred: temperature === undefined && top_p !== undefined ? 'topP' : 'temperature',
+  });
 
   // Transform messages to AI SDK format with file support
   const transformedMessages = messages.map((msg) => {
@@ -246,17 +247,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
       abortSignal: abortController.signal,
       // stopWhen required for multi-step tool use (agentic behavior)
       ...(tools && { stopWhen: isStepCount(5) }),
-      // Handle Claude 4.x temperature/topP constraints
-      ...(isClaude4x
-        ? temperature !== undefined
-          ? { temperature }
-          : top_p !== undefined
-            ? { topP: top_p }
-            : { temperature: 0.3 }
-        : {
-            temperature: temperature ?? 0.3,
-            topP: top_p ?? 0.95,
-          }),
+      ...samplingParams,
     });
 
     // Use SSE format to stream text and then send usage metadata

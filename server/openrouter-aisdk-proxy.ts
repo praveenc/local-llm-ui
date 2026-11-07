@@ -13,6 +13,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connect } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
+import { buildSamplingParams } from '../src/utils/samplingParams.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security.ts';
 
@@ -441,9 +442,11 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
         // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
         allowSystemInMessages: true,
         messages: filteredMessages,
-        ...(request.temperature !== undefined
-          ? { temperature: request.temperature }
-          : { topP: request.top_p !== undefined ? request.top_p : 0.95 }),
+        // Send only the sampling parameters this model accepts
+        ...buildSamplingParams(request.model, {
+          temperature: request.temperature,
+          topP: request.top_p,
+        }),
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
         abortSignal: abortController.signal,

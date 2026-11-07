@@ -7,6 +7,7 @@ import {
 import { BedrockRuntimeClient, ConverseStreamCommand } from '@aws-sdk/client-bedrock-runtime';
 import type { IncomingMessage, ServerResponse } from 'http';
 
+import { buildSamplingParams } from '../src/utils/samplingParams.ts';
 import { capMaxTokens, setCORSHeaders } from './security.ts';
 
 interface InferenceProfileModel {
@@ -225,33 +226,19 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
   console.log(`Bedrock: Messages count: ${messages?.length || 0}`);
   // console.log(`Bedrock: Messages:`, JSON.stringify(messages, null, 2));
 
-  // Claude 4.x models don't support both temperature and topP simultaneously
-  // The client sends only one of them based on user's choice
-  const isClaude4x = /claude[.-](?:sonnet|haiku|opus)-4(?:[.-]|$)/i.test(model);
-
+  // Send only the sampling parameters this model accepts
   const inferenceConfig: {
     temperature?: number;
     maxTokens?: number;
     topP?: number;
   } = {
     maxTokens: capMaxTokens(max_tokens),
+    ...buildSamplingParams(model, {
+      temperature: temperature ?? 0.3,
+      topP: top_p ?? 0.95,
+      preferred: temperature === undefined && top_p !== undefined ? 'topP' : 'temperature',
+    }),
   };
-
-  if (isClaude4x) {
-    // For Claude 4.5, use whichever parameter was sent by the client
-    if (temperature !== undefined) {
-      inferenceConfig.temperature = temperature;
-    } else if (top_p !== undefined) {
-      inferenceConfig.topP = top_p;
-    } else {
-      // Default to temperature if neither was sent
-      inferenceConfig.temperature = 0.3;
-    }
-  } else {
-    // For other models, use both parameters
-    inferenceConfig.temperature = temperature ?? 0.3;
-    inferenceConfig.topP = top_p ?? 0.95;
-  }
 
   console.log(
     `Bedrock: Temperature = ${inferenceConfig.temperature ?? 'None'}; topP = ${inferenceConfig.topP ?? 'None'}`
