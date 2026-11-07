@@ -15,6 +15,7 @@ interface UseConversationMutationsResult {
   getNextSequence: (conversationId: string) => Promise<number>;
   deleteMessagesFromSequence: (conversationId: string, fromSequence: number) => Promise<number>;
   clearAllConversations: () => Promise<void>;
+  forkConversation: (sourceId: string, messageCount: number) => Promise<Conversation>;
 }
 
 export function useConversationMutations(): UseConversationMutationsResult {
@@ -53,6 +54,10 @@ export function useConversationMutations(): UseConversationMutationsResult {
     return conversationService.clearAll();
   }, []);
 
+  const forkConversation = useCallback(async (sourceId: string, messageCount: number) => {
+    return conversationService.fork(sourceId, messageCount);
+  }, []);
+
   return {
     createConversation,
     archiveConversation,
@@ -62,5 +67,6 @@ export function useConversationMutations(): UseConversationMutationsResult {
     getNextSequence,
     deleteMessagesFromSequence,
     clearAllConversations,
+    forkConversation,
   };
 }

@@ -55,6 +55,7 @@ interface UseBedrockChatReturn {
     files?: Array<{ name: string; format: string; bytes: string }>
   ) => Promise<void>;
   regenerate: (messageIndex: number) => Promise<void>;
+  forkAndSend: (messageIndex: number, content: string) => Promise<void>;
   stopGeneration: () => void;
   clearMessages: () => void;
   resetUsage: () => void;
@@ -88,8 +89,13 @@ export function useBedrockChat({
 
   // Load conversation from DB
   const { messages: dbMessages } = useConversation(activeConversationId);
-  const { createConversation, addMessage, getNextSequence, deleteMessagesFromSequence } =
-    useConversationMutations();
+  const {
+    createConversation,
+    addMessage,
+    getNextSequence,
+    deleteMessagesFromSequence,
+    forkConversation,
+  } = useConversationMutations();
 
   // Sync DB messages to local state when conversation loads (adjusting state during render)
   const [syncedDbMessages, setSyncedDbMessages] = useState(dbMessages);
@@ -143,7 +149,12 @@ export function useBedrockChat({
 
   // Send message
   const sendMessage = useCallback(
-    async (content: string, files?: Array<{ name: string; format: string; bytes: string }>) => {
+    async (
+      content: string,
+      files?: Array<{ name: string; format: string; bytes: string }>,
+      // Used by forkAndSend: send into a conversation that state does not show yet
+      target?: { conversationId: string; history: UIMessage[] }
+    ) => {
       if (!content.trim() || !selectedModel || status === 'streaming') return;
 
       // Reset interrupted state when starting a new message
@@ -154,7 +165,7 @@ export function useBedrockChat({
       const modelName = selectedModel.label || modelId;
 
       // Create conversation if needed
-      let currentConversationId = activeConversationId;
+      let currentConversationId = target?.conversationId ?? activeConversationId;
       if (!currentConversationId) {
         const newConversation = await createConversation();
         currentConversationId = newConversation.id;
@@ -214,7 +225,7 @@ export function useBedrockChat({
 
       try {
         // Build request - filter out messages with empty content
-        const chatMessages = [...messages, userMessage]
+        const chatMessages = [...(target?.history ?? messages), userMessage]
           .filter((m) => {
             const textContent = getTextContent(m);
             return textContent.trim().length > 0;
@@ -596,6 +607,38 @@ export function useBedrockChat({
     [status, selectedModel, messages, activeConversationId, deleteMessagesFromSequence, sendMessage]
   );
 
+  // Copy the conversation up to and including messageIndex into a new
+  // conversation, switch to it, and send content there
+  const forkAndSend = useCallback(
+    async (messageIndex: number, content: string) => {
+      if (!activeConversationId || !selectedModel || status === 'streaming') return;
+
+      const history = messages.slice(0, messageIndex + 1);
+      try {
+        const forked = await forkConversation(activeConversationId, history.length);
+        setInternalConversationId(forked.id);
+        onConversationChange?.(forked.id);
+        setMessages(history);
+        setMetadata(null);
+        setWasInterrupted(false);
+        await sendMessage(content, undefined, { conversationId: forked.id, history });
+      } catch (err) {
+        console.error('Fork failed:', err);
+        setError((err as Error).message || 'Failed to fork conversation');
+        setStatus('error');
+      }
+    },
+    [
+      activeConversationId,
+      selectedModel,
+      status,
+      messages,
+      forkConversation,
+      onConversationChange,
+      sendMessage,
+    ]
+  );
+
   return {
     messages,
     status,
@@ -605,6 +648,7 @@ export function useBedrockChat({
     wasInterrupted,
     sendMessage,
     regenerate,
+    forkAndSend,
     stopGeneration,
     clearMessages,
     resetUsage,

@@ -241,6 +241,40 @@ export const conversationService = {
   },
 
   /**
+   * Create a new conversation that holds a copy of the first `messageCount`
+   * messages (by sequence) of the source conversation. The source is not changed.
+   */
+  async fork(sourceId: string, messageCount: number): Promise<Conversation> {
+    return db.transaction('rw', [db.conversations, db.messages], async () => {
+      const source = await db.conversations.get(sourceId);
+      if (!source) {
+        throw new Error(`Conversation ${sourceId} not found`);
+      }
+
+      const sourceMessages = await this.getMessages(sourceId, { limit: messageCount });
+      const now = new Date();
+      const conversation: Conversation = {
+        id: generateId(),
+        title: generateTitle(`Fork: ${source.title}`),
+        createdAt: now,
+        updatedAt: now,
+        status: 'active',
+        messageCount: sourceMessages.length,
+        totalInputTokens: sourceMessages.reduce((n, m) => n + (m.usage?.inputTokens || 0), 0),
+        totalOutputTokens: sourceMessages.reduce((n, m) => n + (m.usage?.outputTokens || 0), 0),
+        providers: [...new Set(sourceMessages.map((m) => m.provider))],
+        models: [...new Set(sourceMessages.map((m) => m.modelId))],
+      };
+
+      await db.conversations.add(conversation);
+      await db.messages.bulkAdd(
+        sourceMessages.map((m) => ({ ...m, id: generateId(), conversationId: conversation.id }))
+      );
+      return conversation;
+    });
+  },
+
+  /**
    * Get conversation with its messages
    */
   async getWithMessages(

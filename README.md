@@ -25,6 +25,7 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 - **Document Upload**: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) with Bedrock models
 - **Usage Metrics**: View token usage and latency displayed after each AI response
 - **Chat History**: Manage multiple chat sessions with automatic history tracking via IndexedDB
+- **Quote and Ask**: Select text in a reply to ask about it in this chat, or in a new forked chat
 - **Saved Prompts**: Save and reuse frequently used prompts
 - **User Preferences**: Persistent settings for preferred AI provider and custom avatar initials
 - **Dark/Light Mode**: Toggle between visual modes
@@ -236,6 +237,28 @@ The settings panel shows only the controls that the selected model accepts:
 | Claude 3.x and non-Claude models | Both are shown. |
 
 The app also leaves out any setting the model does not accept when it sends the request.
+
+### Quote and Ask
+
+You can ask a question about one part of a reply:
+
+1. Select text in a message. A **Quote and Ask** button shows above the selection.
+2. Click the button and type your question.
+3. Choose where to send it:
+   - **Send to Compose** puts the quote and your question in the message box. You can edit the text before you send it.
+   - **Send to Fork** makes a new chat with the messages up to the quoted one, then sends your question there. The original chat does not change.
+
+The quote goes to the model in a `<quote>` tag, before your question:
+
+```
+<quote>
+selected text
+</quote>
+
+your question
+```
+
+The chat shows the quote as an indented block. **Send to Fork** needs a selected model.
 
 ### Reasoning Models
 
