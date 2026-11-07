@@ -29,6 +29,7 @@ import { getReasoningContent, getTextContent, hasReasoning } from '../../types/a
 import { normalizeMediaType } from '../../utils/fileUtils';
 import { getModelContextLimits } from '../../utils/modelContext';
 import { loadPreferences } from '../../utils/preferences';
+import { formatQuoteMessage, quoteTagsToMarkdown } from '../../utils/quote';
 import { getSamplingSupport } from '../../utils/samplingParams';
 import {
   Conversation,
@@ -67,7 +68,65 @@ import { ContextIndicator } from './ContextIndicator';
 import { InferenceSettings } from './InferenceSettings';
 import { MCPToolsIndicator } from './MCPToolsIndicator';
 import { ModelSelectorButton } from './ModelSelectorButton';
+import { QuoteRespondDialog } from './QuoteRespondDialog';
+import { type QuoteSelection, QuoteSelectionButton } from './QuoteSelectionButton';
 import { WebSearchToggle } from './WebSearchToggle';
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
+
+/**
+ * ChatContainer
+ *
+ * Main chat container using AI Elements components and useBedrockChat hook.
+ * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ */
 
 /**
  * ChatContainer
@@ -225,6 +284,9 @@ const ChatContainer = ({
   const [messageFeedback, setMessageFeedback] = useState<Record<string, string>>({});
   const [fileError, setFileError] = useState<string | null>(null);
   const [enableWebSearch, setEnableWebSearch] = useState(false);
+  const [activeQuote, setActiveQuote] = useState<QuoteSelection | null>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Check if Tavily API key is configured
   const prefs = loadPreferences();
@@ -242,6 +304,7 @@ const ChatContainer = ({
     wasInterrupted,
     sendMessage,
     regenerate,
+    forkAndSend,
     stopGeneration,
     clearMessages,
     resetUsage,
@@ -351,6 +414,30 @@ const ChatContainer = ({
     }
   };
 
+  const handleQuoteToCompose = (response: string) => {
+    if (!activeQuote) return;
+    const quoted = formatQuoteMessage(activeQuote.text, response);
+    setInputValue((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${quoted}` : quoted));
+    setActiveQuote(null);
+    // Wait for the dialog to close before moving focus
+    setTimeout(() => promptTextareaRef.current?.focus(), 0);
+  };
+
+  const handleQuoteToFork = async (response: string) => {
+    if (!activeQuote) return;
+    const { text, messageIndex } = activeQuote;
+    setActiveQuote(null);
+    await forkAndSend(messageIndex, formatQuoteMessage(text, response));
+  };
+
+  const forkDisabledReason = isLoading
+    ? 'wait for the current response to finish'
+    : !externalConversationId
+      ? 'this conversation is not saved yet'
+      : !selectedModel
+        ? 'select a model first'
+        : undefined;
+
   const lastAssistantIndex = messages.reduce(
     (lastIdx, msg, idx) => (msg.role === 'assistant' ? idx : lastIdx),
     -1
@@ -371,91 +458,109 @@ const ChatContainer = ({
             {messages.length === 0 ? (
               <EmptyState selectedModel={selectedModel} />
             ) : (
-              <Conversation className="h-full max-w-4xl mx-auto">
-                <ConversationContent className="p-4">
-                  {selectedModel && <ActiveModelBadge model={selectedModel} />}
-                  {messages.map((message, index) => {
-                    // Determine if this message's reasoning is still streaming
-                    const isLastMessage = index === messages.length - 1;
-                    const isReasoningStreaming =
-                      isLastMessage &&
-                      isLoading &&
-                      hasReasoning(message) &&
-                      !getTextContent(message);
+              <div ref={messagesRef} className="h-full">
+                <Conversation className="h-full max-w-4xl mx-auto">
+                  <ConversationContent className="p-4">
+                    {selectedModel && <ActiveModelBadge model={selectedModel} />}
+                    {messages.map((message, index) => {
+                      // Determine if this message's reasoning is still streaming
+                      const isLastMessage = index === messages.length - 1;
+                      const isReasoningStreaming =
+                        isLastMessage &&
+                        isLoading &&
+                        hasReasoning(message) &&
+                        !getTextContent(message);
 
-                    return (
-                      <Fragment key={message.id}>
-                        <Message from={message.role}>
-                          <MessageContent>
-                            {hasReasoning(message) && (
-                              <Reasoning
-                                className="w-full"
-                                isStreaming={isReasoningStreaming}
-                                defaultOpen={false}
+                      return (
+                        <Fragment key={message.id}>
+                          <Message from={message.role} data-message-index={index}>
+                            <MessageContent>
+                              {hasReasoning(message) && (
+                                <Reasoning
+                                  className="w-full"
+                                  isStreaming={isReasoningStreaming}
+                                  defaultOpen={false}
+                                >
+                                  <ReasoningTrigger />
+                                  <ReasoningContent>
+                                    {getReasoningContent(message) || ''}
+                                  </ReasoningContent>
+                                </Reasoning>
+                              )}
+                              {getToolCalls(message).map((toolCall) => (
+                                <ToolCall key={toolCall.toolCallId} toolCall={toolCall} />
+                              ))}
+                              <MessageResponse>
+                                {message.role === 'user'
+                                  ? quoteTagsToMarkdown(getTextContent(message))
+                                  : getTextContent(message)}
+                              </MessageResponse>
+                            </MessageContent>
+                          </Message>
+                          {message.role === 'assistant' && !isLoading && (
+                            <MessageActions className="ml-0">
+                              <MessageAction
+                                tooltip="Helpful"
+                                onClick={() => handleFeedback(message.id, 'helpful')}
                               >
-                                <ReasoningTrigger />
-                                <ReasoningContent>
-                                  {getReasoningContent(message) || ''}
-                                </ReasoningContent>
-                              </Reasoning>
-                            )}
-                            {getToolCalls(message).map((toolCall) => (
-                              <ToolCall key={toolCall.toolCallId} toolCall={toolCall} />
-                            ))}
-                            <MessageResponse>{getTextContent(message)}</MessageResponse>
-                          </MessageContent>
-                        </Message>
-                        {message.role === 'assistant' && !isLoading && (
-                          <MessageActions className="ml-0">
-                            <MessageAction
-                              tooltip="Helpful"
-                              onClick={() => handleFeedback(message.id, 'helpful')}
-                            >
-                              <ThumbsUp
-                                className={`h-3 w-3 ${messageFeedback[message.id] === 'helpful' ? 'fill-current' : ''}`}
-                              />
-                            </MessageAction>
-                            <MessageAction
-                              tooltip="Not helpful"
-                              onClick={() => handleFeedback(message.id, 'not-helpful')}
-                            >
-                              <ThumbsDown
-                                className={`h-3 w-3 ${messageFeedback[message.id] === 'not-helpful' ? 'fill-current' : ''}`}
-                              />
-                            </MessageAction>
-                            <MessageAction
-                              tooltip="Copy"
-                              onClick={() => handleCopy(getTextContent(message))}
-                            >
-                              <Copy className="h-3 w-3" />
-                            </MessageAction>
-                            <MessageAction
-                              tooltip="Regenerate"
-                              onClick={() => regenerate(index)}
-                              disabled={isLoading}
-                            >
-                              <RefreshCw className="h-3 w-3" />
-                            </MessageAction>
-                          </MessageActions>
-                        )}
-                        {message.role === 'assistant' &&
-                          index === lastAssistantIndex &&
-                          metadata && <MetadataRow metadata={metadata} />}
-                        {message.role === 'assistant' &&
-                          index === lastAssistantIndex &&
-                          wasInterrupted && <InterruptedIndicator />}
-                      </Fragment>
-                    );
-                  })}
-                  {isLoading && !hasReasoning(messages[messages.length - 1] || { parts: [] }) && (
-                    <GeneratingIndicator />
-                  )}
-                </ConversationContent>
-                <ConversationScrollButton />
-              </Conversation>
+                                <ThumbsUp
+                                  className={`h-3 w-3 ${messageFeedback[message.id] === 'helpful' ? 'fill-current' : ''}`}
+                                />
+                              </MessageAction>
+                              <MessageAction
+                                tooltip="Not helpful"
+                                onClick={() => handleFeedback(message.id, 'not-helpful')}
+                              >
+                                <ThumbsDown
+                                  className={`h-3 w-3 ${messageFeedback[message.id] === 'not-helpful' ? 'fill-current' : ''}`}
+                                />
+                              </MessageAction>
+                              <MessageAction
+                                tooltip="Copy"
+                                onClick={() => handleCopy(getTextContent(message))}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </MessageAction>
+                              <MessageAction
+                                tooltip="Regenerate"
+                                onClick={() => regenerate(index)}
+                                disabled={isLoading}
+                              >
+                                <RefreshCw className="h-3 w-3" />
+                              </MessageAction>
+                            </MessageActions>
+                          )}
+                          {message.role === 'assistant' &&
+                            index === lastAssistantIndex &&
+                            metadata && <MetadataRow metadata={metadata} />}
+                          {message.role === 'assistant' &&
+                            index === lastAssistantIndex &&
+                            wasInterrupted && <InterruptedIndicator />}
+                        </Fragment>
+                      );
+                    })}
+                    {isLoading && !hasReasoning(messages[messages.length - 1] || { parts: [] }) && (
+                      <GeneratingIndicator />
+                    )}
+                  </ConversationContent>
+                  <ConversationScrollButton />
+                </Conversation>
+              </div>
             )}
           </div>
         </FittedContainer>
+        <QuoteSelectionButton
+          containerRef={messagesRef}
+          onQuote={setActiveQuote}
+          disabled={activeQuote !== null}
+        />
+        <QuoteRespondDialog
+          quote={activeQuote?.text ?? null}
+          onClose={() => setActiveQuote(null)}
+          onSendToCompose={handleQuoteToCompose}
+          onSendToFork={handleQuoteToFork}
+          forkDisabledReason={forkDisabledReason}
+        />
         <div className="absolute bottom-0 left-0 right-0 z-[1000] p-2 md:p-4">
           <PromptInput
             onSubmit={handleSubmit}
@@ -472,6 +577,7 @@ const ChatContainer = ({
               </PromptInputAttachments>
             </PromptInputHeader>
             <PromptInputTextarea
+              ref={promptTextareaRef}
               value={inputValue}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
                 setInputValue(e.target.value)
