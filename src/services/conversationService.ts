@@ -194,6 +194,17 @@ export const conversationService = {
   },
 
   /**
+   * Get the newest message sent with a provider, across all conversations
+   */
+  async getLatestMessageForProvider(provider: Provider): Promise<Message | undefined> {
+    return db.messages
+      .orderBy('createdAt')
+      .reverse()
+      .filter((message) => message.provider === provider)
+      .first();
+  },
+
+  /**
    * Get the next sequence number for a conversation
    */
   async getNextSequence(conversationId: string): Promise<number> {
