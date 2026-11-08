@@ -15,7 +15,7 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 - **Modern UI**: Built with shadcn/ui components (Radix UI + Tailwind CSS) for a clean, accessible interface
 - **Multiple AI Providers**: Support for Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Anthropic, Groq, and Cerebras
 - **MCP Server Integration**: Connect external tools via [Model Context Protocol](https://modelcontextprotocol.io/) — stdio, HTTP, and SSE transports
-- **Web Search**: Built-in Tavily web search tool for grounding responses with real-time data
+- **Web Search**: Built-in Tavily web search tool for grounding responses with real-time data. Add the Tavily key in **Preferences → Web Search**
 - **Real-time Streaming**: Stream responses from AI models in real-time with smooth animations
 - **Reasoning/Thinking Support**: Display thinking process for reasoning models (MiniMax, DeepSeek-R1, NemoTron, etc.)
 - **Unified Model Selector**: Searchable model picker in chat input, grouped by provider with unavailable services clearly flagged
@@ -27,7 +27,7 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 - **Chat History**: Manage multiple chat sessions with automatic history tracking via IndexedDB
 - **Quote and Ask**: Select text in a reply to ask about it in this chat, or in a new forked chat
 - **Saved Prompts**: Save and reuse frequently used prompts
-- **User Preferences**: Persistent settings for preferred AI provider and custom avatar initials
+- **User Preferences**: Choose a default provider. New conversations start with the last model you used from it. Add API keys in the same list, and set avatar initials, theme, and density
 - **Dark/Light Mode**: Toggle between visual modes
 - **Responsive Design**: Works seamlessly across desktop and mobile devices
 
@@ -148,30 +148,26 @@ Before running this application, ensure you have the following installed:
 
 1. Get an API key from [console.anthropic.com](https://console.anthropic.com)
 
-2. Configure in the app's Preferences:
-   - Enter your Anthropic API key
+2. In **Preferences → Providers**, select **Add key** next to Anthropic and paste the key
 
 ### Option 5: Bedrock Mantle
 
 Bedrock Mantle provides an OpenAI-compatible endpoint for Bedrock models.
 
-1. Configure in the app's Preferences:
-   - Set your Mantle API key
-   - Set your Mantle region
+1. In **Preferences → Providers**, select **Add key** next to Bedrock Mantle
+2. Paste the API key and select the region
 
 ### Option 6: Groq
 
 1. Get an API key from [console.groq.com](https://console.groq.com)
 
-2. Configure in the app's Preferences:
-   - Enter your Groq API key
+2. In **Preferences → Providers**, select **Add key** next to Groq and paste the key
 
 ### Option 7: Cerebras
 
 1. Get an API key from [cloud.cerebras.ai](https://cloud.cerebras.ai)
 
-2. Configure in the app's Preferences:
-   - Enter your Cerebras API key
+2. In **Preferences → Providers**, select **Add key** next to Cerebras and paste the key
 
 ## Running the Application
 
@@ -364,7 +360,7 @@ The Vite development server proxies requests to AI services:
 - **Ollama**: Ensure Ollama is running and you've pulled at least one model
 - **LM Studio**: Start LM Studio, enable its local server, and ensure it's running on port 1234
 - **Bedrock**: Configure AWS credentials in your environment and verify model access/IAM permissions
-- **Groq/Cerebras/Anthropic/Bedrock Mantle**: Check API keys and provider settings in Preferences
+- **Groq/Cerebras/Anthropic/OpenRouter/Bedrock Mantle**: Check the API key in **Preferences → Providers**. A provider without a key cannot be the default provider
 
 ### Connection Failed
 
