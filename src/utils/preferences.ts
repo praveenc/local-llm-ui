@@ -79,6 +79,28 @@ export const savePreferences = (preferences: UserPreferences): void => {
   }
 };
 
+export type ApiKeyField =
+  'bedrockMantleApiKey' | 'groqApiKey' | 'cerebrasApiKey' | 'anthropicApiKey' | 'openrouterApiKey';
+
+/**
+ * Preference field that holds the API key, for providers that need one
+ */
+export const PROVIDER_API_KEY_FIELDS: Partial<Record<Provider, ApiKeyField>> = {
+  'bedrock-mantle': 'bedrockMantleApiKey',
+  groq: 'groqApiKey',
+  cerebras: 'cerebrasApiKey',
+  anthropic: 'anthropicApiKey',
+  openrouter: 'openrouterApiKey',
+};
+
+/**
+ * True when a provider needs no API key, or its API key is set
+ */
+export const isProviderConfigured = (preferences: UserPreferences, provider: Provider): boolean => {
+  const field = PROVIDER_API_KEY_FIELDS[provider];
+  return !field || !!preferences[field]?.trim();
+};
+
 /**
  * Validate avatar initials (2 alphanumeric characters max, auto-uppercase)
  */

@@ -20,8 +20,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 
-import { loadPreferences, savePreferences, validateInitials } from '../../utils/preferences';
+import {
+  isProviderConfigured,
+  loadPreferences,
+  savePreferences,
+  validateInitials,
+} from '../../utils/preferences';
 import type {
   ContentDensity,
   Provider,
@@ -40,6 +46,17 @@ const MANTLE_REGIONS = [
   { label: 'Europe (Ireland)', value: 'eu-west-1' },
 ];
 
+const PROVIDERS: { value: Provider; label: string; icon: string; desc: string }[] = [
+  { value: 'bedrock', label: 'Amazon Bedrock', icon: '/bedrock_bw.svg', desc: 'AWS credentials' },
+  { value: 'bedrock-mantle', label: 'Bedrock Mantle', icon: '/bedrock-color.svg', desc: 'API key' },
+  { value: 'lmstudio', label: 'LM Studio', icon: '/lmstudio_icon.svg', desc: 'Port 1234' },
+  { value: 'ollama', label: 'Ollama', icon: '/ollama_icon.svg', desc: 'Port 11434' },
+  { value: 'groq', label: 'Groq', icon: '/groq_icon.svg', desc: 'API key' },
+  { value: 'cerebras', label: 'Cerebras', icon: '/cerebras_icon.svg', desc: 'API key' },
+  { value: 'anthropic', label: 'Anthropic', icon: '/claude-color.svg', desc: 'API key' },
+  { value: 'openrouter', label: 'OpenRouter', icon: '/openrouter_icon.svg', desc: 'API key' },
+];
+
 interface PreferencesDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -56,10 +73,16 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
     if (open) setPreferences(loadPreferences());
   }
   const [initialsError, setInitialsError] = useState('');
+  const [providerError, setProviderError] = useState('');
 
   const handleSave = () => {
     if (!validateInitials(preferences.avatarInitials)) {
       setInitialsError('Please enter 1-2 letters');
+      return;
+    }
+    if (!isProviderConfigured(preferences, preferences.preferredProvider)) {
+      const label = PROVIDERS.find((p) => p.value === preferences.preferredProvider)?.label;
+      setProviderError(`Add an API key for ${label}, or choose a different default provider.`);
       return;
     }
     savePreferences(preferences);
@@ -70,6 +93,7 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
   const updatePreference = <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
     setPreferences((prev) => ({ ...prev, [key]: value }));
     if (key === 'avatarInitials') setInitialsError('');
+    setProviderError('');
   };
 
   return (
@@ -96,63 +120,31 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
                 onValueChange={(v) => updatePreference('preferredProvider', v as Provider)}
                 className="grid gap-2"
               >
-                {[
-                  {
-                    value: 'bedrock',
-                    label: 'Amazon Bedrock',
-                    icon: '/bedrock_bw.svg',
-                    desc: 'AWS credentials',
-                  },
-                  {
-                    value: 'bedrock-mantle',
-                    label: 'Bedrock Mantle',
-                    icon: '/bedrock-color.svg',
-                    desc: 'API key',
-                  },
-                  {
-                    value: 'lmstudio',
-                    label: 'LM Studio',
-                    icon: '/lmstudio_icon.svg',
-                    desc: 'Port 1234',
-                  },
-                  {
-                    value: 'ollama',
-                    label: 'Ollama',
-                    icon: '/ollama_icon.svg',
-                    desc: 'Port 11434',
-                  },
-                  { value: 'groq', label: 'Groq', icon: '/groq_icon.svg', desc: 'API key' },
-                  {
-                    value: 'cerebras',
-                    label: 'Cerebras',
-                    icon: '/cerebras_icon.svg',
-                    desc: 'API key',
-                  },
-                  {
-                    value: 'anthropic',
-                    label: 'Anthropic',
-                    icon: '/claude-color.svg',
-                    desc: 'API key',
-                  },
-                  {
-                    value: 'openrouter',
-                    label: 'OpenRouter',
-                    icon: '/openrouter_icon.svg',
-                    desc: 'API key',
-                  },
-                ].map((provider) => (
-                  <div key={provider.value} className="flex items-center space-x-3">
-                    <RadioGroupItem value={provider.value} id={provider.value} />
-                    <Label
-                      htmlFor={provider.value}
-                      className="flex items-center gap-2 cursor-pointer flex-1"
-                    >
-                      <img src={provider.icon} alt="" className="w-4 h-4" />
-                      <span>{provider.label}</span>
-                      <span className="text-xs text-muted-foreground ml-auto">{provider.desc}</span>
-                    </Label>
-                  </div>
-                ))}
+                {PROVIDERS.map((provider) => {
+                  const configured = isProviderConfigured(preferences, provider.value);
+                  return (
+                    <div key={provider.value} className="flex items-center space-x-3">
+                      <RadioGroupItem
+                        value={provider.value}
+                        id={provider.value}
+                        disabled={!configured}
+                      />
+                      <Label
+                        htmlFor={provider.value}
+                        className={cn(
+                          'flex items-center gap-2 flex-1',
+                          configured ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
+                        )}
+                      >
+                        <img src={provider.icon} alt="" className="w-4 h-4" />
+                        <span>{provider.label}</span>
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {configured ? provider.desc : 'Add API key in API Keys tab'}
+                        </span>
+                      </Label>
+                    </div>
+                  );
+                })}
               </RadioGroup>
             </div>
           </TabsContent>
@@ -335,6 +327,8 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
             </div>
           </TabsContent>
         </Tabs>
+
+        {providerError && <p className="text-sm text-destructive">{providerError}</p>}
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
