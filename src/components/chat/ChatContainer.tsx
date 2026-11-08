@@ -561,7 +561,7 @@ const ChatContainer = ({
           onSendToFork={handleQuoteToFork}
           forkDisabledReason={forkDisabledReason}
         />
-        <div className="absolute bottom-0 left-0 right-0 z-[1000] p-2 md:p-4">
+        <div className="absolute bottom-0 left-0 right-0 z-20 p-2 md:p-4">
           <PromptInput
             onSubmit={handleSubmit}
             onError={handleFileError}

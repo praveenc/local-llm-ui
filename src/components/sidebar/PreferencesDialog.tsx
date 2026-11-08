@@ -12,15 +12,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { cn } from '@/lib/utils';
 
 import {
   isProviderConfigured,
@@ -28,34 +20,10 @@ import {
   savePreferences,
   validateInitials,
 } from '../../utils/preferences';
-import type {
-  ContentDensity,
-  Provider,
-  UserPreferences,
-  VisualMode,
-} from '../../utils/preferences';
+import type { ContentDensity, UserPreferences, VisualMode } from '../../utils/preferences';
 import { MCPServerSettings } from './MCPServerSettings';
-
-const MANTLE_REGIONS = [
-  { label: 'US East (N. Virginia)', value: 'us-east-1' },
-  { label: 'US East (Ohio)', value: 'us-east-2' },
-  { label: 'US West (Oregon)', value: 'us-west-2' },
-  { label: 'Asia Pacific (Tokyo)', value: 'ap-northeast-1' },
-  { label: 'Asia Pacific (Mumbai)', value: 'ap-south-1' },
-  { label: 'Europe (Frankfurt)', value: 'eu-central-1' },
-  { label: 'Europe (Ireland)', value: 'eu-west-1' },
-];
-
-const PROVIDERS: { value: Provider; label: string; icon: string; desc: string }[] = [
-  { value: 'bedrock', label: 'Amazon Bedrock', icon: '/bedrock_bw.svg', desc: 'AWS credentials' },
-  { value: 'bedrock-mantle', label: 'Bedrock Mantle', icon: '/bedrock-color.svg', desc: 'API key' },
-  { value: 'lmstudio', label: 'LM Studio', icon: '/lmstudio_icon.svg', desc: 'Port 1234' },
-  { value: 'ollama', label: 'Ollama', icon: '/ollama_icon.svg', desc: 'Port 11434' },
-  { value: 'groq', label: 'Groq', icon: '/groq_icon.svg', desc: 'API key' },
-  { value: 'cerebras', label: 'Cerebras', icon: '/cerebras_icon.svg', desc: 'API key' },
-  { value: 'anthropic', label: 'Anthropic', icon: '/claude-color.svg', desc: 'API key' },
-  { value: 'openrouter', label: 'OpenRouter', icon: '/openrouter_icon.svg', desc: 'API key' },
-];
+import { ProviderSettings } from './ProviderSettings';
+import { providerLabel } from './providerOptions';
 
 interface PreferencesDialogProps {
   open: boolean;
@@ -63,8 +31,11 @@ interface PreferencesDialogProps {
   onSave: (preferences: UserPreferences) => void;
 }
 
+type PreferencesTab = 'providers' | 'web-search' | 'mcp' | 'display';
+
 export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDialogProps) {
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
+  const [tab, setTab] = useState<PreferencesTab>('providers');
   const [wasOpen, setWasOpen] = useState(open);
 
   // Reload on open: other controls (the header theme toggle) also save preferences
@@ -78,11 +49,14 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
   const handleSave = () => {
     if (!validateInitials(preferences.avatarInitials)) {
       setInitialsError('Please enter 1-2 letters');
+      setTab('display');
       return;
     }
     if (!isProviderConfigured(preferences, preferences.preferredProvider)) {
-      const label = PROVIDERS.find((p) => p.value === preferences.preferredProvider)?.label;
-      setProviderError(`Add an API key for ${label}, or choose a different default provider.`);
+      setProviderError(
+        `Add an API key for ${providerLabel(preferences.preferredProvider)}, or choose a different default provider.`
+      );
+      setTab('providers');
       return;
     }
     savePreferences(preferences);
@@ -98,237 +72,133 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col gap-4">
         <DialogHeader>
           <DialogTitle>Preferences</DialogTitle>
-          <DialogDescription>Configure your chat experience and API settings.</DialogDescription>
+          <DialogDescription>Choose your providers, tools, and display settings.</DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="provider" className="w-full">
+        <Tabs
+          value={tab}
+          onValueChange={(v) => setTab(v as PreferencesTab)}
+          className="flex min-h-0 w-full flex-1 flex-col"
+        >
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="provider">Provider</TabsTrigger>
-            <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+            <TabsTrigger value="providers">Providers</TabsTrigger>
+            <TabsTrigger value="web-search">Web Search</TabsTrigger>
             <TabsTrigger value="mcp">MCP Servers</TabsTrigger>
             <TabsTrigger value="display">Display</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="provider" className="space-y-4 mt-4">
-            <div className="space-y-3">
-              <Label>Default Provider</Label>
-              <RadioGroup
-                value={preferences.preferredProvider}
-                onValueChange={(v) => updatePreference('preferredProvider', v as Provider)}
-                className="grid gap-2"
-              >
-                {PROVIDERS.map((provider) => {
-                  const configured = isProviderConfigured(preferences, provider.value);
-                  return (
-                    <div key={provider.value} className="flex items-center space-x-3">
-                      <RadioGroupItem
-                        value={provider.value}
-                        id={provider.value}
-                        disabled={!configured}
-                      />
-                      <Label
-                        htmlFor={provider.value}
-                        className={cn(
-                          'flex items-center gap-2 flex-1',
-                          configured ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
-                        )}
-                      >
-                        <img src={provider.icon} alt="" className="w-4 h-4" />
-                        <span>{provider.label}</span>
-                        <span className="text-xs text-muted-foreground ml-auto">
-                          {configured ? provider.desc : 'Add API key in API Keys tab'}
-                        </span>
-                      </Label>
-                    </div>
-                  );
-                })}
-              </RadioGroup>
-            </div>
-          </TabsContent>
+          <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+            <TabsContent value="providers" className="mt-0">
+              <ProviderSettings preferences={preferences} onUpdate={updatePreference} />
+            </TabsContent>
 
-          <TabsContent value="api-keys" className="space-y-4 mt-4">
-            <div className="space-y-3">
-              <Label htmlFor="mantle-key">Bedrock Mantle API Key</Label>
-              <Input
-                id="mantle-key"
-                type="password"
-                value={preferences.bedrockMantleApiKey || ''}
-                onChange={(e) => updatePreference('bedrockMantleApiKey', e.target.value)}
-                placeholder="Enter API key"
+            <TabsContent value="web-search" className="mt-0 space-y-4">
+              <div className="space-y-1">
+                <h3 className="text-sm font-medium">Tavily web search</h3>
+                <p className="text-xs text-muted-foreground">
+                  With a key set, the globe button in the chat input lets the model search the web.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="tavily-key">Tavily API key</Label>
+                <Input
+                  id="tavily-key"
+                  type="password"
+                  autoComplete="off"
+                  value={preferences.tavilyApiKey || ''}
+                  onChange={(e) => updatePreference('tavilyApiKey', e.target.value.trim())}
+                  placeholder="Paste your API key"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Get a key at{' '}
+                  <a
+                    href="https://tavily.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    tavily.com
+                  </a>
+                </p>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="mcp" className="mt-0">
+              <MCPServerSettings
+                servers={preferences.mcpServers || {}}
+                onChange={(mcpServers) => updatePreference('mcpServers', mcpServers)}
               />
-            </div>
+            </TabsContent>
 
-            <div className="space-y-3">
-              <Label htmlFor="mantle-region">Mantle Region</Label>
-              <Select
-                value={preferences.bedrockMantleRegion || 'us-west-2'}
-                onValueChange={(v) => updatePreference('bedrockMantleRegion', v)}
-              >
-                <SelectTrigger id="mantle-region">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MANTLE_REGIONS.map((region) => (
-                    <SelectItem key={region.value} value={region.value}>
-                      {region.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <TabsContent value="display" className="mt-0 space-y-6">
+              <div className="space-y-1.5">
+                <Label htmlFor="initials">Avatar initials</Label>
+                <Input
+                  id="initials"
+                  value={preferences.avatarInitials}
+                  onChange={(e) => updatePreference('avatarInitials', e.target.value.toUpperCase())}
+                  placeholder="AB"
+                  maxLength={2}
+                  className={initialsError ? 'w-24 border-destructive' : 'w-24'}
+                />
+                {initialsError && <p className="text-sm text-destructive">{initialsError}</p>}
+              </div>
 
-            <div className="space-y-3">
-              <Label htmlFor="groq-key">Groq API Key</Label>
-              <Input
-                id="groq-key"
-                type="password"
-                value={preferences.groqApiKey || ''}
-                onChange={(e) => updatePreference('groqApiKey', e.target.value)}
-                placeholder="Enter API key"
-              />
-            </div>
-
-            <div className="space-y-3">
-              <Label htmlFor="cerebras-key">Cerebras API Key</Label>
-              <Input
-                id="cerebras-key"
-                type="password"
-                value={preferences.cerebrasApiKey || ''}
-                onChange={(e) => updatePreference('cerebrasApiKey', e.target.value)}
-                placeholder="Enter API key"
-              />
-            </div>
-
-            <div className="space-y-3">
-              <Label htmlFor="anthropic-key">Anthropic API Key</Label>
-              <Input
-                id="anthropic-key"
-                type="password"
-                value={preferences.anthropicApiKey || ''}
-                onChange={(e) => updatePreference('anthropicApiKey', e.target.value)}
-                placeholder="Enter API key"
-              />
-              <p className="text-xs text-muted-foreground">
-                Get your API key at{' '}
-                <a
-                  href="https://console.anthropic.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
+              <div className="space-y-2">
+                <Label>Theme</Label>
+                <RadioGroup
+                  value={preferences.visualMode}
+                  onValueChange={(v) => updatePreference('visualMode', v as VisualMode)}
+                  className="flex gap-4"
                 >
-                  console.anthropic.com
-                </a>
-              </p>
-            </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="light" id="light" />
+                    <Label htmlFor="light" className="font-normal">
+                      Light
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="dark" id="dark" />
+                    <Label htmlFor="dark" className="font-normal">
+                      Dark
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
 
-            <div className="space-y-3">
-              <Label htmlFor="openrouter-key">OpenRouter API Key</Label>
-              <Input
-                id="openrouter-key"
-                type="password"
-                value={preferences.openrouterApiKey || ''}
-                onChange={(e) => updatePreference('openrouterApiKey', e.target.value.trim())}
-                placeholder="Enter API key"
-              />
-              <p className="text-xs text-muted-foreground">
-                Get your API key at{' '}
-                <a
-                  href="https://openrouter.ai/settings/keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
+              <div className="space-y-2">
+                <Label>Content density</Label>
+                <RadioGroup
+                  value={preferences.contentDensity}
+                  onValueChange={(v) => updatePreference('contentDensity', v as ContentDensity)}
+                  className="flex gap-4"
                 >
-                  openrouter.ai/settings/keys
-                </a>
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <Label htmlFor="tavily-key">Tavily API Key (Web Search)</Label>
-              <Input
-                id="tavily-key"
-                type="password"
-                value={preferences.tavilyApiKey || ''}
-                onChange={(e) => updatePreference('tavilyApiKey', e.target.value)}
-                placeholder="Enter API key for web search"
-              />
-              <p className="text-xs text-muted-foreground">
-                Get your API key at{' '}
-                <a
-                  href="https://tavily.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  tavily.com
-                </a>
-              </p>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="mcp" className="space-y-4 mt-4">
-            <MCPServerSettings
-              servers={preferences.mcpServers || {}}
-              onChange={(mcpServers) => updatePreference('mcpServers', mcpServers)}
-            />
-          </TabsContent>
-
-          <TabsContent value="display" className="space-y-4 mt-4">
-            <div className="space-y-3">
-              <Label htmlFor="initials">Avatar Initials</Label>
-              <Input
-                id="initials"
-                value={preferences.avatarInitials}
-                onChange={(e) => updatePreference('avatarInitials', e.target.value.toUpperCase())}
-                placeholder="AB"
-                maxLength={2}
-                className={initialsError ? 'border-destructive' : ''}
-              />
-              {initialsError && <p className="text-sm text-destructive">{initialsError}</p>}
-            </div>
-
-            <div className="space-y-3">
-              <Label>Theme</Label>
-              <RadioGroup
-                value={preferences.visualMode}
-                onValueChange={(v) => updatePreference('visualMode', v as VisualMode)}
-                className="flex gap-4"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="light" id="light" />
-                  <Label htmlFor="light">Light</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="dark" id="dark" />
-                  <Label htmlFor="dark">Dark</Label>
-                </div>
-              </RadioGroup>
-            </div>
-
-            <div className="space-y-3">
-              <Label>Content Density</Label>
-              <RadioGroup
-                value={preferences.contentDensity}
-                onValueChange={(v) => updatePreference('contentDensity', v as ContentDensity)}
-                className="flex gap-4"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="comfortable" id="comfortable" />
-                  <Label htmlFor="comfortable">Comfortable</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="compact" id="compact" />
-                  <Label htmlFor="compact">Compact</Label>
-                </div>
-              </RadioGroup>
-            </div>
-          </TabsContent>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="comfortable" id="comfortable" />
+                    <Label htmlFor="comfortable" className="font-normal">
+                      Comfortable
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="compact" id="compact" />
+                    <Label htmlFor="compact" className="font-normal">
+                      Compact
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+            </TabsContent>
+          </div>
         </Tabs>
 
-        {providerError && <p className="text-sm text-destructive">{providerError}</p>}
+        {providerError && (
+          <p role="alert" className="text-sm text-destructive">
+            {providerError}
+          </p>
+        )}
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>

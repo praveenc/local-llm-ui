@@ -53,7 +53,7 @@ export const QuoteRespondDialog = ({
   return (
     <DialogPrimitive.Root open={quote !== null} onOpenChange={(open) => !open && close()}>
       <DialogPortal>
-        {/* Above the prompt input (z-1000) */}
+        {/* Above the prompt input and other dialogs (z-50) */}
         <DialogOverlay className="z-[1100] bg-black/30" />
         <DialogPrimitive.Content
           className="fixed top-1/2 left-1/2 z-[1100] flex w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-3 rounded-lg border bg-background p-4 shadow-lg outline-none sm:max-w-xl"
