@@ -7,7 +7,7 @@ import { Sidebar } from '../components/sidebar';
 import { useAllModels } from '../hooks/useAllModels';
 import type { UnifiedModel } from '../hooks/useAllModels';
 import { conversationService } from '../services';
-import { applyColorTheme } from '../utils/colorThemes';
+import { DEFAULT_COLOR_THEME, applyColorTheme, isColorTheme } from '../utils/colorThemes';
 import { findModel, pickDefaultModel } from '../utils/modelSelection';
 import type { ModelRef } from '../utils/modelSelection';
 import {
@@ -153,10 +153,16 @@ export default function AppShell() {
   };
 
   const handleToggleTheme = () => {
-    const next: UserPreferences = {
-      ...loadPreferences(),
+    handleAppearanceChange({
       visualMode: userPreferences.visualMode === 'dark' ? 'light' : 'dark',
-    };
+    });
+  };
+
+  // Header theme menu and toggle: save on top of the latest stored preferences
+  const handleAppearanceChange = (
+    change: Partial<Pick<UserPreferences, 'colorTheme' | 'visualMode'>>
+  ) => {
+    const next: UserPreferences = { ...loadPreferences(), ...change };
     savePreferences(next);
     setUserPreferences(next);
   };
@@ -198,6 +204,11 @@ export default function AppShell() {
       onNavigationChange={setNavigationOpen}
       theme={userPreferences.visualMode}
       onToggleTheme={handleToggleTheme}
+      colorTheme={
+        isColorTheme(userPreferences.colorTheme) ? userPreferences.colorTheme : DEFAULT_COLOR_THEME
+      }
+      onColorThemeChange={(colorTheme) => handleAppearanceChange({ colorTheme })}
+      onVisualModeChange={(visualMode) => handleAppearanceChange({ visualMode })}
       navigation={
         <Sidebar
           onNewChat={handleNewChat}
