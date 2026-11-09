@@ -14,6 +14,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connect } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
+import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit } from './security.ts';
 
@@ -33,6 +34,7 @@ interface ChatRequest {
   max_tokens?: number;
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
+  thinkingEffort?: unknown;
 }
 
 function createProvider(providerType: AISDKProvider, apiKey: string) {
@@ -278,6 +280,8 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
         topP: request.top_p,
         tools,
         abortSignal: abortController.signal,
+        // Send the thinking effort only for models that accept it (gpt-oss on Groq)
+        ...buildReasoningParams(request.provider, request.model, request.thinkingEffort),
         // stopWhen required for multi-step tool use (agentic behavior)
         ...(tools && { stopWhen: isStepCount(5) }),
       });
@@ -286,6 +290,8 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       for await (const part of result.stream) {
         if (part.type === 'text-delta') {
           res.write(`data: ${JSON.stringify({ content: part.text })}\n\n`);
+        } else if (part.type === 'reasoning-delta') {
+          res.write(`data: ${JSON.stringify({ reasoning: part.text })}\n\n`);
         } else if (part.type === 'tool-call') {
           res.write(
             `data: ${JSON.stringify({

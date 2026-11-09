@@ -1,6 +1,30 @@
 import { describe, expect, it } from 'vitest';
 
-import { isProviderConfigured, loadPreferences } from '../preferences';
+import {
+  clearLastSelectedModel,
+  isProviderConfigured,
+  loadLastSelectedModel,
+  loadPreferences,
+  saveLastSelectedModel,
+} from '../preferences';
+
+describe('last selected model', () => {
+  it('saves, loads, and clears the model', () => {
+    localStorage.clear();
+    expect(loadLastSelectedModel()).toBeUndefined();
+    saveLastSelectedModel({ id: 'claude-opus-5', provider: 'anthropic' });
+    expect(loadLastSelectedModel()).toEqual({ id: 'claude-opus-5', provider: 'anthropic' });
+    clearLastSelectedModel();
+    expect(loadLastSelectedModel()).toBeUndefined();
+  });
+
+  it('ignores a malformed value', () => {
+    localStorage.setItem('local-llm-ui-last-model', '{"id":1}');
+    expect(loadLastSelectedModel()).toBeUndefined();
+    localStorage.setItem('local-llm-ui-last-model', 'not json');
+    expect(loadLastSelectedModel()).toBeUndefined();
+  });
+});
 
 describe('isProviderConfigured', () => {
   const base = loadPreferences();

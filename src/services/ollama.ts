@@ -20,10 +20,12 @@ export class OllamaService {
 
       return data.models
         .filter((model: { name: string }) => !model.name.toLowerCase().includes('embed'))
-        .map((model: { name: string }) => ({
+        .map((model: { name: string; capabilities?: string[] }) => ({
           modelId: model.name,
           modelName: model.name,
           provider: 'ollama' as const,
+          // Ollama 0.6+ lists capabilities in /api/tags
+          supportsThinking: model.capabilities?.includes('thinking') ?? false,
         }));
     } catch (error) {
       console.error('Ollama: Failed to fetch models:', error);

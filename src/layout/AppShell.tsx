@@ -9,14 +9,28 @@ import type { UnifiedModel } from '../hooks/useAllModels';
 import { conversationService } from '../services';
 import { findModel, pickDefaultModel } from '../utils/modelSelection';
 import type { ModelRef } from '../utils/modelSelection';
-import { loadPreferences, savePreferences } from '../utils/preferences';
+import {
+  clearLastSelectedModel,
+  loadLastSelectedModel,
+  loadPreferences,
+  saveLastSelectedModel,
+  savePreferences,
+} from '../utils/preferences';
 import type { Provider, UserPreferences } from '../utils/preferences';
+import { getDefaultThinkingEffort } from '../utils/thinkingEffort';
+import type { ThinkingEffort } from '../utils/thinkingEffort';
 import { AppLayout } from './AppLayout';
 
 /** Model to select once the model list has loaded */
 type PendingModel =
   | { kind: 'conversation'; conversationId: string; model: ModelRef }
-  | { kind: 'default'; provider: Provider; preferred?: ModelRef; any?: ModelRef };
+  | {
+      kind: 'default';
+      provider: Provider;
+      last?: ModelRef;
+      preferred?: ModelRef;
+      any?: ModelRef;
+    };
 
 const toModelRef = (message?: { modelId: string; provider: Provider }): ModelRef | undefined =>
   message ? { id: message.modelId, provider: message.provider } : undefined;
@@ -39,6 +53,24 @@ export default function AppShell() {
   const [selectedModel, setSelectedModel] = useState<UnifiedModel | null>(null);
   const { providers, isLoading: isLoadingModels } = useAllModels(userPreferences);
 
+  // Thinking effort: starts at the provider's default from Preferences each time the provider
+  // changes, then keeps the user's pick from the chat input
+  const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>('default');
+  const applyModel = (model: UnifiedModel) => {
+    if (model.provider !== selectedModel?.provider) {
+      setThinkingEffort(
+        getDefaultThinkingEffort(userPreferences.thinkingEffortByProvider, model.provider)
+      );
+    }
+    setSelectedModel(model);
+  };
+
+  // A model picked in the chat input is also the default for new chats
+  const handleSelectModel = (model: UnifiedModel) => {
+    applyModel(model);
+    saveLastSelectedModel(model);
+  };
+
   // Model to select once the model list has loaded: the default for a new chat, or the opened
   // conversation's model
   const [pendingModel, setPendingModel] = useState<PendingModel | null>(null);
@@ -47,10 +79,10 @@ export default function AppShell() {
     if (pendingModel.kind === 'conversation') {
       // Drop a stale result when the user has since opened another conversation
       const match = findModel(providers, pendingModel.model);
-      if (match && pendingModel.conversationId === activeConversationId) setSelectedModel(match);
+      if (match && pendingModel.conversationId === activeConversationId) applyModel(match);
     } else if (activeConversationId === null) {
       const match = pickDefaultModel(providers, pendingModel.provider, pendingModel);
-      if (match) setSelectedModel(match);
+      if (match) applyModel(match);
     }
   }
 
@@ -73,6 +105,7 @@ export default function AppShell() {
         return {
           kind: 'default',
           provider,
+          last: loadLastSelectedModel(),
           preferred: toModelRef(preferred),
           any: toModelRef(any),
         };
@@ -124,9 +157,23 @@ export default function AppShell() {
   const handlePreferencesChange = (preferences: UserPreferences) => {
     const providerChanged = preferences.preferredProvider !== userPreferences.preferredProvider;
     setUserPreferences(preferences);
-    // Apply a new default provider now, unless a conversation is open (it keeps its model)
-    if (providerChanged && activeConversationId === null) {
-      requestDefaultModel(preferences.preferredProvider);
+    // Apply a changed default effort to the selected model's provider now
+    if (selectedModel) {
+      const oldDefault = getDefaultThinkingEffort(
+        userPreferences.thinkingEffortByProvider,
+        selectedModel.provider
+      );
+      const newDefault = getDefaultThinkingEffort(
+        preferences.thinkingEffortByProvider,
+        selectedModel.provider
+      );
+      if (newDefault !== oldDefault) setThinkingEffort(newDefault);
+    }
+    if (providerChanged) {
+      // A new default provider replaces the model last picked in the chat input
+      clearLastSelectedModel();
+      // Apply it now, unless a conversation is open (it keeps its model)
+      if (activeConversationId === null) requestDefaultModel(preferences.preferredProvider);
     }
   };
 
@@ -154,7 +201,7 @@ export default function AppShell() {
         <ChatContainer
           providers={providers}
           selectedModel={selectedModel}
-          onSelectModel={setSelectedModel}
+          onSelectModel={handleSelectModel}
           isLoadingModels={isLoadingModels}
           maxTokens={maxTokens}
           setMaxTokens={setMaxTokens}
@@ -164,6 +211,8 @@ export default function AppShell() {
           setTopP={setTopP}
           samplingParameter={samplingParameter}
           setSamplingParameter={setSamplingParameter}
+          thinkingEffort={thinkingEffort}
+          setThinkingEffort={setThinkingEffort}
           avatarInitials={userPreferences.avatarInitials}
           conversationId={activeConversationId}
           onConversationChange={handleConversationChange}

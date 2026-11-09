@@ -12,6 +12,8 @@ import { createOllama } from 'ollama-ai-provider-v2';
 import type { Connect } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
+import { ollamaThinkValue } from '../src/utils/thinkingEffort.ts';
+import type { OllamaThinkingInfo } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit } from './security.ts';
 
@@ -28,12 +30,53 @@ interface ChatRequest {
   max_tokens?: number;
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
+  thinkingEffort?: unknown;
 }
+
+const OLLAMA_API = 'http://localhost:11434/api';
 
 // Create Ollama provider instance
 const ollama = createOllama({
-  baseURL: 'http://localhost:11434/api',
+  baseURL: OLLAMA_API,
 });
+
+/**
+ * The model's thinking controls from Ollama /api/show. Models without the "thinking"
+ * capability reject a `think` value, so `supported` is false for them and when the lookup fails.
+ */
+async function getOllamaThinking(
+  model: string
+): Promise<{ supported: boolean; thinking?: OllamaThinkingInfo }> {
+  try {
+    const response = await fetch(`${OLLAMA_API}/show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model }),
+    });
+    if (!response.ok) return { supported: false };
+    const data = (await response.json()) as {
+      capabilities?: string[];
+      thinking?: OllamaThinkingInfo;
+    };
+    return { supported: data.capabilities?.includes('thinking') ?? false, thinking: data.thinking };
+  } catch {
+    return { supported: false };
+  }
+}
+
+/**
+ * A fetch that sets `think` in the Ollama request body. The AI SDK Ollama provider accepts only
+ * true/false, but models such as gpt-oss take a level name ("low", "medium", "high").
+ */
+const fetchWithThink =
+  (think: boolean | string): typeof fetch =>
+  (input, init) => {
+    if (typeof init?.body === 'string') {
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+      init = { ...init, body: JSON.stringify({ ...body, think }) };
+    }
+    return fetch(input, init);
+  };
 
 export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
   return async (req, res, next) => {
@@ -100,9 +143,21 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
         abortController.abort();
       });
 
+      // Thinking effort chosen in the chat input. Without one ("Default"), keep the old rule:
+      // turn thinking on for model names that suggest a thinking model.
+      let think: boolean | string | undefined;
+      if (request.thinkingEffort !== undefined && request.thinkingEffort !== 'default') {
+        const info = await getOllamaThinking(request.model);
+        if (info.supported) think = ollamaThinkValue(request.thinkingEffort, info.thinking);
+      }
+      const model =
+        think === undefined
+          ? ollama(request.model)
+          : createOllama({ baseURL: OLLAMA_API, fetch: fetchWithThink(think) })(request.model);
+
       // Use AI SDK streamText with ollama provider
       const result = await streamText({
-        model: ollama(request.model),
+        model,
         // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
         allowSystemInMessages: true,
         messages: request.messages.map((m) => ({
@@ -117,11 +172,12 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
         // stopWhen required for multi-step tool use (agentic behavior)
         ...(tools && { stopWhen: isStepCount(5) }),
         // Enable thinking for supported models
-        ...(isThinkingModel && {
-          providerOptions: {
-            ollama: { think: true },
-          },
-        }),
+        ...(think === undefined &&
+          isThinkingModel && {
+            providerOptions: {
+              ollama: { think: true },
+            },
+          }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);
 
@@ -204,6 +260,9 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
               }
             }
           }
+        } else if (part.type === 'reasoning-delta') {
+          // Thinking that Ollama returns in its own field (message.thinking)
+          res.write(`data: ${JSON.stringify({ reasoning: part.text })}\n\n`);
         } else if (part.type === 'tool-call') {
           res.write(
             `data: ${JSON.stringify({

@@ -31,6 +31,8 @@ import { getModelContextLimits } from '../../utils/modelContext';
 import { loadPreferences } from '../../utils/preferences';
 import { formatQuoteMessage, quoteTagsToMarkdown } from '../../utils/quote';
 import { getSamplingSupport } from '../../utils/samplingParams';
+import { supportsThinkingEffort } from '../../utils/thinkingEffort';
+import type { ThinkingEffort } from '../../utils/thinkingEffort';
 import {
   Conversation,
   ConversationContent,
@@ -70,6 +72,7 @@ import { MCPToolsIndicator } from './MCPToolsIndicator';
 import { ModelSelectorButton } from './ModelSelectorButton';
 import { QuoteRespondDialog } from './QuoteRespondDialog';
 import { type QuoteSelection, QuoteSelectionButton } from './QuoteSelectionButton';
+import { ThinkingEffortSelector } from './ThinkingEffortSelector';
 import { WebSearchToggle } from './WebSearchToggle';
 
 /**
@@ -206,6 +209,7 @@ interface ModelOption {
   value: string;
   label: string;
   description?: string;
+  supportsThinking?: boolean;
 }
 
 interface BedrockChatContainerProps {
@@ -223,6 +227,8 @@ interface BedrockChatContainerProps {
   setTopP: (topP: number) => void;
   samplingParameter: SamplingParameter;
   setSamplingParameter: (param: SamplingParameter) => void;
+  thinkingEffort: ThinkingEffort;
+  setThinkingEffort: (effort: ThinkingEffort) => void;
   avatarInitials?: string;
   conversationId?: string | null;
   onConversationChange?: (id: string | null) => void;
@@ -236,6 +242,7 @@ const toModelOption = (model: UnifiedModel | null): ModelOption | null => {
     value: model.id,
     label: model.name,
     description: model.provider,
+    supportsThinking: model.supportsThinking,
   };
 };
 
@@ -276,6 +283,8 @@ const ChatContainer = ({
   setTopP,
   samplingParameter,
   setSamplingParameter,
+  thinkingEffort,
+  setThinkingEffort,
   conversationId: externalConversationId,
   onConversationChange,
   onClearHistoryRef,
@@ -315,6 +324,7 @@ const ChatContainer = ({
     topP,
     maxTokens,
     samplingParameter,
+    thinkingEffort,
     enableWebSearch,
     onConversationChange,
   });
@@ -602,6 +612,18 @@ const ChatContainer = ({
                   isLoading={isLoadingModels}
                   disabled={isLoading}
                 />
+                {selectedModel &&
+                  supportsThinkingEffort(
+                    selectedModel.provider,
+                    selectedModel.id,
+                    selectedModel.supportsThinking
+                  ) && (
+                    <ThinkingEffortSelector
+                      value={thinkingEffort}
+                      onChange={setThinkingEffort}
+                      disabled={isLoading}
+                    />
+                  )}
                 <InferenceSettings
                   temperature={temperature}
                   setTemperature={setTemperature}

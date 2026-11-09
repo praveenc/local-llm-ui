@@ -14,6 +14,7 @@ import type { Connect } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { buildSamplingParams } from '../src/utils/samplingParams.ts';
+import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security.ts';
 
@@ -32,6 +33,7 @@ interface ChatRequest {
   max_tokens?: number;
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
+  thinkingEffort?: unknown;
 }
 
 interface OpenRouterModelsResponse {
@@ -450,6 +452,8 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
         abortSignal: abortController.signal,
+        // Sent to OpenRouter as reasoning_effort, only for models that accept it
+        ...buildReasoningParams('openrouter', request.model, request.thinkingEffort),
         ...(tools && { stopWhen: isStepCount(5) }),
       });
 

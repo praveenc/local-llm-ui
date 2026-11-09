@@ -18,6 +18,7 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 - **Web Search**: Built-in Tavily web search tool for grounding responses with real-time data. Add the Tavily key in **Preferences → Web Search**
 - **Real-time Streaming**: Stream responses from AI models in real-time with smooth animations
 - **Reasoning/Thinking Support**: Display thinking process for reasoning models (MiniMax, DeepSeek-R1, NemoTron, etc.)
+- **Thinking Effort**: Choose how much a Claude or OpenAI reasoning model thinks before it answers, from Off to XHigh
 - **Unified Model Selector**: Searchable model picker in chat input, grouped by provider with unavailable services clearly flagged
 - **Inference Settings**: Adjust temperature, top-p, and max tokens via popover in chat input (only the settings the selected model accepts)
 - **Context Window Indicator**: Track token usage against model context limits
@@ -27,7 +28,8 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 - **Chat History**: Manage multiple chat sessions with automatic history tracking via IndexedDB
 - **Quote and Ask**: Select text in a reply to ask about it in this chat, or in a new forked chat
 - **Saved Prompts**: Save and reuse frequently used prompts
-- **User Preferences**: Choose a default provider. New conversations start with the last model you used from it. Add API keys in the same list, and set avatar initials, theme, and density
+- **User Preferences**: Choose a default provider and its default thinking effort. Add API keys in the same list, and set avatar initials, theme, and density
+- **Remembers Your Model**: New conversations start with the model you last picked, also after a page reload
 - **Dark/Light Mode**: Toggle between visual modes
 - **Responsive Design**: Works seamlessly across desktop and mobile devices
 
@@ -234,6 +236,40 @@ The settings panel shows only the controls that the selected model accepts:
 
 The app also leaves out any setting the model does not accept when it sends the request.
 
+### Thinking Effort
+
+For models that can think before they answer, a **Thinking** button shows next to the model selector. Click it and choose a level:
+
+| Level | What the app sends |
+|---|---|
+| Default | Nothing. The model uses its own setting. |
+| Off | Thinking off. Some models cannot turn thinking off. These models use their lowest level. |
+| Minimal, Low, Medium, High, XHigh | That level. If the model does not have the level, the app uses the nearest level that the model has. |
+
+The button shows for these models:
+
+| Provider | Models |
+|---|---|
+| Amazon Bedrock | Claude 4 and later, OpenAI GPT-5 and later, Amazon Nova 2 |
+| Bedrock Mantle | gpt-oss, Kimi K2 Thinking, Kimi K2.5, DeepSeek V3.x, GLM, Qwen3 32B, Qwen3 Next, Nemotron 3 |
+| Anthropic | Claude 4 and later |
+| OpenRouter | Claude 4 and later, OpenAI reasoning models |
+| Groq | gpt-oss |
+| Ollama | Models that Ollama lists with the "thinking" capability (Ollama 0.6 or later) |
+
+Some models have fewer levels:
+
+- **On/off models** (Qwen3 on Ollama; DeepSeek, GLM, Qwen3, Kimi K2.5, and Nemotron on Mantle): **Off** turns thinking off. All other levels turn it on.
+- **gpt-oss** (Ollama and Mantle) and **Kimi K2 Thinking** cannot turn thinking off. **Off** uses their lowest level, Low.
+
+On Amazon Bedrock and Bedrock Mantle, the app does not send Temperature or Top P when thinking is on, because reasoning models do not accept them.
+
+To set the level that each provider starts with, open **Preferences → Providers**. Select the provider, then set **Default thinking**. When you change to a model from a different provider, the button changes to that provider's default.
+
+### Model Memory
+
+The app remembers the model that you last picked in the chat input. New conversations start with this model, also after a page reload. If the model is not available, the app uses the last model from your default provider. When you change the default provider in Preferences, new conversations start with that provider's models again.
+
 ### Quote and Ask
 
 You can ask a question about one part of a reply:
@@ -258,9 +294,10 @@ The chat shows the quote as an indented block. **Send to Fork** needs a selected
 
 ### Reasoning Models
 
-When using reasoning/thinking models (MiniMax, DeepSeek-R1, NemoTron, etc.):
+When using reasoning/thinking models (Claude, Nova 2, MiniMax, DeepSeek-R1, NemoTron, etc.):
 
 - A collapsible "Thinking" section appears showing the model's reasoning process
+- OpenAI models do not return their reasoning text. Only the output token count shows that they thought
 - Click to expand/collapse the reasoning content
 - Reasoning is persisted with the conversation
 

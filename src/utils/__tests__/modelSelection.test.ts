@@ -29,6 +29,22 @@ describe('findModel', () => {
 });
 
 describe('pickDefaultModel', () => {
+  it('prefers the model last picked in the chat input, from any provider', () => {
+    const picked = pickDefaultModel(providers, 'bedrock', {
+      last: { id: 'claude-x', provider: 'anthropic' },
+      preferred: { id: 'sonnet', provider: 'bedrock' },
+    });
+    expect(picked).toMatchObject({ provider: 'anthropic', id: 'claude-x' });
+  });
+
+  it('ignores a last picked model that is no longer available', () => {
+    const picked = pickDefaultModel(providers, 'bedrock', {
+      last: { id: 'removed-model', provider: 'anthropic' },
+      preferred: { id: 'sonnet', provider: 'bedrock' },
+    });
+    expect(picked).toMatchObject({ provider: 'bedrock', id: 'sonnet' });
+  });
+
   it('uses the last model used with the preferred provider', () => {
     const picked = pickDefaultModel(providers, 'anthropic', {
       preferred: { id: 'claude-x', provider: 'anthropic' },
