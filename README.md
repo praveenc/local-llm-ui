@@ -1,306 +1,180 @@
 # Local LLM UI
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
-[![Vite](https://img.shields.io/badge/Vite-7-646cff.svg)](https://vitejs.dev/)
+[![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vitejs.dev/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-A modern, responsive UI for interacting with Large Language Models (LLMs). Built with React, TypeScript, Vite, and shadcn/ui (Radix primitives + Tailwind CSS), this application provides a beautiful interface for chatting with AI models through multiple providers.
+Local LLM UI is a chat app for large language models. It runs on your computer and connects to local models (Ollama, LM Studio) and cloud models (Amazon Bedrock, Anthropic, Groq, and more) from one window.
 
 ![Local LLM UI](.github/images/local-llm-ui-ex1.png)
 
+## Contents
+
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Connect a provider](#connect-a-provider)
+- [Use the app](#use-the-app)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [License](#license)
+
 ## Features
 
-- **Modern UI**: Built with shadcn/ui components (Radix UI + Tailwind CSS) for a clean, accessible interface
-- **Multiple AI Providers**: Support for Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Anthropic, Groq, and Cerebras
-- **MCP Server Integration**: Connect external tools via [Model Context Protocol](https://modelcontextprotocol.io/) — stdio, HTTP, and SSE transports
-- **Web Search**: Let the model search the web with Brave Search, Exa, or Tavily. All three have a free monthly plan. If one provider runs out of quota, the app can use the next one. Add keys in **Preferences → Web Search**
-- **Real-time Streaming**: Stream responses from AI models in real-time with smooth animations
-- **Reasoning/Thinking Support**: Display thinking process for reasoning models (MiniMax, DeepSeek-R1, NemoTron, etc.)
-- **Thinking Effort**: Choose how much a Claude or OpenAI reasoning model thinks before it answers, from Off to XHigh
-- **Unified Model Selector**: Searchable model picker in chat input, grouped by provider with unavailable services clearly flagged
-- **Inference Settings**: Adjust temperature, top-p, max tokens, and max tool steps via popover in chat input (only the settings the selected model accepts)
-- **Context Window Indicator**: Track token usage against model context limits
-- **Prompt Optimizer**: Optimize prompts for Claude 4.5 models using best practices (Bedrock only)
-- **Document Upload**: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) with Bedrock models
-- **Usage Metrics**: View token usage and latency displayed after each AI response
-- **Chat History**: Manage multiple chat sessions with automatic history tracking via IndexedDB
-- **Quote and Ask**: Select text in a reply to ask about it in this chat, or in a new forked chat
-- **Saved Prompts**: Save and reuse frequently used prompts
-- **User Preferences**: Choose a default provider and its default thinking effort. Add API keys in the same list, and set avatar initials, theme, and density
-- **Remembers Your Model**: New conversations start with the model you last picked, also after a page reload
-- **Dark/Light Mode**: Toggle between visual modes
-- **Color Themes**: Pick Cosmic Night, [Cobaltz](https://github.com/praveenc/cobaltz), or [Rosé Pine](https://rosepinetheme.com/palette/). Each theme has a light and a dark variant
-- **Responsive Design**: Works seamlessly across desktop and mobile devices
+**Models and providers**
 
-## MCP Server Support
+- Chat with models from Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Anthropic, OpenRouter, Groq, and Cerebras.
+- Find a model in one searchable list, grouped by provider.
+- Start each new chat with the model that you used last.
 
-Connect external tools to your LLM conversations via the [Model Context Protocol](https://modelcontextprotocol.io/). Configure servers in **Preferences → MCP Servers** with support for local (stdio) and remote (HTTP/SSE) transports.
+**Answers**
 
-| MCP Tools Status | MCP Server Configuration |
-|:---:|:---:|
-| ![](.github/images/local-llm-mcp-servers-support_1.png) | ![](.github/images/local-llm-mcp-servers-support_2.png) |
+- See replies as they stream.
+- Read the thinking of reasoning models in a section that you can expand.
+- Set the thinking effort, from Off to XHigh.
+- See the token count and latency after each reply.
+- See how much of the context window the chat uses.
 
-- **Toolbar indicator** shows connected servers and available tools at a glance
-- **Security hardened** — command allowlists, SSRF protection, env var isolation ([details](docs/SECURITY-LEARNINGS.md))
+**Tools**
 
-## Prerequisites
+- Let the model search the web with Brave Search, Exa, or Tavily.
+- Connect external tools with [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) servers.
+- Attach documents and images to Bedrock models.
 
-Before running this application, ensure you have the following installed:
+**Your workflow**
 
-- **Node.js**: Version 22.12 or higher
-- **npm**: Version 9.x or higher (comes with Node.js)
-- **AI Provider** (at least one):
-  - [Ollama](https://ollama.ai) - Local AI models
-  - [LM Studio](https://lmstudio.ai) - Local AI platform with model management
-  - [Anthropic](https://anthropic.com) - Claude models (requires API key)
-  - [Amazon Bedrock](https://aws.amazon.com/bedrock/) - AWS cloud AI service (requires AWS credentials)
-  - [Bedrock Mantle](https://aws.amazon.com/bedrock/) - OpenAI-compatible Bedrock endpoint
-  - [Groq](https://groq.com) - Fast cloud inference (requires API key)
-  - [Cerebras](https://cerebras.ai) - Cloud inference (requires API key)
+- Keep all chats in your browser (IndexedDB). No account is necessary.
+- Select text in a reply and ask about it with **Quote and Ask**.
+- Save prompts that you use frequently.
+- Pick a color theme (Cosmic Night, Cobaltz, or Rosé Pine), each with a light and a dark variant.
 
-## Installation
+## Quick start
 
-1. Clone the repository:
+### Requirements
+
+- [Node.js](https://nodejs.org/) 22.12 or later. npm comes with Node.js.
+- One model provider. For a free local start, install [Ollama](https://ollama.com).
+
+### Install and start
+
+1. Get the code and install the dependencies:
 
    ```bash
    git clone https://github.com/praveenc/local-llm-ui.git
    cd local-llm-ui
-   ```
-
-2. Install dependencies:
-
-   ```bash
    npm install
    ```
 
-## AI Provider Setup
-
-### Option 1: Ollama
-
-1. Download and install Ollama from [ollama.com](https://ollama.com)
-
-2. Pull a model (e.g., qwen3-8b):
+2. Start the app:
 
    ```bash
-   ollama pull qwen3-8b-8k:latest
+   npm run dev
    ```
 
-3. Verify Ollama is running:
+3. Open `http://localhost:5173` in your browser.
+4. Click the model picker in the chat input and select a model.
+5. Type a message and push **Enter**.
+
+> [!NOTE]
+> Always start the app with `npm run dev`. The provider proxies run inside the Vite development server. `npm run preview` serves only the static files, so chats do not work there.
+
+## Connect a provider
+
+You need at least one provider. Local providers need no API key. Cloud providers need an API key or AWS credentials.
+
+| Provider | Type | What you need |
+|---|---|---|
+| [Ollama](https://ollama.com) | Local | Ollama on port `11434` and one model |
+| [LM Studio](https://lmstudio.ai) | Local | The LM Studio server on port `1234` |
+| [Amazon Bedrock](https://aws.amazon.com/bedrock/) | Cloud | AWS credentials on the computer that runs the app |
+| Bedrock Mantle | Cloud | A Bedrock API key and an AWS Region |
+| [Anthropic](https://console.anthropic.com) | Cloud | An API key |
+| [OpenRouter](https://openrouter.ai/settings/keys) | Cloud | An API key |
+| [Groq](https://console.groq.com/keys) | Cloud | An API key |
+| [Cerebras](https://cloud.cerebras.ai) | Cloud | An API key |
+
+### Ollama
+
+1. Install Ollama from [ollama.com](https://ollama.com).
+2. Download a model:
+
+   ```bash
+   ollama pull qwen3:8b
+   ```
+
+3. Make sure that the model shows in the list:
 
    ```bash
    ollama list
    ```
 
-   Ollama runs on `http://localhost:11434` by default.
+### LM Studio
 
-### Option 2: LM Studio
+1. Install LM Studio from [lmstudio.ai](https://lmstudio.ai).
+2. Download a model in LM Studio.
+3. Open the **Developer** tab and click **Start Server**. Make sure that the server uses port `1234`.
+4. Optional: In the server settings, turn on **JIT Loading**. LM Studio then loads a model when you select it.
 
-1. Download and install LM Studio from [lmstudio.ai](https://lmstudio.ai)
+### Amazon Bedrock
 
-2. Download a model through the LM Studio interface
+The app uses the standard AWS credential chain. Use one of these methods:
 
-3. Start the local server:
-   - Open LM Studio
-   - Go to the "Developer" or "Server" tab
-   - Click "Start Server"
-   - Ensure it's running on port `1234`
+- An AWS profile: `export AWS_PROFILE=my-profile`
+- The AWS CLI: `aws configure`
+- Environment variables: `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
 
-4. (Optional) Enable JIT Loading:
-   - Go to Developer → Server Settings
-   - Enable "JIT Loading" to load models on-demand
+The default Region is `us-west-2`. To use a different Region, set `AWS_REGION`. You can also copy `.env.example` to `.env` and set the values there.
 
-### Option 3: Amazon Bedrock
+The AWS identity needs these IAM permissions:
 
-1. **Set up AWS credentials** using one of these methods:
+- `bedrock:ListInferenceProfiles`
+- `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`
 
-   **Option A: Environment Variables**
+If the Bedrock console asks you to request model access, do that for the models that you want to use.
 
-   ```bash
-   export AWS_ACCESS_KEY_ID=your_access_key_id
-   export AWS_SECRET_ACCESS_KEY=your_secret_access_key
-   export AWS_REGION=us-west-2  # or your preferred region
-   ```
+> [!IMPORTANT]
+> The app reads AWS credentials on the computer that runs `npm run dev`. If you open the app through a tunnel or from a different computer, set the credentials on the host, not on your desktop.
 
-   **Option B: AWS CLI**
+### Providers with an API key
 
-   ```bash
-   aws configure
-   ```
+Anthropic, OpenRouter, Groq, Cerebras, and Bedrock Mantle use an API key:
 
-   **Option C: AWS Credentials File**
-   Create `~/.aws/credentials`:
+1. Get a key from the provider (see the links in the table above).
+2. In the app, open **Preferences → Providers**.
+3. Click **Add key** next to the provider and paste the key.
+4. For Bedrock Mantle, also select the Region.
 
-   ```ini
-   [default]
-   aws_access_key_id = your_access_key_id
-   aws_secret_access_key = your_secret_access_key
-   ```
+The app keeps the keys in your browser.
 
-2. **Ensure IAM Permissions**: Your AWS user/role needs these permissions:
-   - `bedrock:ListInferenceProfiles`
-   - `bedrock:InvokeModel` or `bedrock:InvokeModelWithResponseStream`
+## Use the app
 
-3. **Request Model Access** (if needed):
-   - Go to AWS Bedrock console
-   - Navigate to "Model access"
-   - Request access to desired models (e.g., Claude, Llama)
+### Chat input
 
-### Option 4: Anthropic
+The chat input has two groups of controls below the text box:
 
-1. Get an API key from [console.anthropic.com](https://console.anthropic.com)
+- **Left:** add files (**+**), the model picker, and the thinking effort.
+- **Right:** web search, MCP tools, and inference settings. After the first message, this group also shows **Clear chat** and the context usage.
 
-2. In **Preferences → Providers**, select **Add key** next to Anthropic and paste the key
+The send button is at the end. While a reply streams, the send button changes to a stop button. When web search or MCP tools are on, their buttons show in the theme color.
 
-### Option 5: Bedrock Mantle
+### Model picker
 
-Bedrock Mantle provides an OpenAI-compatible endpoint for Bedrock models.
+The model picker groups the models by provider. Type in the search box to filter the list. If a provider is not available, the picker shows a short hint that tells you how to connect it.
 
-1. In **Preferences → Providers**, select **Add key** next to Bedrock Mantle
-2. Paste the API key and select the region
+The app remembers the model that you used last. New chats start with this model, also after a page reload. If the model is not available, the app uses the last model of your default provider. To change the default provider, open **Preferences → Providers**.
 
-### Option 6: Groq
+### Thinking effort
 
-1. Get an API key from [console.groq.com](https://console.groq.com)
-
-2. In **Preferences → Providers**, select **Add key** next to Groq and paste the key
-
-### Option 7: Cerebras
-
-1. Get an API key from [cloud.cerebras.ai](https://cloud.cerebras.ai)
-
-2. In **Preferences → Providers**, select **Add key** next to Cerebras and paste the key
-
-## Web Search Setup
-
-The globe button in the chat input lets the model search the web. It needs an API key for at least one of these providers:
-
-| Provider | Free plan | Credit card | Get a key |
-|---|---|---|---|
-| Brave Search | $5 credit each month, about 1,000 searches | Required | [api-dashboard.search.brave.com](https://api-dashboard.search.brave.com/app/keys) |
-| Exa | $10 credit each month, about 1,400 searches | Not required | [dashboard.exa.ai](https://dashboard.exa.ai/api-keys) |
-| Tavily | 1,000 searches each month | Not required | [app.tavily.com](https://app.tavily.com) |
-
-Free plans change. Check each provider's pricing page for the current limits.
-
-1. In **Preferences → Web Search**, select **Add key** next to a provider and paste the key.
-2. Select the **primary provider**. The app tries this provider first.
-3. Keep **Use the next provider when one fails** on to get more free searches. When the primary provider has no quota left, is rate limited, or does not respond, the app tries the next provider that has a key.
-
-The search card in the reply shows which provider returned the results.
-
-### Max Tool Steps
-
-With web search or MCP tools on, the model can call tools several times before it answers. Each model call is one step. Set **Max Tool Steps** (2 to 25, default 10) in the chat input settings. The last step always writes the answer, so the model uses tools in at most one step less than the limit. Increase the value when a question needs many searches or page fetches. The app keeps your value after a page reload.
-
-## Running the Application
-
-### Development Mode
-
-Start the development server with hot module replacement:
-
-```bash
-npm run dev
-```
-
-The application will be available at `http://localhost:5173`
-
-### Production Build
-
-Build the application for production:
-
-```bash
-npm run build
-```
-
-Preview the production build:
-
-```bash
-npm run preview
-```
-
-## Usage
-
-### Getting Started
-
-1. **Start the Application**: Run `npm run dev`
-
-2. **Select a Model**:
-   - Click the model selector button in the chat input
-   - Browse models grouped by provider
-   - Use the search to filter models
-   - If a provider is unavailable, the selector shows a brief setup or connection hint
-
-3. **Start Chatting**:
-   - Type your message in the input field
-   - Press Enter or click the send button
-   - Watch the AI response stream in real-time
-
-### Chat Input
-
-The chat input has two groups of controls below the text box.
-
-- **Left**: add files (**+**), the model, and the thinking effort. These set what the model gets and which model answers.
-- **Right**: web search, MCP tools, and inference settings. After the first message, the right group also shows **Clear chat** and the context usage. The send button is last. While a reply streams, the send button becomes a stop button.
-
-When web search or MCP tools are on, their buttons show in the theme color.
-
-### Color Themes
-
-To change the theme, click the palette button in the header and select a theme, or open **Preferences → Display** and select a card under **Color theme**. The same menu also selects Light or Dark. The sun and moon button next to it switches between the light and dark variants with one click.
-
-| Theme | Light variant | Dark variant |
-|---|---|---|
-| Cosmic Night (default) | Light | Dark |
-| [Cobaltz](https://github.com/praveenc/cobaltz) | Cobaltz Light, with a blue accent | Cobaltz, deep cobalt with a gold accent |
-| [Rosé Pine](https://rosepinetheme.com/palette/) | Rosé Pine Dawn, with a pine accent | Rosé Pine, with a rose accent |
-
-The app keeps your theme in the browser, with your other preferences.
-
-Code blocks in replies use the syntax colors of the theme:
-
-| Theme | Code colors (light / dark) |
-|---|---|
-| Cosmic Night | One Light / One Dark Pro |
-| Cobaltz | Cobaltz Light / Cobaltz, from the Cobaltz VS Code theme |
-| Rosé Pine | Rosé Pine Dawn / Rosé Pine |
-
-The syntax highlighter loads when the first code block shows, not when the page loads.
-
-### Model Configuration
-
-Adjust model parameters via the settings icon in the chat input:
-
-- **Temperature** (0.0 - 1.0): Controls randomness
-  - Lower values (0.1-0.3): More focused and deterministic
-  - Higher values (0.7-1.0): More creative and varied
-
-- **Top P** (0.0 - 1.0): Controls diversity via nucleus sampling
-
-- **Max Tokens**: Maximum length of the response
-
-The settings panel shows only the controls that the selected model accepts:
-
-| Model | Temperature and Top P |
-|---|---|
-| Claude 4.7 and later (all Claude 5.x models) | Not shown. These models reject both settings. |
-| Claude 4.0 to 4.6 | A toggle. You can set one of the two. |
-| Claude 3.x and non-Claude models | Both are shown. |
-
-The app also leaves out any setting the model does not accept when it sends the request.
-
-### Thinking Effort
-
-For models that can think before they answer, a **Thinking** button shows next to the model selector. Click it and choose a level:
+For models that can think before they answer, a **Thinking** button shows next to the model picker. Click it and select a level:
 
 | Level | What the app sends |
 |---|---|
 | Default | Nothing. The model uses its own setting. |
-| Off | Thinking off. Some models cannot turn thinking off. These models use their lowest level. |
-| Minimal, Low, Medium, High, XHigh | That level. If the model does not have the level, the app uses the nearest level that the model has. |
+| Off | Thinking off. If the model cannot turn thinking off, the app uses its lowest level. |
+| Minimal, Low, Medium, High, XHigh | That level. If the model does not have the level, the app uses the nearest level that it has. |
 
-The button shows for these models:
+The **Thinking** button shows for these models:
 
 | Provider | Models |
 |---|---|
@@ -314,29 +188,83 @@ The button shows for these models:
 Some models have fewer levels:
 
 - **On/off models** (Qwen3 on Ollama; DeepSeek, GLM, Qwen3, Kimi K2.5, and Nemotron on Mantle): **Off** turns thinking off. All other levels turn it on.
-- **gpt-oss** (Ollama and Mantle) and **Kimi K2 Thinking** cannot turn thinking off. **Off** uses their lowest level, Low.
+- **gpt-oss** (Ollama and Mantle) and **Kimi K2 Thinking** cannot turn thinking off. For these models, **Off** sends Low.
 
-On Amazon Bedrock and Bedrock Mantle, the app does not send Temperature or Top P when thinking is on, because reasoning models do not accept them.
+To set the start level for each provider, open **Preferences → Providers**, select the provider, and set **Default thinking**.
 
-To set the level that each provider starts with, open **Preferences → Providers**. Select the provider, then set **Default thinking**. When you change to a model from a different provider, the button changes to that provider's default.
+Reasoning models show their thinking in a **Thinking** section above the answer. Click the section to expand or collapse it. The app saves the thinking with the chat. OpenAI models do not return their thinking text. For these models, only the output token count shows that they thought.
 
-### Model Memory
+### Inference settings
 
-The app remembers the model that you last picked in the chat input. New conversations start with this model, also after a page reload. If the model is not available, the app uses the last model from your default provider. When you change the default provider in Preferences, new conversations start with that provider's models again.
+Click the settings button in the chat input to set these values:
+
+- **Max tokens:** the maximum length of the reply.
+- **Max tool steps:** the maximum number of model calls in one reply when tools are on. See [Max tool steps](#max-tool-steps).
+- **Temperature** and **Top P:** the randomness and the diversity of the reply. A low temperature (0.1 to 0.3) gives focused answers. A high temperature (0.7 to 1.0) gives more varied answers.
+
+The panel shows only the settings that the selected model accepts:
+
+| Model | Temperature and Top P |
+|---|---|
+| Claude 4.7 and later (all Claude 5.x models) | Not shown. These models reject both settings. |
+| Claude 4.0 to 4.6 | A toggle. You can set one of the two. |
+| Claude 3.x and non-Claude models | Both shown. |
+
+The app does not send a setting that the model does not accept. On Amazon Bedrock and Bedrock Mantle, the app does not send Temperature or Top P when thinking is on.
+
+> [!NOTE]
+> Newer models do not accept `temperature` or `top_p`. If the app sends them, the model rejects the request with an error such as "`temperature` is deprecated for this model", and the reply is empty. The app removes these settings for the models that it knows. If a new model gives this error, [open an issue](https://github.com/praveenc/local-llm-ui/issues) with the model ID.
+
+### Web search
+
+The globe button in the chat input lets the model search the web. You need an API key for one or more of these providers:
+
+| Provider | Free plan | Credit card | Get a key |
+|---|---|---|---|
+| Brave Search | $5 credit each month, about 1,000 searches | Necessary | [api-dashboard.search.brave.com](https://api-dashboard.search.brave.com/app/keys) |
+| Exa | $10 credit each month, about 1,400 searches | Not necessary | [dashboard.exa.ai](https://dashboard.exa.ai/api-keys) |
+| Tavily | 1,000 searches each month | Not necessary | [app.tavily.com](https://app.tavily.com) |
+
+Free plans can change. Look at the pricing page of each provider for the current limits.
+
+1. Open **Preferences → Web Search**.
+2. Click **Add key** next to a provider and paste the key.
+3. Select the **primary provider**. The app tries this provider first.
+4. Keep **Use the next provider when one fails** on. If the primary provider has no quota, is rate limited, or does not respond, the app tries the next provider that has a key.
+
+The search card in the reply shows which provider sent the results.
+
+### Max tool steps
+
+With web search or MCP tools on, the model can call tools several times before it answers. Each model call is one step. The last step always writes the answer. Thus the model can use tools in one step less than the limit.
+
+The limit is 2 to 25 steps. The default is 10. If a reply stops before it gives an answer, increase the limit. The app keeps your value after a page reload.
+
+### MCP servers
+
+MCP servers give the model access to external tools. To add a server, open **Preferences → MCP Servers**. The app supports local servers (stdio) and remote servers (HTTP and SSE).
+
+| MCP tools status | MCP server configuration |
+|:---:|:---:|
+| ![MCP tools status in the chat input](.github/images/local-llm-mcp-servers-support_1.png) | ![MCP server configuration in Preferences](.github/images/local-llm-mcp-servers-support_2.png) |
+
+The MCP button in the chat input shows the connected servers and their tools.
+
+For safety, a local server must start with an approved command: `node`, `npx`, `python`, `python3`, `uv`, `uvx`, `docker`, `deno`, `bun`, or `bunx`. The app also blocks shell characters in arguments, blocks private network addresses for remote servers, and does not share your environment variables with servers. For more data, see [docs/SECURITY-LEARNINGS.md](docs/SECURITY-LEARNINGS.md).
 
 ### Quote and Ask
 
-You can ask a question about one part of a reply:
+Use **Quote and Ask** to ask about one part of a reply:
 
 1. Select text in a message. A **Quote and Ask** button shows above the selection.
 2. Click the button and type your question.
-3. Choose where to send it:
+3. Select where to send it:
    - **Send to Compose** puts the quote and your question in the message box. You can edit the text before you send it.
-   - **Send to Fork** makes a new chat with the messages up to the quoted one, then sends your question there. The original chat does not change.
+   - **Send to Fork** makes a new chat with the messages up to the quoted message. Then it sends your question there. The original chat does not change.
 
-The quote goes to the model in a `<quote>` tag, before your question:
+The app sends the quote in a `<quote>` tag, before your question:
 
-```
+```text
 <quote>
 selected text
 </quote>
@@ -346,183 +274,142 @@ your question
 
 The chat shows the quote as an indented block. **Send to Fork** needs a selected model.
 
-### Reasoning Models
+### Documents and images (Bedrock only)
 
-When using reasoning/thinking models (Claude, Nova 2, MiniMax, DeepSeek-R1, NemoTron, etc.):
+1. Select an Amazon Bedrock model.
+2. Click **+** in the chat input, then click **Add photos or files**.
+3. Select one or more files. The maximum size is 4.5 MB for each file.
+4. Type your message and send it.
 
-- A collapsible "Thinking" section appears showing the model's reasoning process
-- OpenAI models do not return their reasoning text. Only the output token count shows that they thought
-- Click to expand/collapse the reasoning content
-- Reasoning is persisted with the conversation
+Supported formats: PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX, and images.
 
-### Document Upload (Bedrock Only)
+### Context window
 
-When using Amazon Bedrock models:
+The context indicator in the chat input shows the tokens that the chat uses and the context limit of the model. Put the pointer on the indicator to see the input and output tokens.
 
-1. Click the + button in the chat input
-2. Select "Add photos or files"
-3. Choose files (max 4.5 MB each)
-4. Supported formats: PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX, images
-5. Send your message with the attached documents
+### Saved prompts
 
-### Context Window
+1. Click **Saved Prompts** in the sidebar.
+2. Make a new prompt and give it a category.
+3. Click a saved prompt to put it in the chat input.
 
-The context indicator in the chat input shows:
-- Current token usage vs model's context limit
-- Hover for detailed breakdown (input/output tokens)
+### Themes and display
 
-### Saved Prompts
+To change the theme, click the palette button in the header and select a theme. In the same menu, you can select Light or Dark. The sun and moon button next to it changes between the light and the dark variant with one click.
 
-Save frequently used prompts:
-1. Open the Saved Prompts panel from the sidebar
-2. Create new prompts with categories
-3. Click to insert saved prompts into the chat input
+You can also select the theme in **Preferences → Display**. There, you can also set the content density.
 
-## Project Structure
+| Theme | Light variant | Dark variant | Code colors (light / dark) |
+|---|---|---|---|
+| Cosmic Night (default) | Light | Dark | One Light / One Dark Pro |
+| [Cobaltz](https://github.com/praveenc/cobaltz) | Cobaltz Light, blue accent | Cobaltz, deep cobalt with a gold accent | Cobaltz Light / Cobaltz |
+| [Rosé Pine](https://rosepinetheme.com/palette/) | Rosé Pine Dawn, pine accent | Rosé Pine, rose accent | Rosé Pine Dawn / Rosé Pine |
+
+The app loads the syntax highlighter when the first code block shows, not when the page loads.
+
+In **Preferences**, you can also set your avatar initials. The app keeps all preferences in your browser.
+
+## Troubleshooting
+
+### The model picker shows no models
+
+1. Read the hint for each provider in the model picker. It tells you the cause.
+2. Do the check for your provider:
+   - **Ollama:** Make sure that Ollama runs and that `ollama list` shows one or more models.
+   - **LM Studio:** Make sure that the LM Studio server runs on port `1234`.
+   - **Amazon Bedrock:** Make sure that the AWS credentials are set on the computer that runs the app. Make sure that the IAM permissions are correct.
+   - **Providers with an API key:** Look at the key in **Preferences → Providers**. A provider without a key cannot be the default provider.
+
+### "Cannot connect" error
+
+1. Make sure that the provider runs on the correct port.
+2. Make sure that a firewall does not block the port.
+3. For cloud providers, make sure that the API key is correct.
+
+### The reply stops before the answer
+
+When tools are on, the model can use all its tool steps. Increase **Max tool steps** in the inference settings and send the message again.
+
+### Error: "`temperature` is deprecated for this model"
+
+The model does not accept `temperature` or `top_p`.
+
+1. Select a different model, or start a new chat.
+2. If the error continues, [open an issue](https://github.com/praveenc/local-llm-ui/issues) with the model ID. The app must remove these settings for that model.
+
+### The thinking section does not show
+
+1. Make sure that the model is a reasoning model.
+2. Make sure that the thinking effort is not **Off**.
+3. Remember that OpenAI models do not return their thinking text.
+
+### Other problems
+
+1. Open the browser console and look for errors.
+2. Look at the terminal that runs `npm run dev` for server errors.
+3. If the problem continues, [open an issue](https://github.com/praveenc/local-llm-ui/issues).
+
+## Development
+
+### Commands
+
+| Command | Action |
+|---|---|
+| `npm run dev` | Start the development server on port 5173 |
+| `npm run build` | Do a type check and make a production build |
+| `npm run lint` / `npm run lint:fix` | Run ESLint / fix ESLint problems |
+| `npm run format` | Format the code with Prettier |
+| `npm run test` / `npm run test:run` | Run the tests in watch mode / one time |
+| `make check` | Run lint and the tests with short output |
+| `make fix` | Format the code and fix lint problems |
+
+Husky runs ESLint and Prettier on the staged files before each commit. For the contribution rules, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### How it works
+
+The React app runs in the browser. Vite middleware in `vite.config.ts` adds server proxies. The proxies keep AWS credentials and SDK calls on the server.
+
+| Route | Target |
+|---|---|
+| `/api/ollama`, `/api/ollama-aisdk` | Ollama on `localhost:11434` |
+| `/api/lmstudio`, `/api/lmstudio-sdk`, `/api/lmstudio-aisdk` | LM Studio on `localhost:1234` |
+| `/api/bedrock`, `/api/bedrock-aisdk` | Amazon Bedrock through the AWS SDK |
+| `/api/mantle` | Bedrock Mantle |
+| `/api/anthropic` | Anthropic |
+| `/api/openrouter` | OpenRouter |
+| `/api/aisdk` | Groq and Cerebras |
+
+### Project structure
 
 ```text
 local-llm-ui/
 ├── src/
 │   ├── components/
-│   │   ├── ai-elements/       # AI UI components (conversation, message, prompt-input, reasoning, context)
-│   │   ├── chat/              # Chat container and related components
-│   │   ├── layout/            # Layout components
-│   │   ├── prompts/           # Saved prompts components
-│   │   ├── sidebar/           # Sidebar components
-│   │   ├── shared/            # Shared components
-│   │   └── ui/                # shadcn/ui components
-│   ├── db/                    # Dexie.js database schema
-│   ├── hooks/                 # React hooks
-│   ├── layout/                # App shell and layout
-│   ├── services/              # API services for each provider
-│   ├── types/                 # TypeScript types
-│   ├── utils/                 # Utility functions
-│   └── main.tsx               # Application entry point
-├── server/
-│   ├── aisdk-proxy.ts         # Groq/Cerebras proxy
-│   ├── anthropic-aisdk-proxy.ts # Anthropic proxy
-│   ├── bedrock-aisdk-proxy.ts # Bedrock AI SDK proxy
-│   ├── bedrock-proxy.ts       # Bedrock models proxy
-│   ├── lmstudio-aisdk-proxy.ts # LM Studio chat proxy
-│   ├── lmstudio-proxy.ts      # LM Studio SDK proxy
-│   ├── mantle-proxy.ts        # Bedrock Mantle proxy
-│   ├── mcp-manager.ts         # MCP client lifecycle and tools
-│   ├── ollama-aisdk-proxy.ts  # Ollama proxy
-│   └── security.ts            # Shared security utilities
-├── public/                    # Static assets
-├── vite.config.ts             # Vite configuration with proxy middleware
-└── package.json               # Dependencies and scripts
+│   │   ├── ai-elements/   # Chat UI parts: message, prompt input, model picker, reasoning, context
+│   │   ├── chat/          # Chat container, inference settings, Quote and Ask
+│   │   ├── prompts/       # Saved prompts
+│   │   ├── sidebar/       # Sidebar, preferences, MCP settings
+│   │   └── ui/            # shadcn/ui components
+│   ├── db/                # Dexie.js (IndexedDB) schema
+│   ├── hooks/             # React hooks
+│   ├── layout/            # App shell and layout
+│   ├── services/          # Provider services
+│   └── utils/             # Helper functions
+├── server/                # Provider proxies, MCP manager, web search, security
+├── docs/                  # Design and security notes
+└── vite.config.ts         # Vite configuration and proxy middleware
 ```
 
-## Configuration
+### Technologies
 
-### Environment Variables
-
-Create a `.env` file for custom configuration (optional):
-
-```env
-# AWS Configuration (if not using AWS CLI or credentials file)
-AWS_REGION=us-west-2
-# AWS_ACCESS_KEY_ID=your_access_key_id
-# AWS_SECRET_ACCESS_KEY=your_secret_access_key
-```
-
-### Proxy Configuration
-
-The Vite development server proxies requests to AI services:
-
-- `/api/ollama` → `http://localhost:11434`
-- `/api/lmstudio` → `http://localhost:1234`
-- `/api/bedrock`, `/api/bedrock-aisdk` → Server-side AWS SDK proxy
-- `/api/anthropic` → Anthropic Claude proxy
-- `/api/mantle` → Bedrock Mantle proxy
-- `/api/aisdk` → Groq/Cerebras proxy
-- `/api/lmstudio-sdk`, `/api/lmstudio-aisdk` → LM Studio proxies
-
-## Troubleshooting
-
-### No Models Available
-
-**Problem**: The model selector shows no models
-
-**Solutions**:
-
-- Check the unavailable provider messages shown in the model selector for the exact issue
-- **Ollama**: Ensure Ollama is running and you've pulled at least one model
-- **LM Studio**: Start LM Studio, enable its local server, and ensure it's running on port 1234
-- **Bedrock**: Configure AWS credentials in your environment and verify model access/IAM permissions
-- **Groq/Cerebras/Anthropic/OpenRouter/Bedrock Mantle**: Check the API key in **Preferences → Providers**. A provider without a key cannot be the default provider
-
-### Connection Failed
-
-**Problem**: "Cannot connect" error messages
-
-**Solutions**:
-
-- Verify the AI service is running on the correct port
-- Check firewall settings
-- For cloud providers, verify API keys are configured correctly
-
-### Reasoning Not Showing
-
-**Problem**: Thinking/reasoning content not displayed
-
-**Solutions**:
-
-- Ensure you're using a reasoning model (MiniMax, DeepSeek-R1, NemoTron, etc.)
-- Check that the model outputs reasoning in a supported format
-
-## Development
-
-### Available Scripts
-
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
-- `npm run lint:fix` - Fix ESLint issues
-- `npm run format` - Format with Prettier
-- `npm run test` - Run tests in watch mode
-- `npm run test:run` - Run tests once
-
-### Code Style
-
-This project uses:
-
-- **ESLint**: For code linting
-- **Prettier**: For code formatting
-- **TypeScript**: For type safety
-- **Husky**: Pre-commit hooks for lint-staged
-
-## Technologies Used
-
-- **React 19**: UI framework
-- **TypeScript 6.0**: Type safety
-- **Vite 8**: Build tool and dev server
-- **shadcn/ui**: UI component library (Radix UI + Tailwind CSS)
-- **Tailwind CSS 4**: Utility-first CSS
-- **Dexie.js**: IndexedDB wrapper for persistence
-- **TanStack Query**: Data fetching and caching for provider-backed UI state
-- **AI SDK**: Vercel AI SDK for streaming (@ai-sdk/amazon-bedrock, @ai-sdk/anthropic, @ai-sdk/groq, @ai-sdk/cerebras, @ai-sdk/openai-compatible, @ai-sdk/mcp)
-- **MCP SDK**: @modelcontextprotocol/sdk for MCP server connectivity
-- **Streamdown**: Markdown rendering in chat
-- **Lucide React**: Icons
+- [React 19](https://react.dev/), [TypeScript 6](https://www.typescriptlang.org/), and [Vite 8](https://vitejs.dev/)
+- [shadcn/ui](https://ui.shadcn.com/) with [Radix UI](https://www.radix-ui.com/) and [Tailwind CSS 4](https://tailwindcss.com/)
+- [Vercel AI SDK](https://ai-sdk.dev/) for streaming and tool calls
+- [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk) for MCP servers
+- [Dexie.js](https://dexie.org/) for data in IndexedDB
+- [TanStack Query](https://tanstack.com/query) for provider data
+- [Streamdown](https://github.com/vercel/streamdown) and [Shiki](https://shiki.style/) for Markdown and code blocks
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-For issues or questions:
-
-1. Check the troubleshooting section
-2. Verify your AI provider is properly configured
-3. Check the browser console for error messages
-4. Open an issue on GitHub
-
-## Acknowledgments
-
-- UI built with [shadcn/ui](https://ui.shadcn.com/) and [Radix UI](https://www.radix-ui.com/)
-- Supports [Ollama](https://ollama.ai), [LM Studio](https://lmstudio.ai), [Amazon Bedrock](https://aws.amazon.com/bedrock/), [Anthropic](https://anthropic.com), [Groq](https://groq.com), and [Cerebras](https://cerebras.ai)
-- Powered by [Vite](https://vitejs.dev/), [React](https://react.dev/), and [Vercel AI SDK](https://sdk.vercel.ai/)
+This project uses the MIT License. See [LICENSE](LICENSE).
