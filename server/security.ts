@@ -73,3 +73,23 @@ const DEFAULT_OUTPUT_TOKENS = 2048;
 export function capMaxTokens(requestedTokens?: number): number {
   return Math.min(requestedTokens ?? DEFAULT_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS_CAP);
 }
+
+// ─── Stream errors after the response started ────────────────────────────────
+
+/**
+ * Finish a response whose status and headers are already sent (an SSE stream). Writes the error
+ * as an SSE event, so the browser shows it in the chat. Returns false when nothing is sent yet;
+ * the caller then sends a JSON error with a status code.
+ *
+ * Without this check, a proxy that sets a status or header after the stream started throws
+ * ERR_HTTP_HEADERS_SENT, and the Vite dev server stops.
+ */
+export function endStreamWithError(res: ServerResponse, message: string): boolean {
+  if (!res.headersSent) return false;
+  if (!res.writableEnded) {
+    res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+  }
+  return true;
+}
