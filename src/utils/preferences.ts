@@ -2,6 +2,7 @@
  * User preferences management utilities
  */
 import type { MCPServersMap } from '../types/mcp';
+import type { ColorTheme } from './colorThemes';
 import type { ThinkingEffort } from './thinkingEffort';
 import type { WebSearchPreferences } from './webSearch';
 
@@ -21,6 +22,8 @@ export interface UserPreferences extends WebSearchPreferences {
   preferredProvider: Provider;
   avatarInitials: string;
   visualMode: VisualMode;
+  /** Color palette; visualMode picks its light or dark variant */
+  colorTheme: ColorTheme;
   contentDensity: ContentDensity;
   // Bedrock Mantle settings
   bedrockMantleApiKey?: string;
@@ -44,6 +47,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   preferredProvider: 'ollama',
   avatarInitials: 'PC',
   visualMode: 'light',
+  colorTheme: 'cosmic-night',
   contentDensity: 'comfortable',
   bedrockMantleRegion: 'us-west-2',
 };

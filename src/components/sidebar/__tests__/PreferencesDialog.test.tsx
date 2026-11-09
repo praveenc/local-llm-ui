@@ -159,3 +159,32 @@ describe('PreferencesDialog web search', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ webSearchFallback: false }));
   });
 });
+
+describe('PreferencesDialog color theme', () => {
+  beforeEach(() => localStorage.clear());
+
+  const openDisplayTab = () => {
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Display' }), { button: 0 });
+  };
+
+  it('defaults to Cosmic Night and saves the theme picked', () => {
+    const { onSave } = renderDialog({});
+    openDisplayTab();
+    const picker = screen.getByRole('radiogroup', { name: 'Color theme' });
+    expect(picker).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Cosmic Night' })).toBeChecked();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Rosé Pine' }));
+    save();
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ colorTheme: 'rose-pine' }));
+  });
+
+  it('names the variant for the current visual mode', () => {
+    renderDialog({ colorTheme: 'cobaltz', visualMode: 'dark' });
+    openDisplayTab();
+    expect(screen.getByRole('radio', { name: 'Cobaltz' })).toBeChecked();
+    // Dark mode shows the dark variant of every theme
+    expect(screen.getAllByText('Dark', { selector: '.text-xs' })).toHaveLength(3);
+    expect(screen.queryByText('Dawn')).not.toBeInTheDocument();
+  });
+});

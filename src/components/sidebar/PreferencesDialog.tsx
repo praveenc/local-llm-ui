@@ -21,6 +21,7 @@ import {
   validateInitials,
 } from '../../utils/preferences';
 import type { ContentDensity, UserPreferences, VisualMode } from '../../utils/preferences';
+import { ColorThemePicker } from './ColorThemePicker';
 import { MCPServerSettings } from './MCPServerSettings';
 import { ProviderSettings } from './ProviderSettings';
 import { WebSearchSettings } from './WebSearchSettings';
@@ -122,7 +123,16 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
               </div>
 
               <div className="space-y-2">
-                <Label>Theme</Label>
+                <Label>Color theme</Label>
+                <ColorThemePicker
+                  value={preferences.colorTheme}
+                  visualMode={preferences.visualMode}
+                  onChange={(v) => updatePreference('colorTheme', v)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Appearance</Label>
                 <RadioGroup
                   value={preferences.visualMode}
                   onValueChange={(v) => updatePreference('visualMode', v as VisualMode)}

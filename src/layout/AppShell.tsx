@@ -7,6 +7,7 @@ import { Sidebar } from '../components/sidebar';
 import { useAllModels } from '../hooks/useAllModels';
 import type { UnifiedModel } from '../hooks/useAllModels';
 import { conversationService } from '../services';
+import { applyColorTheme } from '../utils/colorThemes';
 import { findModel, pickDefaultModel } from '../utils/modelSelection';
 import type { ModelRef } from '../utils/modelSelection';
 import {
@@ -125,11 +126,14 @@ export default function AppShell() {
     requestDefaultModel(loadPreferences().preferredProvider);
   }, [requestDefaultModel]);
 
-  // Apply theme on mount and when preferences change
+  // Apply the color theme and visual mode on mount and when preferences change
   useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.toggle('dark', userPreferences.visualMode === 'dark');
-  }, [userPreferences.visualMode]);
+    applyColorTheme(
+      window.document.documentElement,
+      userPreferences.colorTheme,
+      userPreferences.visualMode
+    );
+  }, [userPreferences.colorTheme, userPreferences.visualMode]);
 
   const handleNewChat = () => {
     setActiveConversationId(null);

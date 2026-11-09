@@ -5,6 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Local LLM UI</title>
+    <script>
+      // Apply the saved color theme before the first paint (AppShell keeps it in sync)
+      try {
+        var prefs = JSON.parse(localStorage.getItem('local-llm-ui-preferences') || '{}');
+        var themes = ['cosmic-night', 'cobaltz', 'rose-pine'];
+        var root = document.documentElement;
+        root.dataset.theme = themes.indexOf(prefs.colorTheme) >= 0 ? prefs.colorTheme : themes[0];
+        if (prefs.visualMode === 'dark') root.classList.add('dark');
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
