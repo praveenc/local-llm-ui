@@ -221,7 +221,7 @@ for await (const part of result.fullStream) {
 **Implementation Notes**:
 1. API key passed via `X-Api-Key` header from client
 2. Uses standard AI SDK `streamText()` pattern
-3. Supports Tavily web search tool integration
+3. Supports the web search tool (Brave Search, Exa, or Tavily)
 4. Supports abort signal for stop generation
 5. Models that support thinking: Claude 4.5+ (all tiers: Haiku, Sonnet, Opus)
 
@@ -358,7 +358,7 @@ When implementing a new provider:
 - [ ] Error handling for connection failures
 - [ ] Model listing works
 - [ ] Stop generation (abort) works
-- [ ] Web search (Tavily) works when enabled
+- [ ] Web search (Brave Search, Exa, or Tavily) works when enabled
 - [ ] MCP tools are passed through and results stream correctly
 - [ ] Cleanup runs after response (success and error paths)
 
@@ -441,6 +441,8 @@ const result = streamText({
 5. **Client-Side Tool Call Handling**: Track pending tool calls and update their status when results arrive. Use a Map to track tool calls by ID.
 
 6. **Abort Signal Support**: Pass `abortSignal` to `streamText()` to support cancellation. On the server, listen for `req.on('close')` to abort when client disconnects.
+
+> **Superseded (2026-11)**: the proxies no longer use `@tavily/ai-sdk`. See [Web Search Providers with Fallback](#web-search-providers-with-fallback).
 
 **Available Tavily Tools**:
 - `tavilySearch()` — real-time web search (primary tool used)
@@ -623,3 +625,36 @@ This regex is future-proofed for 4.7, 4.8, etc. It matches model IDs like:
 - `server/bedrock-proxy.ts`
 - `server/anthropic-aisdk-proxy.ts`
 - `src/hooks/useBedrockChat.ts`
+
+---
+
+## Web Search Providers with Fallback
+
+**Date**: 2026-11-09
+
+**Files**: `server/web-search.ts` (tool), `src/utils/webSearch.ts` (shared settings and headers), `src/components/sidebar/WebSearchSettings.tsx` (Preferences tab)
+
+The `webSearch` tool calls Brave Search, Exa, or Tavily with `fetch`. It replaces `@tavily/ai-sdk`.
+
+**Request headers** (browser to proxy):
+- `X-Web-Search-Order`: providers in the order to try, for example `brave,exa`. The browser sends only providers that have a key. With fallback off, it sends only the primary provider.
+- `X-Brave-Api-Key`, `X-Exa-Api-Key`, `X-Tavily-Api-Key`: one header for each provider in the order.
+
+**Key Learnings**:
+
+1. **No package for each provider**: Brave has no official AI SDK package. `@exalabs/ai-sdk` 2.1.0 has a peer dependency on `ai@^6` (this app uses `ai@7`). It also always sends `contents.livecrawl`, which `type: "lite"` rejects. One `fetch` tool for all three providers is less code, and the result has the same shape for all of them.
+
+2. **Error status codes are different for each provider**:
+   - Brave: invalid key is **422** `SUBSCRIPTION_TOKEN_INVALID` (not 401), and rate limit is 429. Body: `{ error: { code, detail } }`.
+   - Exa: 401 `INVALID_API_KEY`, 402 `NO_MORE_CREDITS`, 429 `RATE_LIMIT_EXCEEDED`. Body: `{ error, tag }`.
+   - Tavily: 401 bad key, 429 rate limit, 432 plan limit, 433 pay-as-you-go limit. Body: `{ detail: { error } }`.
+
+   Because of these differences, the tool tries the next provider on **any** failure, timeout, or network error. It does not try the next provider when the user stops the request (abort signal).
+
+3. **The tool does not throw when all providers fail**: it returns `{ results: [], failures, error }`. The model can then tell the user that the search failed, and the tool card shows the error.
+
+4. **Small results**: 5 results, and up to 1,500 characters of text for each. Exa uses `contents.highlights` (no extra cost), not full page text.
+
+5. **Server only**: the three APIs do not send `Access-Control-Allow-Origin`, so a browser cannot call them directly.
+
+6. **Brave terms**: the Brave terms do not let an app store or cache search results. Tool results stay in the user's own browser (IndexedDB) with the chat history. The server does not keep them.
