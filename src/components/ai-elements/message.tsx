@@ -12,6 +12,8 @@ import { ButtonGroup, ButtonGroupText } from '@/components/ui/button-group';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
+import { useStreamdownCode } from './streamdown-code';
+
 /* eslint-disable react-hooks/exhaustive-deps, @typescript-eslint/no-unused-vars */
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
@@ -265,12 +267,17 @@ export const MessageBranchPage = ({ className, ...props }: MessageBranchPageProp
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
-    <Streamdown
-      className={cn('size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0', className)}
-      {...props}
-    />
-  ),
+  ({ className, ...props }: MessageResponseProps) => {
+    // Syntax highlighting with the themes of the color theme (re-renders on a theme change)
+    const codeProps = useStreamdownCode();
+    return (
+      <Streamdown
+        className={cn('size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0', className)}
+        {...codeProps}
+        {...props}
+      />
+    );
+  },
   (prevProps, nextProps) => prevProps.children === nextProps.children
 );
 

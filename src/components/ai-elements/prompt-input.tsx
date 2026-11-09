@@ -434,6 +434,8 @@ export type PromptInputProps = Omit<HTMLAttributes<HTMLFormElement>, 'onSubmit' 
   // Minimal constraints
   maxFiles?: number;
   maxFileSize?: number; // bytes
+  // Classes for the bordered input group (the visible card) inside the form
+  inputGroupClassName?: string;
   onError?: (err: { code: 'max_files' | 'max_file_size' | 'accept'; message: string }) => void;
   onSubmit: (
     message: PromptInputMessage,
@@ -449,6 +451,7 @@ export const PromptInput = ({
   syncHiddenInput,
   maxFiles,
   maxFileSize,
+  inputGroupClassName,
   onError,
   onSubmit,
   children,
@@ -774,7 +777,7 @@ export const PromptInput = ({
         type="file"
       />
       <form className={cn('w-full', className)} onSubmit={handleSubmit} ref={formRef} {...props}>
-        <InputGroup className="overflow-hidden">{children}</InputGroup>
+        <InputGroup className={cn('overflow-hidden', inputGroupClassName)}>{children}</InputGroup>
       </form>
     </>
   );

@@ -12,6 +12,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { cn } from '@/lib/utils';
 
 import { Shimmer } from './shimmer';
+import { useStreamdownCode } from './streamdown-code';
 
 type ReasoningContextValue = {
   isStreaming: boolean;
@@ -161,18 +162,21 @@ export type ReasoningContentProps = ComponentProps<typeof CollapsibleContent> & 
   children: string;
 };
 
-export const ReasoningContent = memo(({ className, children, ...props }: ReasoningContentProps) => (
-  <CollapsibleContent
-    className={cn(
-      'mt-4 text-sm',
-      'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
-      className
-    )}
-    {...props}
-  >
-    <Streamdown>{children}</Streamdown>
-  </CollapsibleContent>
-));
+export const ReasoningContent = memo(({ className, children, ...props }: ReasoningContentProps) => {
+  const codeProps = useStreamdownCode();
+  return (
+    <CollapsibleContent
+      className={cn(
+        'mt-4 text-sm',
+        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
+        className
+      )}
+      {...props}
+    >
+      <Streamdown {...codeProps}>{children}</Streamdown>
+    </CollapsibleContent>
+  );
+});
 
 Reasoning.displayName = 'Reasoning';
 ReasoningTrigger.displayName = 'ReasoningTrigger';

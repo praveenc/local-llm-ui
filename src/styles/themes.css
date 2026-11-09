@@ -1,0 +1,162 @@
+/*
+ * Color themes. The selectors match <html data-theme="..."> (see utils/colorThemes.ts).
+ * Cosmic Night is the default palette in globals.css (:root and .dark).
+ * The extra attribute gives these blocks higher specificity, so file order does not matter.
+ */
+
+/* Cobaltz Light. Source: github.com/praveenc/cobaltz (Zed and KiroCrew palettes) */
+:root[data-theme='cobaltz'] {
+  --background: #fafbfc;
+  --foreground: #0f2438;
+  --card: #ffffff;
+  --card-foreground: #0f2438;
+  --popover: #ffffff;
+  --popover-foreground: #0f2438;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #dbeafe;
+  --secondary-foreground: #0f2438;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #eef2f7;
+  --accent-foreground: #0f2438;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8f0;
+  --input: #cbd5e1;
+  --ring: #2563eb;
+  --chart-1: #2563eb;
+  --chart-2: #d97706;
+  --chart-3: #059669;
+  --chart-4: #9333ea;
+  --chart-5: #be185d;
+  --sidebar: #f1f5f9;
+  --sidebar-foreground: #0f2438;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e2e8f0;
+  --sidebar-accent-foreground: #0f2438;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #2563eb;
+}
+
+/* Cobaltz (dark): deep cobalt with the golden cursor color as the primary */
+:root.dark[data-theme='cobaltz'] {
+  --background: #0f2438;
+  --foreground: #ffffff;
+  --card: #162b40;
+  --card-foreground: #ffffff;
+  --popover: #162b40;
+  --popover-foreground: #ffffff;
+  --primary: #ffcc00;
+  --primary-foreground: #0f2438;
+  --secondary: #183a6c;
+  --secondary-foreground: #ffffff;
+  --muted: #20354a;
+  --muted-foreground: #80a4c2;
+  --accent: #20354a;
+  --accent-foreground: #ffffff;
+  --destructive: #ed7482;
+  --destructive-foreground: #0f2438;
+  --border: #2d4051;
+  --input: #36536b;
+  --ring: #ffcc00;
+  --chart-1: #ffcc00;
+  --chart-2: #82aaff;
+  --chart-3: #6fd640;
+  --chart-4: #ed99fa;
+  --chart-5: #f1a23a;
+  --sidebar: #142a3d;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffcc00;
+  --sidebar-primary-foreground: #0f2438;
+  --sidebar-accent: #20354a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2d4051;
+  --sidebar-ring: #ffcc00;
+}
+
+/*
+ * Rosé Pine Dawn. Source: rosepinetheme.com/palette.
+ * Pine is the primary here: Rose does not reach 3:1 contrast on the Dawn base.
+ */
+:root[data-theme='rose-pine'] {
+  --background: #faf4ed;
+  --foreground: #464261;
+  --card: #fffaf3;
+  --card-foreground: #464261;
+  --popover: #fffaf3;
+  --popover-foreground: #464261;
+  --primary: #286983;
+  --primary-foreground: #faf4ed;
+  --secondary: #f2e9e1;
+  --secondary-foreground: #464261;
+  --muted: #f4ede8;
+  --muted-foreground: #797593;
+  --accent: #f2e9e1;
+  --accent-foreground: #464261;
+  --destructive: #b4637a;
+  --destructive-foreground: #fffaf3;
+  --border: #dfdad9;
+  --input: #cecacd;
+  --ring: #907aa9;
+  --chart-1: #d7827e;
+  --chart-2: #907aa9;
+  --chart-3: #56949f;
+  --chart-4: #ea9d34;
+  --chart-5: #286983;
+  --sidebar: #fffaf3;
+  --sidebar-foreground: #464261;
+  --sidebar-primary: #286983;
+  --sidebar-primary-foreground: #faf4ed;
+  --sidebar-accent: #f2e9e1;
+  --sidebar-accent-foreground: #464261;
+  --sidebar-border: #dfdad9;
+  --sidebar-ring: #907aa9;
+}
+
+/* Rosé Pine (main, dark) */
+:root.dark[data-theme='rose-pine'] {
+  --background: #191724;
+  --foreground: #e0def4;
+  --card: #1f1d2e;
+  --card-foreground: #e0def4;
+  --popover: #1f1d2e;
+  --popover-foreground: #e0def4;
+  --primary: #ebbcba;
+  --primary-foreground: #191724;
+  --secondary: #26233a;
+  --secondary-foreground: #e0def4;
+  --muted: #26233a;
+  --muted-foreground: #908caa;
+  --accent: #403d52;
+  --accent-foreground: #e0def4;
+  --destructive: #eb6f92;
+  --destructive-foreground: #191724;
+  --border: #2e2b42;
+  --input: #403d52;
+  --ring: #c4a7e7;
+  --chart-1: #ebbcba;
+  --chart-2: #c4a7e7;
+  --chart-3: #9ccfd8;
+  --chart-4: #f6c177;
+  --chart-5: #31748f;
+  --sidebar: #1f1d2e;
+  --sidebar-foreground: #e0def4;
+  --sidebar-primary: #ebbcba;
+  --sidebar-primary-foreground: #191724;
+  --sidebar-accent: #26233a;
+  --sidebar-accent-foreground: #e0def4;
+  --sidebar-border: #2e2b42;
+  --sidebar-ring: #c4a7e7;
+}
+
+/* Darker shadows for the dark palettes, so cards lift off the background */
+:root.dark[data-theme='cobaltz'],
+:root.dark[data-theme='rose-pine'] {
+  --shadow-sm: 0px 1px 2px 0px rgb(0 0 0 / 0.3);
+  --shadow: 0px 1px 3px 0px rgb(0 0 0 / 0.35);
+  --shadow-md: 0px 4px 12px 0px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0px 12px 28px 0px rgb(0 0 0 / 0.38);
+  --shadow-xl: 0px 16px 36px 0px rgb(0 0 0 / 0.42);
+}

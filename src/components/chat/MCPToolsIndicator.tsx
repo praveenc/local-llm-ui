@@ -9,13 +9,14 @@ import { Plug2 } from 'lucide-react';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { MCPServerConfig } from '@/types/mcp';
 import { PREFERENCES_CHANGED_EVENT, loadPreferences } from '@/utils/preferences';
+
+import { composerActive, composerChip, composerIconButton } from './composerStyles';
 
 interface MCPServerStatus {
   name: string;
@@ -119,8 +120,9 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-muted-foreground/50 cursor-default"
+              className={cn(composerIconButton, 'cursor-default opacity-50')}
               disabled
+              aria-label="MCP tools"
             >
               <Plug2 className="h-4 w-4" />
             </Button>
@@ -143,21 +145,17 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  'h-7 px-2 relative',
-                  connectedCount > 0
-                    ? 'text-purple-500 hover:text-purple-600 bg-purple-500/10 hover:bg-purple-500/20'
-                    : 'text-muted-foreground hover:text-foreground'
+                  totalTools > 0
+                    ? cn(composerChip, 'gap-1 px-2.5 has-[>svg]:px-2.5')
+                    : composerIconButton,
+                  connectedCount > 0 && composerActive
                 )}
                 disabled={disabled || loading}
+                aria-label={`MCP tools: ${totalTools}`}
               >
-                <Plug2 className="h-4 w-4" />
+                <Plug2 className="size-4" />
                 {totalTools > 0 && (
-                  <Badge
-                    variant="secondary"
-                    className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[10px] leading-none font-mono"
-                  >
-                    {totalTools}
-                  </Badge>
+                  <span className="font-mono text-xs tabular-nums">{totalTools}</span>
                 )}
               </Button>
             </TooltipTrigger>
@@ -195,7 +193,7 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
                 </span>
               </div>
 
-              {server.error && <p className="text-xs text-red-500 ml-4">{server.error}</p>}
+              {server.error && <p className="text-xs text-destructive ml-4">{server.error}</p>}
 
               {server.tools.length > 0 && (
                 <div className="ml-4 flex flex-wrap gap-1">

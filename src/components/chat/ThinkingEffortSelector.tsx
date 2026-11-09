@@ -23,6 +23,7 @@ import {
   thinkingEffortLabel,
 } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
+import { composerChip } from './composerStyles';
 
 interface ThinkingEffortSelectorProps {
   value: ThinkingEffort;
@@ -34,10 +35,17 @@ export function ThinkingEffortSelector({ value, onChange, disabled }: ThinkingEf
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 px-3" disabled={disabled}>
-          <Brain className="h-3 w-3" aria-hidden />
-          <span className="text-xs">Thinking: {thinkingEffortLabel(value)}</span>
-          <ChevronDown className="h-3 w-3 opacity-50" aria-hidden />
+        <Button
+          variant="ghost"
+          size="sm"
+          className={composerChip}
+          disabled={disabled}
+          aria-label={`Thinking: ${thinkingEffortLabel(value)}`}
+        >
+          <Brain className="size-3.5" aria-hidden />
+          <span className="hidden sm:inline">Thinking</span>
+          <span className="font-medium text-foreground">{thinkingEffortLabel(value)}</span>
+          <ChevronDown className="size-3 opacity-60" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="z-[1100] w-44">

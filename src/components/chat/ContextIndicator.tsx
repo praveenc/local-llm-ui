@@ -16,6 +16,7 @@ import {
   ContextOutputUsage,
   ContextTrigger,
 } from '../ai-elements/context';
+import { composerChip } from './composerStyles';
 
 interface ContextIndicatorProps {
   usedTokens: number;
@@ -47,7 +48,7 @@ export function ContextIndicator({
 
   return (
     <Context usedTokens={usedTokens} maxTokens={maxTokens} usage={usage} modelId={modelId}>
-      <ContextTrigger className="h-7 px-2 text-xs" />
+      <ContextTrigger className={`${composerChip} gap-1 px-2 tabular-nums has-[>svg]:px-2`} />
       <ContextContent side="top" align="end" className="z-[1100]">
         <ContextContentHeader />
         <ContextContentBody className="space-y-1">

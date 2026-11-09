@@ -16,6 +16,7 @@ import { Slider } from '@/components/ui/slider';
 
 import type { SamplingSupport } from '../../utils/samplingParams';
 import { MAX_TOOL_STEPS, MIN_TOOL_STEPS } from '../../utils/toolSteps';
+import { composerIconButton } from './composerStyles';
 
 type SamplingParameter = 'temperature' | 'topP';
 
@@ -63,8 +64,10 @@ export function InferenceSettings({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 px-2 text-muted-foreground hover:text-foreground"
+          className={composerIconButton}
           disabled={disabled}
+          aria-label="Inference settings"
+          title="Inference settings"
         >
           <Settings2 className="h-4 w-4" />
         </Button>

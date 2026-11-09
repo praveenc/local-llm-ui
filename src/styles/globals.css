@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* Cobaltz and Rosé Pine palettes, selected with <html data-theme> */
+@import './themes.css';
 
 /* Required for AI Elements MessageResponse component (Streamdown) */
 @source "../../node_modules/streamdown/dist/*.js";

@@ -25,6 +25,7 @@ import {
   ModelSelectorSeparator,
   ModelSelectorTrigger,
 } from '../ai-elements/model-selector';
+import { composerChip } from './composerStyles';
 import { PROVIDER_LOGO_MAP } from './provider-logos';
 
 interface ModelSelectorButtonProps {
@@ -58,34 +59,34 @@ export function ModelSelectorButton({
     <ModelSelector open={open} onOpenChange={setOpen}>
       <ModelSelectorTrigger asChild>
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           disabled={disabled || isLoading}
-          className={cn('gap-2 h-8 px-3', className)}
+          className={cn(composerChip, 'min-w-0 text-foreground', className)}
         >
           {isLoading ? (
             <>
-              <Loader2 className="h-3 w-3 animate-spin" />
-              <span className="text-xs">Loading models...</span>
+              <Loader2 className="size-3.5 animate-spin" />
+              <span className="text-muted-foreground">Loading models...</span>
             </>
           ) : selectedModel ? (
             <>
               <ModelSelectorLogo
                 provider={PROVIDER_LOGO_MAP[selectedModel.provider] || selectedModel.provider}
-                className="h-3 w-3"
+                className="size-3.5"
               />
               <span
-                className="text-xs truncate max-w-[200px] sm:max-w-[280px]"
+                className="truncate max-w-[160px] sm:max-w-[260px] font-medium"
                 title={selectedModel.name}
               >
                 {selectedModel.name}
               </span>
-              <ChevronDown className="h-3 w-3 opacity-50" />
+              <ChevronDown className="size-3 opacity-60" />
             </>
           ) : (
             <>
-              <span className="text-xs text-muted-foreground">Select model</span>
-              <ChevronDown className="h-3 w-3 opacity-50" />
+              <span className="text-muted-foreground">Select model</span>
+              <ChevronDown className="size-3 opacity-60" />
             </>
           )}
         </Button>

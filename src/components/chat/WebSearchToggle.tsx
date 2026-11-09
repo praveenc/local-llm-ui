@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
+import { composerActive, composerIconButton } from './composerStyles';
+
 interface WebSearchToggleProps {
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
@@ -38,15 +40,13 @@ export function WebSearchToggle({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
+            type="button"
             variant="ghost"
             size="sm"
-            className={cn(
-              'h-7 px-2',
-              enabled
-                ? 'text-blue-500 hover:text-blue-600 bg-blue-500/10 hover:bg-blue-500/20'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
+            className={cn(composerIconButton, enabled && composerActive)}
             disabled={disabled || !hasApiKey}
+            aria-label="Web search"
+            aria-pressed={enabled}
             onClick={() => onToggle(!enabled)}
           >
             <Globe className="h-4 w-4" />
