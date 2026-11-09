@@ -8,7 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
+import type { ColorTheme } from '@/utils/colorThemes';
 import type { VisualMode } from '@/utils/preferences';
+
+import { ThemeMenu } from './ThemeMenu';
 
 interface AppLayoutProps {
   navigation: React.ReactNode;
@@ -17,6 +20,9 @@ interface AppLayoutProps {
   onNavigationChange?: (open: boolean) => void;
   theme: VisualMode;
   onToggleTheme: () => void;
+  colorTheme: ColorTheme;
+  onColorThemeChange: (value: ColorTheme) => void;
+  onVisualModeChange: (value: VisualMode) => void;
 }
 
 export function AppLayout({
@@ -26,6 +32,9 @@ export function AppLayout({
   onNavigationChange,
   theme,
   onToggleTheme,
+  colorTheme,
+  onColorThemeChange,
+  onVisualModeChange,
 }: AppLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -120,9 +129,23 @@ export function AppLayout({
             </Button>
             <span className="text-sm font-medium text-muted-foreground">Chat</span>
           </div>
-          <Button variant="ghost" size="icon" onClick={onToggleTheme}>
-            {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-          </Button>
+          <div className="flex items-center gap-1">
+            <ThemeMenu
+              colorTheme={colorTheme}
+              visualMode={theme}
+              onColorThemeChange={onColorThemeChange}
+              onVisualModeChange={onVisualModeChange}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onToggleTheme}
+              aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+              title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+            >
+              {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            </Button>
+          </div>
         </header>
 
         {/* Content Area */}

@@ -248,7 +248,7 @@ When web search or MCP tools are on, their buttons show in the theme color.
 
 ### Color Themes
 
-To change the theme, open **Preferences → Display** and select a card under **Color theme**. The sun and moon button in the header selects the light or dark variant of the theme.
+To change the theme, click the palette button in the header and select a theme, or open **Preferences → Display** and select a card under **Color theme**. The same menu also selects Light or Dark. The sun and moon button next to it switches between the light and dark variants with one click.
 
 | Theme | Light variant | Dark variant |
 |---|---|---|
@@ -265,6 +265,8 @@ Code blocks in replies use the syntax colors of the theme:
 | Cosmic Night | One Light / One Dark Pro |
 | Cobaltz | Cobaltz Light / Cobaltz, from the Cobaltz VS Code theme |
 | Rosé Pine | Rosé Pine Dawn / Rosé Pine |
+
+The syntax highlighter loads when the first code block shows, not when the page loads.
 
 ### Model Configuration
 
