@@ -258,6 +258,14 @@ To change the theme, open **Preferences → Display** and select a card under **
 
 The app keeps your theme in the browser, with your other preferences.
 
+Code blocks in replies use the syntax colors of the theme:
+
+| Theme | Code colors (light / dark) |
+|---|---|
+| Cosmic Night | One Light / One Dark Pro |
+| Cobaltz | Cobaltz Light / Cobaltz, from the Cobaltz VS Code theme |
+| Rosé Pine | Rosé Pine Dawn / Rosé Pine |
+
 ### Model Configuration
 
 Adjust model parameters via the settings icon in the chat input:
