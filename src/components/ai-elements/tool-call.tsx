@@ -11,23 +11,26 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
 import type { ToolCallPart } from '../../types/ai-messages';
+import { WEB_SEARCH_PROVIDER_LABELS, isWebSearchProvider } from '../../utils/webSearch';
 
 interface ToolCallProps {
   toolCall: ToolCallPart;
   className?: string;
 }
 
-interface TavilySearchResult {
+/** One web search result. Older chats saved Tavily results, which have the same fields. */
+interface SearchResult {
   title: string;
   url: string;
   content: string;
-  score?: number;
 }
 
-interface TavilySearchResponse {
-  results?: TavilySearchResult[];
-  answer?: string;
-  query?: string;
+/** Web search tool output: see server/web-search.ts */
+interface SearchResponse {
+  results?: SearchResult[];
+  provider?: string;
+  failures?: string[];
+  error?: string;
 }
 
 export function ToolCall({ toolCall, className }: ToolCallProps) {
@@ -39,12 +42,15 @@ export function ToolCall({ toolCall, className }: ToolCallProps) {
 
   // Parse search results if this is a web search
   const searchResults = isWebSearch ? parseSearchResults(toolCall.result) : null;
+  const searchInfo = isWebSearch ? parseSearchInfo(toolCall.result) : {};
+  const searchFailed = Boolean(searchInfo.error) && !searchResults?.length;
+  const showError = isError || searchFailed;
 
   return (
     <div
       className={cn(
         'rounded-lg border bg-muted/30 text-sm my-2',
-        isError && 'border-destructive/50',
+        showError && 'border-destructive/50',
         className
       )}
     >
@@ -73,11 +79,12 @@ export function ToolCall({ toolCall, className }: ToolCallProps) {
 
         {isPending && <span className="text-xs text-muted-foreground">Searching...</span>}
 
-        {isError && <span className="text-xs text-destructive">Error</span>}
+        {showError && <span className="text-xs text-destructive">Error</span>}
 
         {searchResults && searchResults.length > 0 && (
           <span className="text-xs text-muted-foreground">
             {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
+            {searchInfo.providerLabel && ` · ${searchInfo.providerLabel}`}
           </span>
         )}
       </button>
@@ -92,6 +99,18 @@ export function ToolCall({ toolCall, className }: ToolCallProps) {
             </div>
           )}
 
+          {searchFailed && (
+            <div className="mt-2 p-2 rounded bg-destructive/10 text-destructive text-xs">
+              {searchInfo.error}
+            </div>
+          )}
+
+          {!searchFailed && searchInfo.failures && searchInfo.failures.length > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Fallback used. {searchInfo.failures.join('; ')}
+            </p>
+          )}
+
           {searchResults && searchResults.length > 0 && (
             <div className="mt-2 space-y-2">
               {searchResults.map((result, index) => (
@@ -100,7 +119,7 @@ export function ToolCall({ toolCall, className }: ToolCallProps) {
             </div>
           )}
 
-          {!isError && !searchResults && toolCall.result !== undefined && (
+          {!isError && !searchResults && !searchFailed && toolCall.result !== undefined && (
             <pre className="mt-2 p-2 rounded bg-muted text-xs overflow-x-auto">
               {typeof toolCall.result === 'string'
                 ? toolCall.result
@@ -113,7 +132,15 @@ export function ToolCall({ toolCall, className }: ToolCallProps) {
   );
 }
 
-function SearchResultItem({ result }: { result: TavilySearchResult }) {
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+function SearchResultItem({ result }: { result: SearchResult }) {
   return (
     <div className="p-2 rounded bg-background border">
       <a
@@ -127,29 +154,48 @@ function SearchResultItem({ result }: { result: TavilySearchResult }) {
       </a>
       <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{result.content}</p>
       <span className="text-xs text-muted-foreground/70 truncate block mt-1">
-        {new URL(result.url).hostname}
+        {hostnameOf(result.url)}
       </span>
     </div>
   );
 }
 
-function parseSearchResults(result: unknown): TavilySearchResult[] | null {
-  if (!result) return null;
+function parseSearchInfo(result: unknown): {
+  providerLabel?: string;
+  failures?: string[];
+  error?: string;
+} {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return {};
+  const { provider, failures, error } = result as SearchResponse;
+  return {
+    providerLabel: isWebSearchProvider(provider) ? WEB_SEARCH_PROVIDER_LABELS[provider] : undefined,
+    failures: Array.isArray(failures)
+      ? failures.filter((f): f is string => typeof f === 'string')
+      : undefined,
+    error: typeof error === 'string' ? error : undefined,
+  };
+}
 
-  // Handle Tavily response format
-  if (typeof result === 'object' && result !== null) {
-    const response = result as TavilySearchResponse;
-    if (response.results && Array.isArray(response.results)) {
-      return response.results;
-    }
-  }
+const isSearchResult = (r: unknown): r is SearchResult =>
+  typeof r === 'object' &&
+  r !== null &&
+  typeof (r as SearchResult).url === 'string' &&
+  typeof (r as SearchResult).title === 'string';
+
+function parseSearchResults(result: unknown): SearchResult[] | null {
+  if (!result) return null;
 
   // Handle array of results directly
   if (Array.isArray(result)) {
-    return result.filter(
-      (r): r is TavilySearchResult =>
-        typeof r === 'object' && r !== null && 'url' in r && 'title' in r
-    );
+    return result.filter(isSearchResult);
+  }
+
+  // Handle the tool output format (and the older Tavily format)
+  if (typeof result === 'object') {
+    const response = result as SearchResponse;
+    if (Array.isArray(response.results)) {
+      return response.results.filter(isSearchResult);
+    }
   }
 
   return null;

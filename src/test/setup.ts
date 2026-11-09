@@ -9,7 +9,8 @@ if (!('ResizeObserver' in globalThis)) {
   } as unknown as typeof ResizeObserver;
 }
 
-// jsdom has no scrollIntoView; Radix Select calls it when it opens
-if (!Element.prototype.scrollIntoView) {
+// jsdom has no scrollIntoView; Radix Select calls it when it opens. Server tests run in the
+// node environment, which has no DOM.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }

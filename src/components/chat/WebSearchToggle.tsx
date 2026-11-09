@@ -1,7 +1,8 @@
 /**
  * WebSearchToggle Component
  *
- * Toggle button to enable/disable Tavily web search for the current conversation.
+ * Toggle button to enable/disable web search (Brave Search, Exa, or Tavily) for the current
+ * conversation.
  */
 import { Globe } from 'lucide-react';
 
@@ -14,6 +15,8 @@ interface WebSearchToggleProps {
   onToggle: (enabled: boolean) => void;
   disabled?: boolean;
   hasApiKey?: boolean;
+  /** Provider tried first, shown in the tooltip */
+  providerLabel?: string;
 }
 
 export function WebSearchToggle({
@@ -21,12 +24,14 @@ export function WebSearchToggle({
   onToggle,
   disabled,
   hasApiKey = true,
+  providerLabel,
 }: WebSearchToggleProps) {
+  const via = providerLabel ? ` (${providerLabel})` : '';
   const tooltipText = !hasApiKey
-    ? 'Configure Tavily API key in preferences to enable web search'
+    ? 'Add a Brave Search, Exa, or Tavily API key in preferences to enable web search'
     : enabled
-      ? 'Web search enabled'
-      : 'Enable web search';
+      ? `Web search enabled${via}`
+      : `Enable web search${via}`;
 
   return (
     <TooltipProvider>

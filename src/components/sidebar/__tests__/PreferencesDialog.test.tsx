@@ -95,3 +95,67 @@ describe('PreferencesDialog providers', () => {
     );
   });
 });
+
+describe('PreferencesDialog web search', () => {
+  beforeEach(() => localStorage.clear());
+
+  const openWebSearchTab = () => {
+    // Radix Tabs switch on mousedown, not click
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Web Search' }), { button: 0 });
+  };
+
+  it('lists Brave Search, Exa, and Tavily, and disables providers with no key', () => {
+    renderDialog({ tavilyApiKey: 'tvly-1' });
+    openWebSearchTab();
+    expect(screen.getByRole('radio', { name: /Brave Search/ })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /Exa/ })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /Tavily/ })).toBeEnabled();
+    expect(screen.getByRole('radio', { name: /Tavily/ })).toBeChecked();
+  });
+
+  it('saves a new key and the primary provider', () => {
+    const { onSave } = renderDialog({ tavilyApiKey: 'tvly-1' });
+    openWebSearchTab();
+
+    fireEvent.click(screen.getByRole('button', { name: /Add key \(Exa\)/ }));
+    fireEvent.change(screen.getByLabelText('Exa API key'), { target: { value: ' exa-1 ' } });
+    const exa = screen.getByRole('radio', { name: /Exa/ });
+    expect(exa).toBeEnabled();
+
+    fireEvent.click(exa);
+    save();
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ exaApiKey: 'exa-1', webSearchProvider: 'exa' })
+    );
+  });
+
+  it('keeps the primary provider when a key for another provider is added', () => {
+    const { onSave } = renderDialog({ tavilyApiKey: 'tvly-1' });
+    openWebSearchTab();
+
+    fireEvent.click(screen.getByRole('button', { name: /Add key \(Brave Search\)/ }));
+    fireEvent.change(screen.getByLabelText('Brave Search API key'), { target: { value: 'b' } });
+    expect(screen.getByRole('radio', { name: /Tavily/ })).toBeChecked();
+
+    save();
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ braveApiKey: 'b', webSearchProvider: 'tavily' })
+    );
+  });
+
+  it('enables the fallback switch only with two or more keys', () => {
+    const { onSave } = renderDialog({ braveApiKey: 'b' });
+    openWebSearchTab();
+    const fallback = screen.getByRole('switch', { name: /Use the next provider/ });
+    expect(fallback).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Add key \(Tavily\)/ }));
+    fireEvent.change(screen.getByLabelText('Tavily API key'), { target: { value: 'tvly-1' } });
+    expect(fallback).toBeEnabled();
+    expect(fallback).toBeChecked();
+
+    fireEvent.click(fallback);
+    save();
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ webSearchFallback: false }));
+  });
+});

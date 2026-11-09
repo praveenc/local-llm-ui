@@ -3,10 +3,9 @@
  *
  * Handles chat requests using Vercel AI SDK with SSE streaming format.
  * API key passed from client via header (stored in localStorage).
- * Supports Tavily web search tool integration and thinking effort.
+ * Supports a web search tool (Brave Search, Exa, or Tavily) and thinking effort.
  */
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { tavilySearch } from '@tavily/ai-sdk';
 import { isStepCount, streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import type { Connect } from 'vite';
@@ -16,6 +15,11 @@ import { buildSamplingParams } from '../src/utils/samplingParams.ts';
 import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit } from './security.ts';
+import {
+  WEB_SEARCH_KEY_REQUIRED_ERROR,
+  createWebSearchTool,
+  getWebSearchProviders,
+} from './web-search.ts';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -63,12 +67,12 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
       return;
     }
 
-    // Get Tavily API key if web search is enabled
-    const tavilyApiKey = req.headers['x-tavily-api-key'] as string;
-    if (request.enableWebSearch && !tavilyApiKey) {
+    // Web search API keys and the order to try the providers in
+    const webSearchProviders = getWebSearchProviders(req.headers);
+    if (request.enableWebSearch && webSearchProviders.length === 0) {
       res.statusCode = 401;
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Tavily API key required for web search' }));
+      res.end(JSON.stringify({ error: WEB_SEARCH_KEY_REQUIRED_ERROR }));
       return;
     }
 
@@ -92,8 +96,8 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
 
       // Configure tools - merge web search and MCP tools
       const allTools: ToolSet = { ...mcpTools } as ToolSet;
-      if (request.enableWebSearch && tavilyApiKey) {
-        allTools.webSearch = tavilySearch({ apiKey: tavilyApiKey });
+      if (request.enableWebSearch && webSearchProviders.length > 0) {
+        allTools.webSearch = createWebSearchTool(webSearchProviders);
       }
       const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 

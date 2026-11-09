@@ -3,9 +3,8 @@
  *
  * Handles chat requests to Ollama using the AI SDK community provider.
  * Supports reasoning/thinking content extraction for models like Qwen3.
- * Supports optional Tavily web search tool integration.
+ * Supports an optional web search tool (Brave Search, Exa, or Tavily).
  */
-import { tavilySearch } from '@tavily/ai-sdk';
 import { isStepCount, streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import { createOllama } from 'ollama-ai-provider-v2';
@@ -16,6 +15,11 @@ import { ollamaThinkValue } from '../src/utils/thinkingEffort.ts';
 import type { OllamaThinkingInfo } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit } from './security.ts';
+import {
+  WEB_SEARCH_KEY_REQUIRED_ERROR,
+  createWebSearchTool,
+  getWebSearchProviders,
+} from './web-search.ts';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -113,12 +117,12 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
       const isThinkingModel =
         modelLower.includes('qwen') || modelLower.includes('deepseek') || modelLower.includes('r1');
 
-      // Get Tavily API key from header if web search is enabled
-      const tavilyApiKey = req.headers['x-tavily-api-key'] as string;
-      if (request.enableWebSearch && !tavilyApiKey) {
+      // Web search API keys and the order to try the providers in
+      const webSearchProviders = getWebSearchProviders(req.headers);
+      if (request.enableWebSearch && webSearchProviders.length === 0) {
         res.statusCode = 401;
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'Tavily API key required for web search' }));
+        res.end(JSON.stringify({ error: WEB_SEARCH_KEY_REQUIRED_ERROR }));
         return;
       }
 
@@ -132,8 +136,8 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
 
       // Configure tools - merge web search and MCP tools
       const allTools: ToolSet = { ...mcpTools } as ToolSet;
-      if (request.enableWebSearch && tavilyApiKey) {
-        allTools.webSearch = tavilySearch({ apiKey: tavilyApiKey });
+      if (request.enableWebSearch && webSearchProviders.length > 0) {
+        allTools.webSearch = createWebSearchTool(webSearchProviders);
       }
       const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 

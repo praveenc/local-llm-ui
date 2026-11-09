@@ -3,12 +3,11 @@
  *
  * Server-side proxy using @ai-sdk/amazon-bedrock for streaming chat.
  * Returns responses in AI SDK UIMessage stream format.
- * Supports optional Tavily web search tool integration.
+ * Supports an optional web search tool (Brave Search, Exa, or Tavily).
  */
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { getModelCapabilities } from '@ai-sdk/anthropic/internal';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
-import { tavilySearch } from '@tavily/ai-sdk';
 import { isStepCount, streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'http';
@@ -19,6 +18,11 @@ import { buildReasoningParams, fallbackReasoningLevel } from '../src/utils/think
 import type { ReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security.ts';
+import {
+  WEB_SEARCH_KEY_REQUIRED_ERROR,
+  createWebSearchTool,
+  getWebSearchProviders,
+} from './web-search.ts';
 
 // Initialize Bedrock provider with credential chain
 const bedrock = createAmazonBedrock({
@@ -213,13 +217,13 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     thinkingEffort,
   }: ChatRequest = JSON.parse(body);
 
-  // Get Tavily API key from header if web search is enabled
-  const tavilyApiKey = req.headers['x-tavily-api-key'] as string;
+  // Web search API keys and the order to try the providers in
+  const webSearchProviders = getWebSearchProviders(req.headers);
 
-  if (enableWebSearch && !tavilyApiKey) {
+  if (enableWebSearch && webSearchProviders.length === 0) {
     res.statusCode = 401;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: 'Tavily API key required for web search' }));
+    res.end(JSON.stringify({ error: WEB_SEARCH_KEY_REQUIRED_ERROR }));
     return;
   }
 
@@ -282,8 +286,8 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
 
   // Configure tools - merge web search and MCP tools
   const allTools: ToolSet = { ...mcpTools } as ToolSet;
-  if (enableWebSearch && tavilyApiKey) {
-    allTools.webSearch = tavilySearch({ apiKey: tavilyApiKey });
+  if (enableWebSearch && webSearchProviders.length > 0) {
+    allTools.webSearch = createWebSearchTool(webSearchProviders);
   }
   const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 

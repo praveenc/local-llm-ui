@@ -3,6 +3,7 @@
  */
 import type { MCPServersMap } from '../types/mcp';
 import type { ThinkingEffort } from './thinkingEffort';
+import type { WebSearchPreferences } from './webSearch';
 
 export type Provider =
   | 'ollama'
@@ -16,7 +17,7 @@ export type Provider =
 export type VisualMode = 'light' | 'dark';
 export type ContentDensity = 'comfortable' | 'compact';
 
-export interface UserPreferences {
+export interface UserPreferences extends WebSearchPreferences {
   preferredProvider: Provider;
   avatarInitials: string;
   visualMode: VisualMode;
@@ -29,8 +30,7 @@ export interface UserPreferences {
   cerebrasApiKey?: string;
   anthropicApiKey?: string;
   openrouterApiKey?: string;
-  // Tavily web search
-  tavilyApiKey?: string;
+  // Web search keys and provider order: see WebSearchPreferences
   webSearchEnabledByDefault?: boolean;
   // MCP Servers
   mcpServers?: MCPServersMap;

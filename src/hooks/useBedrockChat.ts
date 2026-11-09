@@ -17,6 +17,7 @@ import { loadPreferences } from '../utils/preferences';
 import { buildSamplingParams } from '../utils/samplingParams';
 import { supportsThinkingEffort } from '../utils/thinkingEffort';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
+import { buildWebSearchHeaders } from '../utils/webSearch';
 import { useConversation, useConversationMutations } from './index';
 
 export type ChatStatus = 'idle' | 'streaming' | 'submitted' | 'error';
@@ -268,10 +269,10 @@ export function useBedrockChat({
           'Content-Type': 'application/json',
         };
 
-        // Add Tavily API key if web search is enabled
+        // Add web search API keys and the provider order if web search is enabled
         const prefs = loadPreferences();
-        if (enableWebSearch && prefs.tavilyApiKey) {
-          headers['X-Tavily-Api-Key'] = prefs.tavilyApiKey;
+        if (enableWebSearch) {
+          Object.assign(headers, buildWebSearchHeaders(prefs));
         }
 
         // Add enabled MCP server configs
