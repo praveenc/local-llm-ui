@@ -19,6 +19,7 @@ import {
 import type { Provider, UserPreferences } from '../utils/preferences';
 import { getDefaultThinkingEffort } from '../utils/thinkingEffort';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
+import { loadMaxToolSteps, saveMaxToolSteps } from '../utils/toolSteps';
 import { AppLayout } from './AppLayout';
 
 /** Model to select once the model list has loaded */
@@ -37,6 +38,12 @@ const toModelRef = (message?: { modelId: string; provider: Provider }): ModelRef
 
 export default function AppShell() {
   const [maxTokens, setMaxTokens] = useState<number>(4096);
+  // Max tool steps is kept across sessions
+  const [maxToolSteps, setMaxToolStepsState] = useState<number>(() => loadMaxToolSteps());
+  const setMaxToolSteps = (steps: number) => {
+    setMaxToolStepsState(steps);
+    saveMaxToolSteps(steps);
+  };
   const [temperature, setTemperature] = useState<number>(0.5);
   const [topP, setTopP] = useState<number>(0.9);
   const [samplingParameter, setSamplingParameter] = useState<'temperature' | 'topP'>('temperature');
@@ -205,6 +212,8 @@ export default function AppShell() {
           isLoadingModels={isLoadingModels}
           maxTokens={maxTokens}
           setMaxTokens={setMaxTokens}
+          maxToolSteps={maxToolSteps}
+          setMaxToolSteps={setMaxToolSteps}
           temperature={temperature}
           setTemperature={setTemperature}
           topP={topP}

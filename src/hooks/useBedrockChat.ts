@@ -28,6 +28,8 @@ interface UseBedrockChatOptions {
   temperature: number;
   topP: number;
   maxTokens: number;
+  /** Most model calls in one reply when tools are on */
+  maxToolSteps: number;
   samplingParameter: 'temperature' | 'topP';
   thinkingEffort: ThinkingEffort;
   enableWebSearch?: boolean;
@@ -71,6 +73,7 @@ export function useBedrockChat({
   temperature,
   topP,
   maxTokens,
+  maxToolSteps,
   samplingParameter,
   thinkingEffort,
   enableWebSearch = false,
@@ -257,6 +260,7 @@ export function useBedrockChat({
           model: modelId,
           messages: chatMessages,
           max_tokens: maxTokens,
+          maxToolSteps,
           enableWebSearch,
           ...(effort && { thinkingEffort: effort }),
           ...(sampling.temperature !== undefined && { temperature: sampling.temperature }),
@@ -570,6 +574,7 @@ export function useBedrockChat({
       temperature,
       topP,
       maxTokens,
+      maxToolSteps,
       samplingParameter,
       thinkingEffort,
       enableWebSearch,

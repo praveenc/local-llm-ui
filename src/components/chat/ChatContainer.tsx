@@ -222,6 +222,8 @@ interface BedrockChatContainerProps {
   // Chat parameters
   maxTokens: number;
   setMaxTokens: (tokens: number) => void;
+  maxToolSteps: number;
+  setMaxToolSteps: (steps: number) => void;
   temperature: number;
   setTemperature: (temp: number) => void;
   topP: number;
@@ -278,6 +280,8 @@ const ChatContainer = ({
   isLoadingModels,
   maxTokens,
   setMaxTokens,
+  maxToolSteps,
+  setMaxToolSteps,
   temperature,
   setTemperature,
   topP,
@@ -324,6 +328,7 @@ const ChatContainer = ({
     temperature,
     topP,
     maxTokens,
+    maxToolSteps,
     samplingParameter,
     thinkingEffort,
     enableWebSearch,
@@ -632,6 +637,8 @@ const ChatContainer = ({
                   setTopP={setTopP}
                   maxTokens={maxTokens}
                   setMaxTokens={setMaxTokens}
+                  maxToolSteps={maxToolSteps}
+                  setMaxToolSteps={setMaxToolSteps}
                   samplingParameter={samplingParameter}
                   setSamplingParameter={setSamplingParameter}
                   samplingSupport={selectedModel ? getSamplingSupport(selectedModel.id) : 'both'}

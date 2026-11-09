@@ -50,6 +50,8 @@ interface ChatRequest {
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
   thinkingEffort?: unknown;
+  /** Most model calls in one reply when tools are on */
+  maxToolSteps?: unknown;
 }
 
 /** Share of the model's max output tokens that each effort uses as a thinking budget */
@@ -216,6 +218,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     enableWebSearch,
     mcpServers,
     thinkingEffort,
+    maxToolSteps,
   }: ChatRequest = JSON.parse(body);
 
   // Web search API keys and the order to try the providers in
@@ -323,7 +326,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
         tools,
         abortSignal: abortController.signal,
         // Tool loop that always ends with an answer (see tool-loop.ts)
-        ...toolLoopOptions(tools, { disableToolsOnLastStep: false }),
+        ...toolLoopOptions(tools, { maxSteps: maxToolSteps, disableToolsOnLastStep: false }),
         ...thinkingOptions(reasoning),
       });
 

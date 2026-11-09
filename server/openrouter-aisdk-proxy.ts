@@ -40,6 +40,8 @@ interface ChatRequest {
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
   thinkingEffort?: unknown;
+  /** Most model calls in one reply when tools are on */
+  maxToolSteps?: unknown;
 }
 
 interface OpenRouterModelsResponse {
@@ -462,7 +464,7 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
         // Sent to OpenRouter as reasoning_effort, only for models that accept it
         ...buildReasoningParams('openrouter', request.model, request.thinkingEffort),
         // Tool loop that always ends with an answer (see tool-loop.ts)
-        ...toolLoopOptions(tools),
+        ...toolLoopOptions(tools, { maxSteps: request.maxToolSteps }),
       });
 
       for await (const part of result.stream) {

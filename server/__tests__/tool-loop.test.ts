@@ -5,7 +5,8 @@ import { MockLanguageModelV4, convertArrayToReadableStream } from 'ai/test';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { FINAL_STEP_PROMPT, MAX_STEPS, noAnswerNotice, toolLoopOptions } from '../tool-loop';
+import { DEFAULT_TOOL_STEPS, MAX_TOOL_STEPS } from '../../src/utils/toolSteps';
+import { FINAL_STEP_PROMPT, noAnswerNotice, toolLoopOptions } from '../tool-loop';
 
 const usage = {
   inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
@@ -52,8 +53,8 @@ describe('toolLoopOptions', () => {
     expect(toolLoopOptions(undefined)).toEqual({});
   });
 
-  it('makes the last step answer when the model keeps calling tools', async () => {
-    // The model calls a tool in every step unless the tools are turned off
+  /** Run a loop where the model calls a tool in every step unless the tools are turned off */
+  const runLoop = async (maxSteps?: unknown) => {
     let calls = 0;
     const model = new MockLanguageModelV4({
       doStream: async (options) => {
@@ -61,19 +62,35 @@ describe('toolLoopOptions', () => {
         return options.toolChoice?.type === 'none' ? answerStep() : toolCallStep(calls);
       },
     });
-
     const result = streamText({
       model,
       messages: [{ role: 'user', content: 'Read many pages' }],
       tools,
-      ...toolLoopOptions(tools),
+      ...toolLoopOptions(tools, { maxSteps }),
     });
+    return { model, text: await result.text, finishReason: await result.finishReason };
+  };
 
-    expect(await result.text).toBe('The answer.');
-    expect(await result.finishReason).toBe('stop');
-    expect(model.doStreamCalls).toHaveLength(MAX_STEPS);
+  it('uses the step count from the request', async () => {
+    const { model, text } = await runLoop(4);
+    expect(text).toBe('The answer.');
+    expect(model.doStreamCalls).toHaveLength(4);
+    expect(model.doStreamCalls[3].toolChoice).toEqual({ type: 'none' });
+  });
 
-    const last = model.doStreamCalls[MAX_STEPS - 1];
+  it('limits the step count from the request to the allowed range', async () => {
+    expect((await runLoop(500)).model.doStreamCalls).toHaveLength(MAX_TOOL_STEPS);
+    expect((await runLoop('ten')).model.doStreamCalls).toHaveLength(DEFAULT_TOOL_STEPS);
+  });
+
+  it('makes the last step answer when the model keeps calling tools', async () => {
+    const { model, text, finishReason } = await runLoop();
+
+    expect(text).toBe('The answer.');
+    expect(finishReason).toBe('stop');
+    expect(model.doStreamCalls).toHaveLength(DEFAULT_TOOL_STEPS);
+
+    const last = model.doStreamCalls[DEFAULT_TOOL_STEPS - 1];
     expect(last.toolChoice).toEqual({ type: 'none' });
     // The last step still sees the tool results, and gets the instruction to answer
     expect(JSON.stringify(last.prompt)).toContain('Content of https://example.com/1');
@@ -103,7 +120,7 @@ describe('toolLoopOptions', () => {
     });
 
     expect(await result.text).toBe('The answer.');
-    expect(model.doStreamCalls[MAX_STEPS - 1].toolChoice).not.toEqual({ type: 'none' });
+    expect(model.doStreamCalls[DEFAULT_TOOL_STEPS - 1].toolChoice).not.toEqual({ type: 'none' });
   });
 });
 

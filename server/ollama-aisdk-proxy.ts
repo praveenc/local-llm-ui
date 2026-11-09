@@ -36,6 +36,8 @@ interface ChatRequest {
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
   thinkingEffort?: unknown;
+  /** Most model calls in one reply when tools are on */
+  maxToolSteps?: unknown;
 }
 
 const OLLAMA_API = 'http://localhost:11434/api';
@@ -175,7 +177,7 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
         tools,
         abortSignal: abortController.signal,
         // Tool loop that always ends with an answer (see tool-loop.ts)
-        ...toolLoopOptions(tools),
+        ...toolLoopOptions(tools, { maxSteps: request.maxToolSteps }),
         // Enable thinking for supported models
         ...(think === undefined &&
           isThinkingModel && {

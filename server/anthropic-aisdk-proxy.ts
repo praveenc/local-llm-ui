@@ -36,6 +36,8 @@ interface ChatRequest {
   enableWebSearch?: boolean;
   thinkingEffort?: unknown;
   mcpServers?: MCPServerConfig[];
+  /** Most model calls in one reply when tools are on */
+  maxToolSteps?: unknown;
 }
 
 export function createAnthropicProxy(): Connect.NextHandleFunction {
@@ -135,7 +137,7 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
         abortSignal: abortController.signal,
         ...reasoningParams,
         // Tool loop that always ends with an answer (see tool-loop.ts)
-        ...toolLoopOptions(tools),
+        ...toolLoopOptions(tools, { maxSteps: request.maxToolSteps }),
       });
 
       // Stream text chunks and handle tool calls

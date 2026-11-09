@@ -40,6 +40,8 @@ interface ChatRequest {
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
   thinkingEffort?: unknown;
+  /** Most model calls in one reply when tools are on */
+  maxToolSteps?: unknown;
 }
 
 function createProvider(providerType: AISDKProvider, apiKey: string) {
@@ -288,7 +290,7 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
         // Send the thinking effort only for models that accept it (gpt-oss on Groq)
         ...buildReasoningParams(request.provider, request.model, request.thinkingEffort),
         // Tool loop that always ends with an answer (see tool-loop.ts)
-        ...toolLoopOptions(tools),
+        ...toolLoopOptions(tools, { maxSteps: request.maxToolSteps }),
       });
 
       // Stream text chunks and handle tool calls
