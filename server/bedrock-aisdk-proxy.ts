@@ -8,7 +8,7 @@
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { getModelCapabilities } from '@ai-sdk/anthropic/internal';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
-import { isStepCount, streamText } from 'ai';
+import { streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'http';
 
@@ -18,6 +18,7 @@ import { buildReasoningParams, fallbackReasoningLevel } from '../src/utils/think
 import type { ReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security.ts';
+import { noAnswerNotice, streamErrorMessage, toolLoopOptions } from './tool-loop.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
   createWebSearchTool,
@@ -321,8 +322,8 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
         messages: transformedMessages,
         tools,
         abortSignal: abortController.signal,
-        // stopWhen required for multi-step tool use (agentic behavior)
-        ...(tools && { stopWhen: isStepCount(5) }),
+        // Tool loop that always ends with an answer (see tool-loop.ts)
+        ...toolLoopOptions(tools, { disableToolsOnLastStep: false }),
         ...thinkingOptions(reasoning),
       });
 
@@ -346,6 +347,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
           // once with the nearest effort from the error's list of accepted values.
           retryWith = fallbackReasoningLevel(reasoning, errorText(part.error));
           if (retryWith) break;
+          res.write(`data: ${JSON.stringify({ error: streamErrorMessage(part.error) })}\n\n`);
         } else if (part.type === 'text-delta') {
           res.write(`data: ${JSON.stringify({ content: part.text })}\n\n`);
         } else if (part.type === 'reasoning-delta') {
@@ -370,6 +372,8 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
               },
             })}\n\n`
           );
+        } else if (part.type === 'error') {
+          res.write(`data: ${JSON.stringify({ error: streamErrorMessage(part.error) })}\n\n`);
         }
         // Only an error before any output can be retried
         if (part.type !== 'error' && part.type !== 'start' && part.type !== 'start-step') {
@@ -385,7 +389,11 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
       result = startStream(reasoning);
     }
 
-    // Get usage after stream completes
+    // Explain a reply that ends with no answer text
+    const notice = await noAnswerNotice(result);
+    if (notice) res.write(`data: ${JSON.stringify({ content: notice })}\n\n`);
+
+    // Get usage after the stream completes
     const usage = await result.usage;
     const latencyMs = Date.now() - startTime;
 

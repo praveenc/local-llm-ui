@@ -6,7 +6,7 @@
  * Supports web search (Brave Search, Exa, or Tavily), MCP tools, reasoning deltas, and SSE streaming.
  */
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { isStepCount, streamText } from 'ai';
+import { streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connect } from 'vite';
@@ -17,6 +17,7 @@ import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { WEB_SEARCH_HEADER_NAMES } from '../src/utils/webSearch.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security.ts';
+import { noAnswerNotice, toolLoopOptions } from './tool-loop.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
   createWebSearchTool,
@@ -460,7 +461,8 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
         abortSignal: abortController.signal,
         // Sent to OpenRouter as reasoning_effort, only for models that accept it
         ...buildReasoningParams('openrouter', request.model, request.thinkingEffort),
-        ...(tools && { stopWhen: isStepCount(5) }),
+        // Tool loop that always ends with an answer (see tool-loop.ts)
+        ...toolLoopOptions(tools),
       });
 
       for await (const part of result.stream) {
@@ -497,6 +499,11 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
         }
       }
 
+      // Explain a reply that ends with no answer text
+      const notice = await noAnswerNotice(result);
+      if (notice) res.write(`data: ${JSON.stringify({ content: notice })}\n\n`);
+
+      // Get usage after the stream completes
       const usage = await result.usage;
       const latencyMs = Date.now() - startTime;
 

@@ -5,7 +5,7 @@
  * Supports reasoning/thinking content extraction for models like Qwen3.
  * Supports an optional web search tool (Brave Search, Exa, or Tavily).
  */
-import { isStepCount, streamText } from 'ai';
+import { streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import { createOllama } from 'ollama-ai-provider-v2';
 import type { Connect } from 'vite';
@@ -15,6 +15,7 @@ import { ollamaThinkValue } from '../src/utils/thinkingEffort.ts';
 import type { OllamaThinkingInfo } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit } from './security.ts';
+import { noAnswerNotice, streamErrorMessage, toolLoopOptions } from './tool-loop.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
   createWebSearchTool,
@@ -173,8 +174,8 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
         topP: request.top_p ?? 0.9,
         tools,
         abortSignal: abortController.signal,
-        // stopWhen required for multi-step tool use (agentic behavior)
-        ...(tools && { stopWhen: isStepCount(5) }),
+        // Tool loop that always ends with an answer (see tool-loop.ts)
+        ...toolLoopOptions(tools),
         // Enable thinking for supported models
         ...(think === undefined &&
           isThinkingModel && {
@@ -287,10 +288,16 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
               },
             })}\n\n`
           );
+        } else if (part.type === 'error') {
+          res.write(`data: ${JSON.stringify({ error: streamErrorMessage(part.error) })}\n\n`);
         }
       }
 
-      // Get usage data after stream completes
+      // Explain a reply that ends with no answer text
+      const notice = await noAnswerNotice(result);
+      if (notice) res.write(`data: ${JSON.stringify({ content: notice })}\n\n`);
+
+      // Get usage after the stream completes
       const usage = await result.usage;
       const latencyMs = Date.now() - startTime;
 

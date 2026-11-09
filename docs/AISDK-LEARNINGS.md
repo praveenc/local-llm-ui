@@ -423,7 +423,7 @@ const result = streamText({
 
 1. **API Key Passing**: The Tavily API key must be passed directly to `tavilySearch()` function, not via environment variables in the browser context.
 
-2. **stopWhen for Multi-Step Tool Use**: AI SDK v5+ uses `stopWhen: stepCountIs(N)` instead of `maxSteps`. Without it, the model will call the tool but won't continue generating a response based on the tool results.
+2. **stopWhen for Multi-Step Tool Use**: AI SDK v5+ uses `stopWhen: stepCountIs(N)` instead of `maxSteps`. Without it, the model will call the tool but won't continue generating a response based on the tool results. See also [Tool Loop That Ends With an Answer](#tool-loop-that-ends-with-an-answer): a step limit alone can stop the reply with no answer.
 
 3. **Stream Part Types**: When using `fullStream`, tool-related parts have these types:
    - `tool-call`: Contains `toolCallId`, `toolName`, `input` (not `args`)
@@ -658,3 +658,22 @@ The `webSearch` tool calls Brave Search, Exa, or Tavily with `fetch`. It replace
 5. **Server only**: the three APIs do not send `Access-Control-Allow-Origin`, so a browser cannot call them directly.
 
 6. **Brave terms**: the Brave terms do not let an app store or cache search results. Tool results stay in the user's own browser (IndexedDB) with the chat history. The server does not keep them.
+
+---
+
+## Tool Loop That Ends With an Answer
+
+**Date**: 2026-11-09
+
+**File**: `server/tool-loop.ts` (used by all AI SDK proxies)
+
+**Problem**: with web search and a fetch MCP server, Claude Haiku 5.5 called a tool in every step: one search, then one page fetch for each step. `stopWhen: isStepCount(5)` stopped the loop after the 5th step. That step ended with a tool call, not text, so the reply had tool cards and no answer. The stream ended without an error, and the UI showed nothing more.
+
+**Fix**:
+
+1. `stopWhen: isStepCount(10)` (`MAX_STEPS`).
+2. `prepareStep` on the last step adds a user message: "You cannot call more tools in this reply. Answer my question now..."
+3. Also on the last step, `toolChoice: 'none'`, so the model cannot call a tool. **Not on Amazon Bedrock**: the Converse API has no "none" tool choice. The AI SDK then removes the tools and also **removes all tool calls and tool results from the messages** (warning `toolContent`). The model would answer without the data. For Bedrock, the instruction alone is used, and the tools stay on.
+4. If the reply still has no text, the proxy sends a short notice that gives the reason (`finishReason`): Max Tokens limit, content filter, or all steps used for tool calls.
+
+**Also fixed**: the Anthropic, Ollama, and Bedrock proxies did not forward stream `error` parts to the browser, so a failed model call also ended with no message.
