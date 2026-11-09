@@ -2,6 +2,7 @@
  * User preferences management utilities
  */
 import type { MCPServersMap } from '../types/mcp';
+import type { ThinkingEffort } from './thinkingEffort';
 
 export type Provider =
   | 'ollama'
@@ -33,6 +34,8 @@ export interface UserPreferences {
   webSearchEnabledByDefault?: boolean;
   // MCP Servers
   mcpServers?: MCPServersMap;
+  // Default thinking effort for each provider
+  thinkingEffortByProvider?: Partial<Record<Provider, ThinkingEffort>>;
 }
 
 const STORAGE_KEY = 'local-llm-ui-preferences';
@@ -109,4 +112,48 @@ export const validateInitials = (value: string): string => {
   const cleaned = value.replace(/[^A-Z0-9]/gi, '');
   // Limit to 2 characters and uppercase
   return cleaned.slice(0, 2).toUpperCase();
+};
+
+/**
+ * The model last picked in the chat input. Kept apart from the preferences so that the
+ * Preferences dialog cannot overwrite it with an older copy.
+ */
+export interface LastSelectedModel {
+  id: string;
+  provider: Provider;
+}
+
+const LAST_MODEL_KEY = 'local-llm-ui-last-model';
+
+export const loadLastSelectedModel = (): LastSelectedModel | undefined => {
+  try {
+    const stored = localStorage.getItem(LAST_MODEL_KEY);
+    if (!stored) return undefined;
+    const parsed = JSON.parse(stored) as Partial<LastSelectedModel>;
+    if (typeof parsed.id === 'string' && typeof parsed.provider === 'string') {
+      return { id: parsed.id, provider: parsed.provider };
+    }
+  } catch (error) {
+    console.error('Failed to load last selected model:', error);
+  }
+  return undefined;
+};
+
+export const saveLastSelectedModel = (model: LastSelectedModel): void => {
+  try {
+    localStorage.setItem(
+      LAST_MODEL_KEY,
+      JSON.stringify({ id: model.id, provider: model.provider } satisfies LastSelectedModel)
+    );
+  } catch (error) {
+    console.error('Failed to save last selected model:', error);
+  }
+};
+
+export const clearLastSelectedModel = (): void => {
+  try {
+    localStorage.removeItem(LAST_MODEL_KEY);
+  } catch (error) {
+    console.error('Failed to clear last selected model:', error);
+  }
 };

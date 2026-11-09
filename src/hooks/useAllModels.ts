@@ -25,6 +25,8 @@ export interface UnifiedModel {
   provider: Provider;
   providerName: string;
   family?: string;
+  /** The provider reports that the model can think (Ollama) */
+  supportsThinking?: boolean;
 }
 
 export interface ProviderModels {
@@ -224,6 +226,9 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
               provider,
               providerName: PROVIDER_NAMES[provider],
               family: model.modelFamily,
+              ...(model.supportsThinking !== undefined && {
+                supportsThinking: model.supportsThinking,
+              }),
             }));
 
             return {

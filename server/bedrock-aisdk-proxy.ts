@@ -6,6 +6,7 @@
  * Supports optional Tavily web search tool integration.
  */
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
+import { getModelCapabilities } from '@ai-sdk/anthropic/internal';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
 import { tavilySearch } from '@tavily/ai-sdk';
 import { isStepCount, streamText } from 'ai';
@@ -14,6 +15,8 @@ import type { IncomingMessage, ServerResponse } from 'http';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { buildSamplingParams } from '../src/utils/samplingParams.ts';
+import { buildReasoningParams, fallbackReasoningLevel } from '../src/utils/thinkingEffort.ts';
+import type { ReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security.ts';
 
@@ -41,6 +44,56 @@ interface ChatRequest {
   top_p?: number;
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
+  thinkingEffort?: unknown;
+}
+
+/** Share of the model's max output tokens that each effort uses as a thinking budget */
+const THINKING_BUDGET_SHARE: Record<Exclude<ReasoningLevel, 'none'>, number> = {
+  minimal: 0.02,
+  low: 0.1,
+  medium: 0.3,
+  high: 0.6,
+  xhigh: 0.9,
+};
+
+/**
+ * Thinking settings for a Claude model on Bedrock.
+ *
+ * - `display: 'summarized'` makes Claude 4.7+ and 5.x return the thinking text. They omit it
+ *   by default.
+ * - Claude 4.0 - 4.5 take a thinking token budget. The AI SDK adds the budget to max_tokens, and
+ *   on Bedrock it does not cap the sum at the model limit, so Bedrock rejects the request. We
+ *   set the budget here and lower max_tokens so that the sum fits.
+ */
+function claudeThinkingConfig(
+  model: string,
+  reasoning: ReasoningLevel | undefined,
+  maxTokens: number
+): {
+  maxTokens: number;
+  reasoningConfig?: { display: 'summarized'; type?: 'enabled'; budgetTokens?: number };
+} {
+  if (!reasoning || reasoning === 'none' || !/claude/i.test(model)) return { maxTokens };
+  const capabilities = getModelCapabilities(model);
+  if (capabilities.supportsAdaptiveThinking || capabilities.rejectsBudgetThinking) {
+    return { maxTokens, reasoningConfig: { display: 'summarized' } };
+  }
+  const modelMax = capabilities.maxOutputTokens;
+  const budgetTokens = Math.min(
+    modelMax - 1024,
+    Math.max(1024, Math.round(modelMax * THINKING_BUDGET_SHARE[reasoning]))
+  );
+  return {
+    maxTokens: Math.min(maxTokens, modelMax - budgetTokens),
+    reasoningConfig: { display: 'summarized', type: 'enabled', budgetTokens },
+  };
+}
+
+/** Error message plus the response body, which holds Bedrock's own message */
+function errorText(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const body = (error as { responseBody?: unknown }).responseBody;
+  return typeof body === 'string' ? `${error.message} ${body}` : error.message;
 }
 
 export async function handleBedrockAISDKRequest(
@@ -157,6 +210,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     top_p,
     enableWebSearch,
     mcpServers,
+    thinkingEffort,
   }: ChatRequest = JSON.parse(body);
 
   // Get Tavily API key from header if web search is enabled
@@ -175,6 +229,9 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     topP: top_p ?? 0.95,
     preferred: temperature === undefined && top_p !== undefined ? 'topP' : 'temperature',
   });
+
+  // Send the thinking effort only for models that accept it
+  const reasoningParams = buildReasoningParams('bedrock', model, thinkingEffort);
 
   // Transform messages to AI SDK format with file support
   const transformedMessages = messages.map((msg) => {
@@ -237,18 +294,33 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
   });
 
   try {
-    const result = streamText({
-      model: bedrock(model),
-      // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
-      allowSystemInMessages: true,
-      messages: transformedMessages,
-      maxOutputTokens: capMaxTokens(max_tokens),
-      tools,
-      abortSignal: abortController.signal,
-      // stopWhen required for multi-step tool use (agentic behavior)
-      ...(tools && { stopWhen: isStepCount(5) }),
-      ...samplingParams,
-    });
+    // Request options for a thinking effort (undefined: send none)
+    const thinkingOptions = (reasoning: ReasoningLevel | undefined) => {
+      const thinking = claudeThinkingConfig(model, reasoning, capMaxTokens(max_tokens));
+      // Reasoning models reject temperature and top_p while they think (Nova 2 at high effort
+      // returns a ValidationException), so leave them out when thinking is on
+      const isThinking = reasoning !== undefined && reasoning !== 'none';
+      return {
+        maxOutputTokens: thinking.maxTokens,
+        ...(isThinking ? {} : samplingParams),
+        ...(reasoning && { reasoning }),
+        ...(thinking.reasoningConfig && {
+          providerOptions: { amazonBedrock: { reasoningConfig: thinking.reasoningConfig } },
+        }),
+      };
+    };
+    const startStream = (reasoning: ReasoningLevel | undefined) =>
+      streamText({
+        model: bedrock(model),
+        // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
+        allowSystemInMessages: true,
+        messages: transformedMessages,
+        tools,
+        abortSignal: abortController.signal,
+        // stopWhen required for multi-step tool use (agentic behavior)
+        ...(tools && { stopWhen: isStepCount(5) }),
+        ...thinkingOptions(reasoning),
+      });
 
     // Use SSE format to stream text and then send usage metadata
     res.setHeader('Content-Type', 'text/event-stream');
@@ -257,31 +329,56 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
 
     const startTime = Date.now();
 
+    let reasoning = reasoningParams.reasoning;
+    let result = startStream(reasoning);
+    let canRetry = reasoning !== undefined;
+
     // Stream text chunks and handle tool calls
-    for await (const part of result.stream) {
-      if (part.type === 'text-delta') {
-        res.write(`data: ${JSON.stringify({ content: part.text })}\n\n`);
-      } else if (part.type === 'tool-call') {
-        res.write(
-          `data: ${JSON.stringify({
-            toolCall: {
-              id: part.toolCallId,
-              name: part.toolName,
-              args: 'input' in part ? part.input : {},
-            },
-          })}\n\n`
-        );
-      } else if (part.type === 'tool-result') {
-        res.write(
-          `data: ${JSON.stringify({
-            toolResult: {
-              id: part.toolCallId,
-              name: part.toolName,
-              result: 'output' in part ? part.output : part,
-            },
-          })}\n\n`
-        );
+    for (;;) {
+      let retryWith: ReasoningLevel | null = null;
+      for await (const part of result.stream) {
+        if (part.type === 'error' && canRetry && reasoning) {
+          // Some models reject some efforts (OpenAI models on Bedrock reject 'minimal'). Retry
+          // once with the nearest effort from the error's list of accepted values.
+          retryWith = fallbackReasoningLevel(reasoning, errorText(part.error));
+          if (retryWith) break;
+        } else if (part.type === 'text-delta') {
+          res.write(`data: ${JSON.stringify({ content: part.text })}\n\n`);
+        } else if (part.type === 'reasoning-delta') {
+          res.write(`data: ${JSON.stringify({ reasoning: part.text })}\n\n`);
+        } else if (part.type === 'tool-call') {
+          res.write(
+            `data: ${JSON.stringify({
+              toolCall: {
+                id: part.toolCallId,
+                name: part.toolName,
+                args: 'input' in part ? part.input : {},
+              },
+            })}\n\n`
+          );
+        } else if (part.type === 'tool-result') {
+          res.write(
+            `data: ${JSON.stringify({
+              toolResult: {
+                id: part.toolCallId,
+                name: part.toolName,
+                result: 'output' in part ? part.output : part,
+              },
+            })}\n\n`
+          );
+        }
+        // Only an error before any output can be retried
+        if (part.type !== 'error' && part.type !== 'start' && part.type !== 'start-step') {
+          canRetry = false;
+        }
       }
+      if (!retryWith) break;
+      console.warn(
+        `Bedrock: ${model} rejected effort '${reasoning}'. Retrying with '${retryWith}'.`
+      );
+      reasoning = retryWith;
+      canRetry = false;
+      result = startStream(reasoning);
     }
 
     // Get usage after stream completes

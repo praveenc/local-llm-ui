@@ -1,6 +1,7 @@
 /**
  * Database types for conversation persistence
  */
+import type { ThinkingEffort } from '../utils/thinkingEffort';
 
 export type Provider =
   | 'lmstudio'
@@ -24,6 +25,7 @@ export interface MessageParameters {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
+  thinkingEffort?: ThinkingEffort;
 }
 
 export interface MessageUsage {

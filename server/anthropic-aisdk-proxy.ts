@@ -3,7 +3,7 @@
  *
  * Handles chat requests using Vercel AI SDK with SSE streaming format.
  * API key passed from client via header (stored in localStorage).
- * Supports Tavily web search tool integration and extended thinking.
+ * Supports Tavily web search tool integration and thinking effort.
  */
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { tavilySearch } from '@tavily/ai-sdk';
@@ -13,6 +13,7 @@ import type { Connect } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { buildSamplingParams } from '../src/utils/samplingParams.ts';
+import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit } from './security.ts';
 
@@ -28,18 +29,9 @@ interface ChatRequest {
   top_p?: number;
   max_tokens?: number;
   enableWebSearch?: boolean;
-  enableThinking?: boolean;
-  thinkingBudget?: number;
+  thinkingEffort?: unknown;
   mcpServers?: MCPServerConfig[];
 }
-
-// Models that support extended thinking
-const THINKING_MODELS = [
-  'claude-opus-4-5',
-  'claude-sonnet-4-5',
-  'claude-haiku-4-5',
-  'claude-sonnet-4',
-];
 
 export function createAnthropicProxy(): Connect.NextHandleFunction {
   return async (req, res, next) => {
@@ -111,21 +103,13 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
         abortController.abort();
       });
 
-      // Check if model supports thinking (all 4.5 models support it)
-      const supportsThinking = THINKING_MODELS.some((m) => request.model.includes(m));
-      const enableThinking = request.enableThinking && supportsThinking;
-
-      // Build provider options for thinking
-      const providerOptions = enableThinking
-        ? {
-            anthropic: {
-              thinking: {
-                type: 'enabled' as const,
-                budgetTokens: request.thinkingBudget || 10000,
-              },
-            },
-          }
-        : undefined;
+      // Send the thinking effort only for models that accept it. The AI SDK maps it to adaptive
+      // thinking (and asks for the thinking text) or to a thinking token budget.
+      const reasoningParams = buildReasoningParams(
+        'anthropic',
+        request.model,
+        request.thinkingEffort
+      );
 
       // Send only the sampling parameters this model accepts
       const samplingConfig = buildSamplingParams(request.model, {
@@ -144,7 +128,7 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
         abortSignal: abortController.signal,
-        providerOptions,
+        ...reasoningParams,
         // stopWhen required for multi-step tool use (agentic behavior)
         ...(tools && { stopWhen: isStepCount(5) }),
       });

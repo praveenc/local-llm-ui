@@ -22,15 +22,18 @@ export const findModel = (providers: ProviderModels[], ref?: ModelRef): UnifiedM
 };
 
 /**
- * Model for a new chat: the last one used with the preferred provider, else that provider's
- * first model. When the preferred provider has no models (no API key, or not running), the last
- * model used with any provider.
+ * Model for a new chat: the model last picked in the chat input, when it is still available.
+ * Else the last one used with the preferred provider, else that provider's first model. When the
+ * preferred provider has no models (no API key, or not running), the last model used with any
+ * provider.
  */
 export const pickDefaultModel = (
   providers: ProviderModels[],
   preferredProvider: Provider,
-  recent: { preferred?: ModelRef; any?: ModelRef }
+  recent: { last?: ModelRef; preferred?: ModelRef; any?: ModelRef }
 ): UnifiedModel | null => {
+  const lastPicked = findModel(providers, recent.last);
+  if (lastPicked) return lastPicked;
   const preferredModels = providers.find((p) => p.provider === preferredProvider)?.models ?? [];
   if (preferredModels.length > 0) {
     return findModel(providers, recent.preferred) ?? preferredModels[0];

@@ -6,6 +6,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'http';
 
+import { mantleReasoningEffort } from '../src/utils/thinkingEffort.ts';
 import { setCORSHeaders } from './security.ts';
 
 // Supported Mantle regions
@@ -285,9 +286,20 @@ async function handleChat(
     }
   }
 
-  const { model, messages, temperature, max_tokens, top_p, stream = true } = JSON.parse(body);
+  const {
+    model,
+    messages,
+    temperature,
+    max_tokens,
+    top_p,
+    stream = true,
+    thinkingEffort,
+  } = JSON.parse(body);
 
   const baseUrl = getMantleBaseUrl(region);
+  // Sent only for models that take it (see utils/thinkingEffort)
+  const reasoningEffort = mantleReasoningEffort(model, thinkingEffort);
+  const isThinking = reasoningEffort !== undefined && reasoningEffort !== 'none';
 
   // Build request body for OpenAI-compatible API
   const requestBody: {
@@ -298,6 +310,7 @@ async function handleChat(
     temperature?: number;
     max_tokens?: number;
     top_p?: number;
+    reasoning_effort?: string;
   } = {
     model,
     messages: messages.map((msg: { role: string; content: string }) => ({
@@ -309,15 +322,19 @@ async function handleChat(
     ...(stream && { stream_options: { include_usage: true } }),
   };
 
-  // Add optional parameters if provided
-  if (temperature !== undefined) {
+  // Add optional parameters if provided. Reasoning models do not use temperature or top_p
+  // while they think, so leave them out then (the same rule as the Bedrock proxy).
+  if (temperature !== undefined && !isThinking) {
     requestBody.temperature = temperature;
   }
   if (max_tokens !== undefined) {
     requestBody.max_tokens = max_tokens;
   }
-  if (top_p !== undefined) {
+  if (top_p !== undefined && !isThinking) {
     requestBody.top_p = top_p;
+  }
+  if (reasoningEffort !== undefined) {
+    requestBody.reasoning_effort = reasoningEffort;
   }
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -368,7 +385,7 @@ async function handleChat(
             try {
               const parsed = JSON.parse(data);
 
-              // Handle reasoning content (e.g., MiniMax models)
+              // Handle reasoning content (MiniMax, gpt-oss, and other thinking models)
               const reasoning = parsed.choices?.[0]?.delta?.reasoning;
               if (reasoning) {
                 res.write(`data: ${JSON.stringify({ reasoning })}\n\n`);

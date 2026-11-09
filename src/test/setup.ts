@@ -8,3 +8,8 @@ if (!('ResizeObserver' in globalThis)) {
     disconnect() {}
   } as unknown as typeof ResizeObserver;
 }
+
+// jsdom has no scrollIntoView; Radix Select calls it when it opens
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}

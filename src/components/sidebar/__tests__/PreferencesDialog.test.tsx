@@ -63,4 +63,35 @@ describe('PreferencesDialog providers', () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent('Add an API key for Groq');
   });
+
+  it('shows Default thinking only on the selected provider row', () => {
+    renderDialog({ preferredProvider: 'bedrock' });
+    expect(screen.getByLabelText('Default thinking (Amazon Bedrock)')).toHaveTextContent('Default');
+    expect(screen.getAllByText('Default thinking')).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('radio', { name: /Ollama/ }));
+    expect(screen.getByLabelText('Default thinking (Ollama)')).toBeInTheDocument();
+
+    // LM Studio does not send a thinking effort, so it has no row
+    fireEvent.click(screen.getByRole('radio', { name: /LM Studio/ }));
+    expect(screen.queryByText('Default thinking')).not.toBeInTheDocument();
+  });
+
+  it('saves the default thinking effort for the provider', () => {
+    const { onSave } = renderDialog({
+      preferredProvider: 'bedrock',
+      thinkingEffortByProvider: { anthropic: 'low' },
+    });
+    const trigger = screen.getByLabelText('Default thinking (Amazon Bedrock)');
+    // jsdom lacks the pointer APIs that Radix Select uses, so open it with the keyboard
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('option', { name: 'High' }));
+    save();
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        thinkingEffortByProvider: { anthropic: 'low', bedrock: 'high' },
+      })
+    );
+  });
 });

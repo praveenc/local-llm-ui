@@ -23,6 +23,13 @@ import { cn } from '@/lib/utils';
 
 import { PROVIDER_API_KEY_FIELDS, isProviderConfigured } from '../../utils/preferences';
 import type { ApiKeyField, Provider, UserPreferences } from '../../utils/preferences';
+import {
+  THINKING_EFFORT_OPTIONS,
+  THINKING_EFFORT_PROVIDERS,
+  getDefaultThinkingEffort,
+  isThinkingEffort,
+} from '../../utils/thinkingEffort';
+import type { ThinkingEffort } from '../../utils/thinkingEffort';
 import { API_KEY_PROVIDERS, MANTLE_REGIONS, NO_KEY_PROVIDERS } from './providerOptions';
 import type { ProviderOption } from './providerOptions';
 
@@ -34,13 +41,29 @@ interface ProviderSettingsProps {
 export function ProviderSettings({ preferences, onUpdate }: ProviderSettingsProps) {
   const [editing, setEditing] = useState<Provider | null>(null);
 
+  // Default thinking effort, shown on the selected provider's row
+  const thinkingRow = (option: ProviderOption) =>
+    option.value === preferences.preferredProvider && (
+      <DefaultThinkingRow
+        option={option}
+        value={getDefaultThinkingEffort(preferences.thinkingEffortByProvider, option.value)}
+        onChange={(effort) =>
+          onUpdate('thinkingEffortByProvider', {
+            ...preferences.thinkingEffortByProvider,
+            [option.value]: effort,
+          })
+        }
+      />
+    );
+
   return (
     <div className="space-y-4">
       <div className="space-y-1">
         <h3 className="text-sm font-medium">Default provider</h3>
         <p className="text-xs text-muted-foreground">
-          New conversations start with the last model you used from this provider. Add an API key to
-          make a provider available.
+          New conversations start with the model you last picked in the chat. If that model is not
+          available, they use the last model from this provider. Add an API key to make a provider
+          available.
         </p>
       </div>
 
@@ -56,7 +79,9 @@ export function ProviderSettings({ preferences, onUpdate }: ProviderSettingsProp
               key={option.value}
               option={option}
               status={<span className="text-xs text-muted-foreground">{option.detail}</span>}
-            />
+            >
+              {thinkingRow(option)}
+            </ProviderRow>
           ))}
         </ProviderGroup>
 
@@ -147,6 +172,7 @@ export function ProviderSettings({ preferences, onUpdate }: ProviderSettingsProp
                     )}
                   </div>
                 )}
+                {thinkingRow(option)}
               </ProviderRow>
             );
           })}
@@ -197,6 +223,53 @@ function ProviderRow({ option, disabled, status, action, children }: ProviderRow
         {action}
       </div>
       {children}
+    </div>
+  );
+}
+
+interface DefaultThinkingRowProps {
+  option: ProviderOption;
+  value: ThinkingEffort;
+  onChange: (value: ThinkingEffort) => void;
+}
+
+/**
+ * Default thinking effort for one provider. The chat input starts with this value when you pick
+ * one of the provider's models. Not shown for providers that do not send a thinking effort.
+ */
+function DefaultThinkingRow({ option, value, onChange }: DefaultThinkingRowProps) {
+  if (!THINKING_EFFORT_PROVIDERS.includes(option.value)) return null;
+  const id = `provider-${option.value}-thinking`;
+  return (
+    <div className="flex items-center gap-3 border-t bg-muted/40 py-2 pl-10 pr-3">
+      <Label htmlFor={id} className="flex-1 text-xs font-normal">
+        Default thinking
+        <span className="block text-muted-foreground">
+          Used by models that accept a thinking effort.
+        </span>
+      </Label>
+      <Select
+        value={value}
+        onValueChange={(next) => {
+          if (isThinkingEffort(next)) onChange(next);
+        }}
+      >
+        <SelectTrigger
+          id={id}
+          size="sm"
+          className="w-32"
+          aria-label={`Default thinking (${option.label})`}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {THINKING_EFFORT_OPTIONS.map((effort) => (
+            <SelectItem key={effort.value} value={effort.value}>
+              {effort.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

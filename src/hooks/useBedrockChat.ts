@@ -15,6 +15,8 @@ import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messa
 import { normalizeMediaType } from '../utils/fileUtils';
 import { loadPreferences } from '../utils/preferences';
 import { buildSamplingParams } from '../utils/samplingParams';
+import { supportsThinkingEffort } from '../utils/thinkingEffort';
+import type { ThinkingEffort } from '../utils/thinkingEffort';
 import { useConversation, useConversationMutations } from './index';
 
 export type ChatStatus = 'idle' | 'streaming' | 'submitted' | 'error';
@@ -26,6 +28,7 @@ interface UseBedrockChatOptions {
   topP: number;
   maxTokens: number;
   samplingParameter: 'temperature' | 'topP';
+  thinkingEffort: ThinkingEffort;
   enableWebSearch?: boolean;
   onConversationChange?: (id: string | null) => void;
 }
@@ -68,6 +71,7 @@ export function useBedrockChat({
   topP,
   maxTokens,
   samplingParameter,
+  thinkingEffort,
   enableWebSearch = false,
   onConversationChange,
 }: UseBedrockChatOptions): UseBedrockChatReturn {
@@ -179,7 +183,13 @@ export function useBedrockChat({
         topP,
         preferred: samplingParameter,
       });
-      const parameters = { ...sampling, maxTokens };
+      // Send (and record) the thinking effort only when the user chose one the model accepts
+      const effort =
+        thinkingEffort !== 'default' &&
+        supportsThinkingEffort(provider, modelId, selectedModel.supportsThinking)
+          ? thinkingEffort
+          : undefined;
+      const parameters = { ...sampling, maxTokens, ...(effort && { thinkingEffort: effort }) };
 
       // Create user message
       const userMessage = createUIMessage('user', content);
@@ -247,6 +257,7 @@ export function useBedrockChat({
           messages: chatMessages,
           max_tokens: maxTokens,
           enableWebSearch,
+          ...(effort && { thinkingEffort: effort }),
           ...(sampling.temperature !== undefined && { temperature: sampling.temperature }),
           ...(sampling.topP !== undefined && { top_p: sampling.topP }),
         };
@@ -559,6 +570,7 @@ export function useBedrockChat({
       topP,
       maxTokens,
       samplingParameter,
+      thinkingEffort,
       enableWebSearch,
       getProvider,
       createConversation,
