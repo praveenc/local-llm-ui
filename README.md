@@ -31,6 +31,7 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 - **User Preferences**: Choose a default provider and its default thinking effort. Add API keys in the same list, and set avatar initials, theme, and density
 - **Remembers Your Model**: New conversations start with the model you last picked, also after a page reload
 - **Dark/Light Mode**: Toggle between visual modes
+- **Color Themes**: Pick Cosmic Night, [Cobaltz](https://github.com/praveenc/cobaltz), or [Rosé Pine](https://rosepinetheme.com/palette/). Each theme has a light and a dark variant
 - **Responsive Design**: Works seamlessly across desktop and mobile devices
 
 ## MCP Server Support
@@ -235,6 +236,27 @@ npm run preview
    - Type your message in the input field
    - Press Enter or click the send button
    - Watch the AI response stream in real-time
+
+### Chat Input
+
+The chat input has two groups of controls below the text box.
+
+- **Left**: add files (**+**), the model, and the thinking effort. These set what the model gets and which model answers.
+- **Right**: web search, MCP tools, and inference settings. After the first message, the right group also shows **Clear chat** and the context usage. The send button is last. While a reply streams, the send button becomes a stop button.
+
+When web search or MCP tools are on, their buttons show in the theme color.
+
+### Color Themes
+
+To change the theme, open **Preferences → Display** and select a card under **Color theme**. The sun and moon button in the header selects the light or dark variant of the theme.
+
+| Theme | Light variant | Dark variant |
+|---|---|---|
+| Cosmic Night (default) | Light | Dark |
+| [Cobaltz](https://github.com/praveenc/cobaltz) | Cobaltz Light, with a blue accent | Cobaltz, deep cobalt with a gold accent |
+| [Rosé Pine](https://rosepinetheme.com/palette/) | Rosé Pine Dawn, with a pine accent | Rosé Pine, with a rose accent |
+
+The app keeps your theme in the browser, with your other preferences.
 
 ### Model Configuration
 

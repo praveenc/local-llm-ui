@@ -8,10 +8,12 @@
 'use client';
 
 import {
+  ArrowUp,
   Bot,
   Copy,
   Loader2,
   RefreshCw,
+  Square,
   StopCircle,
   ThumbsDown,
   ThumbsUp,
@@ -21,6 +23,7 @@ import {
 import { Fragment, useEffect, useRef, useState } from 'react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { cn } from '@/lib/utils';
 
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
 import { useBedrockChat } from '../../hooks/useBedrockChat';
@@ -75,6 +78,7 @@ import { QuoteRespondDialog } from './QuoteRespondDialog';
 import { type QuoteSelection, QuoteSelectionButton } from './QuoteSelectionButton';
 import { ThinkingEffortSelector } from './ThinkingEffortSelector';
 import { WebSearchToggle } from './WebSearchToggle';
+import { composerCard, composerIconButton } from './composerStyles';
 
 /**
  * ChatContainer
@@ -577,7 +581,7 @@ const ChatContainer = ({
           onSendToFork={handleQuoteToFork}
           forkDisabledReason={forkDisabledReason}
         />
-        <div className="absolute bottom-0 left-0 right-0 z-20 p-2 md:p-4">
+        <div className="absolute bottom-0 left-0 right-0 z-20 bg-linear-to-t from-background from-60% to-transparent px-2 pb-2 pt-6 md:px-4 md:pb-4">
           <PromptInput
             onSubmit={handleSubmit}
             onError={handleFileError}
@@ -585,11 +589,17 @@ const ChatContainer = ({
             multiple
             maxFileSize={BEDROCK_DOC_MAX_SIZE}
             maxFiles={20}
-            className="max-w-4xl mx-auto bg-background/95 backdrop-blur-md border border-border rounded-xl shadow-lg"
+            className="max-w-4xl mx-auto"
+            inputGroupClassName={composerCard}
           >
-            <PromptInputHeader>
-              <PromptInputAttachments>
-                {(attachment) => <PromptInputAttachment data={attachment} />}
+            <PromptInputHeader className="px-3 pb-0 pt-3 empty:hidden">
+              <PromptInputAttachments className="p-0">
+                {(attachment) => (
+                  <PromptInputAttachment
+                    data={attachment}
+                    className="rounded-lg bg-muted/60 font-normal"
+                  />
+                )}
               </PromptInputAttachments>
             </PromptInputHeader>
             <PromptInputTextarea
@@ -602,11 +612,15 @@ const ChatContainer = ({
                 selectedModel ? 'What would you like to know?' : 'Select a model to start chatting'
               }
               disabled={isLoading || !selectedModel}
+              className="min-h-14 px-4 pt-4 pb-1 text-base leading-relaxed md:text-[15px] placeholder:text-muted-foreground/80"
             />
-            <PromptInputFooter className="px-3 pb-3">
-              <PromptInputTools>
+            <PromptInputFooter className="flex-wrap gap-y-1 px-2.5 pb-2.5 pt-1">
+              <PromptInputTools className="min-w-0 flex-wrap gap-0.5">
                 <PromptInputActionMenu modal={false}>
-                  <PromptInputActionMenuTrigger />
+                  <PromptInputActionMenuTrigger
+                    className={composerIconButton}
+                    aria-label="Add photos or files"
+                  />
                   <PromptInputActionMenuContent>
                     <PromptInputActionAddAttachments label="Add photos or files" />
                   </PromptInputActionMenuContent>
@@ -630,6 +644,16 @@ const ChatContainer = ({
                       disabled={isLoading}
                     />
                   )}
+              </PromptInputTools>
+              <PromptInputTools className="ml-auto gap-0.5">
+                <WebSearchToggle
+                  enabled={enableWebSearch}
+                  onToggle={setEnableWebSearch}
+                  disabled={isLoading}
+                  hasApiKey={primaryWebSearch !== undefined}
+                  providerLabel={primaryWebSearch && WEB_SEARCH_PROVIDER_LABELS[primaryWebSearch]}
+                />
+                <MCPToolsIndicator disabled={isLoading} />
                 <InferenceSettings
                   temperature={temperature}
                   setTemperature={setTemperature}
@@ -644,21 +668,18 @@ const ChatContainer = ({
                   samplingSupport={selectedModel ? getSamplingSupport(selectedModel.id) : 'both'}
                   disabled={isLoading}
                 />
-                <WebSearchToggle
-                  enabled={enableWebSearch}
-                  onToggle={setEnableWebSearch}
-                  disabled={isLoading}
-                  hasApiKey={primaryWebSearch !== undefined}
-                  providerLabel={primaryWebSearch && WEB_SEARCH_PROVIDER_LABELS[primaryWebSearch]}
-                />
-                <MCPToolsIndicator disabled={isLoading} />
+                {(messages.length > 0 || (contextLimits && cumulativeUsage.totalTokens > 0)) && (
+                  <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+                )}
                 {messages.length > 0 && (
                   <PromptInputButton
                     onClick={clearMessages}
                     disabled={isLoading}
-                    className="text-muted-foreground hover:text-foreground"
+                    className={cn(composerIconButton, 'hover:text-destructive')}
+                    aria-label="Clear chat"
+                    title="Clear chat"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="size-4" />
                   </PromptInputButton>
                 )}
                 {contextLimits && cumulativeUsage.totalTokens > 0 && (
@@ -670,13 +691,13 @@ const ChatContainer = ({
                     modelId={contextLimits.tokenlensModelId || undefined}
                   />
                 )}
+                <PromptInputSubmitWithAttachments
+                  inputValue={inputValue}
+                  selectedModel={selectedModel}
+                  isLoading={isLoading}
+                  stopGeneration={stopGeneration}
+                />
               </PromptInputTools>
-              <PromptInputSubmitWithAttachments
-                inputValue={inputValue}
-                selectedModel={selectedModel}
-                isLoading={isLoading}
-                stopGeneration={stopGeneration}
-              />
             </PromptInputFooter>
           </PromptInput>
         </div>
@@ -766,7 +787,14 @@ const PromptInputSubmitWithAttachments = ({
       status={isLoading ? 'streaming' : 'ready'}
       disabled={isDisabled}
       onClick={isLoading ? stopGeneration : undefined}
-    />
+      className="ml-1 size-8 rounded-full shadow-sm transition-colors disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"
+    >
+      {isLoading ? (
+        <Square className="size-3 fill-current" />
+      ) : (
+        <ArrowUp className="size-4" strokeWidth={2.5} />
+      )}
+    </PromptInputSubmit>
   );
 };
 
