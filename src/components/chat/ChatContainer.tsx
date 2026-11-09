@@ -33,6 +33,7 @@ import { formatQuoteMessage, quoteTagsToMarkdown } from '../../utils/quote';
 import { getSamplingSupport } from '../../utils/samplingParams';
 import { supportsThinkingEffort } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
+import { WEB_SEARCH_PROVIDER_LABELS, getPrimaryWebSearchProvider } from '../../utils/webSearch';
 import {
   Conversation,
   ConversationContent,
@@ -221,6 +222,8 @@ interface BedrockChatContainerProps {
   // Chat parameters
   maxTokens: number;
   setMaxTokens: (tokens: number) => void;
+  maxToolSteps: number;
+  setMaxToolSteps: (steps: number) => void;
   temperature: number;
   setTemperature: (temp: number) => void;
   topP: number;
@@ -277,6 +280,8 @@ const ChatContainer = ({
   isLoadingModels,
   maxTokens,
   setMaxTokens,
+  maxToolSteps,
+  setMaxToolSteps,
   temperature,
   setTemperature,
   topP,
@@ -297,9 +302,9 @@ const ChatContainer = ({
   const messagesRef = useRef<HTMLDivElement>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Check if Tavily API key is configured
+  // The web search provider tried first; undefined when no web search key is set
   const prefs = loadPreferences();
-  const hasTavilyApiKey = Boolean(prefs.tavilyApiKey);
+  const primaryWebSearch = getPrimaryWebSearchProvider(prefs);
 
   // Convert UnifiedModel to ModelOption for the hook
   const modelOption = toModelOption(selectedModel);
@@ -323,6 +328,7 @@ const ChatContainer = ({
     temperature,
     topP,
     maxTokens,
+    maxToolSteps,
     samplingParameter,
     thinkingEffort,
     enableWebSearch,
@@ -631,6 +637,8 @@ const ChatContainer = ({
                   setTopP={setTopP}
                   maxTokens={maxTokens}
                   setMaxTokens={setMaxTokens}
+                  maxToolSteps={maxToolSteps}
+                  setMaxToolSteps={setMaxToolSteps}
                   samplingParameter={samplingParameter}
                   setSamplingParameter={setSamplingParameter}
                   samplingSupport={selectedModel ? getSamplingSupport(selectedModel.id) : 'both'}
@@ -640,7 +648,8 @@ const ChatContainer = ({
                   enabled={enableWebSearch}
                   onToggle={setEnableWebSearch}
                   disabled={isLoading}
-                  hasApiKey={hasTavilyApiKey}
+                  hasApiKey={primaryWebSearch !== undefined}
+                  providerLabel={primaryWebSearch && WEB_SEARCH_PROVIDER_LABELS[primaryWebSearch]}
                 />
                 <MCPToolsIndicator disabled={isLoading} />
                 {messages.length > 0 && (

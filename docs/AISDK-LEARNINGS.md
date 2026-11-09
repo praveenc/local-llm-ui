@@ -221,7 +221,7 @@ for await (const part of result.fullStream) {
 **Implementation Notes**:
 1. API key passed via `X-Api-Key` header from client
 2. Uses standard AI SDK `streamText()` pattern
-3. Supports Tavily web search tool integration
+3. Supports the web search tool (Brave Search, Exa, or Tavily)
 4. Supports abort signal for stop generation
 5. Models that support thinking: Claude 4.5+ (all tiers: Haiku, Sonnet, Opus)
 
@@ -358,7 +358,7 @@ When implementing a new provider:
 - [ ] Error handling for connection failures
 - [ ] Model listing works
 - [ ] Stop generation (abort) works
-- [ ] Web search (Tavily) works when enabled
+- [ ] Web search (Brave Search, Exa, or Tavily) works when enabled
 - [ ] MCP tools are passed through and results stream correctly
 - [ ] Cleanup runs after response (success and error paths)
 
@@ -423,7 +423,7 @@ const result = streamText({
 
 1. **API Key Passing**: The Tavily API key must be passed directly to `tavilySearch()` function, not via environment variables in the browser context.
 
-2. **stopWhen for Multi-Step Tool Use**: AI SDK v5+ uses `stopWhen: stepCountIs(N)` instead of `maxSteps`. Without it, the model will call the tool but won't continue generating a response based on the tool results.
+2. **stopWhen for Multi-Step Tool Use**: AI SDK v5+ uses `stopWhen: stepCountIs(N)` instead of `maxSteps`. Without it, the model will call the tool but won't continue generating a response based on the tool results. See also [Tool Loop That Ends With an Answer](#tool-loop-that-ends-with-an-answer): a step limit alone can stop the reply with no answer.
 
 3. **Stream Part Types**: When using `fullStream`, tool-related parts have these types:
    - `tool-call`: Contains `toolCallId`, `toolName`, `input` (not `args`)
@@ -441,6 +441,8 @@ const result = streamText({
 5. **Client-Side Tool Call Handling**: Track pending tool calls and update their status when results arrive. Use a Map to track tool calls by ID.
 
 6. **Abort Signal Support**: Pass `abortSignal` to `streamText()` to support cancellation. On the server, listen for `req.on('close')` to abort when client disconnects.
+
+> **Superseded (2026-11)**: the proxies no longer use `@tavily/ai-sdk`. See [Web Search Providers with Fallback](#web-search-providers-with-fallback).
 
 **Available Tavily Tools**:
 - `tavilySearch()` — real-time web search (primary tool used)
@@ -623,3 +625,55 @@ This regex is future-proofed for 4.7, 4.8, etc. It matches model IDs like:
 - `server/bedrock-proxy.ts`
 - `server/anthropic-aisdk-proxy.ts`
 - `src/hooks/useBedrockChat.ts`
+
+---
+
+## Web Search Providers with Fallback
+
+**Date**: 2026-11-09
+
+**Files**: `server/web-search.ts` (tool), `src/utils/webSearch.ts` (shared settings and headers), `src/components/sidebar/WebSearchSettings.tsx` (Preferences tab)
+
+The `webSearch` tool calls Brave Search, Exa, or Tavily with `fetch`. It replaces `@tavily/ai-sdk`.
+
+**Request headers** (browser to proxy):
+- `X-Web-Search-Order`: providers in the order to try, for example `brave,exa`. The browser sends only providers that have a key. With fallback off, it sends only the primary provider.
+- `X-Brave-Api-Key`, `X-Exa-Api-Key`, `X-Tavily-Api-Key`: one header for each provider in the order.
+
+**Key Learnings**:
+
+1. **No package for each provider**: Brave has no official AI SDK package. `@exalabs/ai-sdk` 2.1.0 has a peer dependency on `ai@^6` (this app uses `ai@7`). It also always sends `contents.livecrawl`, which `type: "lite"` rejects. One `fetch` tool for all three providers is less code, and the result has the same shape for all of them.
+
+2. **Error status codes are different for each provider**:
+   - Brave: invalid key is **422** `SUBSCRIPTION_TOKEN_INVALID` (not 401), and rate limit is 429. Body: `{ error: { code, detail } }`.
+   - Exa: 401 `INVALID_API_KEY`, 402 `NO_MORE_CREDITS`, 429 `RATE_LIMIT_EXCEEDED`. Body: `{ error, tag }`.
+   - Tavily: 401 bad key, 429 rate limit, 432 plan limit, 433 pay-as-you-go limit. Body: `{ detail: { error } }`.
+
+   Because of these differences, the tool tries the next provider on **any** failure, timeout, or network error. It does not try the next provider when the user stops the request (abort signal).
+
+3. **The tool does not throw when all providers fail**: it returns `{ results: [], failures, error }`. The model can then tell the user that the search failed, and the tool card shows the error.
+
+4. **Small results**: 5 results, and up to 1,500 characters of text for each. Exa uses `contents.highlights` (no extra cost), not full page text.
+
+5. **Server only**: the three APIs do not send `Access-Control-Allow-Origin`, so a browser cannot call them directly.
+
+6. **Brave terms**: the Brave terms do not let an app store or cache search results. Tool results stay in the user's own browser (IndexedDB) with the chat history. The server does not keep them.
+
+---
+
+## Tool Loop That Ends With an Answer
+
+**Date**: 2026-11-09
+
+**File**: `server/tool-loop.ts` (used by all AI SDK proxies)
+
+**Problem**: with web search and a fetch MCP server, Claude Haiku 5.5 called a tool in every step: one search, then one page fetch for each step. `stopWhen: isStepCount(5)` stopped the loop after the 5th step. That step ended with a tool call, not text, so the reply had tool cards and no answer. The stream ended without an error, and the UI showed nothing more.
+
+**Fix**:
+
+1. `stopWhen: isStepCount(maxToolSteps)`. The user sets **Max Tool Steps** in the chat input (2 to 25, default 10, `src/utils/toolSteps.ts`). The browser sends `maxToolSteps` in the request body, and the server clamps it to the range.
+2. `prepareStep` on the last step adds a user message: "You cannot call more tools in this reply. Answer my question now..."
+3. Also on the last step, `toolChoice: 'none'`, so the model cannot call a tool. **Not on Amazon Bedrock**: the Converse API has no "none" tool choice. The AI SDK then removes the tools and also **removes all tool calls and tool results from the messages** (warning `toolContent`). The model would answer without the data. For Bedrock, the instruction alone is used, and the tools stay on.
+4. If the reply still has no text, the proxy sends a short notice that gives the reason (`finishReason`): Max Tokens limit, content filter, or all steps used for tool calls.
+
+**Also fixed**: the Anthropic, Ollama, and Bedrock proxies did not forward stream `error` parts to the browser, so a failed model call also ended with no message.

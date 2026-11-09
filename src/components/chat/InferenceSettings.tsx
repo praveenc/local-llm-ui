@@ -1,7 +1,7 @@
 /**
  * InferenceSettings Component
  *
- * Popover with inference config controls (temperature, top_p, max_tokens)
+ * Popover with inference config controls (temperature, top_p, max_tokens, max tool steps)
  * for the PromptInput footer. Only shows the sampling controls that the
  * selected model accepts (see utils/samplingParams).
  */
@@ -15,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Slider } from '@/components/ui/slider';
 
 import type { SamplingSupport } from '../../utils/samplingParams';
+import { MAX_TOOL_STEPS, MIN_TOOL_STEPS } from '../../utils/toolSteps';
 
 type SamplingParameter = 'temperature' | 'topP';
 
@@ -25,6 +26,9 @@ interface InferenceSettingsProps {
   setTopP: (value: number) => void;
   maxTokens: number;
   setMaxTokens: (value: number) => void;
+  /** Most model calls in one reply when web search or MCP tools are on */
+  maxToolSteps: number;
+  setMaxToolSteps: (value: number) => void;
   samplingParameter: SamplingParameter;
   setSamplingParameter: (value: SamplingParameter) => void;
   /** Which sampling parameters the selected model accepts */
@@ -39,6 +43,8 @@ export function InferenceSettings({
   setTopP,
   maxTokens,
   setMaxTokens,
+  maxToolSteps,
+  setMaxToolSteps,
   samplingParameter,
   setSamplingParameter,
   samplingSupport,
@@ -160,6 +166,31 @@ export function InferenceSettings({
               <span>256</span>
               <span>16K</span>
             </div>
+          </div>
+
+          {/* Max Tool Steps Slider */}
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <Label id="max-tool-steps-label" className="text-xs text-muted-foreground">
+                Max Tool Steps
+              </Label>
+              <span className="text-xs text-muted-foreground" data-testid="max-tool-steps-value">
+                {maxToolSteps}
+              </span>
+            </div>
+            <Slider
+              aria-labelledby="max-tool-steps-label"
+              value={[maxToolSteps]}
+              onValueChange={([value]) => setMaxToolSteps(value)}
+              min={MIN_TOOL_STEPS}
+              max={MAX_TOOL_STEPS}
+              step={1}
+              className="w-full"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Model calls in one reply when web search or MCP tools are on. The last call writes the
+              answer.
+            </p>
           </div>
         </div>
       </PopoverContent>

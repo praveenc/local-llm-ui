@@ -23,6 +23,7 @@ import {
 import type { ContentDensity, UserPreferences, VisualMode } from '../../utils/preferences';
 import { MCPServerSettings } from './MCPServerSettings';
 import { ProviderSettings } from './ProviderSettings';
+import { WebSearchSettings } from './WebSearchSettings';
 import { providerLabel } from './providerOptions';
 
 interface PreferencesDialogProps {
@@ -95,35 +96,8 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
               <ProviderSettings preferences={preferences} onUpdate={updatePreference} />
             </TabsContent>
 
-            <TabsContent value="web-search" className="mt-0 space-y-4">
-              <div className="space-y-1">
-                <h3 className="text-sm font-medium">Tavily web search</h3>
-                <p className="text-xs text-muted-foreground">
-                  With a key set, the globe button in the chat input lets the model search the web.
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="tavily-key">Tavily API key</Label>
-                <Input
-                  id="tavily-key"
-                  type="password"
-                  autoComplete="off"
-                  value={preferences.tavilyApiKey || ''}
-                  onChange={(e) => updatePreference('tavilyApiKey', e.target.value.trim())}
-                  placeholder="Paste your API key"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Get a key at{' '}
-                  <a
-                    href="https://tavily.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline"
-                  >
-                    tavily.com
-                  </a>
-                </p>
-              </div>
+            <TabsContent value="web-search" className="mt-0">
+              <WebSearchSettings preferences={preferences} onUpdate={updatePreference} />
             </TabsContent>
 
             <TabsContent value="mcp" className="mt-0">

@@ -3,10 +3,9 @@
  *
  * Handles chat requests to Ollama using the AI SDK community provider.
  * Supports reasoning/thinking content extraction for models like Qwen3.
- * Supports optional Tavily web search tool integration.
+ * Supports an optional web search tool (Brave Search, Exa, or Tavily).
  */
-import { tavilySearch } from '@tavily/ai-sdk';
-import { isStepCount, streamText } from 'ai';
+import { streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import { createOllama } from 'ollama-ai-provider-v2';
 import type { Connect } from 'vite';
@@ -16,6 +15,12 @@ import { ollamaThinkValue } from '../src/utils/thinkingEffort.ts';
 import type { OllamaThinkingInfo } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit } from './security.ts';
+import { noAnswerNotice, streamErrorMessage, toolLoopOptions } from './tool-loop.ts';
+import {
+  WEB_SEARCH_KEY_REQUIRED_ERROR,
+  createWebSearchTool,
+  getWebSearchProviders,
+} from './web-search.ts';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -31,6 +36,8 @@ interface ChatRequest {
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
   thinkingEffort?: unknown;
+  /** Most model calls in one reply when tools are on */
+  maxToolSteps?: unknown;
 }
 
 const OLLAMA_API = 'http://localhost:11434/api';
@@ -113,12 +120,12 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
       const isThinkingModel =
         modelLower.includes('qwen') || modelLower.includes('deepseek') || modelLower.includes('r1');
 
-      // Get Tavily API key from header if web search is enabled
-      const tavilyApiKey = req.headers['x-tavily-api-key'] as string;
-      if (request.enableWebSearch && !tavilyApiKey) {
+      // Web search API keys and the order to try the providers in
+      const webSearchProviders = getWebSearchProviders(req.headers);
+      if (request.enableWebSearch && webSearchProviders.length === 0) {
         res.statusCode = 401;
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'Tavily API key required for web search' }));
+        res.end(JSON.stringify({ error: WEB_SEARCH_KEY_REQUIRED_ERROR }));
         return;
       }
 
@@ -132,8 +139,8 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
 
       // Configure tools - merge web search and MCP tools
       const allTools: ToolSet = { ...mcpTools } as ToolSet;
-      if (request.enableWebSearch && tavilyApiKey) {
-        allTools.webSearch = tavilySearch({ apiKey: tavilyApiKey });
+      if (request.enableWebSearch && webSearchProviders.length > 0) {
+        allTools.webSearch = createWebSearchTool(webSearchProviders);
       }
       const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 
@@ -169,8 +176,8 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
         topP: request.top_p ?? 0.9,
         tools,
         abortSignal: abortController.signal,
-        // stopWhen required for multi-step tool use (agentic behavior)
-        ...(tools && { stopWhen: isStepCount(5) }),
+        // Tool loop that always ends with an answer (see tool-loop.ts)
+        ...toolLoopOptions(tools, { maxSteps: request.maxToolSteps }),
         // Enable thinking for supported models
         ...(think === undefined &&
           isThinkingModel && {
@@ -283,10 +290,16 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
               },
             })}\n\n`
           );
+        } else if (part.type === 'error') {
+          res.write(`data: ${JSON.stringify({ error: streamErrorMessage(part.error) })}\n\n`);
         }
       }
 
-      // Get usage data after stream completes
+      // Explain a reply that ends with no answer text
+      const notice = await noAnswerNotice(result);
+      if (notice) res.write(`data: ${JSON.stringify({ content: notice })}\n\n`);
+
+      // Get usage after the stream completes
       const usage = await result.usage;
       const latencyMs = Date.now() - startTime;
 

@@ -3,12 +3,11 @@
  *
  * Handles chat requests using Vercel AI SDK with SSE streaming format.
  * API keys are passed from client via headers (stored in localStorage).
- * Supports optional Tavily web search tool integration.
+ * Supports an optional web search tool (Brave Search, Exa, or Tavily).
  */
 import { createCerebras } from '@ai-sdk/cerebras';
 import { createGroq } from '@ai-sdk/groq';
-import { tavilySearch } from '@tavily/ai-sdk';
-import { isStepCount, streamText } from 'ai';
+import { streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connect } from 'vite';
@@ -17,6 +16,12 @@ import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit } from './security.ts';
+import { noAnswerNotice, toolLoopOptions } from './tool-loop.ts';
+import {
+  WEB_SEARCH_KEY_REQUIRED_ERROR,
+  createWebSearchTool,
+  getWebSearchProviders,
+} from './web-search.ts';
 
 type AISDKProvider = 'groq' | 'cerebras';
 
@@ -35,6 +40,8 @@ interface ChatRequest {
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
   thinkingEffort?: unknown;
+  /** Most model calls in one reply when tools are on */
+  maxToolSteps?: unknown;
 }
 
 function createProvider(providerType: AISDKProvider, apiKey: string) {
@@ -230,12 +237,12 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       return;
     }
 
-    // Get Tavily API key if web search is enabled
-    const tavilyApiKey = req.headers['x-tavily-api-key'] as string;
-    if (request.enableWebSearch && !tavilyApiKey) {
+    // Web search API keys and the order to try the providers in
+    const webSearchProviders = getWebSearchProviders(req.headers);
+    if (request.enableWebSearch && webSearchProviders.length === 0) {
       res.statusCode = 401;
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Tavily API key required for web search' }));
+      res.end(JSON.stringify({ error: WEB_SEARCH_KEY_REQUIRED_ERROR }));
       return;
     }
 
@@ -259,8 +266,8 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
 
       // Configure tools - merge web search and MCP tools
       const allTools: ToolSet = { ...mcpTools } as ToolSet;
-      if (request.enableWebSearch && tavilyApiKey) {
-        allTools.webSearch = tavilySearch({ apiKey: tavilyApiKey });
+      if (request.enableWebSearch && webSearchProviders.length > 0) {
+        allTools.webSearch = createWebSearchTool(webSearchProviders);
       }
       const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 
@@ -282,8 +289,8 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
         abortSignal: abortController.signal,
         // Send the thinking effort only for models that accept it (gpt-oss on Groq)
         ...buildReasoningParams(request.provider, request.model, request.thinkingEffort),
-        // stopWhen required for multi-step tool use (agentic behavior)
-        ...(tools && { stopWhen: isStepCount(5) }),
+        // Tool loop that always ends with an answer (see tool-loop.ts)
+        ...toolLoopOptions(tools, { maxSteps: request.maxToolSteps }),
       });
 
       // Stream text chunks and handle tool calls
@@ -318,7 +325,11 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
         }
       }
 
-      // Get usage data after stream completes
+      // Explain a reply that ends with no answer text
+      const notice = await noAnswerNotice(result);
+      if (notice) res.write(`data: ${JSON.stringify({ content: notice })}\n\n`);
+
+      // Get usage after the stream completes
       const usage = await result.usage;
       const latencyMs = Date.now() - startTime;
 

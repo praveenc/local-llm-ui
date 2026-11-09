@@ -17,6 +17,7 @@ import { loadPreferences } from '../utils/preferences';
 import { buildSamplingParams } from '../utils/samplingParams';
 import { supportsThinkingEffort } from '../utils/thinkingEffort';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
+import { buildWebSearchHeaders } from '../utils/webSearch';
 import { useConversation, useConversationMutations } from './index';
 
 export type ChatStatus = 'idle' | 'streaming' | 'submitted' | 'error';
@@ -27,6 +28,8 @@ interface UseBedrockChatOptions {
   temperature: number;
   topP: number;
   maxTokens: number;
+  /** Most model calls in one reply when tools are on */
+  maxToolSteps: number;
   samplingParameter: 'temperature' | 'topP';
   thinkingEffort: ThinkingEffort;
   enableWebSearch?: boolean;
@@ -70,6 +73,7 @@ export function useBedrockChat({
   temperature,
   topP,
   maxTokens,
+  maxToolSteps,
   samplingParameter,
   thinkingEffort,
   enableWebSearch = false,
@@ -256,6 +260,7 @@ export function useBedrockChat({
           model: modelId,
           messages: chatMessages,
           max_tokens: maxTokens,
+          maxToolSteps,
           enableWebSearch,
           ...(effort && { thinkingEffort: effort }),
           ...(sampling.temperature !== undefined && { temperature: sampling.temperature }),
@@ -268,10 +273,10 @@ export function useBedrockChat({
           'Content-Type': 'application/json',
         };
 
-        // Add Tavily API key if web search is enabled
+        // Add web search API keys and the provider order if web search is enabled
         const prefs = loadPreferences();
-        if (enableWebSearch && prefs.tavilyApiKey) {
-          headers['X-Tavily-Api-Key'] = prefs.tavilyApiKey;
+        if (enableWebSearch) {
+          Object.assign(headers, buildWebSearchHeaders(prefs));
         }
 
         // Add enabled MCP server configs
@@ -569,6 +574,7 @@ export function useBedrockChat({
       temperature,
       topP,
       maxTokens,
+      maxToolSteps,
       samplingParameter,
       thinkingEffort,
       enableWebSearch,

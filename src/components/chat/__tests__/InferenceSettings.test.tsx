@@ -13,6 +13,8 @@ function renderOpen(samplingSupport: SamplingSupport, samplingParameter: 'temper
       setTopP={vi.fn()}
       maxTokens={4096}
       setMaxTokens={vi.fn()}
+      maxToolSteps={12}
+      setMaxToolSteps={vi.fn()}
       samplingParameter={samplingParameter}
       setSamplingParameter={vi.fn()}
       samplingSupport={samplingSupport}
@@ -43,5 +45,11 @@ describe('InferenceSettings', () => {
     expect(screen.queryByText('Sampling Parameter')).not.toBeInTheDocument();
     expect(screen.getByText('0.50')).toBeInTheDocument();
     expect(screen.getByText('0.90')).toBeInTheDocument();
+  });
+
+  it('shows Max Tool Steps', () => {
+    renderOpen('both', 'temperature');
+    expect(screen.getByText('Max Tool Steps')).toBeInTheDocument();
+    expect(screen.getByTestId('max-tool-steps-value')).toHaveTextContent('12');
   });
 });

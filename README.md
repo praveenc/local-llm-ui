@@ -15,12 +15,12 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 - **Modern UI**: Built with shadcn/ui components (Radix UI + Tailwind CSS) for a clean, accessible interface
 - **Multiple AI Providers**: Support for Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Anthropic, Groq, and Cerebras
 - **MCP Server Integration**: Connect external tools via [Model Context Protocol](https://modelcontextprotocol.io/) — stdio, HTTP, and SSE transports
-- **Web Search**: Built-in Tavily web search tool for grounding responses with real-time data. Add the Tavily key in **Preferences → Web Search**
+- **Web Search**: Let the model search the web with Brave Search, Exa, or Tavily. All three have a free monthly plan. If one provider runs out of quota, the app can use the next one. Add keys in **Preferences → Web Search**
 - **Real-time Streaming**: Stream responses from AI models in real-time with smooth animations
 - **Reasoning/Thinking Support**: Display thinking process for reasoning models (MiniMax, DeepSeek-R1, NemoTron, etc.)
 - **Thinking Effort**: Choose how much a Claude or OpenAI reasoning model thinks before it answers, from Off to XHigh
 - **Unified Model Selector**: Searchable model picker in chat input, grouped by provider with unavailable services clearly flagged
-- **Inference Settings**: Adjust temperature, top-p, and max tokens via popover in chat input (only the settings the selected model accepts)
+- **Inference Settings**: Adjust temperature, top-p, max tokens, and max tool steps via popover in chat input (only the settings the selected model accepts)
 - **Context Window Indicator**: Track token usage against model context limits
 - **Prompt Optimizer**: Optimize prompts for Claude 4.5 models using best practices (Bedrock only)
 - **Document Upload**: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) with Bedrock models
@@ -170,6 +170,28 @@ Bedrock Mantle provides an OpenAI-compatible endpoint for Bedrock models.
 1. Get an API key from [cloud.cerebras.ai](https://cloud.cerebras.ai)
 
 2. In **Preferences → Providers**, select **Add key** next to Cerebras and paste the key
+
+## Web Search Setup
+
+The globe button in the chat input lets the model search the web. It needs an API key for at least one of these providers:
+
+| Provider | Free plan | Credit card | Get a key |
+|---|---|---|---|
+| Brave Search | $5 credit each month, about 1,000 searches | Required | [api-dashboard.search.brave.com](https://api-dashboard.search.brave.com/app/keys) |
+| Exa | $10 credit each month, about 1,400 searches | Not required | [dashboard.exa.ai](https://dashboard.exa.ai/api-keys) |
+| Tavily | 1,000 searches each month | Not required | [app.tavily.com](https://app.tavily.com) |
+
+Free plans change. Check each provider's pricing page for the current limits.
+
+1. In **Preferences → Web Search**, select **Add key** next to a provider and paste the key.
+2. Select the **primary provider**. The app tries this provider first.
+3. Keep **Use the next provider when one fails** on to get more free searches. When the primary provider has no quota left, is rate limited, or does not respond, the app tries the next provider that has a key.
+
+The search card in the reply shows which provider returned the results.
+
+### Max Tool Steps
+
+With web search or MCP tools on, the model can call tools several times before it answers. Each model call is one step. Set **Max Tool Steps** (2 to 25, default 10) in the chat input settings. The last step always writes the answer, so the model uses tools in at most one step less than the limit. Increase the value when a question needs many searches or page fetches. The app keeps your value after a page reload.
 
 ## Running the Application
 
