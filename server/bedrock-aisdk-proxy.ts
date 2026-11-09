@@ -17,7 +17,7 @@ import { buildSamplingParams } from '../src/utils/samplingParams.ts';
 import { buildReasoningParams, fallbackReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import type { ReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
-import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security.ts';
+import { capMaxTokens, endStreamWithError, readBodyWithLimit, setCORSHeaders } from './security.ts';
 import { noAnswerNotice, streamErrorMessage, toolLoopOptions } from './tool-loop.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
@@ -131,6 +131,9 @@ export async function handleBedrockAISDKRequest(
   } catch (error) {
     console.error('Bedrock AI SDK proxy error:', error);
     const err = error as Error;
+
+    // The stream has started: the status and headers are sent, so report the error in SSE format
+    if (endStreamWithError(res, streamErrorMessage(error))) return;
 
     let errorMessage = 'Internal server error';
     let statusCode = 500;
@@ -396,8 +399,9 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     const notice = await noAnswerNotice(result);
     if (notice) res.write(`data: ${JSON.stringify({ content: notice })}\n\n`);
 
-    // Get usage after the stream completes
-    const usage = await result.usage;
+    // Get usage after the stream completes. It rejects when the stream failed; the error part
+    // above already reported that error, so finish the reply without usage.
+    const usage = await Promise.resolve(result.usage).catch(() => undefined);
     const latencyMs = Date.now() - startTime;
 
     // Send usage metadata

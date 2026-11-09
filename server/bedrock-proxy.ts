@@ -8,7 +8,7 @@ import { BedrockRuntimeClient, ConverseStreamCommand } from '@aws-sdk/client-bed
 import type { IncomingMessage, ServerResponse } from 'http';
 
 import { buildSamplingParams } from '../src/utils/samplingParams.ts';
-import { capMaxTokens, setCORSHeaders } from './security.ts';
+import { capMaxTokens, endStreamWithError, setCORSHeaders } from './security.ts';
 
 interface InferenceProfileModel {
   modelArn?: string;
@@ -61,6 +61,10 @@ export async function handleBedrockRequest(
     }
   } catch (error) {
     const err = error as Error;
+
+    // The chat stream has started, so the status and headers are sent
+    if (res.headersSent) console.error('Bedrock proxy stream error:', error);
+    if (endStreamWithError(res, err.message || 'The model stream failed.')) return;
 
     let errorMessage = 'Internal server error';
     let statusCode = 500;

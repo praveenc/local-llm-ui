@@ -7,7 +7,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 
 import { mantleReasoningEffort } from '../src/utils/thinkingEffort.ts';
-import { setCORSHeaders } from './security.ts';
+import { endStreamWithError, setCORSHeaders } from './security.ts';
 
 // Supported Mantle regions
 const MANTLE_REGIONS = [
@@ -96,6 +96,9 @@ export async function handleMantleRequest(
   } catch (error) {
     console.error('Mantle proxy error:', error);
     const err = error as Error;
+
+    // The chat stream has started, so the status and headers are sent
+    if (endStreamWithError(res, err.message || 'The model stream failed.')) return;
 
     let errorMessage = 'Internal server error';
     let statusCode = 500;
