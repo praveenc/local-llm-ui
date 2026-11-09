@@ -14,7 +14,6 @@ import type { MessagePart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
 import { normalizeMediaType } from '../utils/fileUtils';
 import { loadPreferences } from '../utils/preferences';
-import { buildSamplingParams } from '../utils/samplingParams';
 import { supportsThinkingEffort } from '../utils/thinkingEffort';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
 import { buildWebSearchHeaders } from '../utils/webSearch';
@@ -25,12 +24,9 @@ export type ChatStatus = 'idle' | 'streaming' | 'submitted' | 'error';
 interface UseBedrockChatOptions {
   conversationId: string | null;
   selectedModel: ModelOption | null;
-  temperature: number;
-  topP: number;
   maxTokens: number;
   /** Most model calls in one reply when tools are on */
   maxToolSteps: number;
-  samplingParameter: 'temperature' | 'topP';
   thinkingEffort: ThinkingEffort;
   enableWebSearch?: boolean;
   onConversationChange?: (id: string | null) => void;
@@ -70,11 +66,8 @@ interface UseBedrockChatReturn {
 export function useBedrockChat({
   conversationId: externalConversationId,
   selectedModel,
-  temperature,
-  topP,
   maxTokens,
   maxToolSteps,
-  samplingParameter,
   thinkingEffort,
   enableWebSearch = false,
   onConversationChange,
@@ -181,19 +174,13 @@ export function useBedrockChat({
         onConversationChange?.(currentConversationId);
       }
 
-      // Send (and record) only the sampling parameters this model accepts
-      const sampling = buildSamplingParams(modelId, {
-        temperature,
-        topP,
-        preferred: samplingParameter,
-      });
       // Send (and record) the thinking effort only when the user chose one the model accepts
       const effort =
         thinkingEffort !== 'default' &&
         supportsThinkingEffort(provider, modelId, selectedModel.supportsThinking)
           ? thinkingEffort
           : undefined;
-      const parameters = { ...sampling, maxTokens, ...(effort && { thinkingEffort: effort }) };
+      const parameters = { maxTokens, ...(effort && { thinkingEffort: effort }) };
 
       // Create user message
       const userMessage = createUIMessage('user', content);
@@ -263,8 +250,6 @@ export function useBedrockChat({
           maxToolSteps,
           enableWebSearch,
           ...(effort && { thinkingEffort: effort }),
-          ...(sampling.temperature !== undefined && { temperature: sampling.temperature }),
-          ...(sampling.topP !== undefined && { top_p: sampling.topP }),
         };
 
         // Route to appropriate endpoint based on provider
@@ -571,11 +556,8 @@ export function useBedrockChat({
       status,
       activeConversationId,
       messages,
-      temperature,
-      topP,
       maxTokens,
       maxToolSteps,
-      samplingParameter,
       thinkingEffort,
       enableWebSearch,
       getProvider,

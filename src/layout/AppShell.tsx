@@ -45,9 +45,6 @@ export default function AppShell() {
     setMaxToolStepsState(steps);
     saveMaxToolSteps(steps);
   };
-  const [temperature, setTemperature] = useState<number>(0.5);
-  const [topP, setTopP] = useState<number>(0.9);
-  const [samplingParameter, setSamplingParameter] = useState<'temperature' | 'topP'>('temperature');
   const [navigationOpen, setNavigationOpen] = useState<boolean>(true);
   const clearHistoryRef = React.useRef<(() => void) | null>(null);
 
@@ -229,12 +226,6 @@ export default function AppShell() {
           setMaxTokens={setMaxTokens}
           maxToolSteps={maxToolSteps}
           setMaxToolSteps={setMaxToolSteps}
-          temperature={temperature}
-          setTemperature={setTemperature}
-          topP={topP}
-          setTopP={setTopP}
-          samplingParameter={samplingParameter}
-          setSamplingParameter={setSamplingParameter}
           thinkingEffort={thinkingEffort}
           setThinkingEffort={setThinkingEffort}
           avatarInitials={userPreferences.avatarInitials}

@@ -34,8 +34,6 @@ interface ChatRequest {
   provider: AISDKProvider;
   model: string;
   messages: ChatMessage[];
-  temperature?: number;
-  top_p?: number;
   max_tokens?: number;
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
@@ -282,9 +280,7 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
         // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
         allowSystemInMessages: true,
         messages: request.messages,
-        temperature: request.temperature,
         maxOutputTokens: capMaxTokens(request.max_tokens),
-        topP: request.top_p,
         tools,
         abortSignal: abortController.signal,
         // Send the thinking effort only for models that accept it (gpt-oss on Groq)

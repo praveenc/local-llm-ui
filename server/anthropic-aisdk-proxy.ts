@@ -11,7 +11,6 @@ import type { ToolSet } from 'ai';
 import type { Connect } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
-import { buildSamplingParams } from '../src/utils/samplingParams.ts';
 import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, readBodyWithLimit } from './security.ts';
@@ -30,8 +29,6 @@ interface ChatMessage {
 interface ChatRequest {
   model: string;
   messages: ChatMessage[];
-  temperature?: number;
-  top_p?: number;
   max_tokens?: number;
   enableWebSearch?: boolean;
   thinkingEffort?: unknown;
@@ -118,20 +115,11 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
         request.thinkingEffort
       );
 
-      // Send only the sampling parameters this model accepts
-      const samplingConfig = buildSamplingParams(request.model, {
-        temperature: request.temperature ?? 0.3,
-        topP: request.top_p ?? 0.95,
-        preferred:
-          request.temperature === undefined && request.top_p !== undefined ? 'topP' : 'temperature',
-      });
-
       const result = await streamText({
         model: anthropic(request.model),
         // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
         allowSystemInMessages: true,
         messages: request.messages,
-        ...samplingConfig,
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
         abortSignal: abortController.signal,

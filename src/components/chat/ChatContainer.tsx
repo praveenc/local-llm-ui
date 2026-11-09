@@ -33,7 +33,6 @@ import { normalizeMediaType } from '../../utils/fileUtils';
 import { getModelContextLimits } from '../../utils/modelContext';
 import { loadPreferences } from '../../utils/preferences';
 import { formatQuoteMessage, quoteTagsToMarkdown } from '../../utils/quote';
-import { getSamplingSupport } from '../../utils/samplingParams';
 import { supportsThinkingEffort } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
 import { WEB_SEARCH_PROVIDER_LABELS, getPrimaryWebSearchProvider } from '../../utils/webSearch';
@@ -207,8 +206,6 @@ const getToolCalls = (message: { parts: Array<{ type: string }> }): ToolCallPart
 // Bedrock file size limits
 const BEDROCK_DOC_MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for documents
 
-type SamplingParameter = 'temperature' | 'topP';
-
 // Internal model option type for useBedrockChat compatibility
 interface ModelOption {
   value: string;
@@ -228,12 +225,6 @@ interface BedrockChatContainerProps {
   setMaxTokens: (tokens: number) => void;
   maxToolSteps: number;
   setMaxToolSteps: (steps: number) => void;
-  temperature: number;
-  setTemperature: (temp: number) => void;
-  topP: number;
-  setTopP: (topP: number) => void;
-  samplingParameter: SamplingParameter;
-  setSamplingParameter: (param: SamplingParameter) => void;
   thinkingEffort: ThinkingEffort;
   setThinkingEffort: (effort: ThinkingEffort) => void;
   avatarInitials?: string;
@@ -286,12 +277,6 @@ const ChatContainer = ({
   setMaxTokens,
   maxToolSteps,
   setMaxToolSteps,
-  temperature,
-  setTemperature,
-  topP,
-  setTopP,
-  samplingParameter,
-  setSamplingParameter,
   thinkingEffort,
   setThinkingEffort,
   conversationId: externalConversationId,
@@ -329,11 +314,8 @@ const ChatContainer = ({
   } = useBedrockChat({
     conversationId: externalConversationId ?? null,
     selectedModel: modelOption,
-    temperature,
-    topP,
     maxTokens,
     maxToolSteps,
-    samplingParameter,
     thinkingEffort,
     enableWebSearch,
     onConversationChange,
@@ -655,17 +637,10 @@ const ChatContainer = ({
                 />
                 <MCPToolsIndicator disabled={isLoading} />
                 <InferenceSettings
-                  temperature={temperature}
-                  setTemperature={setTemperature}
-                  topP={topP}
-                  setTopP={setTopP}
                   maxTokens={maxTokens}
                   setMaxTokens={setMaxTokens}
                   maxToolSteps={maxToolSteps}
                   setMaxToolSteps={setMaxToolSteps}
-                  samplingParameter={samplingParameter}
-                  setSamplingParameter={setSamplingParameter}
-                  samplingSupport={selectedModel ? getSamplingSupport(selectedModel.id) : 'both'}
                   disabled={isLoading}
                 />
                 {(messages.length > 0 || (contextLimits && cumulativeUsage.totalTokens > 0)) && (

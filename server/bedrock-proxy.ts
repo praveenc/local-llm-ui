@@ -7,7 +7,6 @@ import {
 import { BedrockRuntimeClient, ConverseStreamCommand } from '@aws-sdk/client-bedrock-runtime';
 import type { IncomingMessage, ServerResponse } from 'http';
 
-import { buildSamplingParams } from '../src/utils/samplingParams.ts';
 import { capMaxTokens, endStreamWithError, setCORSHeaders } from './security.ts';
 
 interface InferenceProfileModel {
@@ -224,29 +223,14 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     }
   }
 
-  const { model, messages, temperature, max_tokens, top_p } = JSON.parse(body);
+  const { model, messages, max_tokens } = JSON.parse(body);
 
   console.log(`Bedrock: Chat request for model: ${model}`);
   console.log(`Bedrock: Messages count: ${messages?.length || 0}`);
   // console.log(`Bedrock: Messages:`, JSON.stringify(messages, null, 2));
 
-  // Send only the sampling parameters this model accepts
-  const inferenceConfig: {
-    temperature?: number;
-    maxTokens?: number;
-    topP?: number;
-  } = {
-    maxTokens: capMaxTokens(max_tokens),
-    ...buildSamplingParams(model, {
-      temperature: temperature ?? 0.3,
-      topP: top_p ?? 0.95,
-      preferred: temperature === undefined && top_p !== undefined ? 'topP' : 'temperature',
-    }),
-  };
-
-  console.log(
-    `Bedrock: Temperature = ${inferenceConfig.temperature ?? 'None'}; topP = ${inferenceConfig.topP ?? 'None'}`
-  );
+  // No temperature or top_p: newer models reject them, so all models use their own defaults
+  const inferenceConfig = { maxTokens: capMaxTokens(max_tokens) };
 
   // Transform messages to support documents
   const transformedMessages = messages.map(

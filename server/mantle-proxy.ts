@@ -289,20 +289,11 @@ async function handleChat(
     }
   }
 
-  const {
-    model,
-    messages,
-    temperature,
-    max_tokens,
-    top_p,
-    stream = true,
-    thinkingEffort,
-  } = JSON.parse(body);
+  const { model, messages, max_tokens, stream = true, thinkingEffort } = JSON.parse(body);
 
   const baseUrl = getMantleBaseUrl(region);
   // Sent only for models that take it (see utils/thinkingEffort)
   const reasoningEffort = mantleReasoningEffort(model, thinkingEffort);
-  const isThinking = reasoningEffort !== undefined && reasoningEffort !== 'none';
 
   // Build request body for OpenAI-compatible API
   const requestBody: {
@@ -310,9 +301,7 @@ async function handleChat(
     messages: Array<{ role: string; content: string }>;
     stream: boolean;
     stream_options?: { include_usage: boolean };
-    temperature?: number;
     max_tokens?: number;
-    top_p?: number;
     reasoning_effort?: string;
   } = {
     model,
@@ -325,16 +314,9 @@ async function handleChat(
     ...(stream && { stream_options: { include_usage: true } }),
   };
 
-  // Add optional parameters if provided. Reasoning models do not use temperature or top_p
-  // while they think, so leave them out then (the same rule as the Bedrock proxy).
-  if (temperature !== undefined && !isThinking) {
-    requestBody.temperature = temperature;
-  }
+  // Add optional parameters if provided. No temperature or top_p: models use their own defaults
   if (max_tokens !== undefined) {
     requestBody.max_tokens = max_tokens;
-  }
-  if (top_p !== undefined && !isThinking) {
-    requestBody.top_p = top_p;
   }
   if (reasoningEffort !== undefined) {
     requestBody.reasoning_effort = reasoningEffort;

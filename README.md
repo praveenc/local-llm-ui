@@ -200,20 +200,9 @@ Click the settings button in the chat input to set these values:
 
 - **Max tokens:** the maximum length of the reply.
 - **Max tool steps:** the maximum number of model calls in one reply when tools are on. See [Max tool steps](#max-tool-steps).
-- **Temperature** and **Top P:** the randomness and the diversity of the reply. A low temperature (0.1 to 0.3) gives focused answers. A high temperature (0.7 to 1.0) gives more varied answers.
-
-The panel shows only the settings that the selected model accepts:
-
-| Model | Temperature and Top P |
-|---|---|
-| Claude 4.7 and later (all Claude 5.x models) | Not shown. These models reject both settings. |
-| Claude 4.0 to 4.6 | A toggle. You can set one of the two. |
-| Claude 3.x and non-Claude models | Both shown. |
-
-The app does not send a setting that the model does not accept. On Amazon Bedrock and Bedrock Mantle, the app does not send Temperature or Top P when thinking is on.
 
 > [!NOTE]
-> Newer models do not accept `temperature` or `top_p`. If the app sends them, the model rejects the request with an error such as "`temperature` is deprecated for this model", and the reply is empty. The app removes these settings for the models that it knows. If a new model gives this error, [open an issue](https://github.com/praveenc/local-llm-ui/issues) with the model ID.
+> The app does not send `temperature` or `top_p` to any model. Each model uses its own default sampling settings. Newer models (for example, Claude Opus 4.7 and later) reject these settings with the error "`temperature` is deprecated for this model". To keep the behavior the same for all models, the app also does not send them to older models.
 
 ### Web search
 
@@ -329,13 +318,6 @@ In **Preferences**, you can also set your avatar initials. The app keeps all pre
 ### The reply stops before the answer
 
 When tools are on, the model can use all its tool steps. Increase **Max tool steps** in the inference settings and send the message again.
-
-### Error: "`temperature` is deprecated for this model"
-
-The model does not accept `temperature` or `top_p`.
-
-1. Select a different model, or start a new chat.
-2. If the error continues, [open an issue](https://github.com/praveenc/local-llm-ui/issues) with the model ID. The app must remove these settings for that model.
 
 ### The thinking section does not show
 

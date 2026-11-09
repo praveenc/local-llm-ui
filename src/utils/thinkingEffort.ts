@@ -18,7 +18,6 @@
  * "Default" sends nothing, so the model uses its own default.
  */
 import type { Provider } from '../db/types.ts';
-import { getClaudeVersion } from './samplingParams.ts';
 
 export type ThinkingEffort = 'default' | 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 
@@ -50,6 +49,21 @@ export const isThinkingEffort = (value: unknown): value is ThinkingEffort =>
 
 export const thinkingEffortLabel = (effort: ThinkingEffort): string =>
   THINKING_EFFORT_OPTIONS.find((option) => option.value === effort)?.label ?? effort;
+
+/**
+ * Get the Claude major/minor version from a model ID in the new naming style
+ * (claude-<family>-<major>[-<minor>]), for example:
+ *   global.anthropic.claude-haiku-5-5            -> 5.5
+ *   anthropic.claude-haiku-4-5-20251001-v1:0     -> 4.5
+ *   anthropic.claude-sonnet-4-20250514-v1:0      -> 4.0 (date is not a minor version)
+ *   claude-opus-4-6                              -> 4.6
+ * Old style IDs (claude-3-5-sonnet, claude-v2) return null.
+ */
+export function getClaudeVersion(modelId: string): { major: number; minor: number } | null {
+  const match = /claude-[a-z]+-(\d+)(?:[-.](\d{1,2})(?!\d))?/i.exec(modelId);
+  if (!match) return null;
+  return { major: Number(match[1]), minor: match[2] ? Number(match[2]) : 0 };
+}
 
 /** Claude 4.0 and later (new naming style, for example claude-sonnet-4-5, claude-opus-5) */
 const isClaudeThinkingModel = (modelId: string): boolean => {

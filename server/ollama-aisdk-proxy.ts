@@ -30,8 +30,6 @@ interface ChatMessage {
 interface ChatRequest {
   model: string;
   messages: ChatMessage[];
-  temperature?: number;
-  top_p?: number;
   max_tokens?: number;
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
@@ -171,9 +169,7 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
           role: m.role,
           content: m.content,
         })),
-        temperature: request.temperature ?? 0.7,
         maxOutputTokens: capMaxTokens(request.max_tokens),
-        topP: request.top_p ?? 0.9,
         tools,
         abortSignal: abortController.signal,
         // Tool loop that always ends with an answer (see tool-loop.ts)
