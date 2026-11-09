@@ -20,7 +20,7 @@ A modern, responsive UI for interacting with Large Language Models (LLMs). Built
 - **Reasoning/Thinking Support**: Display thinking process for reasoning models (MiniMax, DeepSeek-R1, NemoTron, etc.)
 - **Thinking Effort**: Choose how much a Claude or OpenAI reasoning model thinks before it answers, from Off to XHigh
 - **Unified Model Selector**: Searchable model picker in chat input, grouped by provider with unavailable services clearly flagged
-- **Inference Settings**: Adjust temperature, top-p, and max tokens via popover in chat input (only the settings the selected model accepts)
+- **Inference Settings**: Adjust temperature, top-p, max tokens, and max tool steps via popover in chat input (only the settings the selected model accepts)
 - **Context Window Indicator**: Track token usage against model context limits
 - **Prompt Optimizer**: Optimize prompts for Claude 4.5 models using best practices (Bedrock only)
 - **Document Upload**: Upload documents (PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX) with Bedrock models
@@ -188,6 +188,10 @@ Free plans change. Check each provider's pricing page for the current limits.
 3. Keep **Use the next provider when one fails** on to get more free searches. When the primary provider has no quota left, is rate limited, or does not respond, the app tries the next provider that has a key.
 
 The search card in the reply shows which provider returned the results.
+
+### Max Tool Steps
+
+With web search or MCP tools on, the model can call tools several times before it answers. Each model call is one step. Set **Max Tool Steps** (2 to 25, default 10) in the chat input settings. The last step always writes the answer, so the model uses tools in at most one step less than the limit. Increase the value when a question needs many searches or page fetches. The app keeps your value after a page reload.
 
 ## Running the Application
 

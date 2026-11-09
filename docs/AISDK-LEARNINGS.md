@@ -671,7 +671,7 @@ The `webSearch` tool calls Brave Search, Exa, or Tavily with `fetch`. It replace
 
 **Fix**:
 
-1. `stopWhen: isStepCount(10)` (`MAX_STEPS`).
+1. `stopWhen: isStepCount(maxToolSteps)`. The user sets **Max Tool Steps** in the chat input (2 to 25, default 10, `src/utils/toolSteps.ts`). The browser sends `maxToolSteps` in the request body, and the server clamps it to the range.
 2. `prepareStep` on the last step adds a user message: "You cannot call more tools in this reply. Answer my question now..."
 3. Also on the last step, `toolChoice: 'none'`, so the model cannot call a tool. **Not on Amazon Bedrock**: the Converse API has no "none" tool choice. The AI SDK then removes the tools and also **removes all tool calls and tool results from the messages** (warning `toolContent`). The model would answer without the data. For Bedrock, the instruction alone is used, and the tools stay on.
 4. If the reply still has no text, the proxy sends a short notice that gives the reason (`finishReason`): Max Tokens limit, content filter, or all steps used for tool calls.
