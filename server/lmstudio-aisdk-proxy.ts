@@ -17,8 +17,6 @@ interface ChatMessage {
 interface ChatRequest {
   model: string;
   messages: ChatMessage[];
-  temperature?: number;
-  top_p?: number;
   max_tokens?: number;
   mcpServers?: MCPServerConfig[];
 }
@@ -64,9 +62,7 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
         body: JSON.stringify({
           model: request.model,
           messages: request.messages,
-          temperature: request.temperature ?? 0.7,
           max_tokens: capMaxTokens(request.max_tokens),
-          top_p: request.top_p ?? 0.9,
           stream: true,
           stream_options: { include_usage: true },
         }),

@@ -16,7 +16,7 @@ vi.mock('@aws-sdk/credential-providers', () => ({ fromNodeProviderChain: () => a
 const { handleBedrockAISDKRequest } = await import('../bedrock-aisdk-proxy');
 
 /** Send one chat request to the proxy. Returns the response body and the handler's promise. */
-async function chat() {
+async function chat(extra: Record<string, unknown> = {}) {
   let handled: Promise<void> | undefined;
   const server = createServer((req, res) => {
     handled = handleBedrockAISDKRequest(req, res);
@@ -30,6 +30,7 @@ async function chat() {
       body: JSON.stringify({
         model: 'global.anthropic.claude-test',
         messages: [{ role: 'user', content: 'Hello' }],
+        ...extra,
       }),
     });
     return { status: response.status, body: await response.text(), handled };
@@ -63,5 +64,37 @@ describe('Bedrock AI SDK proxy errors', () => {
     expect(status).toBe(200);
     expect(body).toContain("data retention mode 'default' is not available for this model");
     expect(body.trimEnd().endsWith('data: [DONE]')).toBe(true);
+  });
+
+  it('does not send temperature or top_p to the model', async () => {
+    mockModel.current = new MockLanguageModelV4({
+      doStream: async () => ({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: 'text-start', id: '1' });
+            controller.enqueue({ type: 'text-delta', id: '1', delta: 'Hi' });
+            controller.enqueue({ type: 'text-end', id: '1' });
+            controller.enqueue({
+              type: 'finish',
+              finishReason: { unified: 'stop', raw: 'stop' },
+              usage: {
+                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+                outputTokens: { total: 1, text: 1, reasoning: 0 },
+              },
+            });
+            controller.close();
+          },
+        }),
+      }),
+    });
+    const model = mockModel.current as MockLanguageModelV4;
+
+    // An old client can still send the values; the proxy must drop them
+    const { handled } = await chat({ temperature: 0.5, top_p: 0.9 });
+    await handled;
+
+    expect(model.doStreamCalls).toHaveLength(1);
+    expect(model.doStreamCalls[0].temperature).toBeUndefined();
+    expect(model.doStreamCalls[0].topP).toBeUndefined();
   });
 });

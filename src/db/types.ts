@@ -22,8 +22,6 @@ export interface MessageAttachment {
 }
 
 export interface MessageParameters {
-  temperature?: number;
-  topP?: number;
   maxTokens?: number;
   thinkingEffort?: ThinkingEffort;
 }

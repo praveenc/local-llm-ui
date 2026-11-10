@@ -3,11 +3,29 @@ import { describe, expect, it } from 'vitest';
 import {
   buildReasoningParams,
   fallbackReasoningLevel,
+  getClaudeVersion,
   getDefaultThinkingEffort,
   mantleReasoningEffort,
   ollamaThinkValue,
   supportsThinkingEffort,
 } from '../thinkingEffort';
+
+describe('getClaudeVersion', () => {
+  it.each([
+    ['global.anthropic.claude-haiku-5-5', { major: 5, minor: 5 }],
+    ['global.anthropic.claude-haiku-4-5-20251001-v1:0', { major: 4, minor: 5 }],
+    ['global.anthropic.claude-sonnet-4-20250514-v1:0', { major: 4, minor: 0 }],
+    ['global.anthropic.claude-opus-4-6-v1', { major: 4, minor: 6 }],
+    ['global.anthropic.claude-opus-5', { major: 5, minor: 0 }],
+    ['claude-opus-4-5', { major: 4, minor: 5 }],
+  ])('%s', (id, expected) => {
+    expect(getClaudeVersion(id)).toEqual(expected);
+  });
+
+  it('returns null for old style IDs', () => {
+    expect(getClaudeVersion('us.anthropic.claude-3-5-sonnet-20241022-v2:0')).toBeNull();
+  });
+});
 
 describe('supportsThinkingEffort', () => {
   it('accepts Claude 4+ and OpenAI reasoning models on Bedrock', () => {

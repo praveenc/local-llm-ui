@@ -12,7 +12,6 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connect } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
-import { buildSamplingParams } from '../src/utils/samplingParams.ts';
 import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { WEB_SEARCH_HEADER_NAMES } from '../src/utils/webSearch.ts';
 import { getMCPTools } from './mcp-manager.ts';
@@ -34,8 +33,6 @@ interface ChatMessage {
 interface ChatRequest {
   model: string;
   messages: ChatMessage[];
-  temperature?: number;
-  top_p?: number;
   max_tokens?: number;
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
@@ -331,34 +328,6 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
       return;
     }
 
-    if (request.temperature !== undefined) {
-      if (
-        typeof request.temperature !== 'number' ||
-        !Number.isFinite(request.temperature) ||
-        request.temperature < 0 ||
-        request.temperature > 2
-      ) {
-        res.statusCode = 400;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'temperature must be between 0 and 2' }));
-        return;
-      }
-    }
-
-    if (request.top_p !== undefined) {
-      if (
-        typeof request.top_p !== 'number' ||
-        !Number.isFinite(request.top_p) ||
-        request.top_p < 0 ||
-        request.top_p > 1
-      ) {
-        res.statusCode = 400;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'top_p must be between 0 and 1' }));
-        return;
-      }
-    }
-
     if (request.max_tokens !== undefined) {
       if (
         typeof request.max_tokens !== 'number' ||
@@ -453,11 +422,6 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
         // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
         allowSystemInMessages: true,
         messages: filteredMessages,
-        // Send only the sampling parameters this model accepts
-        ...buildSamplingParams(request.model, {
-          temperature: request.temperature,
-          topP: request.top_p,
-        }),
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
         abortSignal: abortController.signal,

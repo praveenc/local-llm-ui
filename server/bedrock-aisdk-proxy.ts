@@ -13,7 +13,6 @@ import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'http';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
-import { buildSamplingParams } from '../src/utils/samplingParams.ts';
 import { buildReasoningParams, fallbackReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import type { ReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
@@ -44,9 +43,7 @@ interface ChatMessage {
 interface ChatRequest {
   model: string;
   messages: ChatMessage[];
-  temperature?: number;
   max_tokens?: number;
-  top_p?: number;
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
   thinkingEffort?: unknown;
@@ -215,9 +212,7 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
   const {
     model,
     messages,
-    temperature,
     max_tokens,
-    top_p,
     enableWebSearch,
     mcpServers,
     thinkingEffort,
@@ -233,13 +228,6 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     res.end(JSON.stringify({ error: WEB_SEARCH_KEY_REQUIRED_ERROR }));
     return;
   }
-
-  // Send only the sampling parameters this model accepts
-  const samplingParams = buildSamplingParams(model, {
-    temperature: temperature ?? 0.3,
-    topP: top_p ?? 0.95,
-    preferred: temperature === undefined && top_p !== undefined ? 'topP' : 'temperature',
-  });
 
   // Send the thinking effort only for models that accept it
   const reasoningParams = buildReasoningParams('bedrock', model, thinkingEffort);
@@ -308,12 +296,8 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     // Request options for a thinking effort (undefined: send none)
     const thinkingOptions = (reasoning: ReasoningLevel | undefined) => {
       const thinking = claudeThinkingConfig(model, reasoning, capMaxTokens(max_tokens));
-      // Reasoning models reject temperature and top_p while they think (Nova 2 at high effort
-      // returns a ValidationException), so leave them out when thinking is on
-      const isThinking = reasoning !== undefined && reasoning !== 'none';
       return {
         maxOutputTokens: thinking.maxTokens,
-        ...(isThinking ? {} : samplingParams),
         ...(reasoning && { reasoning }),
         ...(thinking.reasoningConfig && {
           providerOptions: { amazonBedrock: { reasoningConfig: thinking.reasoningConfig } },
