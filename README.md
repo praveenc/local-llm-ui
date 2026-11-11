@@ -294,7 +294,7 @@ To use a saved prompt:
 
 To change the theme, click the palette button in the header and select a theme. In the same menu, you can select Light or Dark. The sun and moon button next to it changes between the light and the dark variant with one click.
 
-You can also select the theme in **Preferences → Display**. There, you can also set the content density.
+You can also select the theme in **Preferences → Display**.
 
 | Theme | Light variant | Dark variant | Code colors (light / dark) |
 |---|---|---|---|
@@ -304,7 +304,7 @@ You can also select the theme in **Preferences → Display**. There, you can als
 
 The app loads the syntax highlighter when the first code block shows, not when the page loads.
 
-In **Preferences**, you can also set your avatar initials. The app keeps all preferences in your browser.
+The app keeps all preferences in your browser.
 
 ## Troubleshooting
 

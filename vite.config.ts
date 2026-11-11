@@ -20,14 +20,6 @@ export default defineConfig({
       '@': resolve(import.meta.dirname, './src'),
     },
   },
-  build: {
-    rollupOptions: {
-      input: {
-        main: resolve(import.meta.dirname, 'index.html'),
-        'styleguide-shadcn': resolve(import.meta.dirname, 'styleguide-shadcn.html'),
-      },
-    },
-  },
   plugins: [
     tailwindcss(),
     react(),
