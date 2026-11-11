@@ -33,15 +33,6 @@ export class BedrockService {
       });
     }
   }
-
-  async checkConnection(): Promise<boolean> {
-    try {
-      const response = await fetch(`${BEDROCK_BASE_URL}/models`);
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }
 }
 
 export const bedrockService = new BedrockService();

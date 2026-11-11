@@ -1,11 +1,9 @@
 /**
- * AI SDK Service - Unified provider integration using Vercel AI SDK
- * Supports: Groq, Cerebras, Anthropic (and easily extensible to other AI SDK providers)
+ * Model discovery for the AI SDK providers: Groq, Cerebras, and Anthropic.
+ *
+ * The chat itself goes through the server proxies (see server/aisdk-proxy.ts and
+ * server/anthropic-aisdk-proxy.ts). The browser only lists models here.
  */
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createCerebras } from '@ai-sdk/cerebras';
-import { createGroq } from '@ai-sdk/groq';
-
 import type { ModelInfo } from './types';
 
 type AISDKProvider = 'groq' | 'cerebras' | 'anthropic';
@@ -84,48 +82,11 @@ export class AISDKService {
   }
 
   /**
-   * Set the API key in localStorage
-   */
-  static setApiKey(provider: AISDKProvider, apiKey: string): void {
-    const key = API_KEY_STORAGE[provider];
-    localStorage.setItem(key, apiKey);
-  }
-
-  /**
-   * Remove the API key from localStorage
-   */
-  static removeApiKey(provider: AISDKProvider): void {
-    const key = API_KEY_STORAGE[provider];
-    localStorage.removeItem(key);
-  }
-
-  /**
    * Check if API key is configured
    */
   hasApiKey(): boolean {
     const apiKey = this.getApiKey();
     return !!apiKey && apiKey.trim().length > 0;
-  }
-
-  /**
-   * Create the AI SDK provider instance
-   */
-  private createProvider() {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      throw new Error(`API key not configured for ${this.provider}`);
-    }
-
-    switch (this.provider) {
-      case 'groq':
-        return createGroq({ apiKey });
-      case 'cerebras':
-        return createCerebras({ apiKey });
-      case 'anthropic':
-        return createAnthropic({ apiKey });
-      default:
-        throw new Error(`Unknown provider: ${this.provider}`);
-    }
   }
 
   private async fetchRemoteModels(): Promise<ModelInfo[]> {
@@ -197,25 +158,6 @@ export class AISDKService {
       modelName: model.name,
       provider: this.provider,
     }));
-  }
-
-  /**
-   * Check if the provider is accessible (API key valid)
-   */
-  async checkConnection(): Promise<boolean> {
-    if (!this.hasApiKey()) {
-      return false;
-    }
-
-    try {
-      // Try to create the provider - this validates the API key format
-      this.createProvider();
-      // For a full connection check, we'd need to make a test API call
-      // but that would consume credits, so we just verify the key exists
-      return true;
-    } catch {
-      return false;
-    }
   }
 }
 
