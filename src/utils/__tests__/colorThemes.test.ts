@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { COLOR_THEMES, applyColorTheme, isColorTheme } from '../colorThemes';
+import { COLOR_THEMES, applyColorTheme, applyContentDensity, isColorTheme } from '../colorThemes';
 
 describe('colorThemes', () => {
   it('offers Cosmic Night, Cobaltz, and Rosé Pine', () => {
@@ -32,5 +32,25 @@ describe('colorThemes', () => {
     const root = document.createElement('html');
     applyColorTheme(root, 'removed-theme', 'light');
     expect(root.dataset.theme).toBe('cosmic-night');
+  });
+
+  it('sets data-density to compact for the compact density', () => {
+    const root = document.createElement('html');
+    applyContentDensity(root, 'compact');
+    expect(root.dataset.density).toBe('compact');
+  });
+
+  it('sets data-density to comfortable for comfortable and for unknown values', () => {
+    const root = document.createElement('html');
+    applyContentDensity(root, 'comfortable');
+    expect(root.dataset.density).toBe('comfortable');
+
+    applyContentDensity(root, 'compact');
+    applyContentDensity(root, undefined);
+    expect(root.dataset.density).toBe('comfortable');
+
+    applyContentDensity(root, 'compact');
+    applyContentDensity(root, 'bogus');
+    expect(root.dataset.density).toBe('comfortable');
   });
 });

@@ -9,12 +9,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { isProviderConfigured, loadPreferences, savePreferences } from '../../utils/preferences';
-import type { UserPreferences, VisualMode } from '../../utils/preferences';
+import {
+  isProviderConfigured,
+  loadPreferences,
+  savePreferences,
+  validateInitials,
+} from '../../utils/preferences';
+import type { ContentDensity, UserPreferences, VisualMode } from '../../utils/preferences';
 import { ColorThemePicker } from './ColorThemePicker';
 import { MCPServerSettings } from './MCPServerSettings';
 import { ProviderSettings } from './ProviderSettings';
@@ -125,6 +131,48 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
                     </Label>
                   </div>
                 </RadioGroup>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Content density</Label>
+                <RadioGroup
+                  value={preferences.contentDensity}
+                  onValueChange={(v) => updatePreference('contentDensity', v as ContentDensity)}
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="comfortable" id="comfortable" />
+                    <Label htmlFor="comfortable" className="font-normal">
+                      Comfortable
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="compact" id="compact" />
+                    <Label htmlFor="compact" className="font-normal">
+                      Compact
+                    </Label>
+                  </div>
+                </RadioGroup>
+                <p className="text-xs text-muted-foreground">
+                  Compact uses less space between messages and in the sidebar.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="initials">Avatar initials</Label>
+                <Input
+                  id="initials"
+                  value={preferences.avatarInitials}
+                  onChange={(e) =>
+                    updatePreference('avatarInitials', validateInitials(e.target.value))
+                  }
+                  placeholder="AB"
+                  maxLength={2}
+                  className="w-24"
+                />
+                <p className="text-xs text-muted-foreground">
+                  One or two letters shown next to your messages. Leave empty for no avatar.
+                </p>
               </div>
             </TabsContent>
           </div>
