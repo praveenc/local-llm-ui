@@ -206,7 +206,7 @@ Click the settings button in the chat input to set these values:
 
 ### Web search
 
-The globe button in the chat input lets the model search the web. You need an API key for one or more of these providers:
+The globe button in the chat input lets the model search the web. Web search and MCP tools work with all providers, also the local ones (Ollama and LM Studio), if the model supports tool calls. You need an API key for one or more of these providers:
 
 | Provider | Free plan | Credit card | Get a key |
 |---|---|---|---|

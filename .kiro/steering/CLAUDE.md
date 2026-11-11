@@ -46,12 +46,12 @@ make fix                 # format + lint:fix
 
 ### Server Proxies (vite.config.ts → server/)
 
-Vite middleware keeps credentials and SDK calls on the server. Each chat proxy uses the AI SDK `streamText` with the shared tool loop (`tool-loop.ts`), web search tool (`web-search.ts`), and MCP tools (`mcp-manager.ts`). Shared helpers: `security.ts` (CORS, body limit, token cap, `endStreamWithError`).
+Vite middleware keeps credentials and SDK calls on the server. Each chat proxy uses the AI SDK `streamText` with the shared tool loop (`tool-loop.ts`), web search tool (`web-search.ts`), and MCP tools (`mcp-manager.ts`). Shared helpers: `security.ts` (CORS, body limit, token cap, `endStreamWithError`), `think-tags.ts` (splits inline `<think>` tags into reasoning for Ollama and LM Studio).
 
 - `/api/bedrock` (models), `/api/bedrock-aisdk` (chat, MCP status) → AWS SDK
 - `/api/mantle` → Bedrock Mantle (OpenAI-compatible, no AI SDK)
 - `/api/anthropic`, `/api/openrouter`, `/api/aisdk` (Groq, Cerebras) → API key in `X-Api-Key`
-- `/api/ollama-aisdk`, `/api/lmstudio-aisdk` → local servers (LM Studio: no tools yet)
+- `/api/ollama-aisdk`, `/api/lmstudio-aisdk` → local servers through the AI SDK (Ollama provider, OpenAI-compatible provider)
 - `/api/lmstudio-sdk` → LM Studio SDK (model list)
 - `/api/lmstudio`, `/api/ollama` → plain HTTP proxies
 

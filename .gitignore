@@ -173,8 +173,6 @@ docs/tmp_docs/
 # .kiro/
 
 # Development artifacts
-docs/IMPLEMENTATION_PLAN*.md
-docs/progress.txt
 docs/prompts/
 
 # GitHub assets (images, workflows, etc.) are tracked
