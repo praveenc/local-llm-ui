@@ -375,8 +375,8 @@ local-llm-ui/
 │   ├── db/                # Dexie.js (IndexedDB) schema
 │   ├── hooks/             # React hooks
 │   ├── layout/            # App shell and layout
-│   ├── services/          # Provider services
-│   └── utils/             # Helper functions
+│   ├── services/          # Provider model lists, conversations, saved prompts
+│   └── utils/             # Helper functions; some are shared with server/
 ├── server/                # Provider proxies, MCP manager, web search, security
 ├── docs/                  # Design and security notes
 └── vite.config.ts         # Vite configuration and proxy middleware
@@ -387,7 +387,7 @@ local-llm-ui/
 - [React 19](https://react.dev/), [TypeScript 6](https://www.typescriptlang.org/), and [Vite 8](https://vitejs.dev/)
 - [shadcn/ui](https://ui.shadcn.com/) with [Radix UI](https://www.radix-ui.com/) and [Tailwind CSS 4](https://tailwindcss.com/)
 - [Vercel AI SDK](https://ai-sdk.dev/) for streaming and tool calls
-- [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk) for MCP servers
+- [AI SDK MCP client](https://ai-sdk.dev/docs/ai-sdk-core/mcp-tools) for MCP servers
 - [Dexie.js](https://dexie.org/) for data in IndexedDB
 - [TanStack Query](https://tanstack.com/query) for provider data
 - [Streamdown](https://github.com/vercel/streamdown) and [Shiki](https://shiki.style/) for Markdown and code blocks

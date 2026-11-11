@@ -379,16 +379,15 @@ server/
 └── ollama-aisdk-proxy.ts   # Ollama
 
 src/services/
-├── api.ts        # APIService (model aggregation, connection checks)
-├── aisdk.ts      # Groq/Cerebras/Anthropic (getModels, checkConnection)
-├── bedrock.ts    # Bedrock (getModels, checkConnection)
+├── aisdk.ts      # Groq/Cerebras/Anthropic (getModels)
+├── bedrock.ts    # Bedrock (getModels)
 ├── conversationService.ts  # Conversation persistence (Dexie/IndexedDB)
-├── lmstudio.ts   # LM Studio (getModels, checkConnection, JIT loading)
-├── mantle.ts     # Mantle (getModels, checkConnection)
-├── ollama.ts     # Ollama (getModels, checkConnection)
-├── promptOptimizer.ts  # Prompt optimization
+├── lmstudio.ts   # LM Studio (getModels)
+├── mantle.ts     # Mantle (getModels)
+├── ollama.ts     # Ollama (getModels)
+├── openrouter.ts # OpenRouter (getModels)
 ├── promptsService.ts   # Saved prompts (Dexie/IndexedDB)
-└── types.ts      # Shared types (ModelInfo, LoadProgressEvent)
+└── types.ts      # Shared types (ModelInfo)
 ```
 
 

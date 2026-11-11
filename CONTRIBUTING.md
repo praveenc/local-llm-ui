@@ -100,11 +100,10 @@ We welcome various types of contributions:
 - Use proper prop types
 - Implement proper error boundaries where needed
 
-### Cloudscape Components
+### UI Components
 
-- Use Cloudscape Design System components
-- Follow Cloudscape patterns and guidelines
-- Use design tokens for styling
+- Use shadcn/ui components (`src/components/ui/`) and the AI Elements in `src/components/ai-elements/`
+- Style with Tailwind classes and the theme tokens in `src/styles/themes.css`; every theme must keep working
 - Maintain accessibility standards
 
 ### Code Style
