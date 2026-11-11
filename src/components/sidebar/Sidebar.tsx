@@ -13,6 +13,8 @@ import { PreferencesDialog } from './PreferencesDialog';
 
 interface SidebarProps {
   onNewChat?: () => void;
+  /** Put a saved prompt's text into the chat input */
+  onInsertPrompt?: (text: string) => void;
   onPreferencesChange?: (preferences: UserPreferences) => void;
   onPreferencesSaved?: () => void;
   activeConversationId?: string | null;
@@ -21,6 +23,7 @@ interface SidebarProps {
 
 export function Sidebar({
   onNewChat,
+  onInsertPrompt,
   onPreferencesChange,
   onPreferencesSaved,
   activeConversationId,
@@ -94,7 +97,11 @@ export function Sidebar({
         onSave={handlePreferencesSave}
       />
 
-      <ViewPromptsModal visible={promptsOpen} onDismiss={() => setPromptsOpen(false)} />
+      <ViewPromptsModal
+        visible={promptsOpen}
+        onDismiss={() => setPromptsOpen(false)}
+        onInsertPrompt={onInsertPrompt}
+      />
     </div>
   );
 }

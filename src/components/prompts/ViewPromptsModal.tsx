@@ -1,4 +1,4 @@
-import { AlertTriangle, Eye, Search, Trash2 } from 'lucide-react';
+import { AlertTriangle, CornerDownLeft, Eye, Search, Trash2 } from 'lucide-react';
 
 import { useMemo, useState } from 'react';
 
@@ -46,11 +46,13 @@ import { ViewPromptDetailModal } from './ViewPromptDetailModal';
 interface ViewPromptsModalProps {
   visible: boolean;
   onDismiss: () => void;
+  /** Put a prompt's text into the chat input. Not set: no Insert action. */
+  onInsertPrompt?: (text: string) => void;
 }
 
 const PAGE_SIZE = 10;
 
-export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) {
+export function ViewPromptsModal({ visible, onDismiss, onInsertPrompt }: ViewPromptsModalProps) {
   const { prompts, categories } = useSavedPrompts();
   const [searchText, setSearchText] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -187,7 +189,8 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
                         <div className="flex flex-col items-center gap-2">
                           <p className="font-medium">No saved prompts</p>
                           <p className="text-sm text-muted-foreground">
-                            Save prompts from the chat input or message history to see them here.
+                            Type a prompt in the chat input and click the bookmark button to save
+                            it.
                           </p>
                         </div>
                       </TableCell>
@@ -202,12 +205,32 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
                         <TableCell>{new Date(prompt.createdAt).toLocaleDateString()}</TableCell>
                         <TableCell>
                           <div className="flex items-center justify-center gap-1">
+                            {onInsertPrompt && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    aria-label="Insert into chat"
+                                    onClick={() => {
+                                      onInsertPrompt(prompt.content);
+                                      handleClose();
+                                    }}
+                                  >
+                                    <CornerDownLeft className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Insert into chat</TooltipContent>
+                              </Tooltip>
+                            )}
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8"
+                                  aria-label="View prompt"
                                   onClick={() => handleViewPrompt(prompt)}
                                 >
                                   <Eye className="h-4 w-4" />
@@ -226,6 +249,7 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 text-destructive hover:text-destructive"
+                                  aria-label="Delete prompt"
                                   onClick={() => handleDeleteClick(prompt)}
                                 >
                                   <Trash2 className="h-4 w-4" />
@@ -290,6 +314,15 @@ export function ViewPromptsModal({ visible, onDismiss }: ViewPromptsModalProps) 
         visible={showDetailModal}
         onDismiss={() => setShowDetailModal(false)}
         prompt={selectedPrompt}
+        onInsert={
+          onInsertPrompt && selectedPrompt
+            ? () => {
+                onInsertPrompt(selectedPrompt.content);
+                setShowDetailModal(false);
+                handleClose();
+              }
+            : undefined
+        }
       />
 
       {/* Delete Confirmation Dialog */}

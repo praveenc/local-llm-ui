@@ -278,9 +278,17 @@ The context indicator in the chat input shows the tokens that the chat uses and 
 
 ### Saved prompts
 
+To save a prompt:
+
+1. Type the prompt in the chat input.
+2. Click the bookmark button next to the model picker.
+3. Give the prompt a name and, if you want, a category. Click **Save**.
+
+To use a saved prompt:
+
 1. Click **Saved Prompts** in the sidebar.
-2. Make a new prompt and give it a category.
-3. Click a saved prompt to put it in the chat input.
+2. Find the prompt. You can search by name or content, and filter by category.
+3. Click the **Insert into chat** button in the row. The prompt text goes into the chat input. If the chat input already has text, the prompt goes after it.
 
 ### Themes and display
 
