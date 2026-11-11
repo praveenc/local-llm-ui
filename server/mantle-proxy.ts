@@ -7,7 +7,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 
 import { mantleReasoningEffort } from '../src/utils/thinkingEffort.ts';
-import { endStreamWithError, setCORSHeaders } from './security.ts';
+import { capMaxTokens, endStreamWithError, readBodyWithLimit, setCORSHeaders } from './security.ts';
 
 // Supported Mantle regions
 const MANTLE_REGIONS = [
@@ -87,8 +87,6 @@ export async function handleMantleRequest(
       await handleListModels(res, apiKey, region);
     } else if (pathname === '/api/mantle/chat') {
       await handleChat(req, res, apiKey, region);
-    } else if (pathname === '/api/mantle/regions') {
-      handleListRegions(res);
     } else {
       res.statusCode = 404;
       res.end(JSON.stringify({ error: 'Not found' }));
@@ -121,35 +119,6 @@ export async function handleMantleRequest(
       })
     );
   }
-}
-
-function handleListRegions(res: ServerResponse): void {
-  const regions = MANTLE_REGIONS.map((region) => ({
-    id: region,
-    name: getRegionDisplayName(region),
-    endpoint: getMantleBaseUrl(region),
-  }));
-
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify({ regions }));
-}
-
-function getRegionDisplayName(region: MantleRegion): string {
-  const names: Record<MantleRegion, string> = {
-    'us-east-1': 'US East (N. Virginia)',
-    'us-east-2': 'US East (Ohio)',
-    'us-west-2': 'US West (Oregon)',
-    'ap-northeast-1': 'Asia Pacific (Tokyo)',
-    'ap-south-1': 'Asia Pacific (Mumbai)',
-    'ap-southeast-3': 'Asia Pacific (Jakarta)',
-    'eu-central-1': 'Europe (Frankfurt)',
-    'eu-west-1': 'Europe (Ireland)',
-    'eu-west-2': 'Europe (London)',
-    'eu-south-1': 'Europe (Milan)',
-    'eu-north-1': 'Europe (Stockholm)',
-    'sa-east-1': 'South America (São Paulo)',
-  };
-  return names[region] || region;
 }
 
 async function handleListModels(
@@ -278,30 +247,23 @@ async function handleChat(
   apiKey: string,
   region: MantleRegion
 ): Promise<void> {
-  let body = '';
-  for await (const chunk of req) {
-    body += chunk;
-    if (body.length > 10 * 1024 * 1024) {
-      res.statusCode = 413;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Request body too large' }));
-      return;
-    }
-  }
+  const body = await readBodyWithLimit(req, res);
+  if (body === null) return; // 413 already sent
 
-  const { model, messages, max_tokens, stream = true, thinkingEffort } = JSON.parse(body);
+  const { model, messages, max_tokens, thinkingEffort } = JSON.parse(body);
 
   const baseUrl = getMantleBaseUrl(region);
   // Sent only for models that take it (see utils/thinkingEffort)
   const reasoningEffort = mantleReasoningEffort(model, thinkingEffort);
 
   // Build request body for OpenAI-compatible API
+  // No temperature or top_p: models use their own defaults
   const requestBody: {
     model: string;
     messages: Array<{ role: string; content: string }>;
-    stream: boolean;
-    stream_options?: { include_usage: boolean };
-    max_tokens?: number;
+    stream: true;
+    stream_options: { include_usage: boolean };
+    max_tokens: number;
     reasoning_effort?: string;
   } = {
     model,
@@ -309,18 +271,11 @@ async function handleChat(
       role: msg.role,
       content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
     })),
-    stream,
-    // Request usage data in streaming mode
-    ...(stream && { stream_options: { include_usage: true } }),
+    stream: true,
+    stream_options: { include_usage: true },
+    max_tokens: capMaxTokens(max_tokens),
+    ...(reasoningEffort !== undefined && { reasoning_effort: reasoningEffort }),
   };
-
-  // Add optional parameters if provided. No temperature or top_p: models use their own defaults
-  if (max_tokens !== undefined) {
-    requestBody.max_tokens = max_tokens;
-  }
-  if (reasoningEffort !== undefined) {
-    requestBody.reasoning_effort = reasoningEffort;
-  }
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -336,98 +291,75 @@ async function handleChat(
     throw new Error(`${response.status}: ${errorText}`);
   }
 
-  if (stream) {
-    // Handle streaming response
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+  // Handle streaming response
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
 
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('Response body is not readable');
-    }
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('Response body is not readable');
+  }
 
-    const decoder = new TextDecoder();
-    let buffer = '';
+  const decoder = new TextDecoder();
+  let buffer = '';
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') {
-              res.write('data: [DONE]\n\n');
-              continue;
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') {
+            res.write('data: [DONE]\n\n');
+            continue;
+          }
+
+          try {
+            const parsed = JSON.parse(data);
+
+            // Handle reasoning content (MiniMax, gpt-oss, and other thinking models)
+            const reasoning = parsed.choices?.[0]?.delta?.reasoning;
+            if (reasoning) {
+              res.write(`data: ${JSON.stringify({ reasoning })}\n\n`);
             }
 
-            try {
-              const parsed = JSON.parse(data);
+            // Handle regular content
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              res.write(`data: ${JSON.stringify({ content })}\n\n`);
+            }
 
-              // Handle reasoning content (MiniMax, gpt-oss, and other thinking models)
-              const reasoning = parsed.choices?.[0]?.delta?.reasoning;
-              if (reasoning) {
-                res.write(`data: ${JSON.stringify({ reasoning })}\n\n`);
-              }
-
-              // Handle regular content
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) {
-                res.write(`data: ${JSON.stringify({ content })}\n\n`);
-              }
-
-              // Check for usage info in the final chunk
-              if (parsed.usage) {
-                res.write(
-                  `data: ${JSON.stringify({
-                    metadata: {
-                      usage: {
-                        inputTokens: parsed.usage.prompt_tokens,
-                        outputTokens: parsed.usage.completion_tokens,
-                        totalTokens: parsed.usage.total_tokens,
-                      },
+            // Check for usage info in the final chunk
+            if (parsed.usage) {
+              res.write(
+                `data: ${JSON.stringify({
+                  metadata: {
+                    usage: {
+                      inputTokens: parsed.usage.prompt_tokens,
+                      outputTokens: parsed.usage.completion_tokens,
+                      totalTokens: parsed.usage.total_tokens,
                     },
-                  })}\n\n`
-                );
-              }
-            } catch {
-              // Skip malformed JSON
+                  },
+                })}\n\n`
+              );
             }
+          } catch {
+            // Skip malformed JSON
           }
         }
       }
-    } finally {
-      reader.releaseLock();
     }
-
-    res.write('data: [DONE]\n\n');
-    res.end();
-  } else {
-    // Handle non-streaming response
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-      usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-    };
-    const content = data.choices?.[0]?.message?.content || '';
-
-    res.setHeader('Content-Type', 'application/json');
-    res.end(
-      JSON.stringify({
-        content,
-        usage: data.usage
-          ? {
-              inputTokens: data.usage.prompt_tokens,
-              outputTokens: data.usage.completion_tokens,
-              totalTokens: data.usage.total_tokens,
-            }
-          : undefined,
-      })
-    );
+  } finally {
+    reader.releaseLock();
   }
+
+  res.write('data: [DONE]\n\n');
+  res.end();
 }

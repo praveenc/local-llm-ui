@@ -8,12 +8,6 @@ import type { ModelInfo } from './types';
 
 const MANTLE_BASE_URL = '/api/mantle';
 
-export interface MantleRegion {
-  id: string;
-  name: string;
-  endpoint: string;
-}
-
 export class MantleService {
   private apiKey: string | null = null;
   private region: string = 'us-west-2';
@@ -36,22 +30,6 @@ export class MantleService {
 
   hasApiKey(): boolean {
     return !!this.apiKey && this.apiKey.trim().length > 0;
-  }
-
-  async getRegions(): Promise<MantleRegion[]> {
-    try {
-      const response = await fetch(`${MANTLE_BASE_URL}/regions`);
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data.regions || [];
-    } catch (error) {
-      console.error('Mantle: Failed to fetch regions:', error);
-      throw new Error('Failed to fetch Mantle regions', { cause: error });
-    }
   }
 
   async getModels(): Promise<ModelInfo[]> {
@@ -88,24 +66,6 @@ export class MantleService {
         `Cannot connect to Bedrock Mantle in ${this.region}. Please check your API key.`,
         { cause: error }
       );
-    }
-  }
-
-  async checkConnection(): Promise<boolean> {
-    if (!this.hasApiKey()) {
-      return false;
-    }
-
-    try {
-      const response = await fetch(`${MANTLE_BASE_URL}/models`, {
-        headers: {
-          'X-Mantle-Api-Key': this.apiKey!,
-          'X-Mantle-Region': this.region,
-        },
-      });
-      return response.ok;
-    } catch {
-      return false;
     }
   }
 }

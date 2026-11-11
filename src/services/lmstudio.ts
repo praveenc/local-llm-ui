@@ -1,4 +1,4 @@
-import type { LoadProgressEvent, ModelInfo } from './types';
+import type { ModelInfo } from './types';
 
 // Use proxy in development, direct connection in production
 const LMSTUDIO_BASE_URL = import.meta.env.DEV ? '/api/lmstudio/v1' : 'http://localhost:1234/v1';
@@ -7,23 +7,6 @@ const LMSTUDIO_SDK_URL = '/api/lmstudio-sdk';
 export interface LMStudioModelInfo extends ModelInfo {
   modelKey?: string;
   maxContextLength?: number;
-  architecture?: string;
-  paramsString?: string;
-}
-
-export interface LoadModelResult {
-  success: boolean;
-  identifier?: string;
-  modelPath?: string;
-  error?: string;
-}
-
-export interface LMStudioLoadedModelInfo {
-  identifier: string;
-  path: string;
-  contextLength: number;
-  trainedForToolUse: boolean;
-  displayName?: string;
   architecture?: string;
   paramsString?: string;
 }
@@ -89,7 +72,7 @@ export class LMStudioService {
       console.error('LMStudio: Failed to fetch models:', error);
       // Try fallback for other errors
       try {
-        return this.getLoadedModels();
+        return await this.getLoadedModels();
       } catch {
         throw error;
       }
@@ -118,147 +101,6 @@ export class LMStudioService {
         modelName: model.id,
         provider: 'lmstudio' as const,
       }));
-  }
-
-  async loadModel(
-    modelPath: string,
-    options?: { contextLength?: number; ttl?: number }
-  ): Promise<LoadModelResult> {
-    try {
-      const response = await fetch(`${this.sdkUrl}/load`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          modelPath,
-          contextLength: options?.contextLength,
-          ttl: options?.ttl ?? 300, // Default 5 minute TTL
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to load model: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      return {
-        success: true,
-        identifier: result.identifier,
-        modelPath: result.modelPath,
-      };
-    } catch (error) {
-      console.error('LMStudio: Failed to load model:', error);
-      const err = error as Error;
-      return {
-        success: false,
-        error: err.message,
-      };
-    }
-  }
-
-  async getModelInfo(modelPath?: string): Promise<LMStudioLoadedModelInfo | null> {
-    try {
-      const response = await fetch(`${this.sdkUrl}/model-info`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ modelPath }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to get model info: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      return {
-        identifier: result.identifier,
-        path: result.path,
-        contextLength: result.contextLength,
-        trainedForToolUse: result.trainedForToolUse,
-        displayName: result.displayName,
-        architecture: result.architecture,
-        paramsString: result.paramsString,
-      };
-    } catch (error) {
-      console.error('LMStudio: Failed to get model info:', error);
-      return null;
-    }
-  }
-
-  async *loadModelWithProgress(
-    modelPath: string,
-    options?: { contextLength?: number; ttl?: number; signal?: AbortSignal }
-  ): AsyncGenerator<LoadProgressEvent, void, unknown> {
-    try {
-      const response = await fetch(`${this.sdkUrl}/load-with-progress`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          modelPath,
-          contextLength: options?.contextLength,
-          ttl: options?.ttl ?? 300,
-        }),
-        signal: options?.signal,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Failed to load model: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('Response body is not readable');
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') continue;
-
-            try {
-              const event = JSON.parse(data) as LoadProgressEvent;
-              yield event;
-            } catch {
-              // Skip malformed data
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('LMStudio: Load model with progress error:', error);
-      throw error;
-    }
-  }
-
-  async checkConnection(): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.baseUrl}/models`, {
-        method: 'GET',
-      });
-      return response.ok;
-    } catch {
-      return false;
-    }
   }
 }
 

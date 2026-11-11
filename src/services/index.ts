@@ -1,12 +1,8 @@
 export * from './types';
-export * from './api';
 export { lmstudioService } from './lmstudio';
 export { ollamaService } from './ollama';
 export { bedrockService } from './bedrock';
 export { mantleService } from './mantle';
-export type { MantleRegion } from './mantle';
 export { openrouterService } from './openrouter';
-export { promptOptimizerService, optimizePrompt } from './promptOptimizer';
-export type { OptimizePromptResult } from './promptOptimizer';
 export { conversationService } from './conversationService';
 export { promptsService } from './promptsService';

@@ -49,7 +49,10 @@ describe('Mantle proxy errors', () => {
           'X-Mantle-Api-Key': 'test-key',
           'X-Mantle-Region': 'us-west-2',
         },
-        body: JSON.stringify({ model: 'openai.gpt-oss-120b', messages: [{ role: 'user', content: 'Hi' }] }),
+        body: JSON.stringify({
+          model: 'openai.gpt-oss-120b',
+          messages: [{ role: 'user', content: 'Hi' }],
+        }),
       });
       const body = await response.text();
 
