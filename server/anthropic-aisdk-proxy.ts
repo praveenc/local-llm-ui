@@ -13,7 +13,7 @@ import type { Connect } from 'vite';
 import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
-import { capMaxTokens, readBodyWithLimit } from './security.ts';
+import { capMaxTokens, endStreamWithError, readBodyWithLimit } from './security.ts';
 import { noAnswerNotice, streamErrorMessage, toolLoopOptions } from './tool-loop.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
@@ -196,13 +196,13 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
       }
       console.error('Anthropic Proxy error:', error);
 
-      // If headers already sent, we can't change status code
-      if (!res.headersSent) {
-        res.statusCode = 500;
-        res.setHeader('Content-Type', 'application/json');
-      }
-
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // The stream has started: report the error as an SSE event, so the chat shows it
+      if (endStreamWithError(res, errorMessage)) return;
+
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ error: errorMessage }));
     }
   };

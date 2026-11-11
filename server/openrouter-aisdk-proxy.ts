@@ -12,10 +12,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connect } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
+import { errorMessageOr, extractErrorMessage } from '../src/utils/errorMessage.ts';
 import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { WEB_SEARCH_HEADER_NAMES } from '../src/utils/webSearch.ts';
 import { getMCPTools } from './mcp-manager.ts';
-import { capMaxTokens, readBodyWithLimit, setCORSHeaders } from './security.ts';
+import { capMaxTokens, endStreamWithError, readBodyWithLimit, setCORSHeaders } from './security.ts';
 import { noAnswerNotice, toolLoopOptions } from './tool-loop.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
@@ -79,44 +80,6 @@ function parseJsonSafely(value: string): unknown | null {
   }
 }
 
-function extractApiErrorMessage(payload: unknown, fallback: string): string {
-  const visited = new Set<unknown>();
-
-  const walk = (value: unknown): string | undefined => {
-    if (value == null) return undefined;
-
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (!trimmed) return undefined;
-
-      const parsed = parseJsonSafely(trimmed);
-      if (parsed && parsed !== value) {
-        return walk(parsed);
-      }
-
-      return trimmed;
-    }
-
-    if (typeof value === 'object') {
-      if (visited.has(value)) return undefined;
-      visited.add(value);
-
-      const obj = value as Record<string, unknown>;
-      return (
-        walk(obj.error) ||
-        walk(obj.message) ||
-        walk(obj.detail) ||
-        walk(obj.details) ||
-        walk(obj.data)
-      );
-    }
-
-    return undefined;
-  };
-
-  return walk(payload) || fallback;
-}
-
 function extractOpenRouterError(rawBody: string): string | null {
   const parsed = parseJsonSafely(rawBody);
   if (!parsed || typeof parsed !== 'object') return null;
@@ -174,9 +137,9 @@ function getSafeErrorMessage(error: unknown, fallback: string): string {
     }
 
     const nestedMessage =
-      extractApiErrorMessage(err.responseBody, '') ||
-      extractApiErrorMessage(err.body, '') ||
-      extractApiErrorMessage(err.cause, '');
+      extractErrorMessage(err.responseBody) ||
+      extractErrorMessage(err.body) ||
+      extractErrorMessage(err.cause);
 
     if (nestedMessage) {
       return nestedMessage;
@@ -219,7 +182,7 @@ async function handleModelsRequest(req: IncomingMessage, res: ServerResponse): P
       res.setHeader('Content-Type', 'application/json');
       res.end(
         JSON.stringify({
-          error: extractApiErrorMessage(parsed ?? bodyText, 'Failed to fetch OpenRouter models'),
+          error: errorMessageOr(parsed ?? bodyText, 'Failed to fetch OpenRouter models'),
         })
       );
       return;
@@ -501,16 +464,8 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
 
       const errorMessage = getSafeErrorMessage(error, 'OpenRouter request failed');
 
-      if (res.headersSent) {
-        try {
-          res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
-          res.write('data: [DONE]\n\n');
-          res.end();
-        } catch {
-          res.end();
-        }
-        return;
-      }
+      // The stream has started: report the error as an SSE event, so the chat shows it
+      if (endStreamWithError(res, errorMessage)) return;
 
       res.statusCode = 500;
       res.setHeader('Content-Type', 'application/json');
