@@ -228,7 +228,6 @@ export default function AppShell() {
           setMaxToolSteps={setMaxToolSteps}
           thinkingEffort={thinkingEffort}
           setThinkingEffort={setThinkingEffort}
-          avatarInitials={userPreferences.avatarInitials}
           conversationId={activeConversationId}
           onConversationChange={handleConversationChange}
           onClearHistoryRef={clearHistoryRef}

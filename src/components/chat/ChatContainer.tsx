@@ -2,7 +2,7 @@
  * ChatContainer
  *
  * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
+ * Supports all providers: Ollama, LM Studio, Bedrock, Bedrock Mantle, Anthropic, OpenRouter, Groq, and Cerebras.
  */
 
 'use client';
@@ -30,6 +30,7 @@ import { useBedrockChat } from '../../hooks/useBedrockChat';
 import type { ToolCallPart } from '../../types/ai-messages';
 import { getReasoningContent, getTextContent, hasReasoning } from '../../types/ai-messages';
 import { normalizeMediaType } from '../../utils/fileUtils';
+import { lookupFormat } from '../../utils/mediaTypes';
 import { getModelContextLimits } from '../../utils/modelContext';
 import { loadPreferences } from '../../utils/preferences';
 import { formatQuoteMessage, quoteTagsToMarkdown } from '../../utils/quote';
@@ -79,125 +80,6 @@ import { ThinkingEffortSelector } from './ThinkingEffortSelector';
 import { WebSearchToggle } from './WebSearchToggle';
 import { composerCard, composerIconButton } from './composerStyles';
 
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
-/**
- * ChatContainer
- *
- * Main chat container using AI Elements components and useBedrockChat hook.
- * Supports multiple providers: Bedrock, Bedrock Mantle, Groq, Cerebras.
- */
-
 // Helper to extract tool calls from message parts
 const getToolCalls = (message: { parts: Array<{ type: string }> }): ToolCallPart[] => {
   return message.parts.filter((p): p is ToolCallPart => p.type === 'tool-call');
@@ -205,14 +87,6 @@ const getToolCalls = (message: { parts: Array<{ type: string }> }): ToolCallPart
 
 // Bedrock file size limits
 const BEDROCK_DOC_MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for documents
-
-// Internal model option type for useBedrockChat compatibility
-interface ModelOption {
-  value: string;
-  label: string;
-  description?: string;
-  supportsThinking?: boolean;
-}
 
 interface BedrockChatContainerProps {
   // Model selection via ModelSelector
@@ -227,45 +101,17 @@ interface BedrockChatContainerProps {
   setMaxToolSteps: (steps: number) => void;
   thinkingEffort: ThinkingEffort;
   setThinkingEffort: (effort: ThinkingEffort) => void;
-  avatarInitials?: string;
   conversationId?: string | null;
   onConversationChange?: (id: string | null) => void;
   onClearHistoryRef?: React.MutableRefObject<(() => void) | null>;
 }
 
-// Convert UnifiedModel to ModelOption for useBedrockChat
-const toModelOption = (model: UnifiedModel | null): ModelOption | null => {
-  if (!model) return null;
-  return {
-    value: model.id,
-    label: model.name,
-    description: model.provider,
-    supportsThinking: model.supportsThinking,
-  };
-};
-
-// Helper function to get file format from media type
+// File format for a browser media type; null for an unsupported binary type
 function getFormatFromMediaType(mediaType: string): string | null {
   // Normalize text-like MIME types to Bedrock-supported ones
   const normalized = normalizeMediaType(mediaType);
   if (!normalized) return null;
-
-  const typeMap: Record<string, string> = {
-    'application/pdf': 'pdf',
-    'text/plain': 'txt',
-    'text/html': 'html',
-    'text/markdown': 'md',
-    'text/csv': 'csv',
-    'application/msword': 'doc',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-    'application/vnd.ms-excel': 'xls',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
-    'image/png': 'png',
-    'image/jpeg': 'jpg',
-    'image/gif': 'gif',
-    'image/webp': 'webp',
-  };
-  return typeMap[normalized] || 'txt';
+  return lookupFormat(normalized) ?? 'txt';
 }
 
 const ChatContainer = ({
@@ -295,9 +141,6 @@ const ChatContainer = ({
   const prefs = loadPreferences();
   const primaryWebSearch = getPrimaryWebSearchProvider(prefs);
 
-  // Convert UnifiedModel to ModelOption for the hook
-  const modelOption = toModelOption(selectedModel);
-
   const {
     messages,
     status,
@@ -313,7 +156,7 @@ const ChatContainer = ({
     resetUsage,
   } = useBedrockChat({
     conversationId: externalConversationId ?? null,
-    selectedModel: modelOption,
+    selectedModel,
     maxTokens,
     maxToolSteps,
     thinkingEffort,
