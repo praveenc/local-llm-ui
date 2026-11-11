@@ -1,5 +1,3 @@
-import ReactMarkdown from 'react-markdown';
-
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,6 +8,7 @@ import {
 } from '@/components/ui/dialog';
 
 import type { SavedPrompt } from '../../db';
+import { MessageResponse } from '../ai-elements/message';
 import { CopyToClipboard } from '../shared';
 
 interface ViewPromptDetailModalProps {
@@ -40,9 +39,7 @@ export function ViewPromptDetailModal({ visible, onDismiss, prompt }: ViewPrompt
           <div className="space-y-2">
             <span className="text-sm font-medium text-muted-foreground">Prompt Content:</span>
             <div className="rounded-md border bg-muted/50 p-4 text-sm max-h-[400px] overflow-auto">
-              <div className="prose prose-sm dark:prose-invert max-w-none">
-                <ReactMarkdown>{prompt.content}</ReactMarkdown>
-              </div>
+              <MessageResponse>{prompt.content}</MessageResponse>
             </div>
           </div>
         </div>
