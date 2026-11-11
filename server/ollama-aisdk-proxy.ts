@@ -15,6 +15,7 @@ import { ollamaThinkValue } from '../src/utils/thinkingEffort.ts';
 import type { OllamaThinkingInfo } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, endStreamWithError, readBodyWithLimit } from './security.ts';
+import { createThinkTagSplitter } from './think-tags.ts';
 import { noAnswerNotice, streamErrorMessage, toolLoopOptions } from './tool-loop.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
@@ -184,84 +185,14 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);
 
-      // Track content for <think> tag parsing (for models that use tags instead of separate field)
-      let accumulatedContent = '';
-      let inThinkBlock = false;
-      let sentReasoning = '';
-      let sentContent = '';
+      // Split <think> tags in the text (for models that write thinking inline instead of in a separate field)
+      const splitter = createThinkTagSplitter();
 
       // Stream the response - use fullStream to handle tool calls
       for await (const part of result.stream) {
         if (part.type === 'text-delta') {
-          const chunk = part.text;
-          if (chunk) {
-            accumulatedContent += chunk;
-
-            // Process <think> tags for DeepSeek-style models
-            if (!inThinkBlock && accumulatedContent.includes('<think>')) {
-              const thinkStart = accumulatedContent.indexOf('<think>');
-              // Send any content before <think>
-              const beforeThink = accumulatedContent.substring(0, thinkStart);
-              if (beforeThink.length > sentContent.length) {
-                const newContent = beforeThink.substring(sentContent.length);
-                if (newContent) {
-                  res.write(`data: ${JSON.stringify({ content: newContent })}\n\n`);
-                  sentContent = beforeThink;
-                }
-              }
-              inThinkBlock = true;
-            }
-
-            if (inThinkBlock) {
-              // Check if think block is closed
-              if (accumulatedContent.includes('</think>')) {
-                const thinkStartIdx = accumulatedContent.indexOf('<think>') + 7;
-                const thinkEnd = accumulatedContent.indexOf('</think>');
-                const reasoning = accumulatedContent.substring(thinkStartIdx, thinkEnd);
-
-                // Send new reasoning content
-                if (reasoning.length > sentReasoning.length) {
-                  const newReasoning = reasoning.substring(sentReasoning.length);
-                  if (newReasoning) {
-                    res.write(`data: ${JSON.stringify({ reasoning: newReasoning })}\n\n`);
-                    sentReasoning = reasoning;
-                  }
-                }
-
-                inThinkBlock = false;
-
-                // Reset for content after </think>
-                const afterThink = accumulatedContent.substring(thinkEnd + 8);
-                sentContent = '';
-                accumulatedContent = afterThink;
-
-                // Send any remaining content after </think>
-                if (afterThink) {
-                  res.write(`data: ${JSON.stringify({ content: afterThink })}\n\n`);
-                  sentContent = afterThink;
-                }
-              } else {
-                // Still in think block, extract and send reasoning incrementally
-                const thinkStartIdx = accumulatedContent.indexOf('<think>') + 7;
-                const reasoning = accumulatedContent.substring(thinkStartIdx);
-                if (reasoning.length > sentReasoning.length) {
-                  const newReasoning = reasoning.substring(sentReasoning.length);
-                  if (newReasoning) {
-                    res.write(`data: ${JSON.stringify({ reasoning: newReasoning })}\n\n`);
-                    sentReasoning = reasoning;
-                  }
-                }
-              }
-            } else {
-              // Not in think block, send content
-              if (accumulatedContent.length > sentContent.length) {
-                const newContent = accumulatedContent.substring(sentContent.length);
-                if (newContent) {
-                  res.write(`data: ${JSON.stringify({ content: newContent })}\n\n`);
-                  sentContent = accumulatedContent;
-                }
-              }
-            }
+          for (const out of splitter.push(part.text)) {
+            res.write(`data: ${JSON.stringify({ [out.type]: out.text })}\n\n`);
           }
         } else if (part.type === 'reasoning-delta') {
           // Thinking that Ollama returns in its own field (message.thinking)
@@ -289,6 +220,11 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
         } else if (part.type === 'error') {
           res.write(`data: ${JSON.stringify({ error: streamErrorMessage(part.error) })}\n\n`);
         }
+      }
+
+      // Release text held back at the end of the stream (for example a partial "<thi")
+      for (const out of splitter.flush()) {
+        res.write(`data: ${JSON.stringify({ [out.type]: out.text })}\n\n`);
       }
 
       // Explain a reply that ends with no answer text
