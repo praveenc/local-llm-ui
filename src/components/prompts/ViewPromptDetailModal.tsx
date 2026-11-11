@@ -15,9 +15,16 @@ interface ViewPromptDetailModalProps {
   visible: boolean;
   onDismiss: () => void;
   prompt: SavedPrompt | null;
+  /** Put the prompt's text into the chat input. Not set: no Insert button. */
+  onInsert?: () => void;
 }
 
-export function ViewPromptDetailModal({ visible, onDismiss, prompt }: ViewPromptDetailModalProps) {
+export function ViewPromptDetailModal({
+  visible,
+  onDismiss,
+  prompt,
+  onInsert,
+}: ViewPromptDetailModalProps) {
   if (!prompt) return null;
 
   return (
@@ -46,6 +53,7 @@ export function ViewPromptDetailModal({ visible, onDismiss, prompt }: ViewPrompt
 
         <DialogFooter className="gap-2 sm:gap-0">
           <CopyToClipboard text={prompt.content} variant="outline" size="default" />
+          {onInsert && <Button onClick={onInsert}>Insert into chat</Button>}
           <Button onClick={onDismiss}>Close</Button>
         </DialogFooter>
       </DialogContent>

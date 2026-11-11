@@ -76,6 +76,7 @@ import { MCPToolsIndicator } from './MCPToolsIndicator';
 import { ModelSelectorButton } from './ModelSelectorButton';
 import { QuoteRespondDialog } from './QuoteRespondDialog';
 import { type QuoteSelection, QuoteSelectionButton } from './QuoteSelectionButton';
+import { SavePromptButton } from './SavePromptButton';
 import { ThinkingEffortSelector } from './ThinkingEffortSelector';
 import { WebSearchToggle } from './WebSearchToggle';
 import { composerCard, composerIconButton } from './composerStyles';
@@ -104,6 +105,8 @@ interface BedrockChatContainerProps {
   conversationId?: string | null;
   onConversationChange?: (id: string | null) => void;
   onClearHistoryRef?: React.MutableRefObject<(() => void) | null>;
+  /** Set to a function that puts text into the chat input (saved prompts use it) */
+  onInsertPromptRef?: React.MutableRefObject<((text: string) => void) | null>;
 }
 
 // File format for a browser media type; null for an unsupported binary type
@@ -128,6 +131,7 @@ const ChatContainer = ({
   conversationId: externalConversationId,
   onConversationChange,
   onClearHistoryRef,
+  onInsertPromptRef,
 }: BedrockChatContainerProps) => {
   const [inputValue, setInputValue] = useState('');
   const [messageFeedback, setMessageFeedback] = useState<Record<string, string>>({});
@@ -194,6 +198,19 @@ const ChatContainer = ({
       }
     };
   }, [onClearHistoryRef, clearMessages]);
+
+  // Let the sidebar put a saved prompt into the chat input
+  useEffect(() => {
+    if (!onInsertPromptRef) return;
+    onInsertPromptRef.current = (text: string) => {
+      setInputValue((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${text}` : text));
+      // Wait for the modal to close before moving focus
+      setTimeout(() => promptTextareaRef.current?.focus(), 0);
+    };
+    return () => {
+      onInsertPromptRef.current = null;
+    };
+  }, [onInsertPromptRef]);
 
   const handleSubmit = async (message: {
     text: string;
@@ -469,6 +486,7 @@ const ChatContainer = ({
                       disabled={isLoading}
                     />
                   )}
+                <SavePromptButton text={inputValue} disabled={isLoading} />
               </PromptInputTools>
               <PromptInputTools className="ml-auto gap-0.5">
                 <WebSearchToggle

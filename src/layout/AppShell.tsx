@@ -47,6 +47,8 @@ export default function AppShell() {
   };
   const [navigationOpen, setNavigationOpen] = useState<boolean>(true);
   const clearHistoryRef = React.useRef<(() => void) | null>(null);
+  // Set by ChatContainer: puts text into the chat input (saved prompts use it)
+  const insertPromptRef = React.useRef<((text: string) => void) | null>(null);
 
   // Conversation state
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -209,6 +211,7 @@ export default function AppShell() {
       navigation={
         <Sidebar
           onNewChat={handleNewChat}
+          onInsertPrompt={(text) => insertPromptRef.current?.(text)}
           onPreferencesChange={handlePreferencesChange}
           onPreferencesSaved={handlePreferencesSaved}
           activeConversationId={activeConversationId}
@@ -231,6 +234,7 @@ export default function AppShell() {
           conversationId={activeConversationId}
           onConversationChange={handleConversationChange}
           onClearHistoryRef={clearHistoryRef}
+          onInsertPromptRef={insertPromptRef}
         />
       </div>
     </AppLayout>
