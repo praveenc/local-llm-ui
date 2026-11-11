@@ -23,7 +23,7 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
-      'group flex w-full max-w-[95%] flex-col gap-2',
+      'group flex w-full max-w-[95%] flex-col gap-2 compact:gap-1',
       from === 'user' ? 'is-user ml-auto justify-end' : 'is-assistant',
       className
     )}
@@ -38,12 +38,29 @@ export const MessageContent = ({ children, className, ...props }: MessageContent
     className={cn(
       'is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm',
       'group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground',
+      'group-[.is-user]:compact:px-3 group-[.is-user]:compact:py-2',
       'group-[.is-assistant]:text-foreground',
       className
     )}
     {...props}
   >
     {children}
+  </div>
+);
+
+export type MessageAvatarProps = HTMLAttributes<HTMLDivElement> & { initials: string };
+
+export const MessageAvatar = ({ initials, className, ...props }: MessageAvatarProps) => (
+  <div
+    aria-hidden="true"
+    className={cn(
+      'flex size-7 shrink-0 select-none items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground compact:size-6 compact:text-[10px]',
+      className
+    )}
+    title={initials}
+    {...props}
+  >
+    {initials}
   </div>
 );
 

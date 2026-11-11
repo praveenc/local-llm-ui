@@ -46,6 +46,7 @@ import {
   Message,
   MessageAction,
   MessageActions,
+  MessageAvatar,
   MessageContent,
   MessageResponse,
 } from '../ai-elements/message';
@@ -105,6 +106,8 @@ interface BedrockChatContainerProps {
   conversationId?: string | null;
   onConversationChange?: (id: string | null) => void;
   onClearHistoryRef?: React.MutableRefObject<(() => void) | null>;
+  /** 1-2 letters shown next to the user's messages. Empty: no avatar. */
+  avatarInitials?: string;
   /** Set to a function that puts text into the chat input (saved prompts use it) */
   onInsertPromptRef?: React.MutableRefObject<((text: string) => void) | null>;
 }
@@ -132,6 +135,7 @@ const ChatContainer = ({
   onConversationChange,
   onClearHistoryRef,
   onInsertPromptRef,
+  avatarInitials,
 }: BedrockChatContainerProps) => {
   const [inputValue, setInputValue] = useState('');
   const [messageFeedback, setMessageFeedback] = useState<Record<string, string>>({});
@@ -322,7 +326,7 @@ const ChatContainer = ({
             ) : (
               <div ref={messagesRef} className="h-full">
                 <Conversation className="h-full max-w-4xl mx-auto">
-                  <ConversationContent className="p-4">
+                  <ConversationContent className="p-4 compact:p-3">
                     {selectedModel && <ActiveModelBadge model={selectedModel} />}
                     {messages.map((message, index) => {
                       // Determine if this message's reasoning is still streaming
@@ -333,34 +337,46 @@ const ChatContainer = ({
                         hasReasoning(message) &&
                         !getTextContent(message);
 
+                      const showAvatar = message.role === 'user' && !!avatarInitials;
+                      const content = (
+                        <MessageContent>
+                          {hasReasoning(message) && (
+                            <Reasoning
+                              className="w-full"
+                              isStreaming={isReasoningStreaming}
+                              defaultOpen={false}
+                            >
+                              <ReasoningTrigger />
+                              <ReasoningContent>
+                                {getReasoningContent(message) || ''}
+                              </ReasoningContent>
+                            </Reasoning>
+                          )}
+                          {getToolCalls(message).map((toolCall) => (
+                            <ToolCall key={toolCall.toolCallId} toolCall={toolCall} />
+                          ))}
+                          <MessageResponse>
+                            {message.role === 'user'
+                              ? quoteTagsToMarkdown(getTextContent(message))
+                              : getTextContent(message)}
+                          </MessageResponse>
+                        </MessageContent>
+                      );
+
                       return (
                         <Fragment key={message.id}>
                           <Message from={message.role} data-message-index={index}>
-                            <MessageContent>
-                              {hasReasoning(message) && (
-                                <Reasoning
-                                  className="w-full"
-                                  isStreaming={isReasoningStreaming}
-                                  defaultOpen={false}
-                                >
-                                  <ReasoningTrigger />
-                                  <ReasoningContent>
-                                    {getReasoningContent(message) || ''}
-                                  </ReasoningContent>
-                                </Reasoning>
-                              )}
-                              {getToolCalls(message).map((toolCall) => (
-                                <ToolCall key={toolCall.toolCallId} toolCall={toolCall} />
-                              ))}
-                              <MessageResponse>
-                                {message.role === 'user'
-                                  ? quoteTagsToMarkdown(getTextContent(message))
-                                  : getTextContent(message)}
-                              </MessageResponse>
-                            </MessageContent>
+                            {showAvatar ? (
+                              <div className="flex items-start justify-end gap-2">
+                                {content}
+                                <MessageAvatar initials={avatarInitials} className="mt-0.5" />
+                              </div>
+                            ) : (
+                              content
+                            )}
                           </Message>
                           {message.role === 'assistant' && !isLoading && (
-                            <MessageActions className="ml-0">
+                            <MessageActions className="ml-0 compact:-mt-1">
                               <MessageAction
                                 tooltip="Helpful"
                                 onClick={() => handleFeedback(message.id, 'helpful')}
@@ -543,7 +559,7 @@ const ChatContainer = ({
 };
 
 const EmptyState = ({ selectedModel }: { selectedModel: UnifiedModel | null }) => (
-  <div className="flex flex-col items-center justify-center h-full min-h-[400px] gap-4">
+  <div className="flex flex-col items-center justify-center h-full min-h-[400px] gap-4 compact:gap-2">
     {selectedModel ? (
       <>
         <Bot className="h-16 w-16 text-muted-foreground/50" />
@@ -576,7 +592,7 @@ const MetadataRow = ({
     latencyMs?: number;
   };
 }) => (
-  <div className="flex justify-start mt-2">
+  <div className="flex justify-start mt-2 compact:mt-1">
     <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
       <div className="flex items-center gap-1">
         <Bot className="h-3 w-3" />
