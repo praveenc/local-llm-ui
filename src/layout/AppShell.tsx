@@ -7,7 +7,12 @@ import { Sidebar } from '../components/sidebar';
 import { useAllModels } from '../hooks/useAllModels';
 import type { UnifiedModel } from '../hooks/useAllModels';
 import { conversationService } from '../services';
-import { DEFAULT_COLOR_THEME, applyColorTheme, isColorTheme } from '../utils/colorThemes';
+import {
+  DEFAULT_COLOR_THEME,
+  applyColorTheme,
+  applyContentDensity,
+  isColorTheme,
+} from '../utils/colorThemes';
 import { findModel, pickDefaultModel } from '../utils/modelSelection';
 import type { ModelRef } from '../utils/modelSelection';
 import {
@@ -134,6 +139,10 @@ export default function AppShell() {
     );
   }, [userPreferences.colorTheme, userPreferences.visualMode]);
 
+  useEffect(() => {
+    applyContentDensity(window.document.documentElement, userPreferences.contentDensity);
+  }, [userPreferences.contentDensity]);
+
   const handleNewChat = () => {
     setActiveConversationId(null);
     if (clearHistoryRef.current) {
@@ -234,6 +243,7 @@ export default function AppShell() {
           conversationId={activeConversationId}
           onConversationChange={handleConversationChange}
           onClearHistoryRef={clearHistoryRef}
+          avatarInitials={userPreferences.avatarInitials}
           onInsertPromptRef={insertPromptRef}
         />
       </div>

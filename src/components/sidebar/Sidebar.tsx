@@ -40,7 +40,7 @@ export function Sidebar({
   return (
     <div className="flex h-full flex-col">
       {/* New Conversation Button */}
-      <div className="p-3">
+      <div className="p-3 compact:p-2">
         <Button onClick={onNewChat} className="w-full justify-start gap-2" variant="default">
           <Plus className="h-4 w-4" />
           New Conversation
@@ -74,7 +74,7 @@ export function Sidebar({
       <div className="p-2 space-y-1 bg-muted/50 border-t border-sidebar-border">
         <Button
           variant="ghost"
-          className="w-full justify-start gap-2 h-9"
+          className="w-full justify-start gap-2 h-9 compact:h-8"
           onClick={() => setPromptsOpen(true)}
         >
           <FileText className="h-4 w-4" />
@@ -82,7 +82,7 @@ export function Sidebar({
         </Button>
         <Button
           variant="ghost"
-          className="w-full justify-start gap-2 h-9"
+          className="w-full justify-start gap-2 h-9 compact:h-8"
           onClick={() => setPreferencesOpen(true)}
         >
           <Settings className="h-4 w-4" />

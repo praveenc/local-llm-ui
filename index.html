@@ -13,6 +13,7 @@
         var root = document.documentElement;
         root.dataset.theme = themes.indexOf(prefs.colorTheme) >= 0 ? prefs.colorTheme : themes[0];
         if (prefs.visualMode === 'dark') root.classList.add('dark');
+        root.dataset.density = prefs.contentDensity === 'compact' ? 'compact' : 'comfortable';
       } catch (e) {}
     </script>
   </head>

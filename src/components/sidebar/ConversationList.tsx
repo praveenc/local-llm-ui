@@ -176,7 +176,7 @@ export function ConversationList({
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1 compact:gap-0">
       {grouped.map((group) => (
         <Collapsible
           key={group.label}
@@ -184,7 +184,7 @@ export function ConversationList({
           onOpenChange={() => toggleGroup(group.label)}
         >
           <CollapsibleTrigger asChild>
-            <button className="flex w-full items-center gap-1 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+            <button className="flex w-full items-center gap-1 px-3 py-1.5 compact:py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
               <ChevronRight
                 className={cn(
                   'h-3 w-3 transition-transform',
@@ -198,12 +198,12 @@ export function ConversationList({
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="flex flex-col gap-0.5 pl-2">
+            <div className="flex flex-col gap-0.5 compact:gap-0 pl-2">
               {group.conversations.map((conv) => (
                 <div
                   key={conv.id}
                   className={cn(
-                    'group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer transition-colors min-w-0',
+                    'group flex items-center gap-2 rounded-md px-2 py-1.5 compact:py-1 text-sm cursor-pointer transition-colors min-w-0',
                     activeConversationId === conv.id
                       ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                       : 'hover:bg-sidebar-accent/50'

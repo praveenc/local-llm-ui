@@ -294,7 +294,10 @@ To use a saved prompt:
 
 To change the theme, click the palette button in the header and select a theme. In the same menu, you can select Light or Dark. The sun and moon button next to it changes between the light and the dark variant with one click.
 
-You can also select the theme in **Preferences → Display**.
+You can also select the theme in **Preferences → Display**. The same tab has two more settings:
+
+- **Content density**: **Comfortable** is the default. **Compact** uses less space between messages and in the sidebar.
+- **Avatar initials**: one or two letters that show next to your messages. Leave the field empty for no avatar.
 
 | Theme | Light variant | Dark variant | Code colors (light / dark) |
 |---|---|---|---|

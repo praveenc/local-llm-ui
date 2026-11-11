@@ -104,3 +104,11 @@ export const applyColorTheme = (
   root.dataset.theme = isColorTheme(colorTheme) ? colorTheme : DEFAULT_COLOR_THEME;
   root.classList.toggle('dark', visualMode === 'dark');
 };
+
+/**
+ * Sets data-density on the root element. The `compact:` Tailwind variant (globals.css) and
+ * the CSS in themes.css match it.
+ */
+export const applyContentDensity = (root: HTMLElement, density: unknown): void => {
+  root.dataset.density = density === 'compact' ? 'compact' : 'comfortable';
+};

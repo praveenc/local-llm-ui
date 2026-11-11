@@ -9,12 +9,17 @@ import type { WebSearchPreferences } from './webSearch';
 
 export type { Provider };
 export type VisualMode = 'light' | 'dark';
+export type ContentDensity = 'comfortable' | 'compact';
 
 export interface UserPreferences extends WebSearchPreferences {
   preferredProvider: Provider;
   visualMode: VisualMode;
   /** Color palette; visualMode picks its light or dark variant */
   colorTheme: ColorTheme;
+  /** Spacing of the chat and the sidebar. Set as data-density on <html>. */
+  contentDensity: ContentDensity;
+  /** 1-2 letters shown next to your messages. Empty: no avatar. */
+  avatarInitials: string;
   // Bedrock Mantle settings
   bedrockMantleApiKey?: string;
   bedrockMantleRegion?: string;
@@ -36,6 +41,8 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   preferredProvider: 'ollama',
   visualMode: 'light',
   colorTheme: 'cosmic-night',
+  contentDensity: 'comfortable',
+  avatarInitials: '',
   bedrockMantleRegion: 'us-west-2',
 };
 
@@ -94,6 +101,15 @@ export const isProviderConfigured = (preferences: UserPreferences, provider: Pro
   const field = PROVIDER_API_KEY_FIELDS[provider];
   return !field || !!preferences[field]?.trim();
 };
+
+/**
+ * Clean avatar initials: letters and digits only, at most 2, upper case. Empty means no avatar.
+ */
+export const validateInitials = (value: string): string =>
+  value
+    .replace(/[^A-Z0-9]/gi, '')
+    .slice(0, 2)
+    .toUpperCase();
 
 /**
  * The model last picked in the chat input. Kept apart from the preferences so that the
