@@ -14,6 +14,8 @@ export type Provider =
   | 'openrouter';
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type ConversationStatus = 'active' | 'archived';
+/** The user's thumbs up or thumbs down on an assistant message */
+export type MessageFeedback = 'helpful' | 'not-helpful';
 
 export interface MessageAttachment {
   name: string;
@@ -46,6 +48,8 @@ export interface Message {
   parameters?: MessageParameters;
   usage?: MessageUsage;
   attachments?: MessageAttachment[];
+  /** Set when the user rates the message; absent until then */
+  feedback?: MessageFeedback;
 }
 
 export interface Conversation {

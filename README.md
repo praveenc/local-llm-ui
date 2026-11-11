@@ -263,6 +263,10 @@ your question
 
 The chat shows the quote as an indented block. **Send to Fork** needs a selected model.
 
+### Rate a reply
+
+Under each reply, click the thumbs up or thumbs down icon to rate it. The app stores the rating with the message in your browser, so it stays when you open the chat again. Click the same icon again to remove the rating.
+
 ### Documents and images (Bedrock only)
 
 1. Select an Amazon Bedrock model.

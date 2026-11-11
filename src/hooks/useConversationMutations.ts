@@ -3,7 +3,7 @@
  */
 import { useCallback } from 'react';
 
-import type { Conversation, CreateMessageInput, Message } from '../db';
+import type { Conversation, CreateMessageInput, Message, MessageFeedback } from '../db';
 import { conversationService } from '../services';
 
 interface UseConversationMutationsResult {
@@ -16,6 +16,7 @@ interface UseConversationMutationsResult {
   deleteMessagesFromSequence: (conversationId: string, fromSequence: number) => Promise<number>;
   clearAllConversations: () => Promise<void>;
   forkConversation: (sourceId: string, messageCount: number) => Promise<Conversation>;
+  setMessageFeedback: (messageId: string, feedback: MessageFeedback | null) => Promise<void>;
 }
 
 export function useConversationMutations(): UseConversationMutationsResult {
@@ -58,6 +59,13 @@ export function useConversationMutations(): UseConversationMutationsResult {
     return conversationService.fork(sourceId, messageCount);
   }, []);
 
+  const setMessageFeedback = useCallback(
+    async (messageId: string, feedback: MessageFeedback | null) => {
+      return conversationService.setMessageFeedback(messageId, feedback);
+    },
+    []
+  );
+
   return {
     createConversation,
     archiveConversation,
@@ -68,5 +76,6 @@ export function useConversationMutations(): UseConversationMutationsResult {
     deleteMessagesFromSequence,
     clearAllConversations,
     forkConversation,
+    setMessageFeedback,
   };
 }

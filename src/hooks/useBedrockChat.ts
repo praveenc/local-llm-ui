@@ -7,7 +7,7 @@
  */
 import { useCallback, useRef, useState } from 'react';
 
-import type { Provider } from '../db/types';
+import type { MessageFeedback, Provider } from '../db/types';
 import { mantleService } from '../services';
 import type { MessagePart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
@@ -68,6 +68,8 @@ interface UseBedrockChatReturn {
   ) => Promise<void>;
   regenerate: (messageIndex: number) => Promise<void>;
   forkAndSend: (messageIndex: number, content: string) => Promise<void>;
+  /** Thumbs up or down on a message; the same rating again clears it */
+  rateMessage: (messageId: string, feedback: MessageFeedback) => Promise<void>;
   stopGeneration: () => void;
   clearMessages: () => void;
   resetUsage: () => void;
@@ -106,6 +108,7 @@ export function useBedrockChat({
     getNextSequence,
     deleteMessagesFromSequence,
     forkConversation,
+    setMessageFeedback,
   } = useConversationMutations();
 
   // Sync DB messages to local state when conversation loads (adjusting state during render)
@@ -486,7 +489,7 @@ export function useBedrockChat({
         if (fullReasoning) {
           dbContent = `<think>${fullReasoning}</think>\n${fullContent}`;
         }
-        await addMessage({
+        const saved = await addMessage({
           conversationId: currentConversationId,
           role: 'assistant',
           content: dbContent,
@@ -498,6 +501,10 @@ export function useBedrockChat({
           parameters,
           usage: usageData || undefined,
         });
+        // Give the shown message the stored id, so feedback on it finds the DB row
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantMessage.id ? { ...m, id: saved.id } : m))
+        );
 
         setStatus('idle');
       } catch (err) {
@@ -601,6 +608,23 @@ export function useBedrockChat({
     ]
   );
 
+  // Rate a message. The same rating again clears it. The UI updates first; the DB follows.
+  const rateMessage = useCallback(
+    async (messageId: string, feedback: MessageFeedback) => {
+      const current = messages.find((m) => m.id === messageId)?.feedback;
+      const next = current === feedback ? null : feedback;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, feedback: next ?? undefined } : m))
+      );
+      try {
+        await setMessageFeedback(messageId, next);
+      } catch (err) {
+        console.error('Failed to save feedback:', err);
+      }
+    },
+    [messages, setMessageFeedback]
+  );
+
   return {
     messages,
     status,
@@ -611,6 +635,7 @@ export function useBedrockChat({
     sendMessage,
     regenerate,
     forkAndSend,
+    rateMessage,
     stopGeneration,
     clearMessages,
     resetUsage,

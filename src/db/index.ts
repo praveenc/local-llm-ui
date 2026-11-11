@@ -12,6 +12,7 @@ export type {
   CreateSavedPromptInput,
   Message,
   MessageAttachment,
+  MessageFeedback,
   MessageParameters,
   MessageRole,
   MessageUsage,
