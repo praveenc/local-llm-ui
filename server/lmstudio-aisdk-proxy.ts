@@ -1,13 +1,28 @@
 /**
  * LM Studio AI SDK Proxy - Server-side streaming using @ai-sdk/openai-compatible
  *
- * Handles chat requests to LM Studio using the OpenAI-compatible API.
- * Supports reasoning/thinking content extraction for models like DeepSeek-R1.
+ * Handles chat requests to LM Studio's OpenAI-compatible server through the AI SDK, so LM
+ * Studio gets the same tool loop, web search, and MCP tools as the other providers.
+ * Reasoning: the provider reports `reasoning_content` (and `reasoning`) deltas as reasoning
+ * parts. Models that write <think> tags inline are split by think-tags.ts.
  */
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { streamText } from 'ai';
+import type { ToolSet } from 'ai';
 import type { Connect } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
+import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, endStreamWithError, readBodyWithLimit } from './security.ts';
+import { createThinkTagSplitter } from './think-tags.ts';
+import { noAnswerNotice, streamErrorMessage, toolLoopOptions } from './tool-loop.ts';
+import {
+  WEB_SEARCH_KEY_REQUIRED_ERROR,
+  createWebSearchTool,
+  getWebSearchProviders,
+} from './web-search.ts';
+
+const LMSTUDIO_BASE_URL = 'http://localhost:1234/v1';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -18,7 +33,29 @@ interface ChatRequest {
   model: string;
   messages: ChatMessage[];
   max_tokens?: number;
+  enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
+  /** Most model calls in one reply when tools are on */
+  maxToolSteps?: unknown;
+}
+
+// LM Studio needs no API key; the provider requires one, so send a placeholder
+const lmstudio = createOpenAICompatible({
+  name: 'lmstudio',
+  baseURL: LMSTUDIO_BASE_URL,
+  apiKey: 'lm-studio',
+  includeUsage: true,
+});
+
+const NOT_CONNECTED =
+  'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled on port 1234.';
+
+/** A short message for an error; a refused connection gets the LM Studio hint */
+function lmstudioErrorMessage(error: unknown): string {
+  const message = streamErrorMessage(error);
+  return message.includes('ECONNREFUSED') || message.includes('fetch failed')
+    ? NOT_CONNECTED
+    : message;
 }
 
 export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
@@ -42,6 +79,16 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
       return;
     }
 
+    // Web search API keys and the order to try the providers in
+    const webSearchProviders = getWebSearchProviders(req.headers);
+    if (request.enableWebSearch && webSearchProviders.length === 0) {
+      res.statusCode = 401;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: WEB_SEARCH_KEY_REQUIRED_ERROR }));
+      return;
+    }
+
+    let mcpCleanup: (() => Promise<void>) | undefined;
     try {
       const startTime = Date.now();
 
@@ -50,160 +97,95 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      // Create abort controller to cancel fetch when client disconnects
+      // Get MCP tools if configured
+      let mcpTools: Record<string, unknown> = {};
+      if (request.mcpServers && request.mcpServers.length > 0) {
+        const mcp = await getMCPTools(request.mcpServers);
+        mcpTools = mcp.tools;
+        mcpCleanup = mcp.cleanup;
+      }
+
+      // Configure tools - merge web search and MCP tools
+      const allTools: ToolSet = { ...mcpTools } as ToolSet;
+      if (request.enableWebSearch && webSearchProviders.length > 0) {
+        allTools.webSearch = createWebSearchTool(webSearchProviders);
+      }
+      const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
+
+      // Create abort controller to cancel streamText when client disconnects
       const abortController = new AbortController();
       req.on('close', () => {
         abortController.abort();
       });
 
-      const directResponse = await fetch('http://localhost:1234/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: request.model,
-          messages: request.messages,
-          max_tokens: capMaxTokens(request.max_tokens),
-          stream: true,
-          stream_options: { include_usage: true },
-        }),
-        signal: abortController.signal,
+      const result = streamText({
+        model: lmstudio(request.model),
+        // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
+        allowSystemInMessages: true,
+        messages: request.messages,
+        maxOutputTokens: capMaxTokens(request.max_tokens),
+        tools,
+        abortSignal: abortController.signal,
+        // Tool loop that always ends with an answer (see tool-loop.ts)
+        ...toolLoopOptions(tools, { maxSteps: request.maxToolSteps }),
       });
 
-      if (!directResponse.ok) {
-        throw new Error(`LM Studio error: ${directResponse.status}`);
-      }
+      // Models without a reasoning field write <think> tags in the text
+      const splitter = createThinkTagSplitter();
+      const writeParts = (parts: Array<{ type: 'reasoning' | 'content'; text: string }>) => {
+        for (const out of parts) {
+          res.write(`data: ${JSON.stringify({ [out.type]: out.text })}\n\n`);
+        }
+      };
 
-      const reader = directResponse.body?.getReader();
-      if (!reader) throw new Error('Response body is not readable');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let usageData: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        total_tokens?: number;
-      } | null = null;
-
-      // Track content for <think> tag parsing
-      let accumulatedContent = '';
-      let inThinkBlock = false;
-      let sentReasoning = '';
-      let sentContent = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') {
-              continue;
-            }
-
-            try {
-              const parsed = JSON.parse(data);
-
-              const delta = parsed.choices?.[0]?.delta;
-
-              // Check for reasoning content - different models use different field names:
-              // - MiniMax uses delta.reasoning
-              // - NemoTron uses delta.reasoning_content
-              const reasoningContent = delta?.reasoning || delta?.reasoning_content;
-              if (reasoningContent) {
-                res.write(`data: ${JSON.stringify({ reasoning: reasoningContent })}\n\n`);
-              }
-
-              // Check for content and handle <think> tags
-              if (delta?.content) {
-                accumulatedContent += delta.content;
-
-                // Process <think> tags
-                if (!inThinkBlock && accumulatedContent.includes('<think>')) {
-                  const thinkStart = accumulatedContent.indexOf('<think>');
-                  // Send any content before <think>
-                  const beforeThink = accumulatedContent.substring(0, thinkStart);
-                  if (beforeThink.length > sentContent.length) {
-                    const newContent = beforeThink.substring(sentContent.length);
-                    if (newContent) {
-                      res.write(`data: ${JSON.stringify({ content: newContent })}\n\n`);
-                      sentContent = beforeThink;
-                    }
-                  }
-                  inThinkBlock = true;
-                }
-
-                if (inThinkBlock) {
-                  // Check if think block is closed
-                  if (accumulatedContent.includes('</think>')) {
-                    const thinkStart = accumulatedContent.indexOf('<think>') + 7;
-                    const thinkEnd = accumulatedContent.indexOf('</think>');
-                    const reasoning = accumulatedContent.substring(thinkStart, thinkEnd);
-
-                    // Send new reasoning content
-                    if (reasoning.length > sentReasoning.length) {
-                      const newReasoning = reasoning.substring(sentReasoning.length);
-                      if (newReasoning) {
-                        res.write(`data: ${JSON.stringify({ reasoning: newReasoning })}\n\n`);
-                        sentReasoning = reasoning;
-                      }
-                    }
-
-                    inThinkBlock = false;
-
-                    // Reset for content after </think>
-                    const afterThink = accumulatedContent.substring(thinkEnd + 8);
-                    sentContent = '';
-                    accumulatedContent = afterThink;
-                  } else {
-                    // Still in think block, extract and send reasoning incrementally
-                    const thinkStart = accumulatedContent.indexOf('<think>') + 7;
-                    const reasoning = accumulatedContent.substring(thinkStart);
-                    if (reasoning.length > sentReasoning.length) {
-                      const newReasoning = reasoning.substring(sentReasoning.length);
-                      if (newReasoning) {
-                        res.write(`data: ${JSON.stringify({ reasoning: newReasoning })}\n\n`);
-                        sentReasoning = reasoning;
-                      }
-                    }
-                  }
-                } else {
-                  // Not in think block, send content
-                  if (accumulatedContent.length > sentContent.length) {
-                    const newContent = accumulatedContent.substring(sentContent.length);
-                    if (newContent) {
-                      res.write(`data: ${JSON.stringify({ content: newContent })}\n\n`);
-                      sentContent = accumulatedContent;
-                    }
-                  }
-                }
-              }
-
-              // Check for usage in the chunk (LM Studio sends this at the end with stream_options)
-              if (parsed.usage) {
-                usageData = parsed.usage;
-              }
-            } catch {
-              // Skip malformed chunks
-            }
-          }
+      // Stream text chunks and handle tool calls
+      for await (const part of result.stream) {
+        if (part.type === 'text-delta') {
+          writeParts(splitter.push(part.text));
+        } else if (part.type === 'reasoning-delta') {
+          res.write(`data: ${JSON.stringify({ reasoning: part.text })}\n\n`);
+        } else if (part.type === 'tool-call') {
+          res.write(
+            `data: ${JSON.stringify({
+              toolCall: {
+                id: part.toolCallId,
+                name: part.toolName,
+                args: 'input' in part ? part.input : {},
+              },
+            })}\n\n`
+          );
+        } else if (part.type === 'tool-result') {
+          res.write(
+            `data: ${JSON.stringify({
+              toolResult: {
+                id: part.toolCallId,
+                name: part.toolName,
+                result: 'output' in part ? part.output : part,
+              },
+            })}\n\n`
+          );
+        } else if (part.type === 'error') {
+          res.write(`data: ${JSON.stringify({ error: lmstudioErrorMessage(part.error) })}\n\n`);
         }
       }
+      writeParts(splitter.flush());
 
+      // Explain a reply that ends with no answer text
+      const notice = await noAnswerNotice(result);
+      if (notice) res.write(`data: ${JSON.stringify({ content: notice })}\n\n`);
+
+      // Get usage after the stream completes
+      const usage = await Promise.resolve(result.usage).catch(() => undefined);
       const latencyMs = Date.now() - startTime;
 
-      // Send metadata with usage
+      // Send metadata
       res.write(
         `data: ${JSON.stringify({
           metadata: {
             usage: {
-              inputTokens: usageData?.prompt_tokens || 0,
-              outputTokens: usageData?.completion_tokens || 0,
-              totalTokens: usageData?.total_tokens || 0,
+              inputTokens: usage?.inputTokens || 0,
+              outputTokens: usage?.outputTokens || 0,
+              totalTokens: (usage?.inputTokens || 0) + (usage?.outputTokens || 0),
             },
             latencyMs,
           },
@@ -212,14 +194,18 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
 
       res.write('data: [DONE]\n\n');
       res.end();
-    } catch (error) {
-      console.error('LMStudio AI SDK Proxy error:', error);
 
-      const rawMessage = error instanceof Error ? error.message : 'Unknown error';
-      const errorMessage =
-        rawMessage.includes('ECONNREFUSED') || rawMessage.includes('fetch failed')
-          ? 'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled on port 1234.'
-          : rawMessage;
+      // Clean up stale MCP clients
+      if (mcpCleanup) {
+        mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
+      }
+    } catch (error) {
+      // Clean up MCP clients on error too
+      if (mcpCleanup) {
+        mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
+      }
+      console.error('LMStudio AI SDK Proxy error:', error);
+      const errorMessage = lmstudioErrorMessage(error);
 
       // The stream has started: report the error as an SSE event, so the chat shows it
       if (endStreamWithError(res, errorMessage)) return;
