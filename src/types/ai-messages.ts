@@ -5,6 +5,7 @@
  * Adapter functions convert between our DB format and UIMessage format.
  */
 import type { Message as DbMessage } from '../db/types';
+import { getMediaTypeFromFormat } from '../utils/mediaTypes';
 
 /**
  * Text part of a message
@@ -103,26 +104,6 @@ export function toUIMessage(dbMessage: DbMessage): UIMessage {
 }
 
 /**
- * Convert UIMessage format back to database message content
- */
-export function toDbContent(uiMessage: UIMessage): string {
-  const textParts = uiMessage.parts.filter((p): p is TextPart => p.type === 'text');
-  const reasoningParts = uiMessage.parts.filter((p): p is ReasoningPart => p.type === 'reasoning');
-
-  let content = '';
-
-  // Wrap reasoning in <think> tags if present
-  if (reasoningParts.length > 0) {
-    content += `<think>${reasoningParts.map((p) => p.reasoning).join('\n')}</think>\n`;
-  }
-
-  // Add text content
-  content += textParts.map((p) => p.text).join('\n');
-
-  return content.trim();
-}
-
-/**
  * Convert array of database messages to UIMessage array
  */
 export function toUIMessages(dbMessages: DbMessage[]): UIMessage[] {
@@ -149,30 +130,6 @@ function parseThinkingContent(content: string): {
 }
 
 /**
- * Get media type from file format
- */
-function getMediaTypeFromFormat(format: string): string {
-  const formatMap: Record<string, string> = {
-    pdf: 'application/pdf',
-    txt: 'text/plain',
-    html: 'text/html',
-    md: 'text/markdown',
-    csv: 'text/csv',
-    doc: 'application/msword',
-    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    xls: 'application/vnd.ms-excel',
-    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    gif: 'image/gif',
-    webp: 'image/webp',
-  };
-
-  return formatMap[format.toLowerCase()] || 'application/octet-stream';
-}
-
-/**
  * Create a new UIMessage from text content
  */
 export function createUIMessage(
@@ -184,38 +141,6 @@ export function createUIMessage(
     id: id || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     role,
     parts: [{ type: 'text', text: content }],
-    createdAt: new Date(),
-  };
-}
-
-/**
- * Create a UIMessage with file attachments
- */
-export function createUIMessageWithFiles(
-  role: 'user',
-  content: string,
-  files: Array<{ name: string; format: string; bytes: string }>,
-  id?: string
-): UIMessage {
-  const parts: MessagePart[] = [];
-
-  if (content) {
-    parts.push({ type: 'text', text: content });
-  }
-
-  for (const file of files) {
-    parts.push({
-      type: 'file',
-      filename: file.name,
-      mediaType: getMediaTypeFromFormat(file.format),
-      data: file.bytes,
-    });
-  }
-
-  return {
-    id: id || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    role,
-    parts,
     createdAt: new Date(),
   };
 }

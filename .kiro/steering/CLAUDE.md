@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Local LLM UI is a React chat interface for interacting with multiple LLM providers: Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Groq, and Cerebras. Built with TypeScript, Vite, shadcn/ui (Radix primitives + Tailwind CSS), and Dexie.js for client-side persistence.
+Local LLM UI is a React chat interface for interacting with multiple LLM providers: Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Anthropic, OpenRouter, Groq, and Cerebras. Built with TypeScript, Vite, shadcn/ui (Radix primitives + Tailwind CSS), and Dexie.js for client-side persistence.
 
 ## Commands
 
@@ -31,25 +31,31 @@ make fix                 # format + lint:fix
 
 ## Architecture
 
-### Provider Service Pattern
+### Provider Services (browser)
 
-The app uses `APIService` (`src/services/api.ts`) to orchestrate provider-specific services. Each service implements: `getModels()`, `chat()` (async generator for streaming), `checkConnection()`.
+`src/services/*.ts` list the models of each provider (`getModels()`). `useAllModels.ts` calls them in parallel. The chat does not go through these services: `useBedrockChat.ts` posts to the provider's server proxy and reads one SSE format from all of them (`content`, `reasoning`, `toolCall`, `toolResult`, `metadata`, `error`).
 
-| Service | Provider | Port/Target |
+| Service | Provider | Models from |
 |---------|----------|-------------|
-| `ollama.ts` | Ollama | localhost:11434 |
-| `lmstudio.ts` | LM Studio | localhost:1234 |
-| `bedrock.ts` | AWS Bedrock | AWS SDK (server proxy) |
-| `mantle.ts` | Bedrock Mantle | OpenAI-compatible |
-| `aisdk.ts` | Groq, Cerebras | Vercel AI SDK |
+| `ollama.ts` | Ollama | `/api/ollama/api/tags` |
+| `lmstudio.ts` | LM Studio | `/api/lmstudio-sdk/models`, then `/api/lmstudio/v1/models` |
+| `bedrock.ts` | Amazon Bedrock | `/api/bedrock/models` |
+| `mantle.ts` | Bedrock Mantle | `/api/mantle/models` |
+| `aisdk.ts` | Groq, Cerebras, Anthropic | `/api/aisdk/models` (Anthropic: static list) |
+| `openrouter.ts` | OpenRouter | `/api/openrouter/models` |
 
-### Server Proxies (vite.config.ts)
+### Server Proxies (vite.config.ts → server/)
 
-Custom Vite middleware handles AWS credentials and SDK operations server-side:
-- `/api/bedrock`, `/api/bedrock-aisdk` → AWS SDK calls
-- `/api/mantle` → Bedrock Mantle
-- `/api/lmstudio-sdk` → LM Studio SDK operations
-- `/api/lmstudio`, `/api/ollama` → Direct proxies
+Vite middleware keeps credentials and SDK calls on the server. Each chat proxy uses the AI SDK `streamText` with the shared tool loop (`tool-loop.ts`), web search tool (`web-search.ts`), and MCP tools (`mcp-manager.ts`). Shared helpers: `security.ts` (CORS, body limit, token cap, `endStreamWithError`).
+
+- `/api/bedrock` (models), `/api/bedrock-aisdk` (chat, MCP status) → AWS SDK
+- `/api/mantle` → Bedrock Mantle (OpenAI-compatible, no AI SDK)
+- `/api/anthropic`, `/api/openrouter`, `/api/aisdk` (Groq, Cerebras) → API key in `X-Api-Key`
+- `/api/ollama-aisdk`, `/api/lmstudio-aisdk` → local servers (LM Studio: no tools yet)
+- `/api/lmstudio-sdk` → LM Studio SDK (model list)
+- `/api/lmstudio`, `/api/ollama` → plain HTTP proxies
+
+Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`). Keep these free of DOM and Node imports.
 
 ### Data Persistence (Dexie.js/IndexedDB)
 
@@ -63,14 +69,14 @@ Custom Vite middleware handles AWS credentials and SDK operations server-side:
 - `src/layout/AppLayout.tsx` - Layout wrapper with sidebar
 - `src/components/chat/ChatContainer.tsx` - Chat UI container
 - `src/components/ai-elements/` - Reusable AI UI components (prompt-input, message, model-selector, reasoning, context)
-- `src/components/sidebar/Sidebar.tsx` - Provider/model selection, conversation list
+- `src/components/sidebar/Sidebar.tsx` - Conversation list, saved prompts, preferences
 - `src/components/ui/` - shadcn/ui components
 
 ### Key Hooks
 
 - `useAllModels.ts` - Aggregates models from all providers
+- `useBedrockChat.ts` - Chat state and streaming for every provider
 - `useConversation.ts`, `useConversations.ts` - Conversation state/CRUD
-- `usePromptOptimizer.ts` - Claude 4.5 prompt optimization (Bedrock only)
 - `useSavedPrompts.ts` - Saved prompts with Dexie reactive queries
 
 ## Code Conventions
@@ -83,9 +89,9 @@ Custom Vite middleware handles AWS credentials and SDK operations server-side:
 
 ## Provider-Specific Notes
 
-- **Claude 4.5 models**: Don't support both `temperature` and `top_p` simultaneously; UI provides radio toggle
+- **Sampling parameters**: The app does not send `temperature` or `top_p` (UI or proxies). Claude 4.7+ rejects them ("`temperature` is deprecated for this model"); all models use their own defaults
 - **Bedrock document upload**: PDF, TXT, HTML, MD, CSV, DOC(X), XLS(X); max 4.5MB per file
-- **LM Studio**: Supports JIT model loading with progress tracking via SDK
+- **LM Studio**: Turn on JIT Loading in the LM Studio server settings; the app does not load models itself
 
 ## Container Requirement
 
@@ -101,7 +107,7 @@ Custom Vite middleware handles AWS credentials and SDK operations server-side:
 Before any commit, verify git config:
 
 ```bash
-docker exec my-git-workspace sh -c "cat ~/.gitconfig.local'
+docker exec my-git-workspace sh -c "cat ~/.gitconfig.local"
 ```
 
 Expected: username `praveenc`, email `1090396+praveenc@users.noreply.github.com`

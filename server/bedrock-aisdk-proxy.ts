@@ -13,6 +13,7 @@ import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'http';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
+import { lookupMediaType } from '../src/utils/mediaTypes.ts';
 import { buildReasoningParams, fallbackReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import type { ReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
@@ -421,32 +422,13 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
   }
 }
 
-/**
- * Map file format to media type for AI SDK
- */
+/** Media type for a file format. Throws for a format that the proxy cannot send. */
 function getMediaType(format: string): string {
-  const formatMap: Record<string, string> = {
-    pdf: 'application/pdf',
-    txt: 'text/plain',
-    html: 'text/html',
-    md: 'text/markdown',
-    csv: 'text/csv',
-    doc: 'application/msword',
-    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    xls: 'application/vnd.ms-excel',
-    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    gif: 'image/gif',
-    webp: 'image/webp',
-  };
-
-  const mimeType = formatMap[format.toLowerCase()];
-  if (!mimeType) {
+  const mediaType = lookupMediaType(format);
+  if (!mediaType) {
     throw new Error(
       `Unsupported file format "${format}". Supported: pdf, txt, html, md, csv, doc, docx, xls, xlsx, and images.`
     );
   }
-  return mimeType;
+  return mediaType;
 }

@@ -61,21 +61,16 @@ function hasConfiguredValue(value?: string): boolean {
   return !!value?.trim();
 }
 
+/** Providers whose services return a message that the user can act on */
+const PROVIDERS_WITH_OWN_ERRORS: ReadonlySet<Provider> = new Set([
+  'lmstudio',
+  'bedrock',
+  'bedrock-mantle',
+]);
+
 function getProviderErrorMessage(provider: Provider, err: unknown): string {
   const message = err instanceof Error ? err.message : '';
-
-  if (provider === 'lmstudio' && message) {
-    return message;
-  }
-
-  if (provider === 'bedrock' && message) {
-    return message;
-  }
-
-  if (provider === 'bedrock-mantle' && message) {
-    return message;
-  }
-
+  if (message && PROVIDERS_WITH_OWN_ERRORS.has(provider)) return message;
   return `Cannot connect to ${PROVIDER_NAMES[provider]}`;
 }
 
@@ -275,61 +270,22 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
 
   const { data, isFetching, refetch } = query;
 
-  const previousSecretsRef = useRef<{
-    bedrockMantleApiKey?: string;
-    bedrockMantleEnabled: boolean;
-    bedrockMantleRegion: string;
-    groqApiKey?: string;
-    groqEnabled: boolean;
-    cerebrasApiKey?: string;
-    cerebrasEnabled: boolean;
-    anthropicApiKey?: string;
-    anthropicEnabled: boolean;
-    openrouterApiKey?: string;
-    openrouterEnabled: boolean;
-  } | null>(null);
+  // The query key only tracks whether a key is set. Refetch when a key's value changes too
+  // (the user replaced a key), so the new key is used right away.
+  const apiKeys = [
+    preferences.bedrockMantleApiKey,
+    preferences.groqApiKey,
+    preferences.cerebrasApiKey,
+    preferences.anthropicApiKey,
+    preferences.openrouterApiKey,
+  ].join('\u0000');
+  const previousApiKeysRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const currentSecrets = {
-      bedrockMantleApiKey: preferences.bedrockMantleApiKey,
-      bedrockMantleEnabled: hasConfiguredValue(preferences.bedrockMantleApiKey),
-      bedrockMantleRegion: preferences.bedrockMantleRegion || 'us-west-2',
-      groqApiKey: preferences.groqApiKey,
-      groqEnabled: hasConfiguredValue(preferences.groqApiKey),
-      cerebrasApiKey: preferences.cerebrasApiKey,
-      cerebrasEnabled: hasConfiguredValue(preferences.cerebrasApiKey),
-      anthropicApiKey: preferences.anthropicApiKey,
-      anthropicEnabled: hasConfiguredValue(preferences.anthropicApiKey),
-      openrouterApiKey: preferences.openrouterApiKey,
-      openrouterEnabled: hasConfiguredValue(preferences.openrouterApiKey),
-    };
-
-    const previousSecrets = previousSecretsRef.current;
-    previousSecretsRef.current = currentSecrets;
-
-    if (!previousSecrets) {
-      return;
-    }
-
-    const secretValuesChanged =
-      previousSecrets.bedrockMantleApiKey !== currentSecrets.bedrockMantleApiKey ||
-      previousSecrets.groqApiKey !== currentSecrets.groqApiKey ||
-      previousSecrets.cerebrasApiKey !== currentSecrets.cerebrasApiKey ||
-      previousSecrets.anthropicApiKey !== currentSecrets.anthropicApiKey ||
-      previousSecrets.openrouterApiKey !== currentSecrets.openrouterApiKey;
-
-    if (secretValuesChanged) {
-      void refetch();
-    }
-  }, [
-    preferences.anthropicApiKey,
-    preferences.bedrockMantleApiKey,
-    preferences.bedrockMantleRegion,
-    preferences.cerebrasApiKey,
-    preferences.groqApiKey,
-    preferences.openrouterApiKey,
-    refetch,
-  ]);
+    const previous = previousApiKeysRef.current;
+    previousApiKeysRef.current = apiKeys;
+    if (previous !== null && previous !== apiKeys) void refetch();
+  }, [apiKeys, refetch]);
 
   const providers = isFetching ? loadingProviders : (data ?? []);
   const allModels = providers.flatMap((provider) => provider.models);

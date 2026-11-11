@@ -32,17 +32,6 @@ export class OllamaService {
       throw error;
     }
   }
-
-  async checkConnection(): Promise<boolean> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/tags`, {
-        method: 'GET',
-      });
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }
 }
 
 export const ollamaService = new OllamaService();

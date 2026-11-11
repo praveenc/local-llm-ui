@@ -14,7 +14,7 @@ import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { ollamaThinkValue } from '../src/utils/thinkingEffort.ts';
 import type { OllamaThinkingInfo } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
-import { capMaxTokens, readBodyWithLimit } from './security.ts';
+import { capMaxTokens, endStreamWithError, readBodyWithLimit } from './security.ts';
 import { noAnswerNotice, streamErrorMessage, toolLoopOptions } from './tool-loop.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
@@ -327,24 +327,18 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
       }
       console.error('Ollama AI SDK Proxy error:', error);
 
-      // If headers already sent, we can't change status code
-      if (!res.headersSent) {
-        res.statusCode = 500;
-        res.setHeader('Content-Type', 'application/json');
-      }
+      const rawMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        rawMessage.includes('ECONNREFUSED') || rawMessage.includes('fetch failed')
+          ? 'Cannot connect to Ollama. Please ensure Ollama is running on port 11434.'
+          : rawMessage;
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      // The stream has started: report the error as an SSE event, so the chat shows it
+      if (endStreamWithError(res, errorMessage)) return;
 
-      // Check for connection errors
-      if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('fetch failed')) {
-        res.end(
-          JSON.stringify({
-            error: 'Cannot connect to Ollama. Please ensure Ollama is running on port 11434.',
-          })
-        );
-      } else {
-        res.end(JSON.stringify({ error: errorMessage }));
-      }
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: errorMessage }));
     }
   };
 }

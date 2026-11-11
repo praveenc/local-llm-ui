@@ -4,10 +4,9 @@ import {
   ListInferenceProfilesCommand,
   type ListInferenceProfilesCommandInput,
 } from '@aws-sdk/client-bedrock';
-import { BedrockRuntimeClient, ConverseStreamCommand } from '@aws-sdk/client-bedrock-runtime';
 import type { IncomingMessage, ServerResponse } from 'http';
 
-import { capMaxTokens, endStreamWithError, setCORSHeaders } from './security.ts';
+import { setCORSHeaders } from './security.ts';
 
 interface InferenceProfileModel {
   modelArn?: string;
@@ -31,7 +30,6 @@ const clientOptions = {
 };
 
 const bedrockClient = new BedrockClient(clientOptions);
-const bedrockRuntimeClient = new BedrockRuntimeClient(clientOptions);
 
 export async function handleBedrockRequest(
   req: IncomingMessage,
@@ -52,18 +50,12 @@ export async function handleBedrockRequest(
   try {
     if (pathname === '/api/bedrock/models') {
       await handleListModels(res);
-    } else if (pathname === '/api/bedrock/chat') {
-      await handleChat(req, res);
     } else {
       res.statusCode = 404;
       res.end(JSON.stringify({ error: 'Not found' }));
     }
   } catch (error) {
     const err = error as Error;
-
-    // The chat stream has started, so the status and headers are sent
-    if (res.headersSent) console.error('Bedrock proxy stream error:', error);
-    if (endStreamWithError(res, err.message || 'The model stream failed.')) return;
 
     let errorMessage = 'Internal server error';
     let statusCode = 500;
@@ -178,13 +170,7 @@ async function handleListModels(res: ServerResponse): Promise<void> {
     new Map(mappedModels.map((model) => [model.modelId, model])).values()
   );
 
-  // Add hardcoded models that aren't available via inference profiles
-  const hardcodedModels: Array<{ modelId: string; modelName: string; provider: string }> = [
-    // TODO: Add 1m context window models when beta header support is fully implemented
-  ];
-
-  // Merge hardcoded models with discovered models
-  const allModels = [...uniqueModels, ...hardcodedModels];
+  const allModels = uniqueModels;
 
   // Sort models: Anthropic first, then alphabetically by name
   allModels.sort((a, b) => {
@@ -203,169 +189,8 @@ async function handleListModels(res: ServerResponse): Promise<void> {
     return a.modelName.localeCompare(b.modelName);
   });
 
-  console.log(
-    `Bedrock: Returning ${allModels.length} unique models (sorted, including ${hardcodedModels.length} hardcoded)`
-  );
+  console.log(`Bedrock: Returning ${allModels.length} unique models (sorted)`);
 
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({ models: allModels }));
-}
-
-async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  let body = '';
-  for await (const chunk of req) {
-    body += chunk;
-    if (body.length > 10 * 1024 * 1024) {
-      res.statusCode = 413;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Request body too large' }));
-      return;
-    }
-  }
-
-  const { model, messages, max_tokens } = JSON.parse(body);
-
-  console.log(`Bedrock: Chat request for model: ${model}`);
-  console.log(`Bedrock: Messages count: ${messages?.length || 0}`);
-  // console.log(`Bedrock: Messages:`, JSON.stringify(messages, null, 2));
-
-  // No temperature or top_p: newer models reject them, so all models use their own defaults
-  const inferenceConfig = { maxTokens: capMaxTokens(max_tokens) };
-
-  // Transform messages to support documents
-  const transformedMessages = messages.map(
-    (msg: {
-      role: string;
-      content: string | unknown[];
-      files?: Array<{ name: string; format: string; bytes: string }>;
-    }) => {
-      const role = msg.role === 'user' ? 'user' : 'assistant';
-
-      // Build content blocks
-      const contentBlocks: Array<{
-        text?: string;
-        document?: {
-          name: string;
-          format: string;
-          source: { bytes: Buffer };
-        };
-      }> = [];
-
-      // Add text content
-      if (typeof msg.content === 'string') {
-        contentBlocks.push({ text: msg.content });
-      } else if (Array.isArray(msg.content)) {
-        // Content is already in ContentBlock format - cast to proper type
-        contentBlocks.push(
-          ...(msg.content as Array<{
-            text?: string;
-            document?: { name: string; format: string; source: { bytes: Buffer } };
-          }>)
-        );
-      }
-
-      // Add document blocks if files are present
-      if (msg.files && Array.isArray(msg.files)) {
-        console.log(`Bedrock: Processing ${msg.files.length} files for message`);
-        for (const file of msg.files) {
-          // Additional sanitization on server side to ensure compliance
-          let sanitizedName = file.name || 'document';
-
-          // Remove any characters that aren't alphanumeric, space, hyphen, parentheses, or square brackets
-          sanitizedName = sanitizedName.replace(/[^a-zA-Z0-9 \-()[\]]/g, '');
-
-          // Replace multiple consecutive spaces with single space
-          sanitizedName = sanitizedName.replace(/\s+/g, ' ');
-
-          // Trim whitespace
-          sanitizedName = sanitizedName.trim();
-
-          // Ensure we have a valid name
-          if (!sanitizedName || sanitizedName.length === 0) {
-            sanitizedName = 'document';
-          }
-
-          // Enforce max length
-          if (sanitizedName.length > 200) {
-            sanitizedName = sanitizedName.substring(0, 200).trim();
-          }
-
-          console.log(
-            `Bedrock: Original name: "${file.name}", Sanitized name: "${sanitizedName}", format: ${file.format}, bytes length: ${file.bytes?.length || 0}`
-          );
-
-          contentBlocks.push({
-            document: {
-              name: sanitizedName,
-              format: file.format,
-              source: {
-                bytes: Buffer.from(file.bytes, 'base64'),
-              },
-            },
-          });
-        }
-      }
-
-      return {
-        role,
-        content: contentBlocks,
-      };
-    }
-  );
-
-  console.log(
-    `Bedrock: Transformed messages:`,
-    JSON.stringify(
-      transformedMessages.map(
-        (m: { role: string; content: Array<{ text?: string; document?: { name?: string } }> }) => ({
-          role: m.role,
-          contentBlocks: m.content.map((c: { text?: string; document?: { name?: string } }) =>
-            'text' in c ? 'text' : 'document' in c ? `document(${c.document?.name})` : 'unknown'
-          ),
-        })
-      ),
-      null,
-      2
-    )
-  );
-
-  const command = new ConverseStreamCommand({
-    modelId: model,
-    messages: transformedMessages,
-    inferenceConfig,
-  });
-
-  const response = await bedrockRuntimeClient.send(command);
-
-  if (!response.stream) {
-    throw new Error('No stream in response');
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  let metadata: { usage?: unknown; metrics?: unknown } | null = null;
-
-  for await (const event of response.stream) {
-    if (event.contentBlockDelta?.delta?.text) {
-      res.write(`data: ${JSON.stringify({ content: event.contentBlockDelta.delta.text })}\n\n`);
-    }
-
-    // Capture metadata from the stream
-    if (event.metadata) {
-      metadata = {
-        usage: event.metadata.usage,
-        metrics: event.metadata.metrics,
-      };
-    }
-  }
-
-  // Send metadata at the end
-  if (metadata) {
-    res.write(`data: ${JSON.stringify({ metadata })}\n\n`);
-  }
-
-  res.write('data: [DONE]\n\n');
-  res.end();
 }

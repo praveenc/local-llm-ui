@@ -7,7 +7,7 @@
 import type { Connect } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
-import { capMaxTokens, readBodyWithLimit } from './security.ts';
+import { capMaxTokens, endStreamWithError, readBodyWithLimit } from './security.ts';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -215,25 +215,18 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
     } catch (error) {
       console.error('LMStudio AI SDK Proxy error:', error);
 
-      // If headers already sent, we can't change status code
-      if (!res.headersSent) {
-        res.statusCode = 500;
-        res.setHeader('Content-Type', 'application/json');
-      }
+      const rawMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        rawMessage.includes('ECONNREFUSED') || rawMessage.includes('fetch failed')
+          ? 'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled on port 1234.'
+          : rawMessage;
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      // The stream has started: report the error as an SSE event, so the chat shows it
+      if (endStreamWithError(res, errorMessage)) return;
 
-      // Check for connection errors
-      if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('fetch failed')) {
-        res.end(
-          JSON.stringify({
-            error:
-              'Cannot connect to LM Studio. Please ensure LM Studio is running with the server enabled on port 1234.',
-          })
-        );
-      } else {
-        res.end(JSON.stringify({ error: errorMessage }));
-      }
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: errorMessage }));
     }
   };
 }

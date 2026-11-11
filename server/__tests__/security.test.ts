@@ -28,7 +28,9 @@ describe('endStreamWithError', () => {
     });
     expect(handled).toBe(true);
     expect(status).toBe(200);
-    expect(body).toBe('data: {"content":"Hel"}\n\ndata: {"error":"Model failed"}\n\ndata: [DONE]\n\n');
+    expect(body).toBe(
+      'data: {"content":"Hel"}\n\ndata: {"error":"Model failed"}\n\ndata: [DONE]\n\n'
+    );
   });
 
   it('does nothing before the response starts, so the caller can send a status', async () => {

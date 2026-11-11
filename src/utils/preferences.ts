@@ -1,20 +1,13 @@
 /**
  * User preferences management utilities
  */
+import type { Provider } from '../db/types';
 import type { MCPServersMap } from '../types/mcp';
 import type { ColorTheme } from './colorThemes';
 import type { ThinkingEffort } from './thinkingEffort';
 import type { WebSearchPreferences } from './webSearch';
 
-export type Provider =
-  | 'ollama'
-  | 'lmstudio'
-  | 'bedrock'
-  | 'bedrock-mantle'
-  | 'groq'
-  | 'cerebras'
-  | 'anthropic'
-  | 'openrouter';
+export type { Provider };
 export type VisualMode = 'light' | 'dark';
 export type ContentDensity = 'comfortable' | 'compact';
 
@@ -34,7 +27,6 @@ export interface UserPreferences extends WebSearchPreferences {
   anthropicApiKey?: string;
   openrouterApiKey?: string;
   // Web search keys and provider order: see WebSearchPreferences
-  webSearchEnabledByDefault?: boolean;
   // MCP Servers
   mcpServers?: MCPServersMap;
   // Default thinking effort for each provider

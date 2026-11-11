@@ -3,16 +3,17 @@
  *
  * Custom hook for managing chat with AI SDK streaming.
  * Handles message state, streaming, and conversation persistence.
- * Supports Bedrock, Bedrock Mantle, Groq, and Cerebras providers.
+ * Supports all providers: each one has a server proxy that streams the same SSE events.
  */
 import { useCallback, useRef, useState } from 'react';
 
 import type { Provider } from '../db/types';
 import { mantleService } from '../services';
-import type { ModelOption } from '../types';
 import type { MessagePart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
+import { extractErrorMessage } from '../utils/errorMessage';
 import { normalizeMediaType } from '../utils/fileUtils';
+import { getMediaTypeFromFormat, lookupFormat } from '../utils/mediaTypes';
 import { loadPreferences } from '../utils/preferences';
 import { supportsThinkingEffort } from '../utils/thinkingEffort';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
@@ -21,9 +22,18 @@ import { useConversation, useConversationMutations } from './index';
 
 export type ChatStatus = 'idle' | 'streaming' | 'submitted' | 'error';
 
+/** The model that the chat sends to */
+export interface ChatModel {
+  id: string;
+  name: string;
+  provider: Provider;
+  /** The provider reports that the model can think (Ollama) */
+  supportsThinking?: boolean;
+}
+
 interface UseBedrockChatOptions {
   conversationId: string | null;
-  selectedModel: ModelOption | null;
+  selectedModel: ChatModel | null;
   maxTokens: number;
   /** Most model calls in one reply when tools are on */
   maxToolSteps: number;
@@ -107,20 +117,6 @@ export function useBedrockChat({
     }
   }
 
-  // Get provider from model description
-  const getProvider = useCallback((): Provider => {
-    const desc = selectedModel?.description?.toLowerCase() ?? '';
-    if (desc.includes('bedrock-mantle')) return 'bedrock-mantle';
-    if (desc.includes('bedrock')) return 'bedrock';
-    if (desc.includes('groq')) return 'groq';
-    if (desc.includes('cerebras')) return 'cerebras';
-    if (desc.includes('anthropic')) return 'anthropic';
-    if (desc.includes('openrouter')) return 'openrouter';
-    if (desc.includes('lmstudio')) return 'lmstudio';
-    if (desc.includes('ollama')) return 'ollama';
-    return 'bedrock';
-  }, [selectedModel]);
-
   // Stop generation
   const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
@@ -161,9 +157,7 @@ export function useBedrockChat({
       // Reset interrupted state when starting a new message
       setWasInterrupted(false);
 
-      const provider = getProvider();
-      const modelId = selectedModel.value || '';
-      const modelName = selectedModel.label || modelId;
+      const { provider, id: modelId, name: modelName } = selectedModel;
 
       // Create conversation if needed
       let currentConversationId = target?.conversationId ?? activeConversationId;
@@ -257,9 +251,9 @@ export function useBedrockChat({
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
         };
+        const prefs = loadPreferences();
 
         // Add web search API keys and the provider order if web search is enabled
-        const prefs = loadPreferences();
         if (enableWebSearch) {
           Object.assign(headers, buildWebSearchHeaders(prefs));
         }
@@ -285,7 +279,6 @@ export function useBedrockChat({
           headers['X-Mantle-Region'] = mantleService.getRegion();
         } else if (provider === 'groq' || provider === 'cerebras') {
           endpoint = '/api/aisdk/chat';
-          const prefs = loadPreferences();
           const apiKey = provider === 'groq' ? prefs.groqApiKey : prefs.cerebrasApiKey;
           if (!apiKey) {
             throw new Error(
@@ -297,14 +290,12 @@ export function useBedrockChat({
           (requestBody as Record<string, unknown>).provider = provider;
         } else if (provider === 'anthropic') {
           endpoint = '/api/anthropic/chat';
-          const prefs = loadPreferences();
           if (!prefs.anthropicApiKey) {
             throw new Error('Anthropic API key is required. Please configure it in preferences.');
           }
           headers['X-Api-Key'] = prefs.anthropicApiKey;
         } else if (provider === 'openrouter') {
           endpoint = '/api/openrouter/chat';
-          const prefs = loadPreferences();
           if (!prefs.openrouterApiKey) {
             throw new Error('OpenRouter API key is required. Please configure it in preferences.');
           }
@@ -329,12 +320,9 @@ export function useBedrockChat({
 
         if (!response.ok) {
           const responseText = await response.text();
-          const parsedError = parseJsonSafely(responseText);
-          const extractedError =
-            extractErrorMessage(parsedError) ||
-            (!parsedError ? extractErrorMessage(responseText) : null) ||
-            `HTTP error! status: ${response.status}`;
-          throw new Error(extractedError);
+          throw new Error(
+            extractErrorMessage(responseText) || `HTTP error! status: ${response.status}`
+          );
         }
 
         // Process stream - different formats for Bedrock vs Mantle
@@ -381,6 +369,21 @@ export function useBedrockChat({
           return parts;
         };
 
+        // Show the assistant message with its current parts (replaces the streaming one)
+        const showAssistantMessage = () => {
+          assistantMessage.parts = buildParts();
+          setMessages((prev) => {
+            const newMessages = [...prev];
+            const lastIdx = newMessages.length - 1;
+            if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
+              newMessages[lastIdx] = { ...assistantMessage };
+            } else {
+              newMessages.push({ ...assistantMessage });
+            }
+            return newMessages;
+          });
+        };
+
         // Both Bedrock and Mantle now use SSE format: data: {"content": "..."} or data: {"metadata": {...}}
         let buffer = '';
         while (true) {
@@ -414,17 +417,7 @@ export function useBedrockChat({
               // Handle reasoning content (e.g., MiniMax models)
               if (parsed.reasoning) {
                 fullReasoning += parsed.reasoning as string;
-                assistantMessage.parts = buildParts();
-                setMessages((prev) => {
-                  const newMessages = [...prev];
-                  const lastIdx = newMessages.length - 1;
-                  if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
-                    newMessages[lastIdx] = { ...assistantMessage };
-                  } else {
-                    newMessages.push({ ...assistantMessage });
-                  }
-                  return newMessages;
-                });
+                showAssistantMessage();
               }
 
               // Handle tool call
@@ -436,17 +429,7 @@ export function useBedrockChat({
                 };
                 const { id, name, args } = toolCall;
                 toolCalls.set(id, { toolName: name, args, status: 'pending' });
-                assistantMessage.parts = buildParts();
-                setMessages((prev) => {
-                  const newMessages = [...prev];
-                  const lastIdx = newMessages.length - 1;
-                  if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
-                    newMessages[lastIdx] = { ...assistantMessage };
-                  } else {
-                    newMessages.push({ ...assistantMessage });
-                  }
-                  return newMessages;
-                });
+                showAssistantMessage();
               }
 
               // Handle tool result
@@ -459,34 +442,14 @@ export function useBedrockChat({
                 const existing = toolCalls.get(id);
                 if (existing) {
                   toolCalls.set(id, { ...existing, result, status: 'complete' });
-                  assistantMessage.parts = buildParts();
-                  setMessages((prev) => {
-                    const newMessages = [...prev];
-                    const lastIdx = newMessages.length - 1;
-                    if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
-                      newMessages[lastIdx] = { ...assistantMessage };
-                    } else {
-                      newMessages.push({ ...assistantMessage });
-                    }
-                    return newMessages;
-                  });
+                  showAssistantMessage();
                 }
               }
 
               // Handle regular content
               if (parsed.content) {
                 fullContent += parsed.content as string;
-                assistantMessage.parts = buildParts();
-                setMessages((prev) => {
-                  const newMessages = [...prev];
-                  const lastIdx = newMessages.length - 1;
-                  if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
-                    newMessages[lastIdx] = { ...assistantMessage };
-                  } else {
-                    newMessages.push({ ...assistantMessage });
-                  }
-                  return newMessages;
-                });
+                showAssistantMessage();
               } else if (
                 (parsed.metadata as { usage?: UsageMetadata; latencyMs?: number } | undefined)
                   ?.usage
@@ -560,7 +523,6 @@ export function useBedrockChat({
       maxToolSteps,
       thinkingEffort,
       enableWebSearch,
-      getProvider,
       createConversation,
       addMessage,
       getNextSequence,
@@ -655,114 +617,10 @@ export function useBedrockChat({
   };
 }
 
-// Helper functions
-function parseJsonSafely(value: string): unknown | null {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-}
-
-function extractErrorMessage(payload: unknown): string | null {
-  const GENERIC_ERRORS = new Set([
-    'No output generated.',
-    'No output generated. Check the stream for errors.',
-    'Unknown error',
-  ]);
-  const visited = new Set<unknown>();
-
-  const walk = (value: unknown): string | undefined => {
-    if (value == null) return undefined;
-
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (!trimmed) return undefined;
-
-      const parsed = parseJsonSafely(trimmed);
-      if (parsed && parsed !== value) {
-        return walk(parsed);
-      }
-
-      return GENERIC_ERRORS.has(trimmed) ? undefined : trimmed;
-    }
-
-    if (value instanceof Error) {
-      const withFields = value as Error & {
-        cause?: unknown;
-        responseBody?: unknown;
-      };
-
-      return (
-        walk(withFields.responseBody) ||
-        walk(withFields.cause) ||
-        (!GENERIC_ERRORS.has(value.message) ? value.message : undefined)
-      );
-    }
-
-    if (typeof value === 'object') {
-      if (visited.has(value)) return undefined;
-      visited.add(value);
-
-      const obj = value as Record<string, unknown>;
-
-      return (
-        walk(obj.error) ||
-        walk(obj.message) ||
-        walk(obj.responseBody) ||
-        walk(obj.cause) ||
-        walk(obj.details) ||
-        walk(obj.detail) ||
-        walk(obj.data)
-      );
-    }
-
-    return undefined;
-  };
-
-  return walk(payload) || null;
-}
-
-function getMediaTypeFromFormat(format: string): string {
-  const formatMap: Record<string, string> = {
-    pdf: 'application/pdf',
-    txt: 'text/plain',
-    html: 'text/html',
-    md: 'text/markdown',
-    csv: 'text/csv',
-    doc: 'application/msword',
-    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    xls: 'application/vnd.ms-excel',
-    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    gif: 'image/gif',
-    webp: 'image/webp',
-  };
-  return formatMap[format.toLowerCase()] || 'application/octet-stream';
-}
-
+/** The format that the chat sends with a file. Text-like types map to txt; unknown types to bin. */
 function getFormatFromMediaType(mediaType: string): string {
-  // Normalize text-like MIME types (e.g. application/x-sh → text/plain)
-  // so they map to 'txt' instead of falling through to 'bin'
+  // Normalize text-like MIME types (e.g. application/x-sh -> text/plain)
   const normalized = normalizeMediaType(mediaType);
-  const typeMap: Record<string, string> = {
-    'application/pdf': 'pdf',
-    'text/plain': 'txt',
-    'text/html': 'html',
-    'text/markdown': 'md',
-    'text/csv': 'csv',
-    'application/msword': 'doc',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-    'application/vnd.ms-excel': 'xls',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
-    'image/png': 'png',
-    'image/jpeg': 'jpg',
-    'image/gif': 'gif',
-    'image/webp': 'webp',
-  };
-  if (normalized && typeMap[normalized]) return typeMap[normalized];
-  if (normalized) return 'txt'; // normalized but not in typeMap → treat as text
-  return 'bin'; // truly unsupported binary
+  if (!normalized) return 'bin'; // truly unsupported binary
+  return lookupFormat(normalized) ?? 'txt';
 }

@@ -71,23 +71,6 @@ export class OpenRouterService {
       });
     }
   }
-
-  async checkConnection(): Promise<boolean> {
-    if (!this.hasApiKey()) {
-      return false;
-    }
-
-    try {
-      const response = await fetch(`${OPENROUTER_BASE_URL}/models`, {
-        headers: {
-          'X-Api-Key': this.getApiKey()!,
-        },
-      });
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }
 }
 
 export const openrouterService = new OpenRouterService();
