@@ -49,6 +49,16 @@ npm run lint
 npm run build
 ```
 
+### Agent skills (optional)
+
+The coding agents in `.pi/agents/` use the `ai-elements` skill. The skill files are not in Git. `skills-lock.json` pins them. To restore them:
+
+```bash
+npx skills install
+```
+
+This writes the skill to `.agents/skills/`, which Pi reads. You need this only when you run the agents, not to build or run the app.
+
 ### Project Structure
 
 ```
