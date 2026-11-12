@@ -222,7 +222,9 @@ Free plans can change. Look at the pricing page of each provider for the current
 3. Select the **primary provider**. The app tries this provider first.
 4. Keep **Use the next provider when one fails** on. If the primary provider has no quota, is rate limited, or does not respond, the app tries the next provider that has a key.
 
-The search card in the reply shows which provider sent the results.
+Each tool call shows as a card in the reply. A search card shows the query, the number of results, and the provider that sent them. An MCP tool card shows the tool name and its main argument, for example the URL that it fetched. Click a card to open it.
+
+The model decides how many searches it makes. For a wide question, it often splits the question into several searches, one for each part. To limit this, lower **Max tool steps** or ask for one search in your message.
 
 ### Max tool steps
 
