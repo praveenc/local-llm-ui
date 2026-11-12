@@ -34,7 +34,7 @@ import { lookupFormat } from '../../utils/mediaTypes';
 import { getModelContextLimits } from '../../utils/modelContext';
 import { loadPreferences } from '../../utils/preferences';
 import { formatQuoteMessage, quoteTagsToMarkdown } from '../../utils/quote';
-import { supportsThinkingEffort } from '../../utils/thinkingEffort';
+import { supportsThinkingEffort, thinkingEffortOptions } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
 import { WEB_SEARCH_PROVIDER_LABELS, getPrimaryWebSearchProvider } from '../../utils/webSearch';
 import {
@@ -496,6 +496,7 @@ const ChatContainer = ({
                       value={thinkingEffort}
                       onChange={setThinkingEffort}
                       disabled={isLoading}
+                      options={thinkingEffortOptions(selectedModel.provider, selectedModel.id)}
                     />
                   )}
                 <SavePromptButton text={inputValue} disabled={isLoading} />

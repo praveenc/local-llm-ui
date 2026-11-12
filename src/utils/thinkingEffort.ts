@@ -82,6 +82,9 @@ const isOpenAIReasoningModel = (modelId: string): boolean =>
 /** Amazon Nova 2 models on Bedrock, for example us.amazon.nova-2-lite-v1:0 */
 const isNova2Model = (modelId: string): boolean => /amazon\.nova-2-/i.test(modelId);
 
+/** xAI Grok models on Bedrock, for example global.xai.grok-4.7, us.xai.grok-4.6 */
+export const isGrokModel = (modelId: string): boolean => /xai\.grok-/i.test(modelId);
+
 /**
  * How a Bedrock Mantle model takes `reasoning_effort` (checked on Mantle, us-west-2):
  * - 'levels': low, medium, and high change how much it thinks. It cannot turn thinking off
@@ -117,7 +120,10 @@ export function supportsThinkingEffort(
   switch (provider) {
     case 'bedrock':
       return (
-        isClaudeThinkingModel(modelId) || isOpenAIReasoningModel(modelId) || isNova2Model(modelId)
+        isClaudeThinkingModel(modelId) ||
+        isOpenAIReasoningModel(modelId) ||
+        isNova2Model(modelId) ||
+        isGrokModel(modelId)
       );
     case 'bedrock-mantle':
       return mantleThinkingStyle(modelId) !== undefined;
@@ -146,6 +152,29 @@ export function buildReasoningParams(
   if (!isThinkingEffort(effort) || effort === 'default') return {};
   if (!supportsThinkingEffort(provider, modelId)) return {};
   return { reasoning: effort === 'off' ? 'none' : effort };
+}
+
+/**
+ * The efforts that the chat offers for a model. Most models get the full list. Grok on Bedrock
+ * always reasons and takes only low, medium, high, and xhigh, so Off and Minimal are left out.
+ */
+export function thinkingEffortOptions(
+  provider: Provider,
+  modelId: string
+): ReadonlyArray<{ value: ThinkingEffort; label: string }> {
+  if (provider === 'bedrock' && isGrokModel(modelId)) {
+    return THINKING_EFFORT_OPTIONS.filter((o) => o.value !== 'off' && o.value !== 'minimal');
+  }
+  return THINKING_EFFORT_OPTIONS;
+}
+
+/**
+ * The `reasoning_effort` to send to Grok on Bedrock in `additionalModelRequestFields`. The AI SDK
+ * Bedrock provider does not map its `reasoning` option for Grok, so the proxy sets the field
+ * itself. Grok cannot turn reasoning off and has no minimal level: both use low.
+ */
+export function grokReasoningEffort(level: ReasoningLevel): 'low' | 'medium' | 'high' | 'xhigh' {
+  return level === 'none' || level === 'minimal' ? 'low' : level;
 }
 
 /**

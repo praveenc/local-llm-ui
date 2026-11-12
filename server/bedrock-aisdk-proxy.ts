@@ -14,7 +14,12 @@ import type { IncomingMessage, ServerResponse } from 'http';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { lookupMediaType } from '../src/utils/mediaTypes.ts';
-import { buildReasoningParams, fallbackReasoningLevel } from '../src/utils/thinkingEffort.ts';
+import {
+  buildReasoningParams,
+  fallbackReasoningLevel,
+  grokReasoningEffort,
+  isGrokModel,
+} from '../src/utils/thinkingEffort.ts';
 import type { ReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, endStreamWithError, readBodyWithLimit, setCORSHeaders } from './security.ts';
@@ -296,7 +301,19 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
   try {
     // Request options for a thinking effort (undefined: send none)
     const thinkingOptions = (reasoning: ReasoningLevel | undefined) => {
-      const thinking = claudeThinkingConfig(model, reasoning, capMaxTokens(max_tokens));
+      const maxOutputTokens = capMaxTokens(max_tokens);
+      if (reasoning && isGrokModel(model)) {
+        // The AI SDK has no `reasoning` mapping for Grok; set Bedrock's own field
+        return {
+          maxOutputTokens,
+          providerOptions: {
+            amazonBedrock: {
+              additionalModelRequestFields: { reasoning_effort: grokReasoningEffort(reasoning) },
+            },
+          },
+        };
+      }
+      const thinking = claudeThinkingConfig(model, reasoning, maxOutputTokens);
       return {
         maxOutputTokens: thinking.maxTokens,
         ...(reasoning && { reasoning }),

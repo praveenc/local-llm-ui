@@ -29,9 +29,16 @@ interface ThinkingEffortSelectorProps {
   value: ThinkingEffort;
   onChange: (value: ThinkingEffort) => void;
   disabled?: boolean;
+  /** The efforts to list; defaults to all of them */
+  options?: ReadonlyArray<{ value: ThinkingEffort; label: string }>;
 }
 
-export function ThinkingEffortSelector({ value, onChange, disabled }: ThinkingEffortSelectorProps) {
+export function ThinkingEffortSelector({
+  value,
+  onChange,
+  disabled,
+  options = THINKING_EFFORT_OPTIONS,
+}: ThinkingEffortSelectorProps) {
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
@@ -58,7 +65,7 @@ export function ThinkingEffortSelector({ value, onChange, disabled }: ThinkingEf
             if (isThinkingEffort(next)) onChange(next);
           }}
         >
-          {THINKING_EFFORT_OPTIONS.map((option) => (
+          {options.map((option) => (
             <DropdownMenuRadioItem key={option.value} value={option.value} className="text-xs">
               {option.label}
             </DropdownMenuRadioItem>

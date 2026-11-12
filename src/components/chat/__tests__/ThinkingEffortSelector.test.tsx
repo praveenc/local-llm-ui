@@ -24,6 +24,23 @@ describe('ThinkingEffortSelector', () => {
     expect(onChange).toHaveBeenCalledWith('medium');
   });
 
+  it('lists only the efforts that it is given', async () => {
+    const user = userEvent.setup();
+    render(
+      <ThinkingEffortSelector
+        value="default"
+        onChange={vi.fn()}
+        options={[
+          { value: 'default', label: 'Default' },
+          { value: 'high', label: 'High' },
+        ]}
+      />
+    );
+    await user.click(screen.getByRole('button', { name: /Thinking: Default/ }));
+    const items = screen.getAllByRole('menuitemradio').map((item) => item.textContent);
+    expect(items).toEqual(['Default', 'High']);
+  });
+
   it('cannot be opened while disabled', () => {
     render(<ThinkingEffortSelector value="low" onChange={vi.fn()} disabled />);
     expect(screen.getByRole('button', { name: /Thinking: Low/ })).toBeDisabled();
