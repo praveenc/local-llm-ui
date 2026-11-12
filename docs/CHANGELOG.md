@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Everything after 1.0.0 is on `main` without a release tag. PR numbers link to GitHub.
+## [1.1.0] - 2026-11-12
+
+PR numbers link to GitHub.
 
 ### 2026-11
 
@@ -158,4 +160,6 @@ Everything after 1.0.0 is on `main` without a release tag. PR numbers link to Gi
 [#21]: https://github.com/praveenc/local-llm-ui/pull/21
 [#19]: https://github.com/praveenc/local-llm-ui/pull/19
 [#16]: https://github.com/praveenc/local-llm-ui/pull/16
+[Unreleased]: https://github.com/praveenc/local-llm-ui/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/praveenc/local-llm-ui/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/praveenc/local-llm-ui/releases/tag/v1.0.0
