@@ -178,7 +178,7 @@ The **Thinking** button shows for these models:
 
 | Provider | Models |
 |---|---|
-| Amazon Bedrock | Claude 4 and later, OpenAI GPT-5 and later, Amazon Nova 2 |
+| Amazon Bedrock | Claude 4 and later, OpenAI GPT-5 and later, Amazon Nova 2, xAI Grok 4.6 and later |
 | Bedrock Mantle | gpt-oss, Kimi K2 Thinking, Kimi K2.5, DeepSeek V3.x, GLM, Qwen3 32B, Qwen3 Next, Nemotron 3 |
 | Anthropic | Claude 4 and later |
 | OpenRouter | Claude 4 and later, OpenAI reasoning models |
@@ -189,6 +189,7 @@ Some models have fewer levels:
 
 - **On/off models** (Qwen3 on Ollama; DeepSeek, GLM, Qwen3, Kimi K2.5, and Nemotron on Mantle): **Off** turns thinking off. All other levels turn it on.
 - **gpt-oss** (Ollama and Mantle) and **Kimi K2 Thinking** cannot turn thinking off. For these models, **Off** sends Low.
+- **Grok** (Bedrock) always reasons and has only Low, Medium, High, and XHigh. The menu does not show Off or Minimal for it. A provider default of Off or Minimal sends Low.
 
 To set the start level for each provider, open **Preferences → Providers**, select the provider, and set **Default thinking**.
 
@@ -262,6 +263,10 @@ your question
 ```
 
 The chat shows the quote as an indented block. **Send to Fork** needs a selected model.
+
+### Rate a reply
+
+Under each reply, click the thumbs up or thumbs down icon to rate it. The app stores the rating with the message in your browser, so it stays when you open the chat again. Click the same icon again to remove the rating.
 
 ### Documents and images (Bedrock only)
 

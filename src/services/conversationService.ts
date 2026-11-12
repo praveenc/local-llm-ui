@@ -10,6 +10,7 @@ import type {
   ConversationStatus,
   CreateMessageInput,
   Message,
+  MessageFeedback,
   Provider,
 } from '../db';
 
@@ -154,6 +155,14 @@ export const conversationService = {
     });
 
     return message;
+  },
+
+  /**
+   * Set or clear the user's feedback on a message. Does not touch the
+   * conversation's updatedAt, so rating a message does not reorder the list.
+   */
+  async setMessageFeedback(messageId: string, feedback: MessageFeedback | null): Promise<void> {
+    await db.messages.update(messageId, { feedback: feedback ?? undefined });
   },
 
   /**

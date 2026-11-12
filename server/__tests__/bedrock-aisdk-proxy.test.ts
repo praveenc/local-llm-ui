@@ -97,4 +97,45 @@ describe('Bedrock AI SDK proxy errors', () => {
     expect(model.doStreamCalls[0].temperature).toBeUndefined();
     expect(model.doStreamCalls[0].topP).toBeUndefined();
   });
+
+  it('sends reasoning_effort to Grok in additionalModelRequestFields', async () => {
+    mockModel.current = textModel();
+    const model = mockModel.current as MockLanguageModelV4;
+
+    const { handled } = await chat({ model: 'global.xai.grok-4.7', thinkingEffort: 'off' });
+    await handled;
+
+    expect(model.doStreamCalls).toHaveLength(1);
+    const options = model.doStreamCalls[0].providerOptions?.amazonBedrock as Record<
+      string,
+      unknown
+    >;
+    // Grok cannot turn reasoning off, so Off sends its lowest level
+    expect(options.additionalModelRequestFields).toEqual({ reasoning_effort: 'low' });
+    expect(options.reasoningConfig).toBeUndefined();
+  });
 });
+
+/** A mock model that answers "Hi" */
+function textModel() {
+  return new MockLanguageModelV4({
+    doStream: async () => ({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'text-start', id: '1' });
+          controller.enqueue({ type: 'text-delta', id: '1', delta: 'Hi' });
+          controller.enqueue({ type: 'text-end', id: '1' });
+          controller.enqueue({
+            type: 'finish',
+            finishReason: { unified: 'stop', raw: 'stop' },
+            usage: {
+              inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+              outputTokens: { total: 1, text: 1, reasoning: 0 },
+            },
+          });
+          controller.close();
+        },
+      }),
+    }),
+  });
+}

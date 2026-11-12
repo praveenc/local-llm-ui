@@ -5,9 +5,11 @@ import {
   fallbackReasoningLevel,
   getClaudeVersion,
   getDefaultThinkingEffort,
+  grokReasoningEffort,
   mantleReasoningEffort,
   ollamaThinkValue,
   supportsThinkingEffort,
+  thinkingEffortOptions,
 } from '../thinkingEffort';
 
 describe('getClaudeVersion', () => {
@@ -36,6 +38,8 @@ describe('supportsThinkingEffort', () => {
     expect(supportsThinkingEffort('bedrock', 'us.openai.gpt-5.4')).toBe(true);
     expect(supportsThinkingEffort('bedrock', 'global.openai.gpt-6.1-sol')).toBe(true);
     expect(supportsThinkingEffort('bedrock', 'us.amazon.nova-2-lite-v1:0')).toBe(true);
+    expect(supportsThinkingEffort('bedrock', 'global.xai.grok-4.7')).toBe(true);
+    expect(supportsThinkingEffort('bedrock', 'us.xai.grok-4.6')).toBe(true);
   });
 
   it('rejects models without a thinking effort', () => {
@@ -78,6 +82,28 @@ describe('supportsThinkingEffort', () => {
     expect(supportsThinkingEffort('cerebras', 'gpt-oss-120b')).toBe(false);
     // The Anthropic API has no OpenAI models
     expect(supportsThinkingEffort('anthropic', 'gpt-5')).toBe(false);
+  });
+});
+
+describe('thinkingEffortOptions', () => {
+  it('leaves out Off and Minimal for Grok on Bedrock, which always reasons', () => {
+    const values = thinkingEffortOptions('bedrock', 'global.xai.grok-4.7').map((o) => o.value);
+    expect(values).toEqual(['default', 'low', 'medium', 'high', 'xhigh']);
+  });
+
+  it('lists every effort for other models', () => {
+    const values = thinkingEffortOptions('bedrock', 'global.anthropic.claude-opus-5-5');
+    expect(values.map((o) => o.value)).toContain('off');
+    expect(values.map((o) => o.value)).toContain('minimal');
+  });
+});
+
+describe('grokReasoningEffort', () => {
+  it('maps levels Grok does not have to low and passes the rest through', () => {
+    expect(grokReasoningEffort('none')).toBe('low');
+    expect(grokReasoningEffort('minimal')).toBe('low');
+    expect(grokReasoningEffort('medium')).toBe('medium');
+    expect(grokReasoningEffort('xhigh')).toBe('xhigh');
   });
 });
 

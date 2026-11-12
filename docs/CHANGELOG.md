@@ -13,6 +13,8 @@ Everything after 1.0.0 is on `main` without a release tag. PR numbers link to Gi
 
 #### Added
 
+- Thumbs up and thumbs down ratings are stored with the message, so they stay after a reload; a second click removes the rating ([#55])
+- Thinking effort menu for xAI Grok 4.6 and 4.7 on Bedrock, with Low, Medium, High, and XHigh ([#55])
 - LM Studio chat goes through the AI SDK, so web search, MCP tools, and the tool loop work with LM Studio models ([#53])
 - Content density setting: Compact uses less space in the chat and the sidebar ([#52])
 - Avatar initials next to the user's messages ([#52])
@@ -33,6 +35,7 @@ Everything after 1.0.0 is on `main` without a release tag. PR numbers link to Gi
 
 #### Fixed
 
+- Toasts show at the top center; before, they covered the buttons at the right of the chat input ([#55])
 - Stream errors from the Anthropic, Ollama, and LM Studio proxies now show in the chat; before, the reply stopped with no message ([#49])
 - A Bedrock error after the stream started no longer stops the dev server ([#45])
 - LM Studio model list fallback now runs; Mantle region list has all 12 regions ([#49])
@@ -115,6 +118,7 @@ Everything after 1.0.0 is on `main` without a release tag. PR numbers link to Gi
 - TypeScript for type safety
 - ESLint for code quality
 
+[#55]: https://github.com/praveenc/local-llm-ui/pull/55
 [#53]: https://github.com/praveenc/local-llm-ui/pull/53
 [#52]: https://github.com/praveenc/local-llm-ui/pull/52
 [#51]: https://github.com/praveenc/local-llm-ui/pull/51

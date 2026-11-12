@@ -34,7 +34,7 @@ import { lookupFormat } from '../../utils/mediaTypes';
 import { getModelContextLimits } from '../../utils/modelContext';
 import { loadPreferences } from '../../utils/preferences';
 import { formatQuoteMessage, quoteTagsToMarkdown } from '../../utils/quote';
-import { supportsThinkingEffort } from '../../utils/thinkingEffort';
+import { supportsThinkingEffort, thinkingEffortOptions } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
 import { WEB_SEARCH_PROVIDER_LABELS, getPrimaryWebSearchProvider } from '../../utils/webSearch';
 import {
@@ -138,7 +138,6 @@ const ChatContainer = ({
   avatarInitials,
 }: BedrockChatContainerProps) => {
   const [inputValue, setInputValue] = useState('');
-  const [messageFeedback, setMessageFeedback] = useState<Record<string, string>>({});
   const [fileError, setFileError] = useState<string | null>(null);
   const [enableWebSearch, setEnableWebSearch] = useState(false);
   const [activeQuote, setActiveQuote] = useState<QuoteSelection | null>(null);
@@ -159,6 +158,7 @@ const ChatContainer = ({
     sendMessage,
     regenerate,
     forkAndSend,
+    rateMessage,
     stopGeneration,
     clearMessages,
     resetUsage,
@@ -268,10 +268,6 @@ const ChatContainer = ({
     setTimeout(() => setFileError(null), 5000);
   };
 
-  const handleFeedback = (messageId: string, feedbackType: string) => {
-    setMessageFeedback((prev) => ({ ...prev, [messageId]: feedbackType }));
-  };
-
   const handleCopy = async (content: string) => {
     try {
       await navigator.clipboard.writeText(content);
@@ -379,18 +375,18 @@ const ChatContainer = ({
                             <MessageActions className="ml-0 compact:-mt-1">
                               <MessageAction
                                 tooltip="Helpful"
-                                onClick={() => handleFeedback(message.id, 'helpful')}
+                                onClick={() => rateMessage(message.id, 'helpful')}
                               >
                                 <ThumbsUp
-                                  className={`h-3 w-3 ${messageFeedback[message.id] === 'helpful' ? 'fill-current' : ''}`}
+                                  className={`h-3 w-3 ${message.feedback === 'helpful' ? 'fill-current' : ''}`}
                                 />
                               </MessageAction>
                               <MessageAction
                                 tooltip="Not helpful"
-                                onClick={() => handleFeedback(message.id, 'not-helpful')}
+                                onClick={() => rateMessage(message.id, 'not-helpful')}
                               >
                                 <ThumbsDown
-                                  className={`h-3 w-3 ${messageFeedback[message.id] === 'not-helpful' ? 'fill-current' : ''}`}
+                                  className={`h-3 w-3 ${message.feedback === 'not-helpful' ? 'fill-current' : ''}`}
                                 />
                               </MessageAction>
                               <MessageAction
@@ -500,6 +496,7 @@ const ChatContainer = ({
                       value={thinkingEffort}
                       onChange={setThinkingEffort}
                       disabled={isLoading}
+                      options={thinkingEffortOptions(selectedModel.provider, selectedModel.id)}
                     />
                   )}
                 <SavePromptButton text={inputValue} disabled={isLoading} />
