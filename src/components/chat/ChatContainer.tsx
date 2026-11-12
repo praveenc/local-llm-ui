@@ -348,9 +348,13 @@ const ChatContainer = ({
                               </ReasoningContent>
                             </Reasoning>
                           )}
-                          {getToolCalls(message).map((toolCall) => (
-                            <ToolCall key={toolCall.toolCallId} toolCall={toolCall} />
-                          ))}
+                          {getToolCalls(message).length > 0 && (
+                            <div className="my-2 space-y-1">
+                              {getToolCalls(message).map((toolCall) => (
+                                <ToolCall key={toolCall.toolCallId} toolCall={toolCall} />
+                              ))}
+                            </div>
+                          )}
                           <MessageResponse>
                             {message.role === 'user'
                               ? quoteTagsToMarkdown(getTextContent(message))
