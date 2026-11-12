@@ -43,6 +43,7 @@ Everything after 1.0.0 is on `main` without a release tag. PR numbers link to Gi
 
 #### Removed
 
+- The copy of the `ai-elements` agent skill in Git (129 files); `npx skills install` restores it from `skills-lock.json` ([#57])
 - Optimize Prompt chain (no screen opened it), the `/api/bedrock/chat` handler, and `@aws-sdk/client-bedrock-runtime` ([#49])
 - `APIService`, `checkConnection()` in all services, the LM Studio model loading endpoints, Cloudscape leftovers, and unused modules and packages ([#49])
 - Style guide app (`src/styleguide-shadcn/`), unused shadcn primitives, and the beads tracker files ([#51])
@@ -119,6 +120,7 @@ Everything after 1.0.0 is on `main` without a release tag. PR numbers link to Gi
 - TypeScript for type safety
 - ESLint for code quality
 
+[#57]: https://github.com/praveenc/local-llm-ui/pull/57
 [#56]: https://github.com/praveenc/local-llm-ui/pull/56
 [#55]: https://github.com/praveenc/local-llm-ui/pull/55
 [#53]: https://github.com/praveenc/local-llm-ui/pull/53

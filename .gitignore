@@ -227,3 +227,6 @@ samconfig.toml
 
 # Claude Code local settings (machine-specific permissions)
 .claude/settings.local.json
+
+# Agent skills: restored from skills-lock.json with `npx skills install`
+.agents/skills/
