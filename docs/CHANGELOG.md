@@ -35,6 +35,7 @@ Everything after 1.0.0 is on `main` without a release tag. PR numbers link to Gi
 
 #### Fixed
 
+- Tool call cards are smaller, and MCP tool cards show the URL or path that the call used ([#56])
 - Toasts show at the top center; before, they covered the buttons at the right of the chat input ([#55])
 - Stream errors from the Anthropic, Ollama, and LM Studio proxies now show in the chat; before, the reply stopped with no message ([#49])
 - A Bedrock error after the stream started no longer stops the dev server ([#45])
@@ -118,6 +119,7 @@ Everything after 1.0.0 is on `main` without a release tag. PR numbers link to Gi
 - TypeScript for type safety
 - ESLint for code quality
 
+[#56]: https://github.com/praveenc/local-llm-ui/pull/56
 [#55]: https://github.com/praveenc/local-llm-ui/pull/55
 [#53]: https://github.com/praveenc/local-llm-ui/pull/53
 [#52]: https://github.com/praveenc/local-llm-ui/pull/52
