@@ -5,6 +5,8 @@
  * Handles message state, streaming, and conversation persistence.
  * Supports all providers: each one has a server proxy that streams the same SSE events.
  */
+import { toast } from 'sonner';
+
 import { useCallback, useRef, useState } from 'react';
 
 import type { MessageFeedback, Provider } from '../db/types';
@@ -618,8 +620,10 @@ export function useBedrockChat({
       );
       try {
         await setMessageFeedback(messageId, next);
+        toast.success(next ? 'Feedback saved' : 'Feedback removed');
       } catch (err) {
         console.error('Failed to save feedback:', err);
+        toast.error('Could not save feedback');
       }
     },
     [messages, setMessageFeedback]
