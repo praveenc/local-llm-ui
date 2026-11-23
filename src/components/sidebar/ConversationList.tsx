@@ -196,52 +196,64 @@ export function ConversationList({
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="flex flex-col gap-0.5 compact:gap-0 pl-2">
+            <div className="flex flex-col gap-0.5 compact:gap-0 px-2">
               {group.conversations.map((conv) => (
                 <div
                   key={conv.id}
                   className={cn(
-                    'group flex items-center gap-2 rounded-md px-2 py-1.5 compact:py-1 text-sm cursor-pointer transition-colors min-w-0',
+                    'group flex items-center gap-2 rounded-md px-2 py-1.5 compact:py-1 text-sm transition-colors min-w-0 has-[[data-row-title]:focus-visible]:inset-ring-2 has-[[data-row-title]:focus-visible]:inset-ring-ring',
                     activeConversationId === conv.id
                       ? 'bg-sidebar-active font-medium text-tint-text'
                       : 'hover:bg-sidebar-hover'
                   )}
-                  aria-current={activeConversationId === conv.id ? 'true' : undefined}
-                  onClick={() => editingId !== conv.id && onSelectConversation(conv.id)}
                 >
-                  <MessageSquare
-                    className={cn(
-                      'h-4 w-4 shrink-0',
-                      activeConversationId === conv.id ? 'text-tint-text' : 'text-muted-foreground'
-                    )}
-                  />
                   {editingId === conv.id ? (
-                    <Input
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      onBlur={() => handleSaveRename(conv.id)}
-                      onKeyDown={(e) => {
-                        // keyCode 229 covers Safari, which clears isComposing before this keydown
-                        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                        if (e.key === 'Enter') handleSaveRename(conv.id);
-                        if (e.key === 'Escape') setEditingId(null);
-                      }}
-                      className="h-6 text-sm"
-                      autoFocus
-                      onClick={(e) => e.stopPropagation()}
-                    />
+                    <>
+                      <MessageSquare className="h-4 w-4 shrink-0 text-tint-text" />
+                      <Input
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        onBlur={() => handleSaveRename(conv.id)}
+                        onKeyDown={(e) => {
+                          // keyCode 229 covers Safari, which clears isComposing before this keydown
+                          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                          if (e.key === 'Enter') handleSaveRename(conv.id);
+                          if (e.key === 'Escape') setEditingId(null);
+                        }}
+                        className="h-6 text-sm"
+                        autoFocus
+                        aria-label="Conversation title"
+                      />
+                    </>
                   ) : (
                     <>
-                      <span className="truncate flex-1 max-w-[140px]" title={conv.title}>
-                        {conv.title.length > 25 ? `${conv.title.slice(0, 25)}...` : conv.title}
-                      </span>
+                      {/* The whole title area is one button, so Tab reaches it and Enter opens it */}
+                      <button
+                        type="button"
+                        data-row-title
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none cursor-pointer"
+                        aria-current={activeConversationId === conv.id ? 'page' : undefined}
+                        onClick={() => onSelectConversation(conv.id)}
+                      >
+                        <MessageSquare
+                          className={cn(
+                            'h-4 w-4 shrink-0',
+                            activeConversationId === conv.id
+                              ? 'text-tint-text'
+                              : 'text-muted-foreground'
+                          )}
+                        />
+                        <span className="truncate" title={conv.title}>
+                          {conv.title}
+                        </span>
+                      </button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Options for ${conv.title}`}
+                            className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100 transition-opacity"
                           >
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
