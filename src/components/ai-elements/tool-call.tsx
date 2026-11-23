@@ -159,7 +159,7 @@ function SearchResultItem({ result }: { result: SearchResult }) {
       >
         <span className="truncate">{result.title}</span>
         <ExternalLink className="size-3 shrink-0" />
-        <span className="ml-auto shrink-0 font-normal text-muted-foreground/70">
+        <span className="ml-auto shrink-0 font-normal text-muted-foreground">
           {hostnameOf(result.url)}
         </span>
       </a>

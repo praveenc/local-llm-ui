@@ -41,7 +41,7 @@ export function Sidebar({
     <div className="flex h-full flex-col">
       {/* New Conversation Button */}
       <div className="p-3 compact:p-2">
-        <Button onClick={onNewChat} className="w-full justify-start gap-2" variant="default">
+        <Button onClick={onNewChat} className="w-full justify-start gap-2" variant="outline">
           <Plus className="h-4 w-4" />
           New Conversation
         </Button>

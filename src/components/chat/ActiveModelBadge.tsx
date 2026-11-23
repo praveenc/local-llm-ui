@@ -23,9 +23,9 @@ export const ActiveModelBadge = ({ model }: ActiveModelBadgeProps) => (
         provider={PROVIDER_LOGO_MAP[model.provider] || model.provider}
         className="h-3.5 w-3.5 shrink-0"
       />
-      <span className="font-medium text-foreground/80">{model.name}</span>
+      <span className="font-medium text-foreground">{model.name}</span>
       <span className="text-border">·</span>
-      <span className="text-muted-foreground/70">{model.providerName}</span>
+      <span className="text-muted-foreground">{model.providerName}</span>
     </div>
   </div>
 );

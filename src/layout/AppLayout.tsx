@@ -66,7 +66,7 @@ export function AppLayout({
                   <span className="text-sm font-semibold text-sidebar-foreground">
                     Local LLM UI
                   </span>
-                  <span className="text-xs text-sidebar-foreground/60">Chat Interface</span>
+                  <span className="text-xs text-muted-foreground">Chat Interface</span>
                 </div>
               </div>
             </div>
@@ -88,7 +88,7 @@ export function AppLayout({
               </div>
               <div className="flex flex-col">
                 <span className="text-sm font-semibold text-sidebar-foreground">Local LLM UI</span>
-                <span className="text-xs text-sidebar-foreground/60">Chat Interface</span>
+                <span className="text-xs text-muted-foreground">Chat Interface</span>
               </div>
             </div>
           </div>

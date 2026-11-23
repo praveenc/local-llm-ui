@@ -170,7 +170,7 @@ export function ConversationList({
       <div className="px-3 py-4 text-center">
         <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
         <p className="text-sm text-muted-foreground">No conversations yet</p>
-        <p className="text-xs text-muted-foreground/70">Start a new chat to begin</p>
+        <p className="text-xs text-muted-foreground">Start a new chat to begin</p>
       </div>
     );
   }
@@ -192,9 +192,7 @@ export function ConversationList({
                 )}
               />
               <span>{group.label}</span>
-              <span className="ml-auto text-muted-foreground/60">
-                ({group.conversations.length})
-              </span>
+              <span className="ml-auto text-muted-foreground">({group.conversations.length})</span>
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent>

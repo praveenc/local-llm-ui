@@ -305,7 +305,9 @@ export function ViewPromptsModal({ visible, onDismiss, onInsertPrompt }: ViewPro
           </div>
 
           <DialogFooter>
-            <Button onClick={handleClose}>Close</Button>
+            <Button variant="outline" onClick={handleClose}>
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
