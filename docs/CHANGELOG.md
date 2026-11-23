@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11
+
+#### Added
+
+- Neutral color theme, now the default; Cosmic Night, Cobaltz, and Rosé Pine stay in the theme menu
+- First-run checklist: when no model is ready, the empty chat lists each provider's status and how to fix it, with a button that opens Preferences
+- A working local model is picked on first run, with a note saying so; a paid provider is never picked automatically
+- Model picker groups models by provider and shows each provider's status
+- Each provider is probed on its own, so fast providers list their models while a slow one shows "Checking..."
+- Retry and Change model buttons in the chat error alert
+- Keyboard: `/` focuses the chat input; Cmd+K (Ctrl+K) opens the model picker
+- Product mark in the sidebar and a favicon; the header shows the open conversation's title
+
+#### Changed
+
+- Text meets 4.5:1 contrast in every theme
+- The chat input has a border and no shadow or gradient; disabled tools say why they are off
+- Glass and shimmer effects are gone; motion uses named transitions and follows the system reduced-motion setting
+- Below 1024 px the sidebar folds into a sheet; touch targets are 44 px below 768 px
+- Preferences has a fixed height, so the tabs and the Save button stay in place
+
+#### Fixed
+
+- Icon buttons and the chat input have accessible names, and screen readers announce when a reply starts and ends
+- Scrollbars are thin and take the theme's colors, with no light track beside them when macOS shows scroll bars always
+
 ## [1.1.0] - 2026-11-12
 
 PR numbers link to GitHub.
