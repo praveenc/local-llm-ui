@@ -51,7 +51,8 @@ export function ModelSelectorButton({
   onOpenPreferences,
 }: ModelSelectorButtonProps) {
   const [open, setOpen] = useState(false);
-  const blocked = disabled || isLoading;
+  // The picker opens while providers are still probed; those show as "Checking..."
+  const blocked = disabled;
 
   // Cmd/Ctrl+K opens the picker from anywhere, the message box included
   useEffect(() => {
@@ -71,6 +72,7 @@ export function ModelSelectorButton({
 
   const activeProviders = providers.filter((provider) => provider.models.length > 0);
   const unavailableProviders = providers.filter((provider) => provider.status === 'error');
+  const checkingProviders = providers.filter((provider) => provider.status === 'loading');
 
   return (
     <ModelSelector open={open} onOpenChange={setOpen}>
@@ -116,7 +118,9 @@ export function ModelSelectorButton({
       <ModelSelectorContent className="w-[400px]" showCloseButton>
         <ModelSelectorInput placeholder="Search models..." />
         <ModelSelectorList className="max-h-[400px]">
-          <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+          <ModelSelectorEmpty>
+            {checkingProviders.length > 0 ? 'Still checking providers…' : 'No models found.'}
+          </ModelSelectorEmpty>
           {activeProviders.map((provider) => (
             <ModelSelectorGroup key={provider.provider} heading={groupHeading(provider)}>
               {provider.models.map((model) => {
@@ -147,9 +151,20 @@ export function ModelSelectorButton({
             </ModelSelectorGroup>
           ))}
 
-          {activeProviders.length > 0 && unavailableProviders.length > 0 && (
-            <ModelSelectorSeparator />
-          )}
+          {checkingProviders.map((provider) => (
+            <ModelSelectorGroup
+              key={`checking-${provider.provider}`}
+              heading={`${provider.providerName} · Checking…`}
+            >
+              <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                Looking for models
+              </div>
+            </ModelSelectorGroup>
+          ))}
+
+          {activeProviders.length + checkingProviders.length > 0 &&
+            unavailableProviders.length > 0 && <ModelSelectorSeparator />}
 
           {unavailableProviders.map((provider) => {
             const help = getProviderHelp(provider);
