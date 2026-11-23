@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Changed
 
 - Text meets 4.5:1 contrast in every theme
-- Every theme adds accents from its own palette: the user's messages, the open conversation, reply headings, links, inline code, quotes and code blocks, the reasoning label, tool calls, the model badge, and provider status dots; Neutral takes one teal accent for these and for the send button
+- Every theme tints the user's messages, the open conversation, the reasoning label, the model badge, the avatar, and code blocks with its own primary colour, and colours links, inline code, and tool icons with it; status dots show ready, needs a fix, or checking. Neutral takes one teal accent, also on the send button
 - The chat input has a border and no shadow or gradient; disabled tools say why they are off
 - Glass and shimmer effects are gone; motion uses named transitions and follows the system reduced-motion setting
 - Below 1024 px the sidebar folds into a sheet; touch targets are 44 px below 768 px
