@@ -17,8 +17,8 @@
   --card-foreground: #111111;
   --popover: #ffffff;
   --popover-foreground: #111111;
-  --primary: #18181b;
-  --primary-foreground: #fafafa;
+  --primary: #0f6e73;
+  --primary-foreground: #ffffff;
   --secondary: #f0f0f0;
   --secondary-foreground: #111111;
   --muted: #f2f2f2;
@@ -29,7 +29,7 @@
   --destructive-foreground: #ffffff;
   --border: #e5e5e5;
   --input: #d4d4d4;
-  --ring: #52525b;
+  --ring: #0f6e73;
   --chart-1: #18181b;
   --chart-2: #52525b;
   --chart-3: #a1a1aa;
@@ -37,12 +37,23 @@
   --chart-5: #c2410c;
   --sidebar: #f5f5f5;
   --sidebar-foreground: #111111;
-  --sidebar-primary: #18181b;
-  --sidebar-primary-foreground: #fafafa;
+  --sidebar-primary: #0f6e73;
+  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #e8e8e8;
   --sidebar-accent-foreground: #111111;
   --sidebar-border: #e5e5e5;
-  --sidebar-ring: #52525b;
+  --sidebar-ring: #0f6e73;
+  /* Colour accents (see "Colour accents" below): one teal, plus status and warm code hues */
+  --tint: #0f6e73;
+  --link: #0f6e73;
+  --heading: #134e52;
+  --code-inline: #9a4a0e;
+  --quote: #0f6e73;
+  --reasoning: #8a6100;
+  --tool: #0f6e73;
+  --status-ok: #2f7a4d;
+  --status-warn: #8a6100;
+  --status-error: var(--destructive);
   --font-sans: Inter, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: JetBrains Mono, monospace;
@@ -66,7 +77,7 @@
   --card-foreground: #ededed;
   --popover: #1a1a1a;
   --popover-foreground: #ededed;
-  --primary: #ededed;
+  --primary: #5ec4c0;
   --primary-foreground: #111111;
   --secondary: #262626;
   --secondary-foreground: #ededed;
@@ -78,7 +89,7 @@
   --destructive-foreground: #111111;
   --border: #2a2a2a;
   --input: #383838;
-  --ring: #a3a3a3;
+  --ring: #5ec4c0;
   --chart-1: #ededed;
   --chart-2: #a3a3a3;
   --chart-3: #737373;
@@ -86,17 +97,52 @@
   --chart-5: #fb923c;
   --sidebar: #161616;
   --sidebar-foreground: #ededed;
-  --sidebar-primary: #ededed;
+  --sidebar-primary: #5ec4c0;
   --sidebar-primary-foreground: #111111;
   --sidebar-accent: #262626;
   --sidebar-accent-foreground: #ededed;
   --sidebar-border: #2a2a2a;
-  --sidebar-ring: #a3a3a3;
+  --sidebar-ring: #5ec4c0;
+  --tint: #5ec4c0;
+  --link: #5ec4c0;
+  --heading: #a7e3df;
+  --code-inline: #f0a868;
+  --quote: #5ec4c0;
+  --reasoning: #e5b45c;
+  --tool: #5ec4c0;
+  --status-ok: #7fcf9a;
+  --status-warn: #e5b45c;
   --shadow-sm: 0px 1px 2px 0px rgb(0 0 0 / 0.3);
   --shadow: 0px 1px 3px 0px rgb(0 0 0 / 0.35);
   --shadow-md: 0px 4px 12px 0px rgb(0 0 0 / 0.3);
   --shadow-lg: 0px 12px 28px 0px rgb(0 0 0 / 0.38);
   --shadow-xl: 0px 16px 36px 0px rgb(0 0 0 / 0.42);
+}
+
+/*
+ * Colour accents. Every palette sets the hues (--tint, --link, --heading, --code-inline,
+ * --quote, --reasoning, --tool, --status-ok, --status-warn) from its own colours; the soft
+ * fills below mix them into the ground, so no palette repeats a tint by hand. Colour goes on
+ * small surfaces (a bubble, the active row, chips, rules), never on large grounds.
+ */
+:root {
+  --tint-soft: color-mix(in srgb, var(--tint) 8%, var(--background));
+  --tint-line: color-mix(in srgb, var(--tint) 35%, var(--border));
+  --sidebar-active: color-mix(in srgb, var(--tint) 13%, var(--sidebar));
+  --sidebar-hover: color-mix(in srgb, var(--tint) 6%, var(--sidebar));
+  --code-inline-bg: color-mix(in srgb, var(--code-inline) 10%, var(--background));
+  --reasoning-soft: color-mix(in srgb, var(--reasoning) 10%, var(--background));
+  --tool-soft: color-mix(in srgb, var(--tool) 6%, var(--card));
+}
+
+.dark {
+  --tint-soft: color-mix(in srgb, var(--tint) 10%, var(--background));
+  --tint-line: color-mix(in srgb, var(--tint) 40%, var(--border));
+  --sidebar-active: color-mix(in srgb, var(--tint) 18%, var(--sidebar));
+  --sidebar-hover: color-mix(in srgb, var(--tint) 8%, var(--sidebar));
+  --code-inline-bg: color-mix(in srgb, var(--code-inline) 14%, var(--background));
+  --reasoning-soft: color-mix(in srgb, var(--reasoning) 14%, var(--background));
+  --tool-soft: color-mix(in srgb, var(--tool) 6%, var(--card));
 }
 
 /* Tailwind v4 theme integration */
@@ -133,6 +179,18 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-tint: var(--tint);
+  --color-tint-soft: var(--tint-soft);
+  --color-tint-line: var(--tint-line);
+  --color-reasoning: var(--reasoning);
+  --color-reasoning-soft: var(--reasoning-soft);
+  --color-tool: var(--tool);
+  --color-tool-soft: var(--tool-soft);
+  --color-status-ok: var(--status-ok);
+  --color-status-warn: var(--status-warn);
+  --color-status-error: var(--status-error);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
@@ -220,6 +278,33 @@
       background: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
     }
   }
+}
+
+/*
+ * Replies (Streamdown): headings, links, inline code and quote rules take the palette's
+ * accent hues; body text stays the foreground colour. Unlayered, so these win over the
+ * utility classes Streamdown puts on the same elements.
+ */
+[data-streamdown^='heading-'] {
+  color: var(--heading);
+}
+[data-streamdown='link'] {
+  color: var(--link);
+  text-decoration-color: color-mix(in srgb, var(--link) 45%, transparent);
+  text-underline-offset: 2px;
+}
+[data-streamdown='inline-code'] {
+  color: var(--code-inline);
+  background-color: var(--code-inline-bg);
+}
+[data-streamdown='blockquote'] {
+  border-left-color: var(--quote);
+}
+[data-streamdown='code-block'] {
+  border-color: var(--tint-line);
+}
+[data-streamdown='code-block-header'] {
+  background-color: var(--tint-soft);
 }
 
 /* Honour the system reduced-motion setting: no spinners, pulses, slides or width tweens */
