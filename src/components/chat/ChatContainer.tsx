@@ -441,7 +441,7 @@ const ChatContainer = ({
           onSendToFork={handleQuoteToFork}
           forkDisabledReason={forkDisabledReason}
         />
-        <div className="absolute bottom-0 left-0 right-0 z-20 bg-linear-to-t from-background from-60% to-transparent px-2 pb-2 pt-6 md:px-4 md:pb-4">
+        <div className="absolute bottom-0 left-0 right-0 z-20 bg-background px-2 pb-2 pt-2 md:px-4 md:pb-4">
           <PromptInput
             onSubmit={handleSubmit}
             onError={handleFileError}

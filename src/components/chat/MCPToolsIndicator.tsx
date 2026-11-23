@@ -120,15 +120,17 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
             <Button
               variant="ghost"
               size="sm"
-              className={cn(composerIconButton, 'cursor-default opacity-50')}
-              disabled
+              className={cn(composerIconButton, 'cursor-default opacity-50 hover:bg-transparent')}
+              type="button"
+              // Stays focusable so the tooltip can say why it does nothing
+              aria-disabled
               aria-label="MCP tools"
             >
               <Plug2 className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>No MCP servers configured</p>
+            <p>No MCP servers configured. Add one in Preferences, MCP Servers</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

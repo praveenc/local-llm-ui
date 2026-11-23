@@ -4,9 +4,9 @@
  * Below `md` the hit areas grow to 44 px for touch; the icons keep their size.
  */
 
-/** The bordered card around the textarea and toolbar */
+/** The bordered card around the textarea and toolbar: a border and no shadow */
 export const composerCard = [
-  'rounded-2xl border-border bg-card shadow-lg dark:bg-card',
+  'rounded-2xl border-border bg-card shadow-none dark:bg-card',
   'has-[[data-slot=input-group-control]:focus-visible]:border-primary/50',
   'has-[[data-slot=input-group-control]:focus-visible]:ring-4',
   'has-[[data-slot=input-group-control]:focus-visible]:ring-primary/10',

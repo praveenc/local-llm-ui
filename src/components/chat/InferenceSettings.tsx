@@ -49,7 +49,7 @@ export function InferenceSettings({
           <Settings2 className="h-4 w-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="w-72 p-4 z-[1100]">
+      <PopoverContent side="top" align="end" collisionPadding={16} className="w-72 p-4 z-[1100]">
         <div className="space-y-4">
           <div className="text-sm font-medium">Inference Settings</div>
 

@@ -43,11 +43,19 @@ export function WebSearchToggle({
             type="button"
             variant="ghost"
             size="sm"
-            className={cn(composerIconButton, enabled && composerActive)}
-            disabled={disabled || !hasApiKey}
+            className={cn(
+              composerIconButton,
+              enabled && composerActive,
+              !hasApiKey && 'cursor-default opacity-50 hover:bg-transparent'
+            )}
+            disabled={disabled}
+            // Without a key the button stays focusable so the tooltip can say why
+            aria-disabled={!hasApiKey || undefined}
             aria-label="Web search"
             aria-pressed={enabled}
-            onClick={() => onToggle(!enabled)}
+            onClick={() => {
+              if (hasApiKey) onToggle(!enabled);
+            }}
           >
             <Globe className="h-4 w-4" />
           </Button>
