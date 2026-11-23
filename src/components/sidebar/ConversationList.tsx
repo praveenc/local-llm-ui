@@ -201,10 +201,10 @@ export function ConversationList({
                 <div
                   key={conv.id}
                   className={cn(
-                    'group flex items-center gap-2 rounded-md border-l-2 px-2 py-1.5 compact:py-1 text-sm cursor-pointer transition-colors min-w-0',
+                    'group flex items-center gap-2 rounded-md px-2 py-1.5 compact:py-1 text-sm cursor-pointer transition-colors min-w-0',
                     activeConversationId === conv.id
-                      ? 'border-primary bg-sidebar-active font-medium text-sidebar-foreground'
-                      : 'border-transparent hover:bg-sidebar-hover'
+                      ? 'bg-sidebar-active font-medium text-tint-text'
+                      : 'hover:bg-sidebar-hover'
                   )}
                   aria-current={activeConversationId === conv.id ? 'true' : undefined}
                   onClick={() => editingId !== conv.id && onSelectConversation(conv.id)}
@@ -212,7 +212,7 @@ export function ConversationList({
                   <MessageSquare
                     className={cn(
                       'h-4 w-4 shrink-0',
-                      activeConversationId === conv.id ? 'text-primary' : 'text-muted-foreground'
+                      activeConversationId === conv.id ? 'text-tint-text' : 'text-muted-foreground'
                     )}
                   />
                   {editingId === conv.id ? (

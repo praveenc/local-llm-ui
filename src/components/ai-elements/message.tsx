@@ -54,7 +54,7 @@ export const MessageAvatar = ({ initials, className, ...props }: MessageAvatarPr
   <div
     aria-hidden="true"
     className={cn(
-      'flex size-7 shrink-0 select-none items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground compact:size-6 compact:text-[10px]',
+      'flex size-7 shrink-0 select-none items-center justify-center rounded-full bg-tint-soft text-[11px] font-semibold text-tint-text ring-1 ring-tint-line compact:size-6 compact:text-[10px]',
       className
     )}
     title={initials}

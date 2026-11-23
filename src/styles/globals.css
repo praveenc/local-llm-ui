@@ -43,17 +43,9 @@
   --sidebar-accent-foreground: #111111;
   --sidebar-border: #e5e5e5;
   --sidebar-ring: #0f6e73;
-  /* Colour accents (see "Colour accents" below): one teal, plus status and warm code hues */
-  --tint: #0f6e73;
-  --link: #0f6e73;
-  --heading: #134e52;
-  --code-inline: #9a4a0e;
-  --quote: #0f6e73;
-  --reasoning: #8a6100;
-  --tool: #0f6e73;
+  /* Status colours, used only on real status (see "Colour accents" below) */
   --status-ok: #2f7a4d;
   --status-warn: #8a6100;
-  --status-error: var(--destructive);
   --font-sans: Inter, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: JetBrains Mono, monospace;
@@ -103,13 +95,6 @@
   --sidebar-accent-foreground: #ededed;
   --sidebar-border: #2a2a2a;
   --sidebar-ring: #5ec4c0;
-  --tint: #5ec4c0;
-  --link: #5ec4c0;
-  --heading: #a7e3df;
-  --code-inline: #f0a868;
-  --quote: #5ec4c0;
-  --reasoning: #e5b45c;
-  --tool: #5ec4c0;
   --status-ok: #7fcf9a;
   --status-warn: #e5b45c;
   --shadow-sm: 0px 1px 2px 0px rgb(0 0 0 / 0.3);
@@ -120,29 +105,30 @@
 }
 
 /*
- * Colour accents. Every palette sets the hues (--tint, --link, --heading, --code-inline,
- * --quote, --reasoning, --tool, --status-ok, --status-warn) from its own colours; the soft
- * fills below mix them into the ground, so no palette repeats a tint by hand. Colour goes on
- * small surfaces (a bubble, the active row, chips, rules), never on large grounds.
+ * Colour accents: one family per palette, its primary. --tint colours small surfaces as a
+ * soft fill (user bubble, active conversation, reasoning chip, model badge, avatar, code
+ * block frame); --tint-text is the same hue at a shade that holds 4.5:1 for small text and
+ * icons. A palette overrides these only where its primary is too light for text. Headings
+ * stay the foreground colour. Status colours (--status-*) go on real status only.
  */
 :root {
+  --tint: var(--primary);
+  --tint-text: var(--primary);
+  --heading: var(--foreground);
+  --status-error: var(--destructive);
   --tint-soft: color-mix(in srgb, var(--tint) 8%, var(--background));
   --tint-line: color-mix(in srgb, var(--tint) 35%, var(--border));
-  --sidebar-active: color-mix(in srgb, var(--tint) 13%, var(--sidebar));
+  --sidebar-active: color-mix(in srgb, var(--tint) 12%, var(--sidebar));
   --sidebar-hover: color-mix(in srgb, var(--tint) 6%, var(--sidebar));
-  --code-inline-bg: color-mix(in srgb, var(--code-inline) 10%, var(--background));
-  --reasoning-soft: color-mix(in srgb, var(--reasoning) 10%, var(--background));
-  --tool-soft: color-mix(in srgb, var(--tool) 6%, var(--card));
+  --code-inline-bg: color-mix(in srgb, var(--tint) 8%, var(--background));
 }
 
 .dark {
-  --tint-soft: color-mix(in srgb, var(--tint) 10%, var(--background));
+  --tint-soft: color-mix(in srgb, var(--tint) 9%, var(--background));
   --tint-line: color-mix(in srgb, var(--tint) 40%, var(--border));
-  --sidebar-active: color-mix(in srgb, var(--tint) 18%, var(--sidebar));
-  --sidebar-hover: color-mix(in srgb, var(--tint) 8%, var(--sidebar));
-  --code-inline-bg: color-mix(in srgb, var(--code-inline) 14%, var(--background));
-  --reasoning-soft: color-mix(in srgb, var(--reasoning) 14%, var(--background));
-  --tool-soft: color-mix(in srgb, var(--tool) 6%, var(--card));
+  --sidebar-active: color-mix(in srgb, var(--tint) 14%, var(--sidebar));
+  --sidebar-hover: color-mix(in srgb, var(--tint) 7%, var(--sidebar));
+  --code-inline-bg: color-mix(in srgb, var(--tint) 10%, var(--background));
 }
 
 /* Tailwind v4 theme integration */
@@ -184,10 +170,7 @@
   --color-tint: var(--tint);
   --color-tint-soft: var(--tint-soft);
   --color-tint-line: var(--tint-line);
-  --color-reasoning: var(--reasoning);
-  --color-reasoning-soft: var(--reasoning-soft);
-  --color-tool: var(--tool);
-  --color-tool-soft: var(--tool-soft);
+  --color-tint-text: var(--tint-text);
   --color-status-ok: var(--status-ok);
   --color-status-warn: var(--status-warn);
   --color-status-error: var(--status-error);
@@ -281,24 +264,21 @@
 }
 
 /*
- * Replies (Streamdown): headings, links, inline code and quote rules take the palette's
- * accent hues; body text stays the foreground colour. Unlayered, so these win over the
- * utility classes Streamdown puts on the same elements.
+ * Replies (Streamdown): links, inline code and the code block frame take the accent; headings
+ * and body text stay the foreground colour (Cobaltz dark keeps its gold headings). Unlayered,
+ * so these win over the utility classes Streamdown puts on the same elements.
  */
 [data-streamdown^='heading-'] {
   color: var(--heading);
 }
 [data-streamdown='link'] {
-  color: var(--link);
-  text-decoration-color: color-mix(in srgb, var(--link) 45%, transparent);
+  color: var(--tint-text);
+  text-decoration-color: color-mix(in srgb, var(--tint-text) 45%, transparent);
   text-underline-offset: 2px;
 }
 [data-streamdown='inline-code'] {
-  color: var(--code-inline);
+  color: var(--tint-text);
   background-color: var(--code-inline-bg);
-}
-[data-streamdown='blockquote'] {
-  border-left-color: var(--quote);
 }
 [data-streamdown='code-block'] {
   border-color: var(--tint-line);

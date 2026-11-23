@@ -38,14 +38,8 @@
   --sidebar-accent-foreground: oklch(0.3015 0.0572 282.4176);
   --sidebar-border: oklch(0.9115 0.0216 285.9625);
   --sidebar-ring: oklch(0.5417 0.179 288.0332);
-  /* Accent hues from this palette (globals.css "Colour accents") */
-  --tint: var(--primary);
-  --link: oklch(0.5 0.179 288.0332);
-  --heading: oklch(0.4143 0.1039 288.1742);
-  --code-inline: oklch(0.52 0.17 346.8124);
-  --quote: var(--primary);
-  --reasoning: oklch(0.5 0.12 244.7492);
-  --tool: oklch(0.5 0.085 186.6761);
+  /* Accent (globals.css "Colour accents"): the primary, a step darker for small text */
+  --tint-text: oklch(0.5 0.179 288.0332);
   --status-ok: oklch(0.5 0.1 160);
   --status-warn: oklch(0.53 0.11 70);
   --shadow-x: 0px;
@@ -97,15 +91,10 @@
   --sidebar-accent-foreground: oklch(0.9185 0.0257 285.8834);
   --sidebar-border: oklch(0.3261 0.0597 282.5832);
   --sidebar-ring: oklch(0.7162 0.1597 290.3962);
-  --tint: var(--primary);
-  --link: oklch(0.7482 0.1235 244.7492);
-  --heading: oklch(0.8367 0.0849 285.9111);
-  --code-inline: oklch(0.7546 0.1831 346.8124);
-  --quote: var(--primary);
-  --reasoning: oklch(0.7482 0.1235 244.7492);
-  --tool: oklch(0.7124 0.0977 186.6761);
   --status-ok: oklch(0.75 0.13 160);
   --status-warn: oklch(0.8 0.13 80);
+  /* The light block's darker --tint-text also matches in dark mode: reset it */
+  --tint-text: var(--primary);
   --shadow-x: 0px;
   --shadow-y: 4px;
   --shadow-blur: 10px;
@@ -156,15 +145,8 @@
   --sidebar-accent-foreground: #0f2438;
   --sidebar-border: #e2e8f0;
   --sidebar-ring: #2563eb;
-  /* Accent hues from the Cobaltz Light code theme (markup.heading, numbers, strings) */
-  --tint: var(--primary);
-  /* A step deeper than the primary, as the code theme's link colour is */
-  --link: #2259d6;
-  --heading: #b45309;
-  --code-inline: #be185d;
-  --quote: var(--primary);
-  --reasoning: #0f766e;
-  --tool: var(--primary);
+  /* Accent: the primary blue; small text a step deeper, as the code theme's links are */
+  --tint-text: #2259d6;
   --status-ok: #047857;
   --status-warn: #b45309;
 }
@@ -203,14 +185,9 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #2d4051;
   --sidebar-ring: #ffcc00;
-  /* Accent hues from the Cobaltz code theme: functions, headings, regexp, keywords, strings */
-  --tint: #82aaff;
-  --link: #82aaff;
+  /* Accent: the golden primary; headings take the code theme's gold markup.heading */
+  --tint-text: var(--primary);
   --heading: #ffcb6b;
-  --code-inline: #89ddff;
-  --quote: #ffcc00;
-  --reasoning: #ff9d00;
-  --tool: #80cbc4;
   --status-ok: #6fd640;
   --status-warn: #f1a23a;
 }
@@ -252,14 +229,7 @@
   --sidebar-accent-foreground: #464261;
   --sidebar-border: #dfdad9;
   --sidebar-ring: #907aa9;
-  /* Accent hues: Rose for soft fills, Pine, Iris, Love, Gold and Foam deepened to 4.5:1 */
-  --tint: #d7827e;
-  --link: #286983;
-  --heading: #6e5a8e;
-  --code-inline: #9a4762;
-  --quote: #907aa9;
-  --reasoning: #8f5713;
-  --tool: #3a7480;
+  /* Accent: Pine, the primary. Status: Pine and Gold deepened to 4.5:1 */
   --status-ok: #286983;
   --status-warn: #8f5713;
 }
@@ -298,13 +268,6 @@
   --sidebar-accent-foreground: #e0def4;
   --sidebar-border: #2e2b42;
   --sidebar-ring: #c4a7e7;
-  --tint: #c4a7e7;
-  --link: #9ccfd8;
-  --heading: #ebbcba;
-  --code-inline: #f6c177;
-  --quote: #c4a7e7;
-  --reasoning: #c4a7e7;
-  --tool: #9ccfd8;
   --status-ok: #9ccfd8;
   --status-warn: #f6c177;
 }
