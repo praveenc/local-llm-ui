@@ -69,15 +69,22 @@ export const ConversationScrollButton = ({
   className,
   ...props
 }: ConversationScrollButtonProps) => {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+  const { isAtBottom, scrollToBottom, scrollRef } = useStickToBottomContext();
 
   const handleScrollToBottom = useCallback(() => {
+    // This button unmounts once the log reaches the bottom, so move focus to the log first.
+    const log = scrollRef.current;
+    if (log) {
+      log.tabIndex = -1;
+      log.focus({ preventScroll: true });
+    }
     scrollToBottom();
-  }, [scrollToBottom]);
+  }, [scrollRef, scrollToBottom]);
 
   return (
     !isAtBottom && (
       <Button
+        aria-label="Scroll to latest message"
         className={cn('absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full', className)}
         onClick={handleScrollToBottom}
         size="icon"
