@@ -136,16 +136,19 @@ function configureServices(preferences: UserPreferences) {
   openrouterService.setApiKey(currentPrefs.openrouterApiKey || null);
 }
 
-const SERVICES = {
-  lmstudio: lmstudioService,
-  ollama: ollamaService,
-  bedrock: bedrockService,
-  'bedrock-mantle': mantleService,
-  groq: groqService,
-  cerebras: cerebrasService,
-  anthropic: anthropicService,
-  openrouter: openrouterService,
-} satisfies Record<Provider, { getModels: () => Promise<unknown[]> }>;
+// A function, not a module-level object: importing the hooks barrel must not read the services,
+// so tests that mock '../services' with only some exports still load
+const servicesByProvider = () =>
+  ({
+    lmstudio: lmstudioService,
+    ollama: ollamaService,
+    bedrock: bedrockService,
+    'bedrock-mantle': mantleService,
+    groq: groqService,
+    cerebras: cerebrasService,
+    anthropic: anthropicService,
+    openrouter: openrouterService,
+  }) satisfies Record<Provider, { getModels: () => Promise<unknown[]> }>;
 
 async function fetchProviderModels(
   provider: Provider,
@@ -153,7 +156,7 @@ async function fetchProviderModels(
 ): Promise<ProviderModels> {
   configureServices(preferences);
   try {
-    const rawModels = await SERVICES[provider].getModels();
+    const rawModels = await servicesByProvider()[provider].getModels();
     const models: UnifiedModel[] = rawModels.map((model) => ({
       id: model.modelId,
       name: model.modelName,
