@@ -221,6 +221,8 @@ export function ConversationList({
                       onChange={(e) => setEditTitle(e.target.value)}
                       onBlur={() => handleSaveRename(conv.id)}
                       onKeyDown={(e) => {
+                        // keyCode 229 covers Safari, which clears isComposing before this keydown
+                        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                         if (e.key === 'Enter') handleSaveRename(conv.id);
                         if (e.key === 'Escape') setEditingId(null);
                       }}
