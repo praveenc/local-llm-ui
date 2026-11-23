@@ -21,4 +21,36 @@ describe('ModelSelectorButton', () => {
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
     expect(screen.queryByPlaceholderText('Search models...')).not.toBeInTheDocument();
   });
+
+  it('groups models by provider with a status heading and a detail line', () => {
+    render(
+      <ModelSelectorButton
+        providers={[
+          {
+            provider: 'ollama',
+            providerName: 'Ollama',
+            status: 'success',
+            models: [
+              {
+                id: 'qwen3',
+                name: 'qwen3',
+                provider: 'ollama',
+                providerName: 'Ollama',
+                family: 'qwen3',
+                supportsThinking: true,
+              },
+            ],
+          },
+          { provider: 'lmstudio', providerName: 'LM Studio', status: 'error', models: [] },
+        ]}
+        selectedModel={null}
+        onSelectModel={vi.fn()}
+      />
+    );
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    expect(screen.getByText('Ollama · 1 model')).toBeInTheDocument();
+    expect(screen.getByText('qwen3 · Thinking')).toBeInTheDocument();
+    expect(screen.getByText('LM Studio · Not running')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'How to start' })).toBeInTheDocument();
+  });
 });

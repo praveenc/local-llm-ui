@@ -100,6 +100,9 @@ export function ModelSelectorButton({
               >
                 {selectedModel.name}
               </span>
+              <span className="hidden text-muted-foreground sm:inline">
+                {selectedModel.providerName}
+              </span>
               <ChevronDown className="size-3 opacity-60" />
             </>
           ) : (
@@ -115,24 +118,32 @@ export function ModelSelectorButton({
         <ModelSelectorList className="max-h-[400px]">
           <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
           {activeProviders.map((provider) => (
-            <ModelSelectorGroup key={provider.provider} heading={provider.providerName}>
-              {provider.models.map((model) => (
-                <ModelSelectorItem
-                  key={`${model.provider}-${model.id}`}
-                  value={`${model.provider}:${model.id}`}
-                  onSelect={() => handleSelect(model)}
-                  className="cursor-pointer"
-                >
-                  <ModelSelectorLogo
-                    provider={PROVIDER_LOGO_MAP[model.provider] || model.provider}
-                    className="h-4 w-4"
-                  />
-                  <ModelSelectorName>{model.name}</ModelSelectorName>
-                  {selectedModel?.id === model.id && selectedModel?.provider === model.provider && (
-                    <Check className="h-4 w-4 text-primary" />
-                  )}
-                </ModelSelectorItem>
-              ))}
+            <ModelSelectorGroup key={provider.provider} heading={groupHeading(provider)}>
+              {provider.models.map((model) => {
+                const detail = modelDetail(model);
+                return (
+                  <ModelSelectorItem
+                    key={`${model.provider}-${model.id}`}
+                    value={`${model.provider}:${model.id}`}
+                    keywords={[model.providerName, model.family ?? '']}
+                    onSelect={() => handleSelect(model)}
+                    className="cursor-pointer items-start"
+                  >
+                    <ModelSelectorLogo
+                      provider={PROVIDER_LOGO_MAP[model.provider] || model.provider}
+                      className="mt-0.5 h-4 w-4"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <ModelSelectorName>{model.name}</ModelSelectorName>
+                      {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
+                    </div>
+                    {selectedModel?.id === model.id &&
+                      selectedModel?.provider === model.provider && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
+                  </ModelSelectorItem>
+                );
+              })}
             </ModelSelectorGroup>
           ))}
 
@@ -140,43 +151,47 @@ export function ModelSelectorButton({
             <ModelSelectorSeparator />
           )}
 
-          {unavailableProviders.length > 0 && (
-            <ModelSelectorGroup heading="Unavailable providers">
-              {/* Plain rows, not command items, so their action buttons can be clicked */}
-              {unavailableProviders.map((provider) => {
-                const help = getProviderHelp(provider);
-                return (
-                  <div
-                    key={`unavailable-${provider.provider}`}
-                    className="flex items-start gap-2 rounded-sm px-2 py-1.5"
-                  >
-                    <ModelSelectorLogo
-                      provider={PROVIDER_LOGO_MAP[provider.provider] || provider.provider}
-                      className="mt-0.5 h-4 w-4 opacity-60"
-                    />
-                    <div className="min-w-0 flex-1 text-left">
-                      <div className="text-sm text-foreground">
-                        {provider.providerName}
-                        <span className="text-muted-foreground"> · {help.status}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{help.hint}</p>
-                    </div>
-                    <ProviderActionButton
-                      action={help.action}
-                      onOpenPreferences={() => {
-                        setOpen(false);
-                        onOpenPreferences?.();
-                      }}
-                    />
-                  </div>
-                );
-              })}
-            </ModelSelectorGroup>
-          )}
+          {unavailableProviders.map((provider) => {
+            const help = getProviderHelp(provider);
+            return (
+              <ModelSelectorGroup
+                key={`unavailable-${provider.provider}`}
+                heading={`${provider.providerName} · ${help.status}`}
+              >
+                {/* A plain row, not a command item, so its action button can be clicked */}
+                <div className="flex items-start gap-2 rounded-sm px-2 py-1.5">
+                  <ModelSelectorLogo
+                    provider={PROVIDER_LOGO_MAP[provider.provider] || provider.provider}
+                    className="mt-0.5 h-4 w-4 opacity-60"
+                  />
+                  <p className="min-w-0 flex-1 text-xs text-muted-foreground">{help.hint}</p>
+                  <ProviderActionButton
+                    action={help.action}
+                    onOpenPreferences={() => {
+                      setOpen(false);
+                      onOpenPreferences?.();
+                    }}
+                  />
+                </div>
+              </ModelSelectorGroup>
+            );
+          })}
         </ModelSelectorList>
       </ModelSelectorContent>
     </ModelSelector>
   );
 }
+
+/** "Ollama · 3 models" */
+const groupHeading = (provider: ProviderModels): string =>
+  `${provider.providerName} · ${provider.models.length} model${provider.models.length === 1 ? '' : 's'}`;
+
+/**
+ * Grey subline from what the provider reports about the model: its family and whether it can
+ * think. shortcut: no context window or tool support here, because the model objects do not
+ * carry them; add them when the services return them.
+ */
+const modelDetail = (model: UnifiedModel): string =>
+  [model.family, model.supportsThinking ? 'Thinking' : undefined].filter(Boolean).join(' · ');
 
 export default ModelSelectorButton;
