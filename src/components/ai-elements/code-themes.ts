@@ -1,6 +1,6 @@
 /**
  * Syntax highlighting themes for code blocks in chat replies, one light and dark pair for
- * each color theme. Shiki has the Rosé Pine and One themes built in. The Cobaltz themes are
+ * each color theme. Shiki has the GitHub, Rosé Pine and One themes built in. The Cobaltz themes are
  * the VS Code theme files from github.com/praveenc/cobaltz (MIT).
  */
 import type { ThemeRegistrationAny } from 'shiki';
@@ -13,6 +13,7 @@ type CodeTheme = string | ThemeRegistrationAny;
 
 /** [light, dark] Shiki themes; the visual mode picks one */
 export const CODE_THEMES: Record<ColorTheme, [CodeTheme, CodeTheme]> = {
+  neutral: ['github-light', 'github-dark'],
   'cosmic-night': ['one-light', 'one-dark-pro'],
   cobaltz: [cobaltzLight as ThemeRegistrationAny, cobaltzDark as ThemeRegistrationAny],
   'rose-pine': ['rose-pine-dawn', 'rose-pine'],

@@ -1,21 +1,26 @@
 'use client';
 
-import { Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun, X } from 'lucide-react';
+import { Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-react';
 
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
 import type { ColorTheme } from '@/utils/colorThemes';
 import type { VisualMode } from '@/utils/preferences';
 
+import { ProductMark } from './ProductMark';
 import { ThemeMenu } from './ThemeMenu';
 
 interface AppLayoutProps {
   navigation: React.ReactNode;
   children: React.ReactNode;
+  /** Title of the open conversation; the header h1 */
+  title?: string;
+  /** Shown under the product name, for example "Ollama · llama3.2"; nothing when unset */
+  scope?: string;
   navigationOpen?: boolean;
   onNavigationChange?: (open: boolean) => void;
   theme: VisualMode;
@@ -28,6 +33,8 @@ interface AppLayoutProps {
 export function AppLayout({
   navigation,
   children,
+  title = 'New conversation',
+  scope,
   navigationOpen = true,
   onNavigationChange,
   theme,
@@ -47,28 +54,18 @@ export function AppLayout({
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
-      {/* Desktop Sidebar */}
+      {/* Desktop Sidebar, from 1024 px; narrower screens use the sheet */}
       <aside
         className={cn(
-          'hidden md:flex md:flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300 ease-in-out',
+          'hidden lg:flex lg:flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-in-out motion-reduce:transition-none',
           sidebarOpen ? 'w-72' : 'w-0'
         )}
       >
         {sidebarOpen && (
           <>
             {/* Sidebar Header */}
-            <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <span className="text-sm font-bold">L</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-semibold text-sidebar-foreground">
-                    Local LLM UI
-                  </span>
-                  <span className="text-xs text-sidebar-foreground/60">Chat Interface</span>
-                </div>
-              </div>
+            <div className="border-b border-sidebar-border px-4 py-3">
+              <SidebarBrand scope={scope} />
             </div>
             {/* Sidebar Content */}
             <div className="flex-1 overflow-y-auto">{navigation}</div>
@@ -78,21 +75,11 @@ export function AppLayout({
 
       {/* Mobile Sidebar (Sheet) */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 p-0 bg-sidebar">
-          {/* Sidebar Header */}
-          <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-3">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <span className="text-sm font-bold">L</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-semibold text-sidebar-foreground">Local LLM UI</span>
-                <span className="text-xs text-sidebar-foreground/60">Chat Interface</span>
-              </div>
-            </div>
-            <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)}>
-              <X className="h-5 w-5" />
-            </Button>
+        <SheetContent side="left" className="w-72 p-0 bg-sidebar" aria-describedby={undefined}>
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          {/* Sidebar Header; SheetContent draws the close button */}
+          <div className="border-b border-sidebar-border px-4 py-3 pr-12">
+            <SidebarBrand scope={scope} />
           </div>
           {/* Sidebar Content */}
           <div className="flex-1 overflow-y-auto">{navigation}</div>
@@ -102,14 +89,15 @@ export function AppLayout({
       {/* Main Content Area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
-          <div className="flex items-center gap-2">
+        <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-4">
+          <div className="flex min-w-0 items-center gap-2">
             {/* Mobile menu button */}
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden h-8 w-8"
+              className="lg:hidden size-11"
               onClick={() => setMobileOpen(true)}
+              aria-label="Open navigation"
             >
               <Menu className="h-5 w-5" />
             </Button>
@@ -117,8 +105,10 @@ export function AppLayout({
             <Button
               variant="ghost"
               size="icon"
-              className="hidden md:flex h-8 w-8"
+              className="hidden lg:flex h-8 w-8"
               onClick={toggleSidebar}
+              aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+              aria-expanded={sidebarOpen}
               title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
             >
               {sidebarOpen ? (
@@ -127,7 +117,9 @@ export function AppLayout({
                 <PanelLeftOpen className="h-5 w-5" />
               )}
             </Button>
-            <span className="text-sm font-medium text-muted-foreground">Chat</span>
+            <h1 className="truncate text-[15px] font-semibold text-foreground" title={title}>
+              {title}
+            </h1>
           </div>
           <div className="flex items-center gap-1">
             <ThemeMenu
@@ -139,6 +131,7 @@ export function AppLayout({
             <Button
               variant="ghost"
               size="icon"
+              className="size-11 md:size-9"
               onClick={onToggleTheme}
               aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
               title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
@@ -154,6 +147,22 @@ export function AppLayout({
 
       {/* Toast Notifications */}
       <Toaster theme={theme} />
+    </div>
+  );
+}
+
+function SidebarBrand({ scope }: { scope?: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <ProductMark className="size-7 shrink-0 text-primary" />
+      <div className="flex min-w-0 flex-col">
+        <span className="text-sm font-semibold text-sidebar-foreground">Local LLM UI</span>
+        {scope && (
+          <span className="truncate text-xs text-muted-foreground" title={scope}>
+            {scope}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

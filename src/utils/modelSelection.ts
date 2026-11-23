@@ -40,3 +40,18 @@ export const pickDefaultModel = (
   }
   return findModel(providers, recent.any);
 };
+
+/** Providers that run on this machine and cost nothing per request */
+export const LOCAL_PROVIDERS: readonly Provider[] = ['ollama', 'lmstudio'];
+
+/**
+ * First model of a local provider (Ollama, then LM Studio), for a first run with no saved or
+ * recent model. Never a paid provider: picking one silently would make the next send cost money.
+ */
+export const pickLocalModel = (providers: ProviderModels[]): UnifiedModel | null => {
+  for (const provider of LOCAL_PROVIDERS) {
+    const first = providers.find((p) => p.provider === provider)?.models[0];
+    if (first) return first;
+  }
+  return null;
+};

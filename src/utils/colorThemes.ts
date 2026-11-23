@@ -2,13 +2,14 @@
  * Color themes
  *
  * A color theme is a palette. The light or dark variant follows the visual mode
- * (the sun/moon toggle). The CSS variables for each theme are in styles/themes.css,
- * and index.html applies the saved theme before the first paint.
+ * (the sun/moon toggle). Neutral, the default, is the :root palette in styles/globals.css;
+ * the others are in styles/themes.css. index.html applies the saved theme before the first
+ * paint. A saved 'cosmic-night' stays valid: it is the former default, kept as an option.
  */
 
-export type ColorTheme = 'cosmic-night' | 'cobaltz' | 'rose-pine';
+export type ColorTheme = 'neutral' | 'cosmic-night' | 'cobaltz' | 'rose-pine';
 
-export const DEFAULT_COLOR_THEME: ColorTheme = 'cosmic-night';
+export const DEFAULT_COLOR_THEME: ColorTheme = 'neutral';
 
 /** Colors for the small preview in the theme picker */
 export interface ThemeSwatch {
@@ -28,6 +29,24 @@ export interface ColorThemeOption {
 }
 
 export const COLOR_THEMES: readonly ColorThemeOption[] = [
+  {
+    value: 'neutral',
+    label: 'Neutral',
+    light: {
+      name: 'Light',
+      background: '#fafafa',
+      foreground: '#111111',
+      primary: '#0f6e73',
+      accents: ['#134e52', '#9a4a0e', '#2f7a4d'],
+    },
+    dark: {
+      name: 'Dark',
+      background: '#111111',
+      foreground: '#ededed',
+      primary: '#5ec4c0',
+      accents: ['#a7e3df', '#f0a868', '#7fcf9a'],
+    },
+  },
   {
     value: 'cosmic-night',
     label: 'Cosmic Night',

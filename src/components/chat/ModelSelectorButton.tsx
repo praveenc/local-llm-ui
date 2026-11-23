@@ -6,10 +6,11 @@
  */
 import { Check, ChevronDown, Loader2 } from 'lucide-react';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { isModelPickerShortcut, modelPickerShortcutLabel } from '@/utils/shortcuts';
 
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
 import {
@@ -25,8 +26,10 @@ import {
   ModelSelectorSeparator,
   ModelSelectorTrigger,
 } from '../ai-elements/model-selector';
+import { ProviderActionButton } from './ProviderActionButton';
 import { composerChip } from './composerStyles';
 import { PROVIDER_LOGO_MAP } from './provider-logos';
+import { getProviderHelp } from './providerHelp';
 
 interface ModelSelectorButtonProps {
   providers: ProviderModels[];
@@ -35,6 +38,10 @@ interface ModelSelectorButtonProps {
   isLoading?: boolean;
   disabled?: boolean;
   className?: string;
+  onOpenPreferences?: () => void;
+  /** Optional control, so the chat can open the picker (for example from an error) */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function ModelSelectorButton({
@@ -44,8 +51,32 @@ export function ModelSelectorButton({
   isLoading,
   disabled,
   className,
+  onOpenPreferences,
+  open: openProp,
+  onOpenChange,
 }: ModelSelectorButtonProps) {
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    onOpenChange?.(next);
+  };
+  // The picker opens while providers are still probed; those show as "Checking..."
+  const blocked = disabled;
+
+  // Cmd/Ctrl+K opens the picker from anywhere, the message box included
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isModelPickerShortcut(e)) return;
+      e.preventDefault();
+      if (!blocked) {
+        setOpenState(true);
+        onOpenChange?.(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [blocked, onOpenChange]);
 
   const handleSelect = (model: UnifiedModel) => {
     onSelectModel(model);
@@ -54,6 +85,7 @@ export function ModelSelectorButton({
 
   const activeProviders = providers.filter((provider) => provider.models.length > 0);
   const unavailableProviders = providers.filter((provider) => provider.status === 'error');
+  const checkingProviders = providers.filter((provider) => provider.status === 'loading');
 
   return (
     <ModelSelector open={open} onOpenChange={setOpen}>
@@ -61,8 +93,10 @@ export function ModelSelectorButton({
         <Button
           variant="ghost"
           size="sm"
-          disabled={disabled || isLoading}
+          disabled={blocked}
           className={cn(composerChip, 'min-w-0 text-foreground', className)}
+          title={`Select model (${modelPickerShortcutLabel()})`}
+          aria-keyshortcuts="Meta+K Control+K"
         >
           {isLoading ? (
             <>
@@ -81,6 +115,9 @@ export function ModelSelectorButton({
               >
                 {selectedModel.name}
               </span>
+              <span className="hidden text-muted-foreground sm:inline">
+                {selectedModel.providerName}
+              </span>
               <ChevronDown className="size-3 opacity-60" />
             </>
           ) : (
@@ -94,62 +131,95 @@ export function ModelSelectorButton({
       <ModelSelectorContent className="w-[400px]" showCloseButton>
         <ModelSelectorInput placeholder="Search models..." />
         <ModelSelectorList className="max-h-[400px]">
-          <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+          <ModelSelectorEmpty>
+            {checkingProviders.length > 0 ? 'Still checking providers…' : 'No models found.'}
+          </ModelSelectorEmpty>
           {activeProviders.map((provider) => (
-            <ModelSelectorGroup key={provider.provider} heading={provider.providerName}>
-              {provider.models.map((model) => (
-                <ModelSelectorItem
-                  key={`${model.provider}-${model.id}`}
-                  value={`${model.provider}:${model.id}`}
-                  onSelect={() => handleSelect(model)}
-                  className="cursor-pointer"
-                >
-                  <ModelSelectorLogo
-                    provider={PROVIDER_LOGO_MAP[model.provider] || model.provider}
-                    className="h-4 w-4"
-                  />
-                  <ModelSelectorName>{model.name}</ModelSelectorName>
-                  {selectedModel?.id === model.id && selectedModel?.provider === model.provider && (
-                    <Check className="h-4 w-4 text-primary" />
-                  )}
-                </ModelSelectorItem>
-              ))}
+            <ModelSelectorGroup key={provider.provider} heading={groupHeading(provider)}>
+              {provider.models.map((model) => {
+                const detail = modelDetail(model);
+                return (
+                  <ModelSelectorItem
+                    key={`${model.provider}-${model.id}`}
+                    value={`${model.provider}:${model.id}`}
+                    keywords={[model.providerName, model.family ?? '']}
+                    onSelect={() => handleSelect(model)}
+                    className="cursor-pointer items-start"
+                  >
+                    <ModelSelectorLogo
+                      provider={PROVIDER_LOGO_MAP[model.provider] || model.provider}
+                      className="mt-0.5 h-4 w-4"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <ModelSelectorName>{model.name}</ModelSelectorName>
+                      {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
+                    </div>
+                    {selectedModel?.id === model.id &&
+                      selectedModel?.provider === model.provider && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
+                  </ModelSelectorItem>
+                );
+              })}
             </ModelSelectorGroup>
           ))}
 
-          {activeProviders.length > 0 && unavailableProviders.length > 0 && (
-            <ModelSelectorSeparator />
-          )}
+          {checkingProviders.map((provider) => (
+            <ModelSelectorGroup
+              key={`checking-${provider.provider}`}
+              heading={`${provider.providerName} · Checking…`}
+            >
+              <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                Looking for models
+              </div>
+            </ModelSelectorGroup>
+          ))}
 
-          {unavailableProviders.length > 0 && (
-            <ModelSelectorGroup heading="Unavailable providers">
-              {unavailableProviders.map((provider) => (
-                <ModelSelectorItem
-                  key={`unavailable-${provider.provider}`}
-                  value={`unavailable:${provider.provider}`}
-                  disabled
-                  className="cursor-default opacity-100"
-                >
+          {activeProviders.length + checkingProviders.length > 0 &&
+            unavailableProviders.length > 0 && <ModelSelectorSeparator />}
+
+          {unavailableProviders.map((provider) => {
+            const help = getProviderHelp(provider);
+            return (
+              <ModelSelectorGroup
+                key={`unavailable-${provider.provider}`}
+                heading={`${provider.providerName} · ${help.status}`}
+              >
+                {/* A plain row, not a command item, so its action button can be clicked */}
+                <div className="flex items-start gap-2 rounded-sm px-2 py-1.5">
                   <ModelSelectorLogo
                     provider={PROVIDER_LOGO_MAP[provider.provider] || provider.provider}
-                    className="h-4 w-4 opacity-60"
+                    className="mt-0.5 h-4 w-4 opacity-60"
                   />
-                  <div className="min-w-0 flex-1 text-left">
-                    <div className="truncate text-sm text-foreground/80">
-                      {provider.providerName}
-                    </div>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {provider.error || 'Currently unavailable'}
-                    </p>
-                  </div>
-                </ModelSelectorItem>
-              ))}
-            </ModelSelectorGroup>
-          )}
+                  <p className="min-w-0 flex-1 text-xs text-muted-foreground">{help.hint}</p>
+                  <ProviderActionButton
+                    action={help.action}
+                    onOpenPreferences={() => {
+                      setOpen(false);
+                      onOpenPreferences?.();
+                    }}
+                  />
+                </div>
+              </ModelSelectorGroup>
+            );
+          })}
         </ModelSelectorList>
       </ModelSelectorContent>
     </ModelSelector>
   );
 }
+
+/** "Ollama · 3 models" */
+const groupHeading = (provider: ProviderModels): string =>
+  `${provider.providerName} · ${provider.models.length} model${provider.models.length === 1 ? '' : 's'}`;
+
+/**
+ * Grey subline from what the provider reports about the model: its family and whether it can
+ * think. shortcut: no context window or tool support here, because the model objects do not
+ * carry them; add them when the services return them.
+ */
+const modelDetail = (model: UnifiedModel): string =>
+  [model.family, model.supportsThinking ? 'Thinking' : undefined].filter(Boolean).join(' · ');
 
 export default ModelSelectorButton;

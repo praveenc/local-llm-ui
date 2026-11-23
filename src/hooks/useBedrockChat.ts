@@ -69,6 +69,8 @@ interface UseBedrockChatReturn {
     files?: Array<{ name: string; format: string; bytes: string }>
   ) => Promise<void>;
   regenerate: (messageIndex: number) => Promise<void>;
+  /** Resend the last user message after a failed reply */
+  retryLast: () => Promise<void>;
   forkAndSend: (messageIndex: number, content: string) => Promise<void>;
   /** Thumbs up or down on a message; the same rating again clears it */
   rateMessage: (messageId: string, feedback: MessageFeedback) => Promise<void>;
@@ -578,6 +580,29 @@ export function useBedrockChat({
     [status, selectedModel, messages, activeConversationId, deleteMessagesFromSequence, sendMessage]
   );
 
+  // Resend the last user message after a failed reply. Files are not resent (as in regenerate).
+  const retryLast = useCallback(async () => {
+    if (status === 'streaming' || !selectedModel || !activeConversationId) return;
+    let lastUserIndex = -1;
+    messages.forEach((m, i) => {
+      if (m.role === 'user') lastUserIndex = i;
+    });
+    if (lastUserIndex === -1) return;
+    const content = getTextContent(messages[lastUserIndex]);
+    const history = messages.slice(0, lastUserIndex);
+    // Drop the failed turn (DB sequences are 1-based) so it is not sent twice
+    await deleteMessagesFromSequence(activeConversationId, lastUserIndex + 1);
+    setMessages(history);
+    await sendMessage(content, undefined, { conversationId: activeConversationId, history });
+  }, [
+    status,
+    selectedModel,
+    activeConversationId,
+    messages,
+    deleteMessagesFromSequence,
+    sendMessage,
+  ]);
+
   // Copy the conversation up to and including messageIndex into a new
   // conversation, switch to it, and send content there
   const forkAndSend = useCallback(
@@ -638,6 +663,7 @@ export function useBedrockChat({
     wasInterrupted,
     sendMessage,
     regenerate,
+    retryLast,
     forkAndSend,
     rateMessage,
     stopGeneration,

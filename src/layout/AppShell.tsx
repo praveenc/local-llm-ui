@@ -1,9 +1,11 @@
+import { useLiveQuery } from 'dexie-react-hooks';
 import { toast } from 'sonner';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ChatContainer } from '../components/chat';
-import { Sidebar } from '../components/sidebar';
+import { PreferencesDialog, Sidebar } from '../components/sidebar';
+import { db } from '../db';
 import { useAllModels } from '../hooks/useAllModels';
 import type { UnifiedModel } from '../hooks/useAllModels';
 import { conversationService } from '../services';
@@ -13,7 +15,7 @@ import {
   applyContentDensity,
   isColorTheme,
 } from '../utils/colorThemes';
-import { findModel, pickDefaultModel } from '../utils/modelSelection';
+import { findModel, pickDefaultModel, pickLocalModel } from '../utils/modelSelection';
 import type { ModelRef } from '../utils/modelSelection';
 import {
   clearLastSelectedModel,
@@ -54,9 +56,22 @@ export default function AppShell() {
   const clearHistoryRef = React.useRef<(() => void) | null>(null);
   // Set by ChatContainer: puts text into the chat input (saved prompts use it)
   const insertPromptRef = React.useRef<((text: string) => void) | null>(null);
+  const [autoSelectNote, setAutoSelectNote] = useState<string | undefined>(undefined);
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [preferencesTab, setPreferencesTab] = useState<'providers' | undefined>(undefined);
+  const openPreferences = (tab?: 'providers') => {
+    setPreferencesTab(tab);
+    setPreferencesOpen(true);
+  };
 
   // Conversation state
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  // Header title; follows renames in the sidebar
+  const activeTitle = useLiveQuery(
+    async () =>
+      activeConversationId ? (await db.conversations.get(activeConversationId))?.title : undefined,
+    [activeConversationId]
+  );
 
   // Load user preferences
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => loadPreferences());
@@ -79,6 +94,7 @@ export default function AppShell() {
 
   // A model picked in the chat input is also the default for new chats
   const handleSelectModel = (model: UnifiedModel) => {
+    setAutoSelectNote(undefined);
     applyModel(model);
     saveLastSelectedModel(model);
   };
@@ -94,7 +110,17 @@ export default function AppShell() {
       if (match && pendingModel.conversationId === activeConversationId) applyModel(match);
     } else if (activeConversationId === null) {
       const match = pickDefaultModel(providers, pendingModel.provider, pendingModel);
-      if (match) applyModel(match);
+      if (match) {
+        applyModel(match);
+        setAutoSelectNote(undefined);
+      } else if (!selectedModel) {
+        // First run or the saved model is gone: take a local model, never a paid one
+        const local = pickLocalModel(providers);
+        if (local) {
+          applyModel(local);
+          setAutoSelectNote(`Picked ${local.name}, the first model ${local.providerName} has.`);
+        }
+      }
     }
   }
 
@@ -208,6 +234,8 @@ export default function AppShell() {
 
   return (
     <AppLayout
+      title={activeTitle || 'New conversation'}
+      scope={selectedModel ? `${selectedModel.providerName} · ${selectedModel.name}` : undefined}
       navigationOpen={navigationOpen}
       onNavigationChange={setNavigationOpen}
       theme={userPreferences.visualMode}
@@ -221,8 +249,7 @@ export default function AppShell() {
         <Sidebar
           onNewChat={handleNewChat}
           onInsertPrompt={(text) => insertPromptRef.current?.(text)}
-          onPreferencesChange={handlePreferencesChange}
-          onPreferencesSaved={handlePreferencesSaved}
+          onOpenPreferences={() => openPreferences()}
           activeConversationId={activeConversationId}
           onSelectConversation={handleSelectConversation}
         />
@@ -245,8 +272,19 @@ export default function AppShell() {
           onClearHistoryRef={clearHistoryRef}
           avatarInitials={userPreferences.avatarInitials}
           onInsertPromptRef={insertPromptRef}
+          onOpenPreferences={() => openPreferences('providers')}
+          autoSelectNote={autoSelectNote}
         />
       </div>
+      <PreferencesDialog
+        open={preferencesOpen}
+        onOpenChange={setPreferencesOpen}
+        initialTab={preferencesTab}
+        onSave={(preferences) => {
+          handlePreferencesChange(preferences);
+          handlePreferencesSaved();
+        }}
+      />
     </AppLayout>
   );
 }

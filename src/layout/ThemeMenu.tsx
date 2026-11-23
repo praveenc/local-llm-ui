@@ -38,7 +38,13 @@ export function ThemeMenu({
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Theme" title="Theme">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11 md:size-9"
+          aria-label="Theme"
+          title="Theme"
+        >
           <Palette className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>

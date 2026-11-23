@@ -49,7 +49,7 @@ export function InferenceSettings({
           <Settings2 className="h-4 w-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="w-72 p-4 z-[1100]">
+      <PopoverContent side="top" align="end" collisionPadding={16} className="w-72 p-4 z-[1100]">
         <div className="space-y-4">
           <div className="text-sm font-medium">Inference Settings</div>
 
@@ -57,7 +57,9 @@ export function InferenceSettings({
           <div className="space-y-2">
             <div className="flex justify-between">
               <Label className="text-xs text-muted-foreground">Max Tokens</Label>
-              <span className="text-xs text-muted-foreground">{maxTokens.toLocaleString()}</span>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {maxTokens.toLocaleString()}
+              </span>
             </div>
             <Slider
               value={[maxTokens]}
@@ -79,7 +81,10 @@ export function InferenceSettings({
               <Label id="max-tool-steps-label" className="text-xs text-muted-foreground">
                 Max Tool Steps
               </Label>
-              <span className="text-xs text-muted-foreground" data-testid="max-tool-steps-value">
+              <span
+                className="text-xs tabular-nums text-muted-foreground"
+                data-testid="max-tool-steps-value"
+              >
                 {maxToolSteps}
               </span>
             </div>

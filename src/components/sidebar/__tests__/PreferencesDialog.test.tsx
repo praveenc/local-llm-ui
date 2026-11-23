@@ -167,12 +167,12 @@ describe('PreferencesDialog color theme', () => {
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Display' }), { button: 0 });
   };
 
-  it('defaults to Cosmic Night and saves the theme picked', () => {
+  it('defaults to Neutral and saves the theme picked', () => {
     const { onSave } = renderDialog({});
     openDisplayTab();
     const picker = screen.getByRole('radiogroup', { name: 'Color theme' });
     expect(picker).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Cosmic Night' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Neutral' })).toBeChecked();
 
     fireEvent.click(screen.getByRole('radio', { name: 'Rosé Pine' }));
     save();
@@ -184,7 +184,7 @@ describe('PreferencesDialog color theme', () => {
     openDisplayTab();
     expect(screen.getByRole('radio', { name: 'Cobaltz' })).toBeChecked();
     // Dark mode shows the dark variant of every theme
-    expect(screen.getAllByText('Dark', { selector: '.text-xs' })).toHaveLength(3);
+    expect(screen.getAllByText('Dark', { selector: '.text-xs' })).toHaveLength(4);
     expect(screen.queryByText('Dawn')).not.toBeInTheDocument();
   });
 });

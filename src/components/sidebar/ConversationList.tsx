@@ -170,7 +170,7 @@ export function ConversationList({
       <div className="px-3 py-4 text-center">
         <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
         <p className="text-sm text-muted-foreground">No conversations yet</p>
-        <p className="text-xs text-muted-foreground/70">Start a new chat to begin</p>
+        <p className="text-xs text-muted-foreground">Start a new chat to begin</p>
       </div>
     );
   }
@@ -187,14 +187,12 @@ export function ConversationList({
             <button className="flex w-full items-center gap-1 px-3 py-1.5 compact:py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
               <ChevronRight
                 className={cn(
-                  'h-3 w-3 transition-transform',
+                  'h-3 w-3 transition-transform motion-reduce:transition-none',
                   openGroups?.[group.label] && 'rotate-90'
                 )}
               />
               <span>{group.label}</span>
-              <span className="ml-auto text-muted-foreground/60">
-                ({group.conversations.length})
-              </span>
+              <span className="ml-auto text-muted-foreground">({group.conversations.length})</span>
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent>
@@ -205,18 +203,26 @@ export function ConversationList({
                   className={cn(
                     'group flex items-center gap-2 rounded-md px-2 py-1.5 compact:py-1 text-sm cursor-pointer transition-colors min-w-0',
                     activeConversationId === conv.id
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'hover:bg-sidebar-accent/50'
+                      ? 'bg-sidebar-active font-medium text-tint-text'
+                      : 'hover:bg-sidebar-hover'
                   )}
+                  aria-current={activeConversationId === conv.id ? 'true' : undefined}
                   onClick={() => editingId !== conv.id && onSelectConversation(conv.id)}
                 >
-                  <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <MessageSquare
+                    className={cn(
+                      'h-4 w-4 shrink-0',
+                      activeConversationId === conv.id ? 'text-tint-text' : 'text-muted-foreground'
+                    )}
+                  />
                   {editingId === conv.id ? (
                     <Input
                       value={editTitle}
                       onChange={(e) => setEditTitle(e.target.value)}
                       onBlur={() => handleSaveRename(conv.id)}
                       onKeyDown={(e) => {
+                        // keyCode 229 covers Safari, which clears isComposing before this keydown
+                        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                         if (e.key === 'Enter') handleSaveRename(conv.id);
                         if (e.key === 'Escape') setEditingId(null);
                       }}
@@ -272,7 +278,7 @@ export function ConversationList({
               Are you sure you want to delete "{conversationToDelete?.title}"?
             </DialogDescription>
           </DialogHeader>
-          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-500">
+          <div className="flex items-center gap-2 text-sm text-status-warn">
             <AlertTriangle className="h-4 w-4" />
             <span>Once deleted, this conversation cannot be restored.</span>
           </div>

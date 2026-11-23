@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ChevronDown, ChevronUp, Copy } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Copy, RotateCcw } from 'lucide-react';
 
 import { useMemo, useState } from 'react';
 
@@ -10,6 +10,10 @@ import { cn } from '@/lib/utils';
 interface ChatErrorAlertProps {
   error: string;
   className?: string;
+  /** Resend the last message */
+  onRetry?: () => void;
+  /** Open the model picker; offered when the error is about the model */
+  onChangeModel?: () => void;
 }
 
 function parseJsonSafely(value: string): unknown | null {
@@ -56,25 +60,37 @@ function extractMessage(value: unknown): string | null {
   return walk(value);
 }
 
-function getFriendlyHint(message: string): string | null {
+interface FriendlyHint {
+  text: string;
+  /** The fix is to pick another model */
+  aboutModel: boolean;
+}
+
+function getFriendlyHint(message: string): FriendlyHint | null {
   const msg = message.toLowerCase();
 
   if (msg.includes('tool calling') && msg.includes('not supported')) {
-    return 'This model does not support tool calls. Disable MCP/Web Search or choose a model that supports tools.';
+    return {
+      text: 'This model does not support tool calls. Disable MCP/Web Search or choose a model that supports tools.',
+      aboutModel: true,
+    };
   }
 
   if (msg.includes('does not exist') || msg.includes('do not have access')) {
-    return 'You may not have access to this model. Pick another model from the selector or verify your provider account access.';
+    return {
+      text: 'You may not have access to this model. Pick another model from the selector or verify your provider account access.',
+      aboutModel: true,
+    };
   }
 
   if (msg.includes('api key')) {
-    return 'Verify your API key in Preferences and try again.';
+    return { text: 'Verify your API key in Preferences and try again.', aboutModel: false };
   }
 
   return null;
 }
 
-export function ChatErrorAlert({ error, className }: ChatErrorAlertProps) {
+export function ChatErrorAlert({ error, className, onRetry, onChangeModel }: ChatErrorAlertProps) {
   const [copied, setCopied] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -94,7 +110,7 @@ export function ChatErrorAlert({ error, className }: ChatErrorAlertProps) {
   const showDetails = rawDetails.trim() !== message.trim();
 
   const handleCopy = async () => {
-    const text = `${message}${hint ? `\n\nHint: ${hint}` : ''}${
+    const text = `${message}${hint ? `\n\nHint: ${hint.text}` : ''}${
       showDetails ? `\n\nDetails:\n${rawDetails}` : ''
     }`;
     await navigator.clipboard.writeText(text);
@@ -110,9 +126,20 @@ export function ChatErrorAlert({ error, className }: ChatErrorAlertProps) {
           <AlertTitle className="text-sm font-semibold">Request failed</AlertTitle>
           <AlertDescription className="text-sm break-words">{message}</AlertDescription>
 
-          {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+          {hint && <p className="text-xs text-muted-foreground">{hint.text}</p>}
 
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {onRetry && (
+              <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+                <RotateCcw className="h-3.5 w-3.5" />
+                Retry
+              </Button>
+            )}
+            {onChangeModel && hint?.aboutModel && (
+              <Button type="button" variant="ghost" size="sm" onClick={onChangeModel}>
+                Change model
+              </Button>
+            )}
             <Button type="button" variant="outline" size="sm" onClick={handleCopy}>
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               {copied ? 'Copied' : 'Copy error'}

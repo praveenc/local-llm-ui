@@ -77,9 +77,7 @@ export function WebSearchSettings({ preferences, onUpdate }: WebSearchSettingsPr
       </div>
 
       <div role="group" aria-label="Web search providers" className="space-y-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Primary provider
-        </p>
+        <p className="text-[13px] text-muted-foreground">Primary provider</p>
         <RadioGroup
           aria-label="Primary web search provider"
           value={primary ?? ''}
@@ -112,7 +110,7 @@ export function WebSearchSettings({ preferences, onUpdate }: WebSearchSettingsPr
                     <span className="text-xs text-muted-foreground">{freeTier}</span>
                   </Label>
                   {hasKey ? (
-                    <span className="flex items-center gap-1 text-xs text-green-700 dark:text-green-500">
+                    <span className="flex items-center gap-1 text-xs text-status-ok">
                       <Check className="h-3 w-3" aria-hidden />
                       Key set
                     </span>

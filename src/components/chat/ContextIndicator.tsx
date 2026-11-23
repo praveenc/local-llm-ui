@@ -6,6 +6,8 @@
  */
 import type { LanguageModelUsage } from 'ai';
 
+import { Progress } from '@/components/ui/progress';
+
 import {
   Context,
   ContextContent,
@@ -17,6 +19,9 @@ import {
   ContextTrigger,
 } from '../ai-elements/context';
 import { composerChip } from './composerStyles';
+
+const percent = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 1 });
+const compact = new Intl.NumberFormat('en-US', { notation: 'compact' });
 
 interface ContextIndicatorProps {
   usedTokens: number;
@@ -50,7 +55,16 @@ export function ContextIndicator({
     <Context usedTokens={usedTokens} maxTokens={maxTokens} usage={usage} modelId={modelId}>
       <ContextTrigger className={`${composerChip} gap-1 px-2 tabular-nums has-[>svg]:px-2`} />
       <ContextContent side="top" align="end" className="z-[1100]">
-        <ContextContentHeader />
+        {/* Own header body: Inter tabular figures instead of the stock font-mono */}
+        <ContextContentHeader>
+          <div className="flex items-center justify-between gap-3 text-xs tabular-nums">
+            <p>{percent.format(usedTokens / maxTokens)}</p>
+            <p className="text-muted-foreground">
+              {compact.format(usedTokens)} / {compact.format(maxTokens)}
+            </p>
+          </div>
+          <Progress className="bg-muted" value={(usedTokens / maxTokens) * 100} />
+        </ContextContentHeader>
         <ContextContentBody className="space-y-1">
           <ContextInputUsage />
           <ContextOutputUsage />

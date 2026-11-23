@@ -99,7 +99,7 @@ export function ProviderSettings({ preferences, onUpdate }: ProviderSettingsProp
                 disabled={!hasKey}
                 status={
                   hasKey ? (
-                    <span className="flex items-center gap-1 text-xs text-green-700 dark:text-green-500">
+                    <span className="flex items-center gap-1 text-xs text-status-ok">
                       <Check className="h-3 w-3" aria-hidden />
                       Key set
                     </span>
@@ -185,7 +185,7 @@ export function ProviderSettings({ preferences, onUpdate }: ProviderSettingsProp
 function ProviderGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div role="group" aria-label={title} className="space-y-2">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
+      <p className="text-[13px] text-muted-foreground">{title}</p>
       <div className="divide-y rounded-lg border">{children}</div>
     </div>
   );

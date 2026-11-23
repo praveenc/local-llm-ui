@@ -36,8 +36,8 @@ describe('code block themes', () => {
     expect(result.current.shikiTheme).toBe(CODE_THEMES.cobaltz);
   });
 
-  it('uses Cosmic Night for a missing or unknown theme', () => {
+  it('uses Neutral for a missing or unknown theme', () => {
     const { result } = renderHook(() => useColorTheme());
-    expect(result.current).toBe('cosmic-night');
+    expect(result.current).toBe('neutral');
   });
 });

@@ -31,11 +31,18 @@ interface PreferencesDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (preferences: UserPreferences) => void;
+  /** Tab to show each time the dialog opens; unset keeps the last tab */
+  initialTab?: PreferencesTab;
 }
 
-type PreferencesTab = 'providers' | 'web-search' | 'mcp' | 'display';
+export type PreferencesTab = 'providers' | 'web-search' | 'mcp' | 'display';
 
-export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDialogProps) {
+export function PreferencesDialog({
+  open,
+  onOpenChange,
+  onSave,
+  initialTab,
+}: PreferencesDialogProps) {
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
   const [tab, setTab] = useState<PreferencesTab>('providers');
   const [wasOpen, setWasOpen] = useState(open);
@@ -43,7 +50,10 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
   // Reload on open: other controls (the header theme toggle) also save preferences
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (open) setPreferences(loadPreferences());
+    if (open) {
+      setPreferences(loadPreferences());
+      if (initialTab) setTab(initialTab);
+    }
   }
   const [providerError, setProviderError] = useState('');
 
@@ -67,7 +77,8 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col gap-4">
+      {/* Fixed height, so the tabs and the footer do not move between tabs */}
+      <DialogContent className="sm:max-w-2xl h-[min(85vh,760px)] flex flex-col gap-4">
         <DialogHeader>
           <DialogTitle>Preferences</DialogTitle>
           <DialogDescription>Choose your providers, tools, and display settings.</DialogDescription>
@@ -158,7 +169,7 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
                 </p>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 <Label htmlFor="initials">Avatar initials</Label>
                 <Input
                   id="initials"
@@ -184,7 +195,7 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
           </p>
         )}
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

@@ -37,7 +37,7 @@ export const MessageContent = ({ children, className, ...props }: MessageContent
   <div
     className={cn(
       'is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm',
-      'group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground',
+      'group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-tint-soft group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground',
       'group-[.is-user]:compact:px-3 group-[.is-user]:compact:py-2',
       'group-[.is-assistant]:text-foreground',
       className
@@ -54,7 +54,7 @@ export const MessageAvatar = ({ initials, className, ...props }: MessageAvatarPr
   <div
     aria-hidden="true"
     className={cn(
-      'flex size-7 shrink-0 select-none items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground compact:size-6 compact:text-[10px]',
+      'flex size-7 shrink-0 select-none items-center justify-center rounded-full bg-tint-soft text-[11px] font-semibold text-tint-text ring-1 ring-tint-line compact:size-6 compact:text-[10px]',
       className
     )}
     title={initials}
@@ -326,7 +326,7 @@ export function MessageAttachment({ data, className, onRemove, ...props }: Messa
           {onRemove && (
             <Button
               aria-label="Remove attachment"
-              className="absolute top-2 right-2 size-6 rounded-full bg-background/80 p-0 opacity-0 backdrop-blur-sm transition-opacity hover:bg-background group-hover:opacity-100 [&>svg]:size-3"
+              className="absolute top-2 right-2 size-6 rounded-full bg-background p-0 opacity-0 transition-opacity hover:bg-background group-hover:opacity-100 [&>svg]:size-3"
               onClick={(e) => {
                 e.stopPropagation();
                 onRemove();

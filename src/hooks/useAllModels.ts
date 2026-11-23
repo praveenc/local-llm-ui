@@ -4,9 +4,9 @@
  * Aggregates models from all available providers for the unified ModelSelector.
  * Fetches models from connected providers and groups them by provider.
  */
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { bedrockService, lmstudioService, mantleService, ollamaService } from '../services';
 import {
@@ -123,28 +123,79 @@ function getProvidersToFetch(
   return providersToFetch;
 }
 
-function createLoadingProviders(providersToFetch: Provider[]): ProviderModels[] {
-  return providersToFetch.map((provider) => ({
-    provider,
-    providerName: PROVIDER_NAMES[provider],
-    models: [],
-    status: 'loading' as const,
-  }));
+/** Point the services at the keys and region saved in preferences */
+function configureServices(preferences: UserPreferences) {
+  syncApiKeysFromPreferences(
+    preferences.groqApiKey,
+    preferences.cerebrasApiKey,
+    preferences.anthropicApiKey
+  );
+  const currentPrefs = loadPreferences();
+  mantleService.setApiKey(currentPrefs.bedrockMantleApiKey || null);
+  mantleService.setRegion(currentPrefs.bedrockMantleRegion || 'us-west-2');
+  openrouterService.setApiKey(currentPrefs.openrouterApiKey || null);
 }
 
+// A function, not a module-level object: importing the hooks barrel must not read the services,
+// so tests that mock '../services' with only some exports still load
+const servicesByProvider = () =>
+  ({
+    lmstudio: lmstudioService,
+    ollama: ollamaService,
+    bedrock: bedrockService,
+    'bedrock-mantle': mantleService,
+    groq: groqService,
+    cerebras: cerebrasService,
+    anthropic: anthropicService,
+    openrouter: openrouterService,
+  }) satisfies Record<Provider, { getModels: () => Promise<unknown[]> }>;
+
+async function fetchProviderModels(
+  provider: Provider,
+  preferences: UserPreferences
+): Promise<ProviderModels> {
+  configureServices(preferences);
+  try {
+    const rawModels = await servicesByProvider()[provider].getModels();
+    const models: UnifiedModel[] = rawModels.map((model) => ({
+      id: model.modelId,
+      name: model.modelName,
+      provider,
+      providerName: PROVIDER_NAMES[provider],
+      family: model.modelFamily,
+      ...(model.supportsThinking !== undefined && {
+        supportsThinking: model.supportsThinking,
+      }),
+    }));
+    return { provider, providerName: PROVIDER_NAMES[provider], models, status: 'success' };
+  } catch (err) {
+    if (shouldLogProviderError(provider, err)) {
+      console.error(`Failed to fetch ${provider} models:`, err);
+    }
+    return {
+      provider,
+      providerName: PROVIDER_NAMES[provider],
+      models: [],
+      status: 'error',
+      error: getProviderErrorMessage(provider, err),
+    };
+  }
+}
+
+/**
+ * Each provider is probed in its own query, so a fast provider shows its models (and a slow one
+ * shows "Checking...") instead of the whole list waiting for the slowest probe.
+ */
 export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
-  const queryKey = useMemo(
-    () => [
-      ...ALL_MODELS_QUERY_KEY,
-      {
-        bedrockMantleEnabled: hasConfiguredValue(preferences.bedrockMantleApiKey),
-        bedrockMantleRegion: preferences.bedrockMantleRegion || 'us-west-2',
-        groqEnabled: hasConfiguredValue(preferences.groqApiKey),
-        cerebrasEnabled: hasConfiguredValue(preferences.cerebrasApiKey),
-        anthropicEnabled: hasConfiguredValue(preferences.anthropicApiKey),
-        openrouterEnabled: hasConfiguredValue(preferences.openrouterApiKey),
-      },
-    ],
+  const keyState = useMemo(
+    () => ({
+      bedrockMantleEnabled: hasConfiguredValue(preferences.bedrockMantleApiKey),
+      bedrockMantleRegion: preferences.bedrockMantleRegion || 'us-west-2',
+      groqEnabled: hasConfiguredValue(preferences.groqApiKey),
+      cerebrasEnabled: hasConfiguredValue(preferences.cerebrasApiKey),
+      anthropicEnabled: hasConfiguredValue(preferences.anthropicApiKey),
+      openrouterEnabled: hasConfiguredValue(preferences.openrouterApiKey),
+    }),
     [
       preferences.anthropicApiKey,
       preferences.bedrockMantleApiKey,
@@ -155,120 +206,20 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
     ]
   );
 
-  const loadingProviders = useMemo(
-    () => createLoadingProviders(getProvidersToFetch(preferences)),
-    [preferences]
-  );
+  const providersToFetch = getProvidersToFetch(preferences, loadPreferences());
 
-  const query = useQuery({
-    queryKey,
-    queryFn: async (): Promise<ProviderModels[]> => {
-      syncApiKeysFromPreferences(
-        preferences.groqApiKey,
-        preferences.cerebrasApiKey,
-        preferences.anthropicApiKey
-      );
-
-      const currentPrefs = loadPreferences();
-      const providersToFetch = getProvidersToFetch(preferences, currentPrefs);
-
-      if (currentPrefs.bedrockMantleApiKey) {
-        mantleService.setApiKey(currentPrefs.bedrockMantleApiKey);
-        mantleService.setRegion(currentPrefs.bedrockMantleRegion || 'us-west-2');
-      } else {
-        mantleService.setApiKey(null);
-        mantleService.setRegion(currentPrefs.bedrockMantleRegion || 'us-west-2');
-      }
-
-      openrouterService.setApiKey(currentPrefs.openrouterApiKey || null);
-
-      const results = await Promise.allSettled(
-        providersToFetch.map(async (provider): Promise<ProviderModels> => {
-          try {
-            let rawModels;
-            switch (provider) {
-              case 'lmstudio':
-                rawModels = await lmstudioService.getModels();
-                break;
-              case 'ollama':
-                rawModels = await ollamaService.getModels();
-                break;
-              case 'bedrock':
-                rawModels = await bedrockService.getModels();
-                break;
-              case 'bedrock-mantle':
-                rawModels = await mantleService.getModels();
-                break;
-              case 'groq':
-                rawModels = await groqService.getModels();
-                break;
-              case 'cerebras':
-                rawModels = await cerebrasService.getModels();
-                break;
-              case 'anthropic':
-                rawModels = await anthropicService.getModels();
-                break;
-              case 'openrouter':
-                rawModels = await openrouterService.getModels();
-                break;
-              default:
-                throw new Error('Invalid provider');
-            }
-
-            const models: UnifiedModel[] = rawModels.map((model) => ({
-              id: model.modelId,
-              name: model.modelName,
-              provider,
-              providerName: PROVIDER_NAMES[provider],
-              family: model.modelFamily,
-              ...(model.supportsThinking !== undefined && {
-                supportsThinking: model.supportsThinking,
-              }),
-            }));
-
-            return {
-              provider,
-              providerName: PROVIDER_NAMES[provider],
-              models,
-              status: 'success',
-            };
-          } catch (err) {
-            if (shouldLogProviderError(provider, err)) {
-              console.error(`Failed to fetch ${provider} models:`, err);
-            }
-
-            return {
-              provider,
-              providerName: PROVIDER_NAMES[provider],
-              models: [],
-              status: 'error',
-              error: getProviderErrorMessage(provider, err),
-            };
-          }
-        })
-      );
-
-      const finalProviders: ProviderModels[] = results.map((result, index) => {
-        if (result.status === 'fulfilled') {
-          return result.value;
-        }
-
-        return {
-          provider: providersToFetch[index],
-          providerName: PROVIDER_NAMES[providersToFetch[index]],
-          models: [],
-          status: 'error' as const,
-          error: 'Failed to fetch models',
-        };
-      });
-
-      return finalProviders.filter(
-        (provider) => provider.models.length > 0 || provider.status === 'error'
-      );
-    },
+  const queries = useQueries({
+    queries: providersToFetch.map((provider) => ({
+      queryKey: [...ALL_MODELS_QUERY_KEY, provider, keyState],
+      queryFn: () => fetchProviderModels(provider, preferences),
+    })),
   });
 
-  const { data, isFetching, refetch } = query;
+  const queryClient = useQueryClient();
+  const refetch = useCallback(
+    () => queryClient.refetchQueries({ queryKey: ALL_MODELS_QUERY_KEY, type: 'active' }),
+    [queryClient]
+  );
 
   // The query key only tracks whether a key is set. Refetch when a key's value changes too
   // (the user replaced a key), so the new key is used right away.
@@ -287,9 +238,23 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
     if (previous !== null && previous !== apiKeys) void refetch();
   }, [apiKeys, refetch]);
 
-  const providers = isFetching ? loadingProviders : (data ?? []);
+  const providers: ProviderModels[] = queries
+    .map((query, index): ProviderModels => {
+      const provider = providersToFetch[index];
+      if (query.isFetching || !query.data) {
+        return {
+          provider,
+          providerName: PROVIDER_NAMES[provider],
+          models: [],
+          status: 'loading',
+        };
+      }
+      return query.data;
+    })
+    // A provider that answered with no models has nothing to show
+    .filter((provider) => provider.status !== 'success' || provider.models.length > 0);
   const allModels = providers.flatMap((provider) => provider.models);
-  const isLoading = isFetching;
+  const isLoading = queries.some((query) => query.isFetching);
 
   return {
     providers,

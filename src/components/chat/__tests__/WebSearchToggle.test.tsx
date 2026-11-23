@@ -18,6 +18,16 @@ describe('WebSearchToggle', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it('stays focusable without a key but does not toggle', () => {
+    const onToggle = vi.fn();
+    render(<WebSearchToggle enabled={false} onToggle={onToggle} hasApiKey={false} />);
+    const button = screen.getByRole('button', { name: 'Web search' });
+    expect(button).not.toBeDisabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(button);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
   it('reports its state to assistive technology', () => {
     render(<WebSearchToggle enabled onToggle={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Web search' })).toHaveAttribute(

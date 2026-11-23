@@ -120,15 +120,17 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
             <Button
               variant="ghost"
               size="sm"
-              className={cn(composerIconButton, 'cursor-default opacity-50')}
-              disabled
+              className={cn(composerIconButton, 'cursor-default opacity-50 hover:bg-transparent')}
+              type="button"
+              // Stays focusable so the tooltip can say why it does nothing
+              aria-disabled
               aria-label="MCP tools"
             >
               <Plug2 className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>No MCP servers configured</p>
+            <p>No MCP servers configured. Add one in Preferences, MCP Servers</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -154,9 +156,7 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
                 aria-label={`MCP tools: ${totalTools}`}
               >
                 <Plug2 className="size-4" />
-                {totalTools > 0 && (
-                  <span className="font-mono text-xs tabular-nums">{totalTools}</span>
-                )}
+                {totalTools > 0 && <span className="text-xs tabular-nums">{totalTools}</span>}
               </Button>
             </TooltipTrigger>
           </PopoverTrigger>
@@ -184,7 +184,7 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
                 <span
                   className={cn(
                     'h-2 w-2 rounded-full shrink-0',
-                    server.status === 'connected' ? 'bg-green-500' : 'bg-red-500'
+                    server.status === 'connected' ? 'bg-status-ok' : 'bg-status-error'
                   )}
                 />
                 <span className="text-sm font-medium truncate">{server.name}</span>

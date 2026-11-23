@@ -70,9 +70,9 @@ export function ToolCall({ toolCall, className }: ToolCallProps) {
         )}
 
         {isWebSearch ? (
-          <Globe className="size-3.5 shrink-0 text-blue-500" />
+          <Globe className="size-3.5 shrink-0 text-tint-text" />
         ) : (
-          <Wrench className="size-3.5 shrink-0 text-muted-foreground" />
+          <Wrench className="size-3.5 shrink-0 text-tint-text" />
         )}
 
         <span className="font-medium shrink-0">
@@ -159,7 +159,7 @@ function SearchResultItem({ result }: { result: SearchResult }) {
       >
         <span className="truncate">{result.title}</span>
         <ExternalLink className="size-3 shrink-0" />
-        <span className="ml-auto shrink-0 font-normal text-muted-foreground/70">
+        <span className="ml-auto shrink-0 font-normal text-muted-foreground">
           {hostnameOf(result.url)}
         </span>
       </a>

@@ -40,7 +40,7 @@ const STORAGE_KEY = 'local-llm-ui-preferences';
 const DEFAULT_PREFERENCES: UserPreferences = {
   preferredProvider: 'ollama',
   visualMode: 'light',
-  colorTheme: 'cosmic-night',
+  colorTheme: 'neutral',
   contentDensity: 'comfortable',
   avatarInitials: '',
   bedrockMantleRegion: 'us-west-2',

@@ -9,6 +9,7 @@
 import type { CodeHighlighterPlugin } from 'streamdown';
 
 import { useColorTheme } from '../../hooks/useColorTheme';
+import { DEFAULT_COLOR_THEME } from '../../utils/colorThemes';
 import { CODE_THEMES } from './code-themes';
 
 type HighlightOptions = Parameters<CodeHighlighterPlugin['highlight']>[0];
@@ -31,7 +32,7 @@ export const lazyCodePlugin: CodeHighlighterPlugin = {
   name: 'shiki',
   type: 'code-highlighter',
   // Streamdown takes the themes from the shikiTheme prop, so these are only a fallback
-  getThemes: () => CODE_THEMES['cosmic-night'],
+  getThemes: () => CODE_THEMES[DEFAULT_COLOR_THEME],
   // Shiki loads each grammar on demand and falls back to plain text for unknown languages
   supportsLanguage: (language) => loaded?.supportsLanguage(language) ?? true,
   getSupportedLanguages: () => loaded?.getSupportedLanguages() ?? [],

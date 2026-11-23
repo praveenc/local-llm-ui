@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
-import { findModel, pickDefaultModel } from '../modelSelection';
+import { findModel, pickDefaultModel, pickLocalModel } from '../modelSelection';
 import type { Provider } from '../preferences';
 
 const model = (provider: Provider, id: string): UnifiedModel => ({
@@ -76,5 +76,19 @@ describe('pickDefaultModel', () => {
     });
     expect(picked).toMatchObject({ provider: 'bedrock', id: 'sonnet' });
     expect(pickDefaultModel(providers, 'groq', {})).toBeNull();
+  });
+});
+
+describe('pickLocalModel', () => {
+  it('takes the first Ollama model, then LM Studio', () => {
+    expect(pickLocalModel([group('lmstudio', 'qwen'), group('ollama', 'llama3.2')])?.id).toBe(
+      'llama3.2'
+    );
+    expect(pickLocalModel([group('lmstudio', 'qwen')])?.id).toBe('qwen');
+  });
+
+  it('never picks a paid provider', () => {
+    expect(pickLocalModel(providers)).toBeNull();
+    expect(pickLocalModel([group('openrouter', 'x'), group('ollama')])).toBeNull();
   });
 });

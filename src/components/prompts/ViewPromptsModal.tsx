@@ -305,7 +305,9 @@ export function ViewPromptsModal({ visible, onDismiss, onInsertPrompt }: ViewPro
           </div>
 
           <DialogFooter>
-            <Button onClick={handleClose}>Close</Button>
+            <Button variant="outline" onClick={handleClose}>
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -334,7 +336,7 @@ export function ViewPromptsModal({ visible, onDismiss, onInsertPrompt }: ViewPro
               Are you sure you want to delete the prompt <strong>"{promptToDelete?.name}"</strong>?
             </DialogDescription>
           </DialogHeader>
-          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-500">
+          <div className="flex items-center gap-2 text-sm text-status-warn">
             <AlertTriangle className="h-4 w-4" />
             <span>This action cannot be undone.</span>
           </div>

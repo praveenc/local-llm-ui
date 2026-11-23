@@ -1,8 +1,115 @@
 /*
  * Color themes. The selectors match <html data-theme="..."> (see utils/colorThemes.ts).
- * Cosmic Night is the default palette in globals.css (:root and .dark).
+ * Neutral is the default palette in globals.css (:root and .dark).
  * The extra attribute gives these blocks higher specificity, so file order does not matter.
  */
+
+/* Cosmic Night. Source: tweakcn.com. The violet palette that was the default before Neutral */
+:root[data-theme='cosmic-night'] {
+  --background: oklch(0.973 0.0133 286.1503);
+  --foreground: oklch(0.3015 0.0572 282.4176);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.3015 0.0572 282.4176);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.3015 0.0572 282.4176);
+  --primary: oklch(0.5417 0.179 288.0332);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.9174 0.0435 292.6901);
+  --secondary-foreground: oklch(0.4143 0.1039 288.1742);
+  --muted: oklch(0.958 0.0133 286.1454);
+  --muted-foreground: oklch(0.52 0.0465 284.7435);
+  --accent: oklch(0.9221 0.0373 262.141);
+  --accent-foreground: oklch(0.3015 0.0572 282.4176);
+  --destructive: oklch(0.56 0.2 18);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9115 0.0216 285.9625);
+  --input: oklch(0.9115 0.0216 285.9625);
+  --ring: oklch(0.5417 0.179 288.0332);
+  --chart-1: oklch(0.5417 0.179 288.0332);
+  --chart-2: oklch(0.7042 0.1602 288.988);
+  --chart-3: oklch(0.5679 0.2113 276.7065);
+  --chart-4: oklch(0.6356 0.1922 281.8054);
+  --chart-5: oklch(0.4509 0.1758 279.3838);
+  --sidebar: oklch(0.958 0.0133 286.1454);
+  --sidebar-foreground: oklch(0.3015 0.0572 282.4176);
+  --sidebar-primary: oklch(0.5417 0.179 288.0332);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.9221 0.0373 262.141);
+  --sidebar-accent-foreground: oklch(0.3015 0.0572 282.4176);
+  --sidebar-border: oklch(0.9115 0.0216 285.9625);
+  --sidebar-ring: oklch(0.5417 0.179 288.0332);
+  /* Accent (globals.css "Colour accents"): the primary, a step darker for small text */
+  --tint-text: oklch(0.5 0.179 288.0332);
+  --status-ok: oklch(0.5 0.1 160);
+  --status-warn: oklch(0.53 0.11 70);
+  --shadow-x: 0px;
+  --shadow-y: 4px;
+  --shadow-blur: 10px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.12;
+  --shadow-color: hsl(240 30% 25%);
+  --shadow-2xs: 0px 4px 10px 0px hsl(240 30% 25% / 0.06);
+  --shadow-xs: 0px 4px 10px 0px hsl(240 30% 25% / 0.06);
+  --shadow-sm: 0px 4px 10px 0px hsl(240 30% 25% / 0.12), 0px 1px 2px -1px hsl(240 30% 25% / 0.12);
+  --shadow: 0px 4px 10px 0px hsl(240 30% 25% / 0.12), 0px 1px 2px -1px hsl(240 30% 25% / 0.12);
+  --shadow-md: 0px 4px 10px 0px hsl(240 30% 25% / 0.12), 0px 2px 4px -1px hsl(240 30% 25% / 0.12);
+  --shadow-lg: 0px 4px 10px 0px hsl(240 30% 25% / 0.12), 0px 4px 6px -1px hsl(240 30% 25% / 0.12);
+  --shadow-xl: 0px 4px 10px 0px hsl(240 30% 25% / 0.12), 0px 8px 10px -1px hsl(240 30% 25% / 0.12);
+  --shadow-2xl: 0px 4px 10px 0px hsl(240 30% 25% / 0.3);
+}
+
+:root.dark[data-theme='cosmic-night'] {
+  --background: oklch(0.1743 0.0227 283.7998);
+  --foreground: oklch(0.9185 0.0257 285.8834);
+  --card: oklch(0.2284 0.0384 282.9324);
+  --card-foreground: oklch(0.9185 0.0257 285.8834);
+  --popover: oklch(0.2284 0.0384 282.9324);
+  --popover-foreground: oklch(0.9185 0.0257 285.8834);
+  --primary: oklch(0.7162 0.1597 290.3962);
+  --primary-foreground: oklch(0.1743 0.0227 283.7998);
+  --secondary: oklch(0.3139 0.0736 283.4591);
+  --secondary-foreground: oklch(0.8367 0.0849 285.9111);
+  --muted: oklch(0.271 0.0621 281.4377);
+  --muted-foreground: oklch(0.7166 0.0462 285.1741);
+  --accent: oklch(0.3354 0.0828 280.9705);
+  --accent-foreground: oklch(0.9185 0.0257 285.8834);
+  --destructive: oklch(0.6861 0.2061 14.9941);
+  --destructive-foreground: oklch(0.1743 0.0227 283.7998);
+  --border: oklch(0.3261 0.0597 282.5832);
+  --input: oklch(0.3261 0.0597 282.5832);
+  --ring: oklch(0.7162 0.1597 290.3962);
+  --chart-1: oklch(0.7162 0.1597 290.3962);
+  --chart-2: oklch(0.6382 0.1047 274.9117);
+  --chart-3: oklch(0.7482 0.1235 244.7492);
+  --chart-4: oklch(0.7124 0.0977 186.6761);
+  --chart-5: oklch(0.7546 0.1831 346.8124);
+  --sidebar: oklch(0.2284 0.0384 282.9324);
+  --sidebar-foreground: oklch(0.9185 0.0257 285.8834);
+  --sidebar-primary: oklch(0.7162 0.1597 290.3962);
+  --sidebar-primary-foreground: oklch(0.1743 0.0227 283.7998);
+  --sidebar-accent: oklch(0.3354 0.0828 280.9705);
+  --sidebar-accent-foreground: oklch(0.9185 0.0257 285.8834);
+  --sidebar-border: oklch(0.3261 0.0597 282.5832);
+  --sidebar-ring: oklch(0.7162 0.1597 290.3962);
+  --status-ok: oklch(0.75 0.13 160);
+  --status-warn: oklch(0.8 0.13 80);
+  /* The light block's darker --tint-text also matches in dark mode: reset it */
+  --tint-text: var(--primary);
+  --shadow-x: 0px;
+  --shadow-y: 4px;
+  --shadow-blur: 10px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.12;
+  --shadow-color: hsl(240 30% 25%);
+  --shadow-2xs: 0px 4px 10px 0px hsl(240 30% 25% / 0.06);
+  --shadow-xs: 0px 4px 10px 0px hsl(240 30% 25% / 0.06);
+  --shadow-sm: 0px 4px 10px 0px hsl(240 30% 25% / 0.12), 0px 1px 2px -1px hsl(240 30% 25% / 0.12);
+  --shadow: 0px 4px 10px 0px hsl(240 30% 25% / 0.12), 0px 1px 2px -1px hsl(240 30% 25% / 0.12);
+  --shadow-md: 0px 4px 10px 0px hsl(240 30% 25% / 0.12), 0px 2px 4px -1px hsl(240 30% 25% / 0.12);
+  --shadow-lg: 0px 4px 10px 0px hsl(240 30% 25% / 0.12), 0px 4px 6px -1px hsl(240 30% 25% / 0.12);
+  --shadow-xl: 0px 4px 10px 0px hsl(240 30% 25% / 0.12), 0px 8px 10px -1px hsl(240 30% 25% / 0.12);
+  --shadow-2xl: 0px 4px 10px 0px hsl(240 30% 25% / 0.3);
+}
 
 /* Cobaltz Light. Source: github.com/praveenc/cobaltz (Zed and KiroCrew palettes) */
 :root[data-theme='cobaltz'] {
@@ -17,7 +124,7 @@
   --secondary: #dbeafe;
   --secondary-foreground: #0f2438;
   --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  --muted-foreground: #5d6b80;
   --accent: #eef2f7;
   --accent-foreground: #0f2438;
   --destructive: #dc2626;
@@ -38,6 +145,10 @@
   --sidebar-accent-foreground: #0f2438;
   --sidebar-border: #e2e8f0;
   --sidebar-ring: #2563eb;
+  /* Accent: the primary blue; small text a step deeper, as the code theme's links are */
+  --tint-text: #2259d6;
+  --status-ok: #047857;
+  --status-warn: #b45309;
 }
 
 /* Cobaltz (dark): deep cobalt with the golden cursor color as the primary */
@@ -74,6 +185,11 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #2d4051;
   --sidebar-ring: #ffcc00;
+  /* Accent: the golden primary; headings take the code theme's gold markup.heading */
+  --tint-text: var(--primary);
+  --heading: #ffcb6b;
+  --status-ok: #6fd640;
+  --status-warn: #f1a23a;
 }
 
 /*
@@ -92,10 +208,10 @@
   --secondary: #f2e9e1;
   --secondary-foreground: #464261;
   --muted: #f4ede8;
-  --muted-foreground: #797593;
+  --muted-foreground: #635f7f;
   --accent: #f2e9e1;
   --accent-foreground: #464261;
-  --destructive: #b4637a;
+  --destructive: #a3506b;
   --destructive-foreground: #fffaf3;
   --border: #dfdad9;
   --input: #cecacd;
@@ -113,6 +229,9 @@
   --sidebar-accent-foreground: #464261;
   --sidebar-border: #dfdad9;
   --sidebar-ring: #907aa9;
+  /* Accent: Pine, the primary. Status: Pine and Gold deepened to 4.5:1 */
+  --status-ok: #286983;
+  --status-warn: #8f5713;
 }
 
 /* Rosé Pine (main, dark) */
@@ -149,6 +268,8 @@
   --sidebar-accent-foreground: #e0def4;
   --sidebar-border: #2e2b42;
   --sidebar-ring: #c4a7e7;
+  --status-ok: #9ccfd8;
+  --status-warn: #f6c177;
 }
 
 /* Darker shadows for the dark palettes, so cards lift off the background */
