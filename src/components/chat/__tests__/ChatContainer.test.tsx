@@ -14,6 +14,7 @@ vi.mock('../../../hooks/useBedrockChat', () => ({
     wasInterrupted: false,
     sendMessage: vi.fn(),
     regenerate: vi.fn(),
+    retryLast: vi.fn(),
     forkAndSend: vi.fn(),
     stopGeneration: vi.fn(),
     clearMessages: vi.fn(),

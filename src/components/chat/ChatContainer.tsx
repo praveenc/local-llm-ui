@@ -150,6 +150,7 @@ const ChatContainer = ({
   const [fileError, setFileError] = useState<string | null>(null);
   const [enableWebSearch, setEnableWebSearch] = useState(false);
   const [activeQuote, setActiveQuote] = useState<QuoteSelection | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -166,6 +167,7 @@ const ChatContainer = ({
     wasInterrupted,
     sendMessage,
     regenerate,
+    retryLast,
     forkAndSend,
     rateMessage,
     stopGeneration,
@@ -328,7 +330,13 @@ const ChatContainer = ({
 
   return (
     <>
-      {error && <ChatErrorAlert error={error} />}
+      {error && (
+        <ChatErrorAlert
+          error={error}
+          onRetry={selectedModel && externalConversationId ? () => void retryLast() : undefined}
+          onChangeModel={() => setPickerOpen(true)}
+        />
+      )}
       {fileError && (
         <Alert variant="destructive" className="mb-4">
           <AlertTitle>File Error</AlertTitle>
@@ -521,6 +529,8 @@ const ChatContainer = ({
                   isLoading={isLoadingModels}
                   disabled={isLoading}
                   onOpenPreferences={onOpenPreferences}
+                  open={pickerOpen}
+                  onOpenChange={setPickerOpen}
                 />
                 {selectedModel &&
                   supportsThinkingEffort(

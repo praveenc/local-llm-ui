@@ -39,6 +39,9 @@ interface ModelSelectorButtonProps {
   disabled?: boolean;
   className?: string;
   onOpenPreferences?: () => void;
+  /** Optional control, so the chat can open the picker (for example from an error) */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function ModelSelectorButton({
@@ -49,8 +52,15 @@ export function ModelSelectorButton({
   disabled,
   className,
   onOpenPreferences,
+  open: openProp,
+  onOpenChange,
 }: ModelSelectorButtonProps) {
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    onOpenChange?.(next);
+  };
   // The picker opens while providers are still probed; those show as "Checking..."
   const blocked = disabled;
 
@@ -59,11 +69,14 @@ export function ModelSelectorButton({
     const onKeyDown = (e: KeyboardEvent) => {
       if (!isModelPickerShortcut(e)) return;
       e.preventDefault();
-      if (!blocked) setOpen(true);
+      if (!blocked) {
+        setOpenState(true);
+        onOpenChange?.(true);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [blocked]);
+  }, [blocked, onOpenChange]);
 
   const handleSelect = (model: UnifiedModel) => {
     onSelectModel(model);
