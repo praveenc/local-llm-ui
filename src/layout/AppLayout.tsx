@@ -1,11 +1,11 @@
 'use client';
 
-import { Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun, X } from 'lucide-react';
+import { Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-react';
 
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
 import type { ColorTheme } from '@/utils/colorThemes';
@@ -78,9 +78,10 @@ export function AppLayout({
 
       {/* Mobile Sidebar (Sheet) */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 p-0 bg-sidebar">
-          {/* Sidebar Header */}
-          <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-3">
+        <SheetContent side="left" className="w-72 p-0 bg-sidebar" aria-describedby={undefined}>
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          {/* Sidebar Header; SheetContent draws the close button */}
+          <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-3 pr-12">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <span className="text-sm font-bold">L</span>
@@ -90,9 +91,6 @@ export function AppLayout({
                 <span className="text-xs text-sidebar-foreground/60">Chat Interface</span>
               </div>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)}>
-              <X className="h-5 w-5" />
-            </Button>
           </div>
           {/* Sidebar Content */}
           <div className="flex-1 overflow-y-auto">{navigation}</div>
@@ -108,8 +106,9 @@ export function AppLayout({
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden h-8 w-8"
+              className="md:hidden size-11"
               onClick={() => setMobileOpen(true)}
+              aria-label="Open navigation"
             >
               <Menu className="h-5 w-5" />
             </Button>
@@ -119,6 +118,8 @@ export function AppLayout({
               size="icon"
               className="hidden md:flex h-8 w-8"
               onClick={toggleSidebar}
+              aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+              aria-expanded={sidebarOpen}
               title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
             >
               {sidebarOpen ? (
@@ -139,6 +140,7 @@ export function AppLayout({
             <Button
               variant="ghost"
               size="icon"
+              className="size-11 md:size-9"
               onClick={onToggleTheme}
               aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
               title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}

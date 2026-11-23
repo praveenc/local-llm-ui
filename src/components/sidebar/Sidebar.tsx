@@ -58,13 +58,15 @@ export function Sidebar({
           </div>
         </div>
         <ScrollArea className="flex-1">
-          {onNewChat && onSelectConversation && (
-            <ConversationList
-              activeConversationId={activeConversationId ?? null}
-              onSelectConversation={onSelectConversation}
-              onNewChat={onNewChat}
-            />
-          )}
+          <nav aria-label="Conversations">
+            {onNewChat && onSelectConversation && (
+              <ConversationList
+                activeConversationId={activeConversationId ?? null}
+                onSelectConversation={onSelectConversation}
+                onNewChat={onNewChat}
+              />
+            )}
+          </nav>
         </ScrollArea>
       </div>
 

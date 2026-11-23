@@ -773,6 +773,8 @@ export const PromptInput = ({
         multiple={multiple}
         onChange={handleChange}
         ref={inputRef}
+        // The "Add photos or files" menu opens this input; keep it out of the Tab order
+        tabIndex={-1}
         title="Upload files"
         type="file"
       />

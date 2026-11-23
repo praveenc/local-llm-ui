@@ -78,6 +78,7 @@ import { ModelSelectorButton } from './ModelSelectorButton';
 import { QuoteRespondDialog } from './QuoteRespondDialog';
 import { type QuoteSelection, QuoteSelectionButton } from './QuoteSelectionButton';
 import { SavePromptButton } from './SavePromptButton';
+import { StreamStatusAnnouncer } from './StreamStatusAnnouncer';
 import { ThinkingEffortSelector } from './ThinkingEffortSelector';
 import { WebSearchToggle } from './WebSearchToggle';
 import { composerCard, composerIconButton } from './composerStyles';
@@ -314,6 +315,7 @@ const ChatContainer = ({
           <AlertDescription>{fileError}</AlertDescription>
         </Alert>
       )}
+      <StreamStatusAnnouncer isLoading={isLoading} hasError={Boolean(error)} />
       <div className="relative flex flex-col h-full">
         <FittedContainer>
           <div className="h-full pb-44">
@@ -470,6 +472,7 @@ const ChatContainer = ({
                 selectedModel ? 'What would you like to know?' : 'Select a model to start chatting'
               }
               disabled={isLoading || !selectedModel}
+              aria-label="Message"
               className="min-h-14 px-4 pt-4 pb-1 text-base leading-relaxed md:text-[15px] placeholder:text-muted-foreground/80"
             />
             <PromptInputFooter className="flex-wrap gap-y-1 px-2.5 pb-2.5 pt-1">
@@ -640,7 +643,7 @@ const PromptInputSubmitWithAttachments = ({
       status={isLoading ? 'streaming' : 'ready'}
       disabled={isDisabled}
       onClick={isLoading ? stopGeneration : undefined}
-      className="ml-1 size-8 rounded-full shadow-sm transition-colors disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"
+      className="ml-1 size-11 md:size-8 rounded-full shadow-sm transition-colors disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:shadow-none"
     >
       {isLoading ? (
         <Square className="size-3 fill-current" />
