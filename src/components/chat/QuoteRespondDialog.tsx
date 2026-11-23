@@ -14,6 +14,9 @@ import { Button } from '@/components/ui/button';
 import { DialogOverlay, DialogPortal } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 
+import { useDiscardGuard } from '../../hooks/useDiscardGuard';
+import { DiscardChangesNotice } from '../shared/DiscardChangesNotice';
+
 interface QuoteRespondDialogProps {
   /** Quoted text; the dialog is open when this is set */
   quote: string | null;
@@ -38,6 +41,7 @@ export const QuoteRespondDialog = ({
     setResponse('');
     onClose();
   };
+  const guard = useDiscardGuard({ open: quote !== null, dirty: hasResponse, onClose: close });
 
   const sendToCompose = () => {
     onSendToCompose(response);
@@ -51,7 +55,7 @@ export const QuoteRespondDialog = ({
   };
 
   return (
-    <DialogPrimitive.Root open={quote !== null} onOpenChange={(open) => !open && close()}>
+    <DialogPrimitive.Root open={quote !== null} onOpenChange={guard.onOpenChange}>
       <DialogPortal>
         {/* Above the prompt input and other dialogs (z-50) */}
         <DialogOverlay className="z-[1100] bg-black/30" />
@@ -93,6 +97,8 @@ export const QuoteRespondDialog = ({
               Send to Fork is not available: {forkDisabledReason}.
             </p>
           )}
+
+          {guard.asking && <DiscardChangesNotice onDiscard={guard.discard} />}
 
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="ghost" onClick={close}>

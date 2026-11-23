@@ -12,6 +12,7 @@ import { ButtonGroup, ButtonGroupText } from '@/components/ui/button-group';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
+import { replyRehypePlugins } from './reply-plugins';
 import { useStreamdownCode } from './streamdown-code';
 
 /* eslint-disable react-hooks/exhaustive-deps, @typescript-eslint/no-unused-vars */
@@ -290,6 +291,7 @@ export const MessageResponse = memo(
     return (
       <Streamdown
         className={cn('size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0', className)}
+        rehypePlugins={replyRehypePlugins}
         {...codeProps}
         {...props}
       />

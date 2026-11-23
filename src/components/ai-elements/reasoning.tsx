@@ -11,6 +11,7 @@ import { useControllableState } from '@radix-ui/react-use-controllable-state';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 
+import { replyRehypePlugins } from './reply-plugins';
 import { Shimmer } from './shimmer';
 import { useStreamdownCode } from './streamdown-code';
 
@@ -176,7 +177,9 @@ export const ReasoningContent = memo(({ className, children, ...props }: Reasoni
       )}
       {...props}
     >
-      <Streamdown {...codeProps}>{children}</Streamdown>
+      <Streamdown rehypePlugins={replyRehypePlugins} {...codeProps}>
+        {children}
+      </Streamdown>
     </CollapsibleContent>
   );
 });

@@ -7,7 +7,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -145,8 +145,14 @@ export function ConversationList({
     setDeleteModalVisible(true);
   };
 
+  // Row to focus after a delete: the next one, else the previous one
+  const focusAfterDelete = useRef<string | null>(null);
+
   const handleConfirmDelete = async () => {
     if (conversationToDelete) {
+      const ids = grouped.flatMap((g) => g.conversations.map((c) => c.id));
+      const index = ids.indexOf(conversationToDelete.id);
+      focusAfterDelete.current = ids[index + 1] ?? ids[index - 1] ?? null;
       await deleteConversation(conversationToDelete.id);
       if (activeConversationId === conversationToDelete.id) {
         onNewChat();
@@ -196,52 +202,64 @@ export function ConversationList({
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="flex flex-col gap-0.5 compact:gap-0 pl-2">
+            <div className="flex flex-col gap-0.5 compact:gap-0 px-2">
               {group.conversations.map((conv) => (
                 <div
                   key={conv.id}
                   className={cn(
-                    'group flex items-center gap-2 rounded-md px-2 py-1.5 compact:py-1 text-sm cursor-pointer transition-colors min-w-0',
+                    'group flex items-center gap-2 rounded-md px-2 py-1.5 compact:py-1 text-sm transition-colors min-w-0 has-[[data-row-title]:focus-visible]:inset-ring-2 has-[[data-row-title]:focus-visible]:inset-ring-ring',
                     activeConversationId === conv.id
                       ? 'bg-sidebar-active font-medium text-tint-text'
                       : 'hover:bg-sidebar-hover'
                   )}
-                  aria-current={activeConversationId === conv.id ? 'true' : undefined}
-                  onClick={() => editingId !== conv.id && onSelectConversation(conv.id)}
                 >
-                  <MessageSquare
-                    className={cn(
-                      'h-4 w-4 shrink-0',
-                      activeConversationId === conv.id ? 'text-tint-text' : 'text-muted-foreground'
-                    )}
-                  />
                   {editingId === conv.id ? (
-                    <Input
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      onBlur={() => handleSaveRename(conv.id)}
-                      onKeyDown={(e) => {
-                        // keyCode 229 covers Safari, which clears isComposing before this keydown
-                        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                        if (e.key === 'Enter') handleSaveRename(conv.id);
-                        if (e.key === 'Escape') setEditingId(null);
-                      }}
-                      className="h-6 text-sm"
-                      autoFocus
-                      onClick={(e) => e.stopPropagation()}
-                    />
+                    <>
+                      <MessageSquare className="h-4 w-4 shrink-0 text-tint-text" />
+                      <Input
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        onBlur={() => handleSaveRename(conv.id)}
+                        onKeyDown={(e) => {
+                          // keyCode 229 covers Safari, which clears isComposing before this keydown
+                          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                          if (e.key === 'Enter') handleSaveRename(conv.id);
+                          if (e.key === 'Escape') setEditingId(null);
+                        }}
+                        className="h-6 text-sm"
+                        autoFocus
+                        aria-label="Conversation title"
+                      />
+                    </>
                   ) : (
                     <>
-                      <span className="truncate flex-1 max-w-[140px]" title={conv.title}>
-                        {conv.title.length > 25 ? `${conv.title.slice(0, 25)}...` : conv.title}
-                      </span>
+                      {/* The whole title area is one button, so Tab reaches it and Enter opens it */}
+                      <button
+                        type="button"
+                        data-row-title={conv.id}
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none cursor-pointer"
+                        aria-current={activeConversationId === conv.id ? 'page' : undefined}
+                        onClick={() => onSelectConversation(conv.id)}
+                      >
+                        <MessageSquare
+                          className={cn(
+                            'h-4 w-4 shrink-0',
+                            activeConversationId === conv.id
+                              ? 'text-tint-text'
+                              : 'text-muted-foreground'
+                          )}
+                        />
+                        <span className="truncate" title={conv.title}>
+                          {conv.title}
+                        </span>
+                      </button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Options for ${conv.title}`}
+                            className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100 transition-opacity"
                           >
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
@@ -271,7 +289,21 @@ export function ConversationList({
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteModalVisible} onOpenChange={setDeleteModalVisible}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          onCloseAutoFocus={(event) => {
+            // The deleted row's menu button is gone; move to a neighbouring row
+            const id = focusAfterDelete.current;
+            focusAfterDelete.current = null;
+            const row = id
+              ? document.querySelector<HTMLElement>(`[data-row-title="${CSS.escape(id)}"]`)
+              : null;
+            if (row) {
+              event.preventDefault();
+              row.focus();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Delete conversation</DialogTitle>
             <DialogDescription>

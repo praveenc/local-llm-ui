@@ -470,7 +470,11 @@ const ChatContainer = ({
         />
         <QuoteRespondDialog
           quote={activeQuote?.text ?? null}
-          onClose={() => setActiveQuote(null)}
+          onClose={() => {
+            setActiveQuote(null);
+            // The Quote and Ask button that opened the dialog is gone; go back to the message box
+            setTimeout(() => promptTextareaRef.current?.focus(), 0);
+          }}
           onSendToCompose={handleQuoteToCompose}
           onSendToFork={handleQuoteToFork}
           forkDisabledReason={forkDisabledReason}
