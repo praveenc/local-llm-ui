@@ -156,9 +156,7 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
                 aria-label={`MCP tools: ${totalTools}`}
               >
                 <Plug2 className="size-4" />
-                {totalTools > 0 && (
-                  <span className="font-mono text-xs tabular-nums">{totalTools}</span>
-                )}
+                {totalTools > 0 && <span className="text-xs tabular-nums">{totalTools}</span>}
               </Button>
             </TooltipTrigger>
           </PopoverTrigger>

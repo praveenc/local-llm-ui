@@ -16,7 +16,7 @@ interface ActiveModelBadgeProps {
 export const ActiveModelBadge = ({ model }: ActiveModelBadgeProps) => (
   <div className="sticky top-0 z-10 flex justify-center py-2">
     <div
-      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted/60 backdrop-blur-sm border border-border/50 text-xs text-muted-foreground shadow-sm"
+      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted border border-border text-xs text-muted-foreground"
       aria-label={`Active model: ${model.name} via ${model.providerName}`}
     >
       <ModelSelectorLogo

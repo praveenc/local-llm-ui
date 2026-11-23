@@ -39,7 +39,7 @@ export function ColorThemePicker({ value, visualMode, onChange }: ColorThemePick
             value={theme.value}
             aria-label={theme.label}
             className={cn(
-              'group overflow-hidden rounded-xl border bg-card text-left transition-all outline-none',
+              'group overflow-hidden rounded-xl border bg-card text-left transition-[border-color,box-shadow] outline-none',
               'hover:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-ring/50',
               selected ? 'border-primary ring-1 ring-primary' : 'border-border'
             )}

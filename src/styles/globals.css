@@ -187,3 +187,15 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Honour the system reduced-motion setting: no spinners, pulses, slides or width tweens */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

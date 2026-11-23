@@ -57,7 +57,7 @@ export function AppLayout({
       {/* Desktop Sidebar */}
       <aside
         className={cn(
-          'hidden md:flex md:flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300 ease-in-out',
+          'hidden md:flex md:flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-in-out',
           sidebarOpen ? 'w-72' : 'w-0'
         )}
       >
