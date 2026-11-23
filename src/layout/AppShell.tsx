@@ -1,9 +1,11 @@
+import { useLiveQuery } from 'dexie-react-hooks';
 import { toast } from 'sonner';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ChatContainer } from '../components/chat';
 import { Sidebar } from '../components/sidebar';
+import { db } from '../db';
 import { useAllModels } from '../hooks/useAllModels';
 import type { UnifiedModel } from '../hooks/useAllModels';
 import { conversationService } from '../services';
@@ -57,6 +59,12 @@ export default function AppShell() {
 
   // Conversation state
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  // Header title; follows renames in the sidebar
+  const activeTitle = useLiveQuery(
+    async () =>
+      activeConversationId ? (await db.conversations.get(activeConversationId))?.title : undefined,
+    [activeConversationId]
+  );
 
   // Load user preferences
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => loadPreferences());
@@ -208,6 +216,7 @@ export default function AppShell() {
 
   return (
     <AppLayout
+      title={activeTitle || 'New conversation'}
       navigationOpen={navigationOpen}
       onNavigationChange={setNavigationOpen}
       theme={userPreferences.visualMode}

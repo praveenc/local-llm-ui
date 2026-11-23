@@ -16,6 +16,8 @@ import { ThemeMenu } from './ThemeMenu';
 interface AppLayoutProps {
   navigation: React.ReactNode;
   children: React.ReactNode;
+  /** Title of the open conversation; the header h1 */
+  title?: string;
   navigationOpen?: boolean;
   onNavigationChange?: (open: boolean) => void;
   theme: VisualMode;
@@ -28,6 +30,7 @@ interface AppLayoutProps {
 export function AppLayout({
   navigation,
   children,
+  title = 'New conversation',
   navigationOpen = true,
   onNavigationChange,
   theme,
@@ -100,8 +103,8 @@ export function AppLayout({
       {/* Main Content Area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
-          <div className="flex items-center gap-2">
+        <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-4">
+          <div className="flex min-w-0 items-center gap-2">
             {/* Mobile menu button */}
             <Button
               variant="ghost"
@@ -128,7 +131,9 @@ export function AppLayout({
                 <PanelLeftOpen className="h-5 w-5" />
               )}
             </Button>
-            <span className="text-sm font-medium text-muted-foreground">Chat</span>
+            <h1 className="truncate text-[15px] font-semibold text-foreground" title={title}>
+              {title}
+            </h1>
           </div>
           <div className="flex items-center gap-1">
             <ThemeMenu

@@ -185,7 +185,7 @@ export function ProviderSettings({ preferences, onUpdate }: ProviderSettingsProp
 function ProviderGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div role="group" aria-label={title} className="space-y-2">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
+      <p className="text-[13px] text-muted-foreground">{title}</p>
       <div className="divide-y rounded-lg border">{children}</div>
     </div>
   );

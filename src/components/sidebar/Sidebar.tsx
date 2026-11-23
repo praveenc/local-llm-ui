@@ -1,4 +1,4 @@
-import { FileText, MessageSquare, Plus, Settings } from 'lucide-react';
+import { FileText, Plus, Settings } from 'lucide-react';
 
 import { useState } from 'react';
 
@@ -52,10 +52,7 @@ export function Sidebar({
       {/* Conversations */}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="px-3 py-2">
-          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            <MessageSquare className="h-3 w-3" />
-            Conversations
-          </div>
+          <h2 className="text-[13px] text-muted-foreground font-normal">Conversations</h2>
         </div>
         <ScrollArea className="flex-1">
           <nav aria-label="Conversations">

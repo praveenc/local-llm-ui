@@ -77,9 +77,7 @@ export function WebSearchSettings({ preferences, onUpdate }: WebSearchSettingsPr
       </div>
 
       <div role="group" aria-label="Web search providers" className="space-y-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Primary provider
-        </p>
+        <p className="text-[13px] text-muted-foreground">Primary provider</p>
         <RadioGroup
           aria-label="Primary web search provider"
           value={primary ?? ''}

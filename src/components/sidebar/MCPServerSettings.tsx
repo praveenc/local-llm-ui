@@ -497,26 +497,29 @@ export function MCPServerSettings({ servers, onChange }: MCPServerSettingsProps)
               : `${enabledCount} of ${serverList.length} enabled`}
           </p>
         </div>
-        <div className="flex gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => addServer('stdio')}
-            className="h-7 text-xs gap-1"
-          >
-            <Terminal className="h-3 w-3" />
-            Local
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => addServer('http')}
-            className="h-7 text-xs gap-1"
-          >
-            <Globe className="h-3 w-3" />
-            Remote
-          </Button>
-        </div>
+        {/* With no servers, the empty box below holds the add buttons */}
+        {serverList.length > 0 && (
+          <div className="flex gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => addServer('stdio')}
+              className="h-7 text-xs gap-1"
+            >
+              <Terminal className="h-3 w-3" />
+              Local
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => addServer('http')}
+              className="h-7 text-xs gap-1"
+            >
+              <Globe className="h-3 w-3" />
+              Remote
+            </Button>
+          </div>
+        )}
       </div>
 
       {serverList.length === 0 ? (

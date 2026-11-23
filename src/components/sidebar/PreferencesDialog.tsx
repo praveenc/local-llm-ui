@@ -67,7 +67,8 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col gap-4">
+      {/* Fixed height, so the tabs and the footer do not move between tabs */}
+      <DialogContent className="sm:max-w-2xl h-[min(85vh,760px)] flex flex-col gap-4">
         <DialogHeader>
           <DialogTitle>Preferences</DialogTitle>
           <DialogDescription>Choose your providers, tools, and display settings.</DialogDescription>
@@ -158,7 +159,7 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
                 </p>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5">
                 <Label htmlFor="initials">Avatar initials</Label>
                 <Input
                   id="initials"
@@ -184,7 +185,7 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
           </p>
         )}
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
