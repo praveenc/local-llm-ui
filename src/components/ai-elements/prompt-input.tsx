@@ -297,7 +297,7 @@ export function PromptInputAttachment({ data, className, ...props }: PromptInput
           {...props}
         >
           <div className="relative size-5 shrink-0">
-            <div className="absolute inset-0 flex size-5 items-center justify-center overflow-hidden rounded bg-background transition-opacity group-hover:opacity-0">
+            <div className="absolute inset-0 flex size-5 items-center justify-center overflow-hidden rounded bg-background transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 pointer-coarse:opacity-0">
               {isImage ? (
                 <img
                   alt={filename || 'attachment'}
@@ -314,7 +314,7 @@ export function PromptInputAttachment({ data, className, ...props }: PromptInput
             </div>
             <Button
               aria-label="Remove attachment"
-              className="absolute inset-0 size-5 cursor-pointer rounded p-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 [&>svg]:size-2.5"
+              className="absolute inset-0 size-5 cursor-pointer rounded p-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 [&>svg]:size-2.5"
               onClick={(e) => {
                 e.stopPropagation();
                 attachments.remove(data.id);
@@ -513,22 +513,33 @@ export const PromptInput = ({
     (fileList: File[] | FileList) => {
       const incoming = Array.from(fileList);
       const accepted = incoming.filter((f) => matchesAccept(f));
-      if (incoming.length && accepted.length === 0) {
-        onError?.({
-          code: 'accept',
-          message: 'No files match the accepted types.',
-        });
-        return;
-      }
       const withinSize = (f: File) => (maxFileSize ? f.size <= maxFileSize : true);
       const sized = accepted.filter(withinSize);
-      if (accepted.length > 0 && sized.length === 0) {
-        onError?.({
-          code: 'max_file_size',
-          message: 'All files exceed the maximum size.',
-        });
-        return;
+
+      // Name every skipped file, even when others in the same batch were added
+      const wrongType = incoming.filter((f) => !accepted.includes(f)).map((f) => f.name);
+      const tooBig = accepted.filter((f) => !withinSize(f)).map((f) => f.name);
+      const skipped: string[] = [];
+      if (wrongType.length) {
+        skipped.push(
+          wrongType.length === 1
+            ? `${wrongType[0]} is not a supported file type.`
+            : `${wrongType.join(', ')} are not supported file types.`
+        );
       }
+      if (tooBig.length && maxFileSize) {
+        const limit = `${Number((maxFileSize / 1024 / 1024).toFixed(1))} MB`;
+        skipped.push(
+          `${tooBig.join(', ')} ${tooBig.length === 1 ? 'is' : 'are'} over ${limit} and ${tooBig.length === 1 ? 'was' : 'were'} not added.`
+        );
+      }
+      if (skipped.length) {
+        onError?.({
+          code: wrongType.length ? 'accept' : 'max_file_size',
+          message: skipped.join(' '),
+        });
+      }
+      if (sized.length === 0) return;
 
       setItems((prev) => {
         const capacity =
@@ -608,6 +619,12 @@ export const PromptInput = ({
     if (!form) return;
     if (globalDrop) return; // when global drop is on, let the document-level handler own drops
 
+    // A file dropped outside the composer must not make the browser open it and lose the draft.
+    // It is not attached either, because the user may have dropped it on a dialog or the sidebar.
+    const onDocumentDrag = (e: DragEvent) => {
+      if (e.dataTransfer?.types?.includes('Files')) e.preventDefault();
+    };
+
     const onDragOver = (e: DragEvent) => {
       if (e.dataTransfer?.types?.includes('Files')) {
         e.preventDefault();
@@ -623,9 +640,13 @@ export const PromptInput = ({
     };
     form.addEventListener('dragover', onDragOver);
     form.addEventListener('drop', onDrop);
+    document.addEventListener('dragover', onDocumentDrag);
+    document.addEventListener('drop', onDocumentDrag);
     return () => {
       form.removeEventListener('dragover', onDragOver);
       form.removeEventListener('drop', onDrop);
+      document.removeEventListener('dragover', onDocumentDrag);
+      document.removeEventListener('drop', onDocumentDrag);
     };
   }, [add, globalDrop]);
 

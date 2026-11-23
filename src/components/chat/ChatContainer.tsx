@@ -285,10 +285,13 @@ const ChatContainer = ({
     }
   };
 
+  // One timer at a time, so an older timer cannot clear a newer error early
+  const fileErrorTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(fileErrorTimerRef.current), []);
   const handleFileError = (err: { code: string; message: string }) => {
     setFileError(err.message);
-    // Clear error after 5 seconds
-    setTimeout(() => setFileError(null), 5000);
+    clearTimeout(fileErrorTimerRef.current);
+    fileErrorTimerRef.current = setTimeout(() => setFileError(null), 5000);
   };
 
   const handleCopy = async (content: string) => {
