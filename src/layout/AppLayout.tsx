@@ -54,10 +54,10 @@ export function AppLayout({
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
-      {/* Desktop Sidebar */}
+      {/* Desktop Sidebar, from 1024 px; narrower screens use the sheet */}
       <aside
         className={cn(
-          'hidden md:flex md:flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-in-out',
+          'hidden lg:flex lg:flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-in-out',
           sidebarOpen ? 'w-72' : 'w-0'
         )}
       >
@@ -95,7 +95,7 @@ export function AppLayout({
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden size-11"
+              className="lg:hidden size-11"
               onClick={() => setMobileOpen(true)}
               aria-label="Open navigation"
             >
@@ -105,7 +105,7 @@ export function AppLayout({
             <Button
               variant="ghost"
               size="icon"
-              className="hidden md:flex h-8 w-8"
+              className="hidden lg:flex h-8 w-8"
               onClick={toggleSidebar}
               aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
               aria-expanded={sidebarOpen}
