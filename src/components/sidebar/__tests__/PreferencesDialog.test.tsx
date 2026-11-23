@@ -188,3 +188,39 @@ describe('PreferencesDialog color theme', () => {
     expect(screen.queryByText('Dawn')).not.toBeInTheDocument();
   });
 });
+
+describe('PreferencesDialog unsaved changes', () => {
+  beforeEach(() => localStorage.clear());
+
+  const renderWithClose = () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ preferredProvider: 'bedrock' }));
+    const onOpenChange = vi.fn();
+    render(<PreferencesDialog open onOpenChange={onOpenChange} onSave={vi.fn()} />);
+    return { onOpenChange };
+  };
+
+  it('closes on Escape when nothing changed', () => {
+    const { onOpenChange } = renderWithClose();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('stays open on Escape with an unsaved edit and asks to discard', () => {
+    const { onOpenChange } = renderWithClose();
+    fireEvent.click(screen.getByRole('radio', { name: /Ollama/ }));
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(onOpenChange).not.toHaveBeenCalled();
+    const discard = screen.getByRole('button', { name: 'Discard' });
+    expect(discard).toHaveAccessibleDescription('You have unsaved changes.');
+    expect(discard).toHaveFocus();
+    fireEvent.click(discard);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('still closes from Cancel with an unsaved edit', () => {
+    const { onOpenChange } = renderWithClose();
+    fireEvent.click(screen.getByRole('radio', { name: /Ollama/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+});

@@ -5,10 +5,11 @@ import { QuoteRespondDialog } from '../QuoteRespondDialog';
 
 const setup = (forkDisabledReason?: string) => {
   const onSendToFork = vi.fn();
+  const onClose = vi.fn();
   render(
     <QuoteRespondDialog
       quote="Red Blue Green"
-      onClose={vi.fn()}
+      onClose={onClose}
       onSendToCompose={vi.fn()}
       onSendToFork={onSendToFork}
       forkDisabledReason={forkDisabledReason}
@@ -17,7 +18,7 @@ const setup = (forkDisabledReason?: string) => {
   fireEvent.change(screen.getByPlaceholderText('Your response...'), {
     target: { value: 'Why these?' },
   });
-  return { onSendToFork, fork: screen.getByRole('button', { name: /send to fork/i }) };
+  return { onSendToFork, onClose, fork: screen.getByRole('button', { name: /send to fork/i }) };
 };
 
 describe('QuoteRespondDialog', () => {
@@ -40,5 +41,14 @@ describe('QuoteRespondDialog', () => {
     expect(screen.getByTestId('fork-disabled-reason')).toHaveTextContent(
       'Send to Fork is not available: select a model first.'
     );
+  });
+
+  it('keeps a typed response when Escape is pressed, until Discard', () => {
+    const { onClose } = setup();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText('Your response...')).toHaveValue('Why these?');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(onClose).toHaveBeenCalled();
   });
 });

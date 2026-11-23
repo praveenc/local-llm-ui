@@ -7,7 +7,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -145,8 +145,14 @@ export function ConversationList({
     setDeleteModalVisible(true);
   };
 
+  // Row to focus after a delete: the next one, else the previous one
+  const focusAfterDelete = useRef<string | null>(null);
+
   const handleConfirmDelete = async () => {
     if (conversationToDelete) {
+      const ids = grouped.flatMap((g) => g.conversations.map((c) => c.id));
+      const index = ids.indexOf(conversationToDelete.id);
+      focusAfterDelete.current = ids[index + 1] ?? ids[index - 1] ?? null;
       await deleteConversation(conversationToDelete.id);
       if (activeConversationId === conversationToDelete.id) {
         onNewChat();
@@ -230,7 +236,7 @@ export function ConversationList({
                       {/* The whole title area is one button, so Tab reaches it and Enter opens it */}
                       <button
                         type="button"
-                        data-row-title
+                        data-row-title={conv.id}
                         className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none cursor-pointer"
                         aria-current={activeConversationId === conv.id ? 'page' : undefined}
                         onClick={() => onSelectConversation(conv.id)}
@@ -283,7 +289,21 @@ export function ConversationList({
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteModalVisible} onOpenChange={setDeleteModalVisible}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          onCloseAutoFocus={(event) => {
+            // The deleted row's menu button is gone; move to a neighbouring row
+            const id = focusAfterDelete.current;
+            focusAfterDelete.current = null;
+            const row = id
+              ? document.querySelector<HTMLElement>(`[data-row-title="${CSS.escape(id)}"]`)
+              : null;
+            if (row) {
+              event.preventDefault();
+              row.focus();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Delete conversation</DialogTitle>
             <DialogDescription>

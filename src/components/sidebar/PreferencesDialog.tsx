@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+import { useDiscardGuard } from '../../hooks/useDiscardGuard';
 import {
   isProviderConfigured,
   loadPreferences,
@@ -21,6 +22,7 @@ import {
   validateInitials,
 } from '../../utils/preferences';
 import type { ContentDensity, UserPreferences, VisualMode } from '../../utils/preferences';
+import { DiscardChangesNotice } from '../shared/DiscardChangesNotice';
 import { ColorThemePicker } from './ColorThemePicker';
 import { MCPServerSettings } from './MCPServerSettings';
 import { ProviderSettings } from './ProviderSettings';
@@ -56,6 +58,9 @@ export function PreferencesDialog({
     }
   }
   const [providerError, setProviderError] = useState('');
+  // Edits are dirty until saved; compare with what is stored now
+  const dirty = open && JSON.stringify(preferences) !== JSON.stringify(loadPreferences());
+  const guard = useDiscardGuard({ open, dirty, onClose: () => onOpenChange(false) });
 
   const handleSave = () => {
     if (!isProviderConfigured(preferences, preferences.preferredProvider)) {
@@ -76,7 +81,7 @@ export function PreferencesDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={guard.onOpenChange}>
       {/* Fixed height, so the tabs and the footer do not move between tabs */}
       <DialogContent className="sm:max-w-2xl h-[min(85vh,760px)] flex flex-col gap-4">
         <DialogHeader>
@@ -194,6 +199,8 @@ export function PreferencesDialog({
             {providerError}
           </p>
         )}
+
+        {guard.asking && <DiscardChangesNotice onDiscard={guard.discard} />}
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
