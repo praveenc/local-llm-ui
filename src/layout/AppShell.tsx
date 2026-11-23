@@ -217,6 +217,7 @@ export default function AppShell() {
   return (
     <AppLayout
       title={activeTitle || 'New conversation'}
+      scope={selectedModel ? `${selectedModel.providerName} · ${selectedModel.name}` : undefined}
       navigationOpen={navigationOpen}
       onNavigationChange={setNavigationOpen}
       theme={userPreferences.visualMode}

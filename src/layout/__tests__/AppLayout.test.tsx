@@ -40,6 +40,11 @@ describe('AppLayout', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Trip plan');
   });
 
+  it('shows no generic subtitle under the product name', () => {
+    renderLayout();
+    expect(screen.queryByText('Chat Interface')).not.toBeInTheDocument();
+  });
+
   it('names the sidebar toggles', () => {
     renderLayout();
     expect(screen.getByRole('button', { name: 'Open navigation' })).toBeInTheDocument();

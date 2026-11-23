@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import type { ColorTheme } from '@/utils/colorThemes';
 import type { VisualMode } from '@/utils/preferences';
 
+import { ProductMark } from './ProductMark';
 import { ThemeMenu } from './ThemeMenu';
 
 interface AppLayoutProps {
@@ -18,6 +19,8 @@ interface AppLayoutProps {
   children: React.ReactNode;
   /** Title of the open conversation; the header h1 */
   title?: string;
+  /** Shown under the product name, for example "Ollama · llama3.2"; nothing when unset */
+  scope?: string;
   navigationOpen?: boolean;
   onNavigationChange?: (open: boolean) => void;
   theme: VisualMode;
@@ -31,6 +34,7 @@ export function AppLayout({
   navigation,
   children,
   title = 'New conversation',
+  scope,
   navigationOpen = true,
   onNavigationChange,
   theme,
@@ -60,18 +64,8 @@ export function AppLayout({
         {sidebarOpen && (
           <>
             {/* Sidebar Header */}
-            <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <span className="text-sm font-bold">L</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-semibold text-sidebar-foreground">
-                    Local LLM UI
-                  </span>
-                  <span className="text-xs text-muted-foreground">Chat Interface</span>
-                </div>
-              </div>
+            <div className="border-b border-sidebar-border px-4 py-3">
+              <SidebarBrand scope={scope} />
             </div>
             {/* Sidebar Content */}
             <div className="flex-1 overflow-y-auto">{navigation}</div>
@@ -84,16 +78,8 @@ export function AppLayout({
         <SheetContent side="left" className="w-72 p-0 bg-sidebar" aria-describedby={undefined}>
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           {/* Sidebar Header; SheetContent draws the close button */}
-          <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-3 pr-12">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <span className="text-sm font-bold">L</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-semibold text-sidebar-foreground">Local LLM UI</span>
-                <span className="text-xs text-muted-foreground">Chat Interface</span>
-              </div>
-            </div>
+          <div className="border-b border-sidebar-border px-4 py-3 pr-12">
+            <SidebarBrand scope={scope} />
           </div>
           {/* Sidebar Content */}
           <div className="flex-1 overflow-y-auto">{navigation}</div>
@@ -161,6 +147,22 @@ export function AppLayout({
 
       {/* Toast Notifications */}
       <Toaster theme={theme} />
+    </div>
+  );
+}
+
+function SidebarBrand({ scope }: { scope?: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <ProductMark className="size-7 shrink-0 text-sidebar-foreground" />
+      <div className="flex min-w-0 flex-col">
+        <span className="text-sm font-semibold text-sidebar-foreground">Local LLM UI</span>
+        {scope && (
+          <span className="truncate text-xs text-muted-foreground" title={scope}>
+            {scope}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
