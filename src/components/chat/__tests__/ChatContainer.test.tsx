@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import ChatContainer from '../ChatContainer';
@@ -48,5 +48,18 @@ describe('ChatContainer', () => {
   it('has a polite live region for reply status', () => {
     renderChat();
     expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('focuses the message box on / when a model is selected', () => {
+    renderChat({
+      selectedModel: {
+        id: 'llama3.2',
+        name: 'llama3.2',
+        provider: 'ollama',
+        providerName: 'Ollama',
+      },
+    });
+    fireEvent.keyDown(document.body, { key: '/' });
+    expect(screen.getByRole('textbox', { name: 'Message' })).toHaveFocus();
   });
 });

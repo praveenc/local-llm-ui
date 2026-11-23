@@ -34,6 +34,7 @@ import { lookupFormat } from '../../utils/mediaTypes';
 import { getModelContextLimits } from '../../utils/modelContext';
 import { loadPreferences } from '../../utils/preferences';
 import { formatQuoteMessage, quoteTagsToMarkdown } from '../../utils/quote';
+import { isFocusComposerShortcut } from '../../utils/shortcuts';
 import { supportsThinkingEffort, thinkingEffortOptions } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
 import { WEB_SEARCH_PROVIDER_LABELS, getPrimaryWebSearchProvider } from '../../utils/webSearch';
@@ -186,6 +187,18 @@ const ChatContainer = ({
   const contextLimits = selectedModel
     ? getModelContextLimits(selectedModel.id, selectedModel.provider)
     : null;
+
+  // "/" moves focus to the message box, unless the user is typing in another field
+  const composerDisabled = isLoading || !selectedModel;
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (composerDisabled || !isFocusComposerShortcut(e, e.target)) return;
+      e.preventDefault();
+      promptTextareaRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [composerDisabled]);
 
   // Reset usage when model changes
   const prevModelRef = useRef<string | null>(null);
@@ -484,8 +497,10 @@ const ChatContainer = ({
               placeholder={
                 selectedModel ? 'What would you like to know?' : 'Select a model to start chatting'
               }
-              disabled={isLoading || !selectedModel}
+              disabled={composerDisabled}
               aria-label="Message"
+              aria-keyshortcuts="/"
+              title="Message (press / to focus)"
               className="min-h-14 px-4 pt-4 pb-1 text-base leading-relaxed md:text-[15px] placeholder:text-muted-foreground"
             />
             <PromptInputFooter className="flex-wrap gap-y-1 px-2.5 pb-2.5 pt-1">

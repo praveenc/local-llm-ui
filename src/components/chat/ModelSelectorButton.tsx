@@ -6,10 +6,11 @@
  */
 import { Check, ChevronDown, Loader2 } from 'lucide-react';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { isModelPickerShortcut, modelPickerShortcutLabel } from '@/utils/shortcuts';
 
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
 import {
@@ -50,6 +51,18 @@ export function ModelSelectorButton({
   onOpenPreferences,
 }: ModelSelectorButtonProps) {
   const [open, setOpen] = useState(false);
+  const blocked = disabled || isLoading;
+
+  // Cmd/Ctrl+K opens the picker from anywhere, the message box included
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isModelPickerShortcut(e)) return;
+      e.preventDefault();
+      if (!blocked) setOpen(true);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [blocked]);
 
   const handleSelect = (model: UnifiedModel) => {
     onSelectModel(model);
@@ -65,8 +78,10 @@ export function ModelSelectorButton({
         <Button
           variant="ghost"
           size="sm"
-          disabled={disabled || isLoading}
+          disabled={blocked}
           className={cn(composerChip, 'min-w-0 text-foreground', className)}
+          title={`Select model (${modelPickerShortcutLabel()})`}
+          aria-keyshortcuts="Meta+K Control+K"
         >
           {isLoading ? (
             <>
