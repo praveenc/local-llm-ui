@@ -75,6 +75,7 @@ import { ContextIndicator } from './ContextIndicator';
 import { InferenceSettings } from './InferenceSettings';
 import { MCPToolsIndicator } from './MCPToolsIndicator';
 import { ModelSelectorButton } from './ModelSelectorButton';
+import { ProviderChecklist } from './ProviderChecklist';
 import { QuoteRespondDialog } from './QuoteRespondDialog';
 import { type QuoteSelection, QuoteSelectionButton } from './QuoteSelectionButton';
 import { SavePromptButton } from './SavePromptButton';
@@ -111,6 +112,10 @@ interface BedrockChatContainerProps {
   avatarInitials?: string;
   /** Set to a function that puts text into the chat input (saved prompts use it) */
   onInsertPromptRef?: React.MutableRefObject<((text: string) => void) | null>;
+  /** Opens Preferences on the Providers tab, from the first-run checklist and the picker */
+  onOpenPreferences?: () => void;
+  /** One line saying a model was picked automatically */
+  autoSelectNote?: string;
 }
 
 // File format for a browser media type; null for an unsupported binary type
@@ -137,6 +142,8 @@ const ChatContainer = ({
   onClearHistoryRef,
   onInsertPromptRef,
   avatarInitials,
+  onOpenPreferences,
+  autoSelectNote,
 }: BedrockChatContainerProps) => {
   const [inputValue, setInputValue] = useState('');
   const [fileError, setFileError] = useState<string | null>(null);
@@ -320,7 +327,13 @@ const ChatContainer = ({
         <FittedContainer>
           <div className="h-full pb-44">
             {messages.length === 0 ? (
-              <EmptyState selectedModel={selectedModel} />
+              <EmptyState
+                selectedModel={selectedModel}
+                providers={providers}
+                isLoadingModels={isLoadingModels}
+                autoSelectNote={autoSelectNote}
+                onOpenPreferences={onOpenPreferences}
+              />
             ) : (
               <div ref={messagesRef} className="h-full">
                 <Conversation className="h-full max-w-4xl mx-auto">
@@ -492,6 +505,7 @@ const ChatContainer = ({
                   onSelectModel={onSelectModel}
                   isLoading={isLoadingModels}
                   disabled={isLoading}
+                  onOpenPreferences={onOpenPreferences}
                 />
                 {selectedModel &&
                   supportsThinkingEffort(
@@ -562,26 +576,34 @@ const ChatContainer = ({
   );
 };
 
-const EmptyState = ({ selectedModel }: { selectedModel: UnifiedModel | null }) => (
+const EmptyState = ({
+  selectedModel,
+  providers,
+  isLoadingModels,
+  autoSelectNote,
+  onOpenPreferences,
+}: {
+  selectedModel: UnifiedModel | null;
+  providers: ProviderModels[];
+  isLoadingModels?: boolean;
+  autoSelectNote?: string;
+  onOpenPreferences?: () => void;
+}) => (
   <div className="flex flex-col items-center justify-center h-full min-h-[400px] gap-4 compact:gap-2">
     {selectedModel ? (
-      <>
-        <Bot className="h-16 w-16 text-muted-foreground/50" />
-        <div className="text-center">
-          <h3 className="text-lg font-medium text-muted-foreground">Ready to chat</h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            Send a message to start chatting with <strong>{selectedModel.name}</strong>
-          </p>
-        </div>
-      </>
+      <div className="max-w-xl px-4 text-center">
+        <h2 className="text-xl font-semibold text-foreground">Ready to chat</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Send a message to start chatting with <strong>{selectedModel.name}</strong>
+        </p>
+        {autoSelectNote && <p className="text-sm text-muted-foreground mt-2">{autoSelectNote}</p>}
+      </div>
     ) : (
-      <>
-        <Bot className="h-16 w-16 text-muted-foreground/50" />
-        <div className="text-center">
-          <h3 className="text-lg font-medium text-muted-foreground">No model selected</h3>
-          <p className="text-sm text-muted-foreground mt-1">Select a model to begin chatting</p>
-        </div>
-      </>
+      <ProviderChecklist
+        providers={providers}
+        isLoading={isLoadingModels}
+        onOpenPreferences={onOpenPreferences}
+      />
     )}
   </div>
 );

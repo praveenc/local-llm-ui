@@ -6,17 +6,15 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 
-import type { UserPreferences } from '../../utils/preferences';
 import { ViewPromptsModal } from '../prompts';
 import { ConversationList } from './ConversationList';
-import { PreferencesDialog } from './PreferencesDialog';
 
 interface SidebarProps {
   onNewChat?: () => void;
   /** Put a saved prompt's text into the chat input */
   onInsertPrompt?: (text: string) => void;
-  onPreferencesChange?: (preferences: UserPreferences) => void;
-  onPreferencesSaved?: () => void;
+  /** AppShell owns the Preferences dialog, so it also opens from the chat */
+  onOpenPreferences?: () => void;
   activeConversationId?: string | null;
   onSelectConversation?: (id: string) => void;
 }
@@ -24,18 +22,11 @@ interface SidebarProps {
 export function Sidebar({
   onNewChat,
   onInsertPrompt,
-  onPreferencesChange,
-  onPreferencesSaved,
+  onOpenPreferences,
   activeConversationId,
   onSelectConversation,
 }: SidebarProps) {
-  const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [promptsOpen, setPromptsOpen] = useState(false);
-
-  const handlePreferencesSave = (newPrefs: UserPreferences) => {
-    onPreferencesChange?.(newPrefs);
-    onPreferencesSaved?.();
-  };
 
   return (
     <div className="flex h-full flex-col">
@@ -82,7 +73,7 @@ export function Sidebar({
         <Button
           variant="ghost"
           className="w-full justify-start gap-2 h-9 compact:h-8"
-          onClick={() => setPreferencesOpen(true)}
+          onClick={onOpenPreferences}
         >
           <Settings className="h-4 w-4" />
           Preferences
@@ -90,12 +81,6 @@ export function Sidebar({
       </div>
 
       {/* Modals */}
-      <PreferencesDialog
-        open={preferencesOpen}
-        onOpenChange={setPreferencesOpen}
-        onSave={handlePreferencesSave}
-      />
-
       <ViewPromptsModal
         visible={promptsOpen}
         onDismiss={() => setPromptsOpen(false)}

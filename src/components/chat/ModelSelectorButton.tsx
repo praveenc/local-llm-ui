@@ -25,8 +25,10 @@ import {
   ModelSelectorSeparator,
   ModelSelectorTrigger,
 } from '../ai-elements/model-selector';
+import { ProviderActionButton } from './ProviderActionButton';
 import { composerChip } from './composerStyles';
 import { PROVIDER_LOGO_MAP } from './provider-logos';
+import { getProviderHelp } from './providerHelp';
 
 interface ModelSelectorButtonProps {
   providers: ProviderModels[];
@@ -35,6 +37,7 @@ interface ModelSelectorButtonProps {
   isLoading?: boolean;
   disabled?: boolean;
   className?: string;
+  onOpenPreferences?: () => void;
 }
 
 export function ModelSelectorButton({
@@ -44,6 +47,7 @@ export function ModelSelectorButton({
   isLoading,
   disabled,
   className,
+  onOpenPreferences,
 }: ModelSelectorButtonProps) {
   const [open, setOpen] = useState(false);
 
@@ -123,27 +127,35 @@ export function ModelSelectorButton({
 
           {unavailableProviders.length > 0 && (
             <ModelSelectorGroup heading="Unavailable providers">
-              {unavailableProviders.map((provider) => (
-                <ModelSelectorItem
-                  key={`unavailable-${provider.provider}`}
-                  value={`unavailable:${provider.provider}`}
-                  disabled
-                  className="cursor-default opacity-100"
-                >
-                  <ModelSelectorLogo
-                    provider={PROVIDER_LOGO_MAP[provider.provider] || provider.provider}
-                    className="h-4 w-4 opacity-60"
-                  />
-                  <div className="min-w-0 flex-1 text-left">
-                    <div className="truncate text-sm text-foreground/80">
-                      {provider.providerName}
+              {/* Plain rows, not command items, so their action buttons can be clicked */}
+              {unavailableProviders.map((provider) => {
+                const help = getProviderHelp(provider);
+                return (
+                  <div
+                    key={`unavailable-${provider.provider}`}
+                    className="flex items-start gap-2 rounded-sm px-2 py-1.5"
+                  >
+                    <ModelSelectorLogo
+                      provider={PROVIDER_LOGO_MAP[provider.provider] || provider.provider}
+                      className="mt-0.5 h-4 w-4 opacity-60"
+                    />
+                    <div className="min-w-0 flex-1 text-left">
+                      <div className="text-sm text-foreground">
+                        {provider.providerName}
+                        <span className="text-muted-foreground"> · {help.status}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{help.hint}</p>
                     </div>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {provider.error || 'Currently unavailable'}
-                    </p>
+                    <ProviderActionButton
+                      action={help.action}
+                      onOpenPreferences={() => {
+                        setOpen(false);
+                        onOpenPreferences?.();
+                      }}
+                    />
                   </div>
-                </ModelSelectorItem>
-              ))}
+                );
+              })}
             </ModelSelectorGroup>
           )}
         </ModelSelectorList>

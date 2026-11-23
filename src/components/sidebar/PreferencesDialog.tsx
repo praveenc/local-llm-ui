@@ -31,11 +31,18 @@ interface PreferencesDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (preferences: UserPreferences) => void;
+  /** Tab to show each time the dialog opens; unset keeps the last tab */
+  initialTab?: PreferencesTab;
 }
 
-type PreferencesTab = 'providers' | 'web-search' | 'mcp' | 'display';
+export type PreferencesTab = 'providers' | 'web-search' | 'mcp' | 'display';
 
-export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDialogProps) {
+export function PreferencesDialog({
+  open,
+  onOpenChange,
+  onSave,
+  initialTab,
+}: PreferencesDialogProps) {
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
   const [tab, setTab] = useState<PreferencesTab>('providers');
   const [wasOpen, setWasOpen] = useState(open);
@@ -43,7 +50,10 @@ export function PreferencesDialog({ open, onOpenChange, onSave }: PreferencesDia
   // Reload on open: other controls (the header theme toggle) also save preferences
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (open) setPreferences(loadPreferences());
+    if (open) {
+      setPreferences(loadPreferences());
+      if (initialTab) setTab(initialTab);
+    }
   }
   const [providerError, setProviderError] = useState('');
 
