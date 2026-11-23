@@ -62,7 +62,7 @@ export function ProviderChecklist({
                   <span className="text-muted-foreground">
                     {provider.status === 'loading' ? (
                       <span className="inline-flex items-center gap-1">
-                        <Loader2 className="size-3 animate-spin motion-reduce:animate-none" />
+                        <Loader2 className="size-3 animate-spin" />
                         Checking…
                       </span>
                     ) : ready ? (

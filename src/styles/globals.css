@@ -294,14 +294,13 @@
   background-color: var(--tint-soft);
 }
 
-/* Honour the system reduced-motion setting: no spinners, pulses, slides or width tweens */
+/*
+ * Reduced motion: spinners turn slowly instead of stopping, so a running task still looks
+ * alive. Movement (the sidebar width, chevron turns, switch and progress slides) is off at
+ * each call site with motion-reduce:transition-none; colour and opacity fades stay.
+ */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  ::before,
-  ::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+  :root {
+    --animate-spin: spin 6s linear infinite;
   }
 }

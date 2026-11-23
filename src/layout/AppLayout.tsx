@@ -57,7 +57,7 @@ export function AppLayout({
       {/* Desktop Sidebar, from 1024 px; narrower screens use the sheet */}
       <aside
         className={cn(
-          'hidden lg:flex lg:flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-in-out',
+          'hidden lg:flex lg:flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-in-out motion-reduce:transition-none',
           sidebarOpen ? 'w-72' : 'w-0'
         )}
       >

@@ -187,7 +187,7 @@ export function ConversationList({
             <button className="flex w-full items-center gap-1 px-3 py-1.5 compact:py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
               <ChevronRight
                 className={cn(
-                  'h-3 w-3 transition-transform',
+                  'h-3 w-3 transition-transform motion-reduce:transition-none',
                   openGroups?.[group.label] && 'rotate-90'
                 )}
               />
