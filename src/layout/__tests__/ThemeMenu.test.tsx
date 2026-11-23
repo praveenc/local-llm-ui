@@ -25,7 +25,7 @@ describe('ThemeMenu', () => {
     await user.click(screen.getByRole('button', { name: 'Theme' }));
 
     const items = screen.getAllByRole('menuitemradio').map((item) => item.textContent);
-    expect(items).toEqual(['Cosmic Night', 'Cobaltz', 'Rosé Pine', 'Light', 'Dark']);
+    expect(items).toEqual(['Neutral', 'Cosmic Night', 'Cobaltz', 'Rosé Pine', 'Light', 'Dark']);
     expect(screen.getByRole('menuitemradio', { name: 'Cobaltz' })).toBeChecked();
     expect(screen.getByRole('menuitemradio', { name: 'Dark' })).toBeChecked();
   });

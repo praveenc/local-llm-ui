@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { COLOR_THEMES, applyColorTheme, applyContentDensity, isColorTheme } from '../colorThemes';
 
 describe('colorThemes', () => {
-  it('offers Cosmic Night, Cobaltz, and Rosé Pine', () => {
+  it('offers Neutral first, then Cosmic Night, Cobaltz, and Rosé Pine', () => {
     expect(COLOR_THEMES.map((theme) => theme.value)).toEqual([
+      'neutral',
       'cosmic-night',
       'cobaltz',
       'rose-pine',
@@ -28,9 +29,15 @@ describe('colorThemes', () => {
     expect(root.classList.contains('dark')).toBe(false);
   });
 
-  it('falls back to Cosmic Night for an unknown saved theme', () => {
+  it('falls back to Neutral for an unknown saved theme', () => {
     const root = document.createElement('html');
     applyColorTheme(root, 'removed-theme', 'light');
+    expect(root.dataset.theme).toBe('neutral');
+  });
+
+  it('keeps a saved Cosmic Night choice', () => {
+    const root = document.createElement('html');
+    applyColorTheme(root, 'cosmic-night', 'dark');
     expect(root.dataset.theme).toBe('cosmic-night');
   });
 

@@ -9,7 +9,8 @@
       // Apply the saved color theme before the first paint (AppShell keeps it in sync)
       try {
         var prefs = JSON.parse(localStorage.getItem('local-llm-ui-preferences') || '{}');
-        var themes = ['cosmic-night', 'cobaltz', 'rose-pine'];
+        // themes[0] is the default (utils/colorThemes.ts DEFAULT_COLOR_THEME)
+        var themes = ['neutral', 'cosmic-night', 'cobaltz', 'rose-pine'];
         var root = document.documentElement;
         root.dataset.theme = themes.indexOf(prefs.colorTheme) >= 0 ? prefs.colorTheme : themes[0];
         if (prefs.visualMode === 'dark') root.classList.add('dark');
