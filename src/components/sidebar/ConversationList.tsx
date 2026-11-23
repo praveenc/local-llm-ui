@@ -201,14 +201,20 @@ export function ConversationList({
                 <div
                   key={conv.id}
                   className={cn(
-                    'group flex items-center gap-2 rounded-md px-2 py-1.5 compact:py-1 text-sm cursor-pointer transition-colors min-w-0',
+                    'group flex items-center gap-2 rounded-md border-l-2 px-2 py-1.5 compact:py-1 text-sm cursor-pointer transition-colors min-w-0',
                     activeConversationId === conv.id
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'hover:bg-sidebar-accent/50'
+                      ? 'border-primary bg-sidebar-active font-medium text-sidebar-foreground'
+                      : 'border-transparent hover:bg-sidebar-hover'
                   )}
+                  aria-current={activeConversationId === conv.id ? 'true' : undefined}
                   onClick={() => editingId !== conv.id && onSelectConversation(conv.id)}
                 >
-                  <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <MessageSquare
+                    className={cn(
+                      'h-4 w-4 shrink-0',
+                      activeConversationId === conv.id ? 'text-primary' : 'text-muted-foreground'
+                    )}
+                  />
                   {editingId === conv.id ? (
                     <Input
                       value={editTitle}
@@ -270,7 +276,7 @@ export function ConversationList({
               Are you sure you want to delete "{conversationToDelete?.title}"?
             </DialogDescription>
           </DialogHeader>
-          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-500">
+          <div className="flex items-center gap-2 text-sm text-status-warn">
             <AlertTriangle className="h-4 w-4" />
             <span>Once deleted, this conversation cannot be restored.</span>
           </div>

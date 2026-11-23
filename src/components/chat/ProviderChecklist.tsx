@@ -6,6 +6,8 @@
  */
 import { Check, Loader2 } from 'lucide-react';
 
+import { cn } from '@/lib/utils';
+
 import type { ProviderModels } from '../../hooks/useAllModels';
 import { loadPreferences } from '../../utils/preferences';
 import { ProviderActionButton } from './ProviderActionButton';
@@ -44,6 +46,18 @@ export function ProviderChecklist({
             <li key={provider.provider} className="flex items-start gap-3 px-3 py-2.5">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 text-sm">
+                  {/* Status dot: ready, needs a fix, or still checking */}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'size-2 shrink-0 rounded-full',
+                      provider.status === 'loading'
+                        ? 'bg-muted-foreground'
+                        : ready
+                          ? 'bg-status-ok'
+                          : 'bg-status-warn'
+                    )}
+                  />
                   <span className="font-medium text-foreground">{provider.providerName}</span>
                   <span className="text-muted-foreground">
                     {provider.status === 'loading' ? (
@@ -52,7 +66,7 @@ export function ProviderChecklist({
                         Checking…
                       </span>
                     ) : ready ? (
-                      <span className="inline-flex items-center gap-1">
+                      <span className="inline-flex items-center gap-1 text-status-ok">
                         <Check className="size-3" />
                         {provider.models.length} model{provider.models.length === 1 ? '' : 's'}
                       </span>

@@ -51,8 +51,8 @@ export function ToolCall({ toolCall, className }: ToolCallProps) {
   return (
     <div
       className={cn(
-        'rounded-md border bg-muted/30 text-xs',
-        showError && 'border-destructive/50',
+        'rounded-md border border-l-2 border-l-tool bg-tool-soft text-xs',
+        showError && 'border-destructive/50 border-l-destructive',
         className
       )}
     >
@@ -70,12 +70,12 @@ export function ToolCall({ toolCall, className }: ToolCallProps) {
         )}
 
         {isWebSearch ? (
-          <Globe className="size-3.5 shrink-0 text-blue-500" />
+          <Globe className="size-3.5 shrink-0 text-tool" />
         ) : (
-          <Wrench className="size-3.5 shrink-0 text-muted-foreground" />
+          <Wrench className="size-3.5 shrink-0 text-tool" />
         )}
 
-        <span className="font-medium shrink-0">
+        <span className="font-medium shrink-0 text-tool">
           {isWebSearch ? 'Web Search' : toolCall.toolName}
         </span>
 

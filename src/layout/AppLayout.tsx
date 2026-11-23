@@ -154,7 +154,7 @@ export function AppLayout({
 function SidebarBrand({ scope }: { scope?: string }) {
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <ProductMark className="size-7 shrink-0 text-sidebar-foreground" />
+      <ProductMark className="size-7 shrink-0 text-primary" />
       <div className="flex min-w-0 flex-col">
         <span className="text-sm font-semibold text-sidebar-foreground">Local LLM UI</span>
         {scope && (

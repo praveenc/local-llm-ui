@@ -99,7 +99,7 @@ export function ProviderSettings({ preferences, onUpdate }: ProviderSettingsProp
                 disabled={!hasKey}
                 status={
                   hasKey ? (
-                    <span className="flex items-center gap-1 text-xs text-green-700 dark:text-green-500">
+                    <span className="flex items-center gap-1 text-xs text-status-ok">
                       <Check className="h-3 w-3" aria-hidden />
                       Key set
                     </span>

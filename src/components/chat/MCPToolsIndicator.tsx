@@ -184,7 +184,7 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
                 <span
                   className={cn(
                     'h-2 w-2 rounded-full shrink-0',
-                    server.status === 'connected' ? 'bg-green-500' : 'bg-red-500'
+                    server.status === 'connected' ? 'bg-status-ok' : 'bg-status-error'
                   )}
                 />
                 <span className="text-sm font-medium truncate">{server.name}</span>

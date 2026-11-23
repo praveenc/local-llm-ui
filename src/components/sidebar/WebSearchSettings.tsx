@@ -110,7 +110,7 @@ export function WebSearchSettings({ preferences, onUpdate }: WebSearchSettingsPr
                     <span className="text-xs text-muted-foreground">{freeTier}</span>
                   </Label>
                   {hasKey ? (
-                    <span className="flex items-center gap-1 text-xs text-green-700 dark:text-green-500">
+                    <span className="flex items-center gap-1 text-xs text-status-ok">
                       <Check className="h-3 w-3" aria-hidden />
                       Key set
                     </span>

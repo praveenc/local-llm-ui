@@ -255,7 +255,7 @@ function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: Serve
         <span className="text-sm font-medium flex-1 truncate">{config.name || 'Untitled'}</span>
         {validationError && (
           <span title={validationError}>
-            <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+            <AlertCircle className="h-3.5 w-3.5 text-status-warn shrink-0" />
           </span>
         )}
         <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
@@ -272,7 +272,7 @@ function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: Serve
           title={config.enabled ? 'Disable server' : 'Enable server'}
         >
           {config.enabled ? (
-            <Power className="h-3.5 w-3.5 text-green-500" />
+            <Power className="h-3.5 w-3.5 text-status-ok" />
           ) : (
             <PowerOff className="h-3.5 w-3.5 text-muted-foreground" />
           )}
