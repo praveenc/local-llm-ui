@@ -11,19 +11,14 @@ const CONNECTION_RETRY_DELAY = 5000; // 5 seconds between retry attempts
 const LMSTUDIO_HTTP_MODELS_URL = 'http://127.0.0.1:1234/v1/models';
 
 async function isLMStudioReachable(): Promise<boolean> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1500);
-
   try {
     const response = await fetch(LMSTUDIO_HTTP_MODELS_URL, {
       method: 'GET',
-      signal: controller.signal,
+      signal: AbortSignal.timeout(1500),
     });
     return response.ok || response.status >= 400;
   } catch {
     return false;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
