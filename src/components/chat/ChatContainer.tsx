@@ -19,6 +19,7 @@ import {
   ThumbsUp,
   Trash2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Fragment, useEffect, useRef, useState } from 'react';
 
@@ -297,8 +298,11 @@ const ChatContainer = ({
   const handleCopy = async (content: string) => {
     try {
       await navigator.clipboard.writeText(content);
+      // The toast is announced by the global Toaster, like the other copy buttons
+      toast.success('Copied');
     } catch (err) {
       console.error('Failed to copy:', err);
+      toast.error('Copy failed');
     }
   };
 
