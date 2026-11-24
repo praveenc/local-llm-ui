@@ -1,0 +1,128 @@
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { getTextContent } from '../../types/ai-messages';
+import { useBedrockChat } from '../useBedrockChat';
+
+// The hook loads a conversation and persists messages through these hooks.
+vi.mock('../index', () => ({
+  useConversation: () => ({ conversation: undefined, messages: undefined, isLoading: false }),
+  useConversationMutations: () => ({
+    createConversation: vi.fn(async () => ({ id: 'conv-1' })),
+    addMessage: vi.fn(async (input: Record<string, unknown>) => ({ ...input, id: 'saved-1' })),
+    getNextSequence: vi.fn(async () => 1),
+    deleteMessagesFromSequence: vi.fn(async () => 0),
+    forkConversation: vi.fn(),
+    setMessageFeedback: vi.fn(),
+  }),
+}));
+
+// Only imported for the mantle provider path, not exercised here.
+vi.mock('../../services', () => ({ mantleService: { getApiKey: () => '', getRegion: () => '' } }));
+
+const model = { id: 'anthropic.claude', name: 'Claude', provider: 'bedrock' as const };
+
+const options = {
+  conversationId: null,
+  selectedModel: model,
+  maxTokens: 4096,
+  maxToolSteps: 10,
+  thinkingEffort: 'default' as const,
+  enableWebSearch: false,
+};
+
+const encoder = new TextEncoder();
+const chunk = (content: string) => encoder.encode(`data: ${JSON.stringify({ content })}\n`);
+
+const lastAssistant = (messages: { role: string; parts: unknown[] }[]) => {
+  const msg = [...messages].reverse().find((m) => m.role === 'assistant');
+  return msg ? getTextContent(msg as never) : '';
+};
+
+const originalFetch = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  vi.restoreAllMocks();
+});
+
+describe('useBedrockChat streaming', () => {
+  it('updates the message at most once per animation frame and keeps the full text', async () => {
+    // A frame that never comes while the stream runs: every chunk arrives within one frame
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => frames.push(cb));
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    const chunkCount = 600;
+    const chunks = Array.from({ length: chunkCount }, (_, i) => chunk(`${i % 10}`));
+    const expected = chunks.map((_, i) => `${i % 10}`).join('');
+    let i = 0;
+    const reader = {
+      read: vi.fn(async () =>
+        i < chunks.length ? { done: false, value: chunks[i++] } : { done: true, value: undefined }
+      ),
+    };
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      body: { getReader: () => reader },
+    })) as never;
+
+    const assistantSnapshots: string[] = [];
+    const { result } = renderHook(() => {
+      const chat = useBedrockChat(options);
+      assistantSnapshots.push(lastAssistant(chat.messages));
+      return chat;
+    });
+
+    await act(async () => {
+      await result.current.sendMessage('hello');
+    });
+
+    // One frame was asked for and never ran, so the 600 chunks reached state once, at the end
+    // (the other change is the user message appearing)
+    expect(frames).toHaveLength(1);
+    expect(lastAssistant(result.current.messages)).toBe(expected);
+    const changes = assistantSnapshots.filter((t, idx) => t !== assistantSnapshots[idx - 1]).length;
+    expect(changes).toBeLessThanOrEqual(2);
+  });
+
+  it('keeps the text received so far when aborted mid-stream', async () => {
+    const early = [chunk('a'), chunk('b'), chunk('c')];
+    let i = 0;
+    let abortSignal: AbortSignal | undefined;
+    const reader = {
+      read: vi.fn(async () => {
+        if (i < early.length) return { done: false, value: early[i++] };
+        // Hang until the stream is aborted, then reject like a real fetch reader.
+        return new Promise((_resolve, reject) => {
+          abortSignal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError'))
+          );
+        });
+      }),
+    };
+    globalThis.fetch = vi.fn(async (_url: string, opts: { signal: AbortSignal }) => {
+      abortSignal = opts.signal;
+      return { ok: true, body: { getReader: () => reader } };
+    }) as never;
+
+    const { result } = renderHook(() => useBedrockChat(options));
+
+    let sendPromise: Promise<void>;
+    act(() => {
+      sendPromise = result.current.sendMessage('hello');
+    });
+
+    // Wait until the three chunks are read and the fourth read is pending.
+    await waitFor(() => expect(reader.read).toHaveBeenCalledTimes(4));
+
+    act(() => {
+      result.current.stopGeneration();
+    });
+    await act(async () => {
+      await sendPromise;
+    });
+
+    expect(lastAssistant(result.current.messages)).toBe('abc');
+    expect(result.current.status).toBe('idle');
+  });
+});
