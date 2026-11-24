@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-24
+
+PR numbers link to GitHub.
+
 ### 2026-11
 
 #### Added
@@ -19,60 +23,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Retry and Change model buttons in the chat error alert ([#59])
 - Keyboard: `/` focuses the chat input; Cmd+K (Ctrl+K) opens the model picker ([#59])
 - Product mark in the sidebar and a favicon; the header shows the open conversation's title ([#59])
-- Preferences and Quote and Ask stay open on Esc or a click outside while they hold unsaved edits, with a "You have unsaved changes." line and a Discard button ([#60])
+- Quote and Ask stays open on Esc or a click outside while it holds unsaved edits, with a "You have unsaved changes." line and a Discard button ([#60])
 - Copying a message, code, or an error shows a "Copied" or "Copy failed" toast ([#61])
 - System appearance, now the default: the app follows the OS light or dark setting and switches when it changes; the theme menu and Preferences offer System, Light, and Dark ([#62])
 - A show and hide button on API key fields, so a pasted key can be checked ([#62])
-- Each reply shows its tokens, time, and cost next to the rating buttons, also after a reload
-- The context indicator says "Near the limit" at 70% and "Almost full" at 90%; its card shows the tokens read from the prompt cache, the reasoning tokens, and the cost of the chat
-- One line above an answer says what the model did, for example "Thought 6 s · 2 searches · 7 sources · 1 fetch call"; while the reply streams it shows the step that runs now, and a click lists each step
-- Search and tool steps are saved with the reply, so they stay when you open the chat again
-- A new chat puts the chat input in the middle of the window, under "What can I help with?"; it moves to the bottom after the first message
-- Search chats: a filter at the top of the conversation list
-- A New chat button in the header
-- A line in the chat shows when the next reply comes from another model
-- Each chat in the conversation list shows the time of its last message, and a closed date group shows how many chats it has
-- The conversation list remembers which date groups are open, also after a reload
-- Rename the open chat from the header: click the title, or the pencil button next to it. Enter or a click outside saves, Esc cancels
+- Each reply shows its tokens, time, and cost next to the rating buttons, also after a reload ([#63])
+- The context indicator says "Near the limit" at 70% and "Almost full" at 90%; its card shows the tokens read from the prompt cache, the reasoning tokens, and the cost of the chat ([#63])
+- One line above an answer says what the model did, for example "Thought 6 s · 2 searches · 7 sources · 1 fetch call"; while the reply streams it shows the step that runs now, and a click lists each step ([#65])
+- Search and tool steps are saved with the reply, so they stay when you open the chat again ([#65])
+- A new chat puts the chat input in the middle of the window, under "What can I help with?"; it moves to the bottom after the first message ([#67])
+- Search chats: a filter at the top of the conversation list ([#67])
+- A New chat button in the header ([#67])
+- A line in the chat shows when the next reply comes from another model ([#67])
+- Each chat in the conversation list shows the time of its last message, and a closed date group shows how many chats it has ([#71])
+- The conversation list remembers which date groups are open, also after a reload ([#71])
+- Rename the open chat from the header: click the title, or the pencil button next to it. Enter or a click outside saves, Esc cancels ([#73])
+- UI and UX rules for contributors in `.kiro/steering/ui-ux-guidelines.md` ([#69])
 
 #### Changed
 
-- The conversation list groups chats by the calendar: Today, Yesterday, Previous 7 days, Previous 30 days, and then one group for each month. The group headings are larger and stay at the top of the list while you scroll
+- The conversation list groups chats by the calendar: Today, Yesterday, Previous 7 days, Previous 30 days, and then one group for each month. The group headings are larger and stay at the top of the list while you scroll ([#71])
 - Text meets 4.5:1 contrast in every theme ([#59])
-- Every theme tints the user's messages, the open conversation, the reasoning label, the model badge, the avatar, and code blocks with its own primary colour, and colours links, inline code, and tool icons with it; status dots show ready, needs a fix, or checking. Neutral takes one teal accent, also on the send button ([#59])
+- Every theme colours links, the open conversation, and the send button with its own primary colour; status dots show ready, needs a fix, or checking. Neutral takes one teal accent ([#59], [#64])
 - The chat input has a border and no shadow or gradient; disabled tools say why they are off ([#59])
 - Glass and shimmer effects are gone; with reduced motion on, spinners turn slowly and movement stops, while colour and opacity fades still run ([#59])
 - Below 1024 px the sidebar folds into a sheet; touch targets are 44 px below 768 px ([#59])
-- Preferences has a fixed height, so the tabs and the Save button stay in place ([#59])
+- Preferences has a fixed height, so the tabs stay in place ([#59])
 - Images in replies are no longer loaded, so a reply cannot send chat text to another site; each shows as "[Image blocked]" with its description ([#60])
 - Conversation titles in the sidebar are cut at the row width, not at 25 characters ([#60])
 - The context usage card opens by click, tap, Enter, or Space, so it also works on touch screens ([#61])
 - The header theme button switches to the opposite of what is shown; when that matches the OS, the app goes back to following the OS ([#62])
 - The app uses the Inter and JetBrains Mono fonts on every system; they are bundled with the app ([#62])
 - Scrollbars are the default width; the thumb keeps the theme's colour at 3:1 contrast ([#62])
-- Claude prices are current (copied 2026-11-24) and cover Claude 4.6 to 5.5, the Haiku 5.5 long-prompt price, cache prices, and the Bedrock regional price; a model without a price shows "No price data", not $0.00, and local models show "Free"
-- Claude 4.6 and later models have a 1M-token context window in the context indicator, on every provider
-- Replies are easier to read: 15 px text with a 1.65 line height, paragraphs and lists at most 70 characters wide, list bullets outside the text, and headings, code, and tables sized from the reply text; the chat column is 768 px wide
-- Calmer surfaces: the user's messages, the avatar, inline code, and code blocks no longer take the theme tint; the chat input is closer to the page colour; Neutral body text is 15:1 instead of 18:1; dark themes use thinner font smoothing on macOS
-- README: the Neutral theme, the System appearance, and the bundled fonts
-- The Thinking chip and the tool cards are replaced by the work line; a search step lists the sites of its results, and an MCP step shows the text of its output, not JSON
-- The web search button says "Search" when it is on
-- The `motion` package is removed; nothing uses it any more
-- The model chip in the chat input shows a short name with the inference profile, for example "Claude Haiku 5.5 · Global"; the full name and the provider are in its tooltip
-- The sticky model badge above the chat, the model line under the product name, and the chat icon on each conversation are removed
-- Clear chat is removed from the chat input (it did the same as New chat); Save prompt moved into the + menu as "Save as prompt"
-- The chat input is as wide as the reply column (768 px)
-- Preferences saves each setting when you change it; typed values (API keys, avatar initials, MCP server fields) save when you stop typing, leave the field, push Enter, or close the dialog. The footer shows "Saved", and one Done button replaces Save and Cancel. Theme changes in Preferences show at once
-- Message action icons (rating, copy, regenerate) are 16 px instead of 12 px
+- Claude prices are current (copied 2026-11-24) and cover Claude 4.6 to 5.5, the Haiku 5.5 long-prompt price, cache prices, and the Bedrock regional price; a model without a price shows "No price data", not $0.00, and local models show "Free" ([#63])
+- Claude 4.6 and later models have a 1M-token context window in the context indicator, on every provider ([#63])
+- Replies are easier to read: 15 px text with a 1.65 line height, paragraphs and lists at most 70 characters wide, list bullets outside the text, and headings, code, and tables sized from the reply text; the chat column is 768 px wide ([#64])
+- Calmer surfaces: the user's messages, the avatar, inline code, and code blocks no longer take the theme tint; the chat input is closer to the page colour; Neutral body text is 15:1 instead of 18:1; dark themes use thinner font smoothing on macOS ([#64])
+- README: the Neutral theme, the System appearance, and the bundled fonts ([#64])
+- README: screenshots of the current UI, and the features and labels of this release ([#74])
+- The Thinking chip and the tool cards are replaced by the work line; a search step lists the sites of its results, and an MCP step shows the text of its output, not JSON ([#65])
+- The web search button says "Search" when it is on ([#65])
+- The `motion` package is removed; nothing uses it any more ([#65])
+- The model chip in the chat input shows a short name with the inference profile, for example "Claude Haiku 5.5 · Global"; the full name and the provider are in its tooltip ([#67])
+- The sticky model badge above the chat, the model line under the product name, and the chat icon on each conversation are removed ([#67])
+- Clear chat is removed from the chat input (it did the same as New chat); Save prompt moved into the + menu as "Save as prompt" ([#67])
+- The chat input is as wide as the reply column (768 px) ([#67])
+- Preferences saves each setting when you change it; typed values (API keys, avatar initials, MCP server fields) save when you stop typing, leave the field, push Enter, or close the dialog. The footer shows "Saved", and one Done button replaces Save and Cancel. Theme changes in Preferences show at once ([#68])
+- If a change would remove the API key of the default provider, Preferences does not save it and shows "Not saved" until you select a different default provider ([#68])
+- Message action icons (rating, copy, regenerate) are 16 px instead of 12 px ([#68])
 - A long reply updates the screen at most once per frame while it streams ([#62])
-- Web search is on in each new chat when a search key is set; the globe button turns it off for one chat, and **Search the web by default** in Preferences → Web Search turns the default off. Without a key, the globe button does not show
-- Ollama models that cannot use tools get no web search or MCP tools; the globe and MCP buttons say "This model cannot use tools"
-- The chat input is more comfortable: it shows three lines of text in a new chat and two lines in a chat with messages, with 12 px around the text and the toolbar and 4 px between the buttons. It grows to 40% of the window, at most 320 px, before it scrolls. When the chat input is narrower than 768 px, the Thinking button shows only its level
+- Web search is on in each new chat when a search key is set; the globe button turns it off for one chat, and **Search the web by default** in Preferences → Web Search turns the default off. Without a key, the globe button does not show ([#72])
+- Ollama models that cannot use tools get no web search or MCP tools; the globe and MCP buttons say "This model cannot use tools" ([#72])
+- The chat input is more comfortable: it shows three lines of text in a new chat and two lines in a chat with messages, with 12 px around the text and the toolbar and 4 px between the buttons. It grows to 40% of the window, at most 320 px, before it scrolls. When the chat input is narrower than 768 px, the Thinking button shows only its level ([#70])
 
 #### Fixed
 
-- The conversation list showed only the 50 newest chats, and Search chats did not find older ones; it now shows all chats
-- A rename moved the chat to Today; it now keeps the date of its last message
+- The conversation list showed only the 50 newest chats, and Search chats did not find older ones; it now shows all chats ([#71])
+- A rename moved the chat to Today; it now keeps the date of its last message ([#73])
 - Icon buttons and the chat input have accessible names, and screen readers announce when a reply starts and ends ([#59])
 - Scrollbar thumbs have 3:1 contrast in every theme and show no light track when macOS shows scroll bars always ([#59])
 - Renaming a conversation with a Japanese, Chinese, or Korean input method no longer saves early when Enter confirms a candidate ([#59])
@@ -87,15 +94,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Theme previews keep their colours in Windows High Contrast, and the selected theme is outlined ([#62])
 - The model picker's search no longer runs under its close button ([#62])
 - The app sends a Content Security Policy, a referrer policy, and frame protection, so other sites cannot embed it ([#62])
-- The context indicator showed too much: it added up every reply, and each model call in a tool loop sends the whole chat again. It now shows the size of the last model call
-- Token usage and the context indicator came back empty after a reload or a model change; they now come from the usage stored with each reply
-- A tool that failed looked like it was still running; it now shows as failed with its error, and a tool that has no result when the reply ends is marked failed
-- MCP tools said "Searching..." while they ran; they now say "Running…"
-- A model search with a dot, for example "Haiku 5.5", found nothing
-- The scroll-to-bottom button covered the text of the chat; it now sits in a strip between the chat and the chat input
-- On narrow screens the chat input covered the end of the chat when its toolbar took more than one row; the chat now ends above the measured height of the input
-- A web search that failed on every provider, for example with a rejected key, was not counted as failed in the line above the answer; it now says, for example, "2 searches · 2 failed", also after a reload
-- The empty Saved Prompts list said to click a bookmark button that is gone; it now says to click + and then Save as prompt
+- The context indicator showed too much: it added up every reply, and each model call in a tool loop sends the whole chat again. It now shows the size of the last model call ([#63])
+- Token usage and the context indicator came back empty after a reload or a model change; they now come from the usage stored with each reply ([#63])
+- A tool that failed looked like it was still running; it now shows as failed with its error, and a tool that has no result when the reply ends is marked failed ([#65])
+- MCP tools said "Searching..." while they ran; they now say "Running…" ([#65])
+- A model search with a dot, for example "Haiku 5.5", found nothing ([#67])
+- The scroll-to-bottom button covered the text of the chat; it now sits in a strip between the chat and the chat input ([#68])
+- On narrow screens the chat input covered the end of the chat when its toolbar took more than one row; the chat now ends above the measured height of the input ([#68])
+- A web search that failed on every provider, for example with a rejected key, was not counted as failed in the line above the answer; it now says, for example, "2 searches · 2 failed", also after a reload ([#72])
+- The empty Saved Prompts list said to click a bookmark button that is gone; it now says to click + and then Save as prompt ([#70])
+- A local (stdio) MCP server that needed more than 1 second to start could fail with "the initialize handshake is not accepted"; the app now waits for the `server/discover` answer, up to the 15 second connection timeout ([#66])
+- The microphone button no longer pulses when reduced motion is on ([#68])
 
 ## [1.1.0] - 2026-11-12
 
@@ -212,6 +221,18 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#74]: https://github.com/praveenc/local-llm-ui/pull/74
+[#73]: https://github.com/praveenc/local-llm-ui/pull/73
+[#72]: https://github.com/praveenc/local-llm-ui/pull/72
+[#71]: https://github.com/praveenc/local-llm-ui/pull/71
+[#70]: https://github.com/praveenc/local-llm-ui/pull/70
+[#69]: https://github.com/praveenc/local-llm-ui/pull/69
+[#68]: https://github.com/praveenc/local-llm-ui/pull/68
+[#67]: https://github.com/praveenc/local-llm-ui/pull/67
+[#66]: https://github.com/praveenc/local-llm-ui/pull/66
+[#65]: https://github.com/praveenc/local-llm-ui/pull/65
+[#64]: https://github.com/praveenc/local-llm-ui/pull/64
+[#63]: https://github.com/praveenc/local-llm-ui/pull/63
 [#62]: https://github.com/praveenc/local-llm-ui/pull/62
 [#61]: https://github.com/praveenc/local-llm-ui/pull/61
 [#60]: https://github.com/praveenc/local-llm-ui/pull/60
@@ -254,6 +275,7 @@ PR numbers link to GitHub.
 [#21]: https://github.com/praveenc/local-llm-ui/pull/21
 [#19]: https://github.com/praveenc/local-llm-ui/pull/19
 [#16]: https://github.com/praveenc/local-llm-ui/pull/16
-[Unreleased]: https://github.com/praveenc/local-llm-ui/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/praveenc/local-llm-ui/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/praveenc/local-llm-ui/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/praveenc/local-llm-ui/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/praveenc/local-llm-ui/releases/tag/v1.0.0
