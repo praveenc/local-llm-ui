@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copying a message, code, or an error shows a "Copied" or "Copy failed" toast ([#61])
 - System appearance, now the default: the app follows the OS light or dark setting and switches when it changes; the theme menu and Preferences offer System, Light, and Dark ([#62])
 - A show and hide button on API key fields, so a pasted key can be checked ([#62])
+- Each reply shows its tokens, time, and cost next to the rating buttons, also after a reload
+- The context indicator says "Near the limit" at 70% and "Almost full" at 90%; its card shows the tokens read from the prompt cache, the reasoning tokens, and the cost of the chat
 
 #### Changed
 
@@ -38,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The header theme button switches to the opposite of what is shown; when that matches the OS, the app goes back to following the OS ([#62])
 - The app uses the Inter and JetBrains Mono fonts on every system; they are bundled with the app ([#62])
 - Scrollbars are the default width; the thumb keeps the theme's colour at 3:1 contrast ([#62])
+- Claude prices are current (copied 2026-11-24) and cover Claude 4.6 to 5.5, the Haiku 5.5 long-prompt price, cache prices, and the Bedrock regional price; a model without a price shows "No price data", not $0.00, and local models show "Free"
+- Claude 4.6 and later models have a 1M-token context window in the context indicator, on every provider
 - A long reply updates the screen at most once per frame while it streams ([#62])
 
 #### Fixed
@@ -56,6 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Theme previews keep their colours in Windows High Contrast, and the selected theme is outlined ([#62])
 - The model picker's search no longer runs under its close button ([#62])
 - The app sends a Content Security Policy, a referrer policy, and frame protection, so other sites cannot embed it ([#62])
+- The context indicator showed too much: it added up every reply, and each model call in a tool loop sends the whole chat again. It now shows the size of the last model call
+- Token usage and the context indicator came back empty after a reload or a model change; they now come from the usage stored with each reply
 
 ## [1.1.0] - 2026-11-12
 

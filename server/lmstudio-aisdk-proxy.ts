@@ -16,6 +16,7 @@ import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, endStreamWithError, readBodyWithLimit } from './security.ts';
 import { createThinkTagSplitter } from './think-tags.ts';
 import { noAnswerNotice, streamErrorMessage, toolLoopOptions } from './tool-loop.ts';
+import { usageEvent } from './usage.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
   createWebSearchTool,
@@ -174,23 +175,9 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
       const notice = await noAnswerNotice(result);
       if (notice) res.write(`data: ${JSON.stringify({ content: notice })}\n\n`);
 
-      // Get usage after the stream completes
-      const usage = await Promise.resolve(result.usage).catch(() => undefined);
-      const latencyMs = Date.now() - startTime;
-
-      // Send metadata
-      res.write(
-        `data: ${JSON.stringify({
-          metadata: {
-            usage: {
-              inputTokens: usage?.inputTokens || 0,
-              outputTokens: usage?.outputTokens || 0,
-              totalTokens: (usage?.inputTokens || 0) + (usage?.outputTokens || 0),
-            },
-            latencyMs,
-          },
-        })}\n\n`
-      );
+      // Usage of each model call and of the reply; none when the stream failed
+      const usage = await usageEvent(result, startTime);
+      if (usage) res.write(usage);
 
       res.write('data: [DONE]\n\n');
       res.end();

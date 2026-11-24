@@ -2,6 +2,7 @@
  * Database types for conversation persistence
  */
 import type { ThinkingEffort } from '../utils/thinkingEffort';
+import type { MessageUsage } from '../utils/usage';
 
 export type Provider =
   | 'lmstudio'
@@ -28,12 +29,8 @@ export interface MessageParameters {
   thinkingEffort?: ThinkingEffort;
 }
 
-export interface MessageUsage {
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-  latencyMs?: number;
-}
+/** Token usage of a reply; the same type that the server proxies send */
+export type { MessageUsage } from '../utils/usage';
 
 export interface Message {
   id: string;

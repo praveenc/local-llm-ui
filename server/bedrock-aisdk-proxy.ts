@@ -24,6 +24,7 @@ import type { ReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, endStreamWithError, readBodyWithLimit, setCORSHeaders } from './security.ts';
 import { noAnswerNotice, streamErrorMessage, toolLoopOptions } from './tool-loop.ts';
+import { usageEvent } from './usage.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
   createWebSearchTool,
@@ -401,26 +402,10 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     const notice = await noAnswerNotice(result);
     if (notice) res.write(`data: ${JSON.stringify({ content: notice })}\n\n`);
 
-    // Get usage after the stream completes. It rejects when the stream failed; the error part
-    // above already reported that error, so finish the reply without usage.
-    const usage = await Promise.resolve(result.usage).catch(() => undefined);
-    const latencyMs = Date.now() - startTime;
-
-    // Send usage metadata
-    if (usage) {
-      res.write(
-        `data: ${JSON.stringify({
-          metadata: {
-            usage: {
-              inputTokens: usage.inputTokens,
-              outputTokens: usage.outputTokens,
-              totalTokens: usage.totalTokens,
-            },
-            latencyMs,
-          },
-        })}\n\n`
-      );
-    }
+    // Usage of each model call and of the reply. Undefined when the stream failed; the error
+    // part above already reported that error, so finish the reply without usage.
+    const usage = await usageEvent(result, startTime);
+    if (usage) res.write(usage);
 
     res.write('data: [DONE]\n\n');
     res.end();

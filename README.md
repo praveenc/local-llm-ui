@@ -33,8 +33,8 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 - See replies as they stream.
 - Read the thinking of reasoning models in a section that you can expand.
 - Set the thinking effort, from Off to XHigh.
-- See the token count and latency after each reply.
-- See how much of the context window the chat uses.
+- See the tokens, time, and cost of each reply.
+- See how full the context window is, with a warning before it fills.
 
 **Tools**
 
@@ -281,7 +281,21 @@ Supported formats: PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX, and images.
 
 ### Context window
 
-The context indicator in the chat input shows the tokens that the chat uses and the context limit of the model. Put the pointer on the indicator to see the input and output tokens.
+The context indicator in the chat input shows how full the context window of the selected model is. The value is the size of the chat after the last reply, because the model gets the whole chat again with each new message. The indicator also shows after you open a saved chat.
+
+- At 70%, the indicator changes colour and says **Near the limit**.
+- At 90%, it says **Almost full**. A reply can fail when the window is full. Start a new chat.
+
+Click the indicator to see the input and output tokens of the chat, the tokens read from the prompt cache, the reasoning tokens, and the cost.
+
+### Usage and cost
+
+Under each reply, next to the rating buttons, the app shows the input and output tokens, the time, and the cost of that reply. For example: `1.2K in · 342 out · 2.1 s · $0.0029`. Put the pointer on it to see the exact numbers.
+
+- With tools on, one reply can have several model calls. The tokens and the cost include all of them.
+- Local models (Ollama and LM Studio) are free. The context popover shows **Free**.
+- If the app has no price for a model, it shows no cost under the reply and **No price data** in the popover.
+- Claude prices come from the Anthropic pricing page. For the prices and how the app applies them, see [docs/ANTHROPIC_PRICING.md](docs/ANTHROPIC_PRICING.md). The cost is an estimate. Your provider's bill is the real cost.
 
 ### Saved prompts
 

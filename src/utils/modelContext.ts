@@ -6,21 +6,10 @@
 import { getContextWindow } from 'tokenlens';
 
 import type { Provider } from '../utils/preferences';
-import { getAnthropicContextWindow, isAnthropicModel } from './anthropicPricing';
+import { claudeContextWindow, parseClaudeModel } from './claudeModels';
 
 // Default context limits for models not in tokenlens
 const DEFAULT_CONTEXT_LIMITS: Record<string, number> = {
-  // Bedrock Claude models
-  'anthropic.claude-3-5-haiku-20241022-v1:0': 200000,
-  'anthropic.claude-3-5-sonnet-20241022-v2:0': 200000,
-  'anthropic.claude-3-haiku-20240307-v1:0': 200000,
-  'anthropic.claude-3-sonnet-20240229-v1:0': 200000,
-  'anthropic.claude-3-opus-20240229-v1:0': 200000,
-  // Anthropic direct API models (Claude 4.5 series)
-  'claude-opus-4-5-20251101': 200000,
-  'claude-sonnet-4-5-20250929': 200000,
-  'claude-haiku-4-5-20251001': 200000,
-  'claude-sonnet-4-20250514': 200000,
   // Groq models
   'llama-3.3-70b-versatile': 131072,
   'llama-3.1-8b-instant': 131072,
@@ -73,11 +62,8 @@ const DEFAULT_CONTEXT_LIMITS: Record<string, number> = {
  * Maps our internal model ID to tokenlens model ID format
  */
 function toTokenlensModelId(modelId: string, provider: Provider): string | null {
-  // Anthropic direct API - return model ID for custom pricing calculation
-  // We don't use tokenlens for Anthropic, we use our custom pricing
-  if (provider === 'anthropic') {
-    return modelId; // Return as-is, will be handled by anthropicPricing.ts
-  }
+  // Claude prices and context windows come from utils/claudeModels and utils/pricing
+  if (provider === 'anthropic') return null;
 
   // Bedrock models - map to Anthropic format
   if (provider === 'bedrock') {
@@ -207,12 +193,14 @@ export interface ContextLimits {
  * Gets context window limits for a model
  */
 export function getModelContextLimits(modelId: string, provider: Provider): ContextLimits {
-  // Special handling for Anthropic direct API
-  if (provider === 'anthropic' && isAnthropicModel(modelId)) {
+  // Claude on any provider (Anthropic, Bedrock, OpenRouter): the window depends on the version
+  const claude = parseClaudeModel(modelId);
+  if (claude) {
     return {
-      contextWindow: getAnthropicContextWindow(),
+      contextWindow: claudeContextWindow(claude),
       outputMax: 8192,
-      tokenlensModelId: modelId, // Pass through for custom pricing
+      // Older Claude models that the price table lacks can still have a tokenlens price
+      tokenlensModelId: toTokenlensModelId(modelId, provider),
     };
   }
 

@@ -19,6 +19,7 @@ import { getMediaTypeFromFormat, lookupFormat } from '../utils/mediaTypes';
 import { loadPreferences } from '../utils/preferences';
 import { supportsThinkingEffort } from '../utils/thinkingEffort';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
+import { type MessageUsage, parseMessageUsage } from '../utils/usage';
 import { buildWebSearchHeaders } from '../utils/webSearch';
 import { useConversation, useConversationMutations } from './index';
 
@@ -44,25 +45,10 @@ interface UseBedrockChatOptions {
   onConversationChange?: (id: string | null) => void;
 }
 
-interface UsageMetadata {
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-  latencyMs?: number;
-}
-
-interface CumulativeUsage {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-}
-
 interface UseBedrockChatReturn {
   messages: UIMessage[];
   status: ChatStatus;
   error: string | null;
-  metadata: UsageMetadata | null;
-  cumulativeUsage: CumulativeUsage;
   wasInterrupted: boolean;
   sendMessage: (
     content: string,
@@ -76,7 +62,6 @@ interface UseBedrockChatReturn {
   rateMessage: (messageId: string, feedback: MessageFeedback) => Promise<void>;
   stopGeneration: () => void;
   clearMessages: () => void;
-  resetUsage: () => void;
 }
 
 export function useBedrockChat({
@@ -91,12 +76,6 @@ export function useBedrockChat({
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [status, setStatus] = useState<ChatStatus>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [metadata, setMetadata] = useState<UsageMetadata | null>(null);
-  const [cumulativeUsage, setCumulativeUsage] = useState<CumulativeUsage>({
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-  });
   const [internalConversationId, setInternalConversationId] = useState<string | null>(null);
   const [wasInterrupted, setWasInterrupted] = useState(false);
 
@@ -137,19 +116,11 @@ export function useBedrockChat({
   // Clear messages
   const clearMessages = useCallback(() => {
     setMessages([]);
-    setMetadata(null);
-    setCumulativeUsage({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
     setError(null);
     setWasInterrupted(false);
     setInternalConversationId(null);
     onConversationChange?.(null);
   }, [onConversationChange]);
-
-  // Reset usage (for model changes)
-  const resetUsage = useCallback(() => {
-    setCumulativeUsage({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
-    setMetadata(null);
-  }, []);
 
   // Send message
   const sendMessage = useCallback(
@@ -223,6 +194,7 @@ export function useBedrockChat({
         role: 'assistant',
         parts: [],
         createdAt: new Date(),
+        model: { provider, id: modelId },
       };
 
       // Set by the stream loop so the abort handler can flush text received so far
@@ -342,7 +314,7 @@ export function useBedrockChat({
         const decoder = new TextDecoder();
         let fullContent = '';
         let fullReasoning = '';
-        let usageData: UsageMetadata | null = null;
+        let usageData: MessageUsage | undefined;
         const startTime = Date.now();
 
         // Track pending tool calls
@@ -482,20 +454,14 @@ export function useBedrockChat({
               if (parsed.content) {
                 fullContent += parsed.content as string;
                 showAssistantMessage();
-              } else if (
-                (parsed.metadata as { usage?: UsageMetadata; latencyMs?: number } | undefined)
-                  ?.usage
-              ) {
-                const metadata = parsed.metadata as {
-                  usage: UsageMetadata;
-                  latencyMs?: number;
-                };
-                usageData = {
-                  inputTokens: metadata.usage.inputTokens,
-                  outputTokens: metadata.usage.outputTokens,
-                  totalTokens: metadata.usage.totalTokens,
-                  latencyMs: metadata.latencyMs || Date.now() - startTime,
-                };
+              } else if (parsed.metadata) {
+                const metadata = parsed.metadata as { usage?: unknown; latencyMs?: unknown };
+                const usage =
+                  metadata.usage && typeof metadata.usage === 'object'
+                    ? parseMessageUsage({ ...metadata.usage, latencyMs: metadata.latencyMs })
+                    : undefined;
+                // Mantle sends no latency: measure it here
+                if (usage) usageData = { latencyMs: Date.now() - startTime, ...usage };
               }
             }
           }
@@ -504,15 +470,13 @@ export function useBedrockChat({
         // Flush the last pending frame so the final chunk always shows
         flushNow();
 
-        // Set usage metadata if available
+        // Show the reply's usage; the context meter and the cost are read from the messages
         if (usageData) {
-          setMetadata(usageData);
-          // Update cumulative usage
-          setCumulativeUsage((prev) => ({
-            inputTokens: prev.inputTokens + (usageData.inputTokens || 0),
-            outputTokens: prev.outputTokens + (usageData.outputTokens || 0),
-            totalTokens: prev.totalTokens + (usageData.totalTokens || 0),
-          }));
+          const usage = usageData;
+          assistantMessage.usage = usage;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantMessage.id ? { ...m, usage } : m))
+          );
         }
 
         // Persist assistant message to DB - include reasoning in <think> tags
@@ -531,7 +495,7 @@ export function useBedrockChat({
           modelId,
           modelName,
           parameters,
-          usage: usageData || undefined,
+          usage: usageData,
         });
         // Give the shown message the stored id, so feedback on it finds the DB row
         setMessages((prev) =>
@@ -647,7 +611,6 @@ export function useBedrockChat({
         setInternalConversationId(forked.id);
         onConversationChange?.(forked.id);
         setMessages(history);
-        setMetadata(null);
         setWasInterrupted(false);
         await sendMessage(content, undefined, { conversationId: forked.id, history });
       } catch (err) {
@@ -690,8 +653,6 @@ export function useBedrockChat({
     messages,
     status,
     error,
-    metadata,
-    cumulativeUsage,
     wasInterrupted,
     sendMessage,
     regenerate,
@@ -700,7 +661,6 @@ export function useBedrockChat({
     rateMessage,
     stopGeneration,
     clearMessages,
-    resetUsage,
   };
 }
 

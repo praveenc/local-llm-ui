@@ -9,7 +9,6 @@
 
 import {
   ArrowUp,
-  Bot,
   Copy,
   Loader2,
   RefreshCw,
@@ -21,15 +20,17 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 
+import type { MessageUsage } from '../../db/types';
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
 import { useBedrockChat } from '../../hooks/useBedrockChat';
 import type { ToolCallPart } from '../../types/ai-messages';
 import { getReasoningContent, getTextContent, hasReasoning } from '../../types/ai-messages';
+import { summarizeChatUsage } from '../../utils/chatUsage';
 import { normalizeMediaType } from '../../utils/fileUtils';
 import { lookupFormat } from '../../utils/mediaTypes';
 import { getModelContextLimits } from '../../utils/modelContext';
@@ -38,6 +39,7 @@ import { formatQuoteMessage, quoteTagsToMarkdown } from '../../utils/quote';
 import { isFocusComposerShortcut } from '../../utils/shortcuts';
 import { supportsThinkingEffort, thinkingEffortOptions } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
+import { formatCost, formatLatency, formatTokens } from '../../utils/usage';
 import { WEB_SEARCH_PROVIDER_LABELS, getPrimaryWebSearchProvider } from '../../utils/webSearch';
 import {
   Conversation,
@@ -163,8 +165,6 @@ const ChatContainer = ({
     messages,
     status,
     error,
-    metadata,
-    cumulativeUsage,
     wasInterrupted,
     sendMessage,
     regenerate,
@@ -173,7 +173,6 @@ const ChatContainer = ({
     rateMessage,
     stopGeneration,
     clearMessages,
-    resetUsage,
   } = useBedrockChat({
     conversationId: externalConversationId ?? null,
     selectedModel,
@@ -185,6 +184,9 @@ const ChatContainer = ({
   });
 
   const isLoading = status === 'streaming' || status === 'submitted';
+
+  // Context use and cost come from the usage stored with each reply, so they survive a reload
+  const chatUsage = useMemo(() => summarizeChatUsage(messages), [messages]);
 
   // Get context limits for current model
   const contextLimits = selectedModel
@@ -202,18 +204,6 @@ const ChatContainer = ({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [composerDisabled]);
-
-  // Reset usage when model changes
-  const prevModelRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (selectedModel && prevModelRef.current !== selectedModel.id) {
-      if (prevModelRef.current !== null) {
-        // Model changed, reset usage
-        resetUsage();
-      }
-      prevModelRef.current = selectedModel.id;
-    }
-  }, [selectedModel, resetUsage]);
 
   // Connect clearMessages to parent's ref for "New Conversation" button
   useEffect(() => {
@@ -449,11 +439,14 @@ const ChatContainer = ({
                               >
                                 <RefreshCw className="h-3 w-3" />
                               </MessageAction>
+                              {message.usage && (
+                                <ReplyUsage
+                                  usage={message.usage}
+                                  cost={chatUsage.replyCosts.get(message.id)}
+                                />
+                              )}
                             </MessageActions>
                           )}
-                          {message.role === 'assistant' &&
-                            index === lastAssistantIndex &&
-                            metadata && <MetadataRow metadata={metadata} />}
                           {message.role === 'assistant' &&
                             index === lastAssistantIndex &&
                             wasInterrupted && <InterruptedIndicator />}
@@ -574,9 +567,7 @@ const ChatContainer = ({
                   setMaxToolSteps={setMaxToolSteps}
                   disabled={isLoading}
                 />
-                {(messages.length > 0 || (contextLimits && cumulativeUsage.totalTokens > 0)) && (
-                  <span aria-hidden className="mx-1 h-5 w-px bg-border" />
-                )}
+                {messages.length > 0 && <span aria-hidden className="mx-1 h-5 w-px bg-border" />}
                 {messages.length > 0 && (
                   <PromptInputButton
                     onClick={clearMessages}
@@ -588,14 +579,8 @@ const ChatContainer = ({
                     <Trash2 className="size-4" />
                   </PromptInputButton>
                 )}
-                {contextLimits && cumulativeUsage.totalTokens > 0 && (
-                  <ContextIndicator
-                    usedTokens={cumulativeUsage.totalTokens}
-                    maxTokens={contextLimits.contextWindow}
-                    inputTokens={cumulativeUsage.inputTokens}
-                    outputTokens={cumulativeUsage.outputTokens}
-                    modelId={contextLimits.tokenlensModelId || undefined}
-                  />
+                {contextLimits && (
+                  <ContextIndicator usage={chatUsage} maxTokens={contextLimits.contextWindow} />
                 )}
                 <PromptInputSubmitWithAttachments
                   inputValue={inputValue}
@@ -644,38 +629,29 @@ const EmptyState = ({
   </div>
 );
 
-const MetadataRow = ({
-  metadata,
-}: {
-  metadata: {
-    inputTokens?: number;
-    outputTokens?: number;
-    totalTokens?: number;
-    latencyMs?: number;
-  };
-}) => (
-  <div className="flex justify-start mt-2 compact:mt-1">
-    <div className="flex flex-wrap items-center gap-4 text-xs tabular-nums text-muted-foreground">
-      <div className="flex items-center gap-1">
-        <Bot className="h-3 w-3" />
-        <span>Generated by AI</span>
-      </div>
-      <span className="text-border">|</span>
-      <div className="flex items-center gap-3">
-        {metadata.inputTokens !== undefined && (
-          <span>↑ Input: {metadata.inputTokens.toLocaleString()} tokens</span>
-        )}
-        {metadata.outputTokens !== undefined && (
-          <span>↓ Output: {metadata.outputTokens.toLocaleString()} tokens</span>
-        )}
-        {metadata.totalTokens !== undefined && (
-          <span>= Total: {metadata.totalTokens.toLocaleString()} tokens</span>
-        )}
-        {metadata.latencyMs !== undefined && <span>⏱ {metadata.latencyMs}ms</span>}
-      </div>
-    </div>
-  </div>
-);
+/** Tokens, time and cost of one reply, after its action buttons */
+const ReplyUsage = ({ usage, cost }: { usage: MessageUsage; cost?: number }) => {
+  const input = usage.inputTokens ?? 0;
+  const output = usage.outputTokens ?? 0;
+  const calls = usage.steps?.length ?? 0;
+  const details = [
+    `Input: ${input.toLocaleString()} tokens`,
+    usage.cacheReadTokens ? `${usage.cacheReadTokens.toLocaleString()} read from the cache` : '',
+    `Output: ${output.toLocaleString()} tokens`,
+    usage.reasoningTokens ? `${usage.reasoningTokens.toLocaleString()} reasoning` : '',
+    calls > 1 ? `${calls} model calls` : '',
+    cost !== undefined ? `Cost: ${formatCost(cost)}` : 'No price data',
+  ].filter(Boolean);
+
+  return (
+    <p className="ml-2 text-xs tabular-nums text-muted-foreground" title={details.join(' · ')}>
+      {formatTokens(input)} in · {formatTokens(output)} out
+      {usage.latencyMs !== undefined && <> · {formatLatency(usage.latencyMs)}</>}
+      {/* Free replies and fractions of a hundredth of a cent stay in the tooltip */}
+      {cost !== undefined && cost >= 0.0001 && <> · {formatCost(cost)}</>}
+    </p>
+  );
+};
 
 // Submit button that checks both text input and attachments
 const PromptInputSubmitWithAttachments = ({

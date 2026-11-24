@@ -8,6 +8,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 
 import { mantleReasoningEffort } from '../src/utils/thinkingEffort.ts';
 import { capMaxTokens, endStreamWithError, readBodyWithLimit, setCORSHeaders } from './security.ts';
+import { openAIUsage } from './usage.ts';
 
 // Supported Mantle regions
 const MANTLE_REGIONS = [
@@ -336,19 +337,10 @@ async function handleChat(
               res.write(`data: ${JSON.stringify({ content })}\n\n`);
             }
 
-            // Check for usage info in the final chunk
-            if (parsed.usage) {
-              res.write(
-                `data: ${JSON.stringify({
-                  metadata: {
-                    usage: {
-                      inputTokens: parsed.usage.prompt_tokens,
-                      outputTokens: parsed.usage.completion_tokens,
-                      totalTokens: parsed.usage.total_tokens,
-                    },
-                  },
-                })}\n\n`
-              );
+            // Usage is in the final chunk. Mantle has no tool loop: the reply is one model call.
+            const usage = openAIUsage(parsed.usage);
+            if (usage) {
+              res.write(`data: ${JSON.stringify({ metadata: { usage } })}\n\n`);
             }
           } catch {
             // Skip malformed JSON
