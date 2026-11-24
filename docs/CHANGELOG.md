@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scrollbars are the default width; the thumb keeps the theme's colour at 3:1 contrast ([#62])
 - Claude prices are current (copied 2026-11-24) and cover Claude 4.6 to 5.5, the Haiku 5.5 long-prompt price, cache prices, and the Bedrock regional price; a model without a price shows "No price data", not $0.00, and local models show "Free"
 - Claude 4.6 and later models have a 1M-token context window in the context indicator, on every provider
+- Replies are easier to read: 15 px text with a 1.65 line height, paragraphs and lists at most 70 characters wide, list bullets outside the text, and headings, code, and tables sized from the reply text; the chat column is 768 px wide
+- Calmer surfaces: the user's messages, the avatar, inline code, and code blocks no longer take the theme tint; the chat input is closer to the page colour; Neutral body text is 15:1 instead of 18:1; dark themes use thinner font smoothing on macOS
+- README: the Neutral theme, the System appearance, and the bundled fonts
 - A long reply updates the screen at most once per frame while it streams ([#62])
 
 #### Fixed

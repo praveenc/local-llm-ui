@@ -47,7 +47,7 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 - Keep all chats in your browser (IndexedDB). No account is necessary.
 - Select text in a reply and ask about it with **Quote and Ask**.
 - Save prompts that you use frequently.
-- Pick a color theme (Cosmic Night, Cobaltz, or Rosé Pine), each with a light and a dark variant.
+- Pick a color theme (Neutral, Cosmic Night, Cobaltz, or Rosé Pine), each with a light and a dark variant. The app can follow the light or dark setting of your system.
 
 ## Quick start
 
@@ -313,7 +313,12 @@ To use a saved prompt:
 
 ### Themes and display
 
-To change the theme, click the palette button in the header and select a theme. In the same menu, you can select Light or Dark. The sun and moon button next to it changes between the light and the dark variant with one click.
+To change the theme, click the palette button in the header and select a theme. In the same menu, select the appearance:
+
+- **System** (the default): the app uses the light or dark setting of your system, and changes when the system setting changes.
+- **Light** or **Dark**: the app always uses that variant.
+
+The sun and moon button next to the palette button changes to the other variant with one click.
 
 You can also select the theme in **Preferences → Display**. The same tab has two more settings:
 
@@ -322,9 +327,12 @@ You can also select the theme in **Preferences → Display**. The same tab has t
 
 | Theme | Light variant | Dark variant | Code colors (light / dark) |
 |---|---|---|---|
-| Cosmic Night (default) | Light | Dark | One Light / One Dark Pro |
+| Neutral (default) | Light, teal accent | Dark, teal accent | GitHub Light / GitHub Dark |
+| Cosmic Night | Light | Dark | One Light / One Dark Pro |
 | [Cobaltz](https://github.com/praveenc/cobaltz) | Cobaltz Light, blue accent | Cobaltz, deep cobalt with a gold accent | Cobaltz Light / Cobaltz |
 | [Rosé Pine](https://rosepinetheme.com/palette/) | Rosé Pine Dawn, pine accent | Rosé Pine, rose accent | Rosé Pine Dawn / Rosé Pine |
+
+Replies use the Inter font and code uses JetBrains Mono. The app includes both fonts, so they look the same on all systems.
 
 The app loads the syntax highlighter when the first code block shows, not when the page loads.
 

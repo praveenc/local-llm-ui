@@ -26,19 +26,19 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | D1 | Remove the sticky model badge and show a "Switched to…" divider when the model changes? | Approved | Part of item 4 |
 | D2 | Keep only one of the theme controls in the header? | No. Keep the palette menu (with Light and Dark) and the moon button. | Item 9 is dropped |
 | D3 | Save Preferences when a setting changes, and remove the Save button? | Approved | Item 11 moves from P3 to P2 |
-| D4 | Which font? | Inter and JetBrains Mono are bundled since PR #62 (commit 5338e15). Open: keep them, or change after the type specimen review. The size, line height, and line length are open too. | See [Typography](#typography) |
+| D4 | Which font? | Keep Inter and JetBrains Mono (bundled since PR #62). PR 2 sets the size, line height, line length, and spacing from [Typography](#typography). | Items 2 and 8, in PR 2 |
 | D5 | Centred composer on an empty chat? | Approved | Item 13, in PR 4 |
 
 ## Progress
 
 | Item | Title | PR | State |
 |---|---|---|---|
-| 1 | Correct the context and cost numbers | 1 `fix/context-usage` | Done, waits on PR merge |
-| 5 | Usage on every reply | 1 `fix/context-usage` | Done, waits on PR merge |
-| 6 | Context meter states | 1 `fix/context-usage` | Done, waits on PR merge |
-| 2 | Comfortable reading column | 2 `feat/typography` | Waits on D4 |
-| 8 | Calmer surfaces | 2 `feat/typography` | Waits on D4 |
-| 14 | README | 2 `feat/typography` | Not started |
+| 1 | Correct the context and cost numbers | 1 `fix/context-usage` ([#63](https://github.com/praveenc/local-llm-ui/pull/63)) | Done, merged |
+| 5 | Usage on every reply | 1 `fix/context-usage` ([#63](https://github.com/praveenc/local-llm-ui/pull/63)) | Done, merged |
+| 6 | Context meter states | 1 `fix/context-usage` ([#63](https://github.com/praveenc/local-llm-ui/pull/63)) | Done, merged |
+| 2 | Comfortable reading column | 2 `feat/typography` | Done, waits on PR |
+| 8 | Calmer surfaces | 2 `feat/typography` | Done, waits on PR |
+| 14 | README | 2 `feat/typography` | Done, waits on PR |
 | 3 | Work row | 3 `feat/work-row` | Not started |
 | 7 | Web search state in words | 3 `feat/work-row` | Not started |
 | 4 | Fewer controls | 4 `feat/lean-chrome` | Not started |
@@ -52,6 +52,8 @@ This document reviews the current chat UI and proposes changes, in order of impa
 
 - **Model picker search (PR 1 testing).** A search with a dot finds nothing: "Haiku 5.5" shows "No models found", but "Haiku 5" lists Claude Haiku 5.5. Planned for PR 4 (`feat/lean-chrome`, item 4), which changes the model chip.
 - **Context window per model.** Claude 4.6 and later models have a 1M-token window. The app used 200K for all Claude models. PR 1 fixes this for Anthropic, Bedrock, and OpenRouter.
+- **Composer width (PR 2).** The chat input stays 896 px wide in PR 2, wider than the 768 px reading column. With a long model name such as "Global Anthropic Claude Haiku 5.5 Amazon Bedrock", the toolbar does not fit in one row at 768 px, and it wraps to two rows also at 896 px when the context indicator shows. PR 4 shortens the model chip; then the input can take the column width.
+- **Sticky model badge (PR 2).** The badge covers the first line of the reply under it while you scroll. PR 4 removes it (D1).
 
 ## What the product needs
 
@@ -192,6 +194,23 @@ Effort is relative. **S** is one or two files. **M** is several components and t
   - ~~A **System** appearance follows the OS light or dark setting.~~ Done in PR #62.
   - The contrast table above is calculated again for all eight variants before and after the change. Muted text must stay at 4.5:1 or more.
 - **Trade-offs:** The themes look a little less different from each other.
+- **Done in PR 2:**
+  - Neutral body text: `#222222` on the light page (15.2:1, was 18.1:1) and `#e0e0e0` on the dark page (14.3:1, was 16.1:1). The other themes keep their own text colours.
+  - The user's messages and the avatar use `--surface-quiet`, a 5% (light) or 7% (dark) mix of the text colour into the page, not the theme tint. Inline code uses it too. Code blocks have a neutral frame.
+  - The chat input uses `--composer`, halfway between the card and the page.
+  - Dark themes use thinner font smoothing on macOS.
+  - Contrast after the change, calculated from the tokens:
+
+    | Theme | Body text on page | Text on user message | Muted text on user message | Muted text on chat input |
+    | --- | --- | --- | --- | --- |
+    | Neutral Light | 15.24 | 13.86 | 5.27 | 5.92 |
+    | Neutral Dark | 14.30 | 12.42 | 6.50 | 7.21 |
+    | Cosmic Night Light | 12.68 | 11.59 | 4.70 | 5.35 |
+    | Cosmic Night Dark | 14.89 | 12.94 | 6.52 | 7.14 |
+    | Cobaltz Light | 15.24 | 13.85 | 4.75 | 5.32 |
+    | Cobaltz Dark | 15.79 | 12.90 | 4.92 | 5.77 |
+    | Rosé Pine Dawn | 8.69 | 8.04 | 5.12 | 5.68 |
+    | Rosé Pine Main | 13.39 | 11.40 | 4.67 | 5.30 |
 
 #### 10. Conversation search in the sidebar
 
@@ -388,7 +407,7 @@ One PR for each group, in this order:
 | PR | Branch | Items | Waits on |
 |---|---|---|---|
 | 1 | `fix/context-usage` | 1, 5, 6 | Nothing |
-| 2 | `feat/typography` | 2, 8, 14 | D4 (font) |
+| 2 | `feat/typography` | 2, 8, 14 | Nothing (PR 1 merged as #63) |
 | 3 | `feat/work-row` | 3, 7 | Nothing |
 | 4 | `feat/lean-chrome` | 4, 10, 13 | Nothing |
 | 5 | `feat/preferences-autosave` | 11, 12 | Nothing |
