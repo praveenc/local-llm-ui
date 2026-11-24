@@ -8,8 +8,8 @@ import { Check } from 'lucide-react';
 
 import { type ReactNode, useState } from 'react';
 
+import { SecretInput } from '@/components/shared/SecretInput';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
@@ -126,10 +126,8 @@ export function ProviderSettings({ preferences, onUpdate }: ProviderSettingsProp
                   <div id={panelId} className="space-y-3 border-t bg-muted/40 py-3 pl-10 pr-3">
                     <div className="space-y-1.5">
                       <Label htmlFor={`provider-${option.value}-key`}>{option.label} API key</Label>
-                      <Input
+                      <SecretInput
                         id={`provider-${option.value}-key`}
-                        type="password"
-                        autoComplete="off"
                         autoFocus
                         value={preferences[field] || ''}
                         onChange={(e) => onUpdate(field, e.target.value.trim())}

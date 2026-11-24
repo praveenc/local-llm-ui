@@ -8,8 +8,8 @@ import { Check } from 'lucide-react';
 
 import { useState } from 'react';
 
+import { SecretInput } from '@/components/shared/SecretInput';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Switch } from '@/components/ui/switch';
@@ -134,10 +134,8 @@ export function WebSearchSettings({ preferences, onUpdate }: WebSearchSettingsPr
                 {isEditing && (
                   <div id={panelId} className="space-y-1.5 border-t bg-muted/40 py-3 pl-10 pr-3">
                     <Label htmlFor={`${id}-key`}>{label} API key</Label>
-                    <Input
+                    <SecretInput
                       id={`${id}-key`}
-                      type="password"
-                      autoComplete="off"
                       autoFocus
                       value={preferences[field] || ''}
                       onChange={(e) => updateKey(provider, e.target.value.trim())}
