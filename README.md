@@ -174,7 +174,7 @@ The app remembers the model that you used last. New chats start with this model,
 
 ### Thinking effort
 
-For models that can think before they answer, a **Thinking** button shows next to the model picker. Click it and select a level:
+For models that can think before they answer, a **Thinking** button shows next to the model picker. When the chat input is narrow, the button shows only the level, for example **XHigh**. Click it and select a level:
 
 | Level | What the app sends |
 |---|---|

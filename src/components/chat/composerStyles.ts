@@ -15,6 +15,25 @@ export const composerCard = [
   'has-[[data-slot=input-group-control]:focus-visible]:ring-primary/10',
 ].join(' ');
 
+/**
+ * The message box. Padding is 16 px at the sides and top and 8 px below; the footer adds 4 px, so
+ * there are 12 px between the text and the toolbar. It grows to 40% of the window, at most
+ * 320 px, and then scrolls inside. Compact density takes 4 px off the top.
+ */
+export const composerTextarea = [
+  'px-4 pt-4 pb-2 compact:pt-3',
+  'max-h-[min(40vh,20rem)]',
+  'text-base leading-relaxed md:text-[15px] placeholder:text-muted-foreground',
+].join(' ');
+
+/**
+ * The minimum height is a whole number of text lines. `lh` is the line height of the textarea
+ * itself, so it is right at 16 px (mobile) and 15 px (md and up). The rem part is the padding.
+ * An empty chat shows three lines; once the chat has messages, the input at the bottom shows two.
+ */
+export const composerTextareaEmpty = 'min-h-[calc(3lh+1.5rem)] compact:min-h-[calc(3lh+1.25rem)]';
+export const composerTextareaBottom = 'min-h-[calc(2lh+1.5rem)] compact:min-h-[calc(2lh+1.25rem)]';
+
 /** Round icon-only button */
 export const composerIconButton =
   'size-11 md:size-8 shrink-0 rounded-full p-0 text-muted-foreground hover:bg-accent hover:text-foreground has-[>svg]:p-0 dark:hover:bg-accent';

@@ -61,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preferences saves each setting when you change it; typed values (API keys, avatar initials, MCP server fields) save when you stop typing, leave the field, push Enter, or close the dialog. The footer shows "Saved", and one Done button replaces Save and Cancel. Theme changes in Preferences show at once
 - Message action icons (rating, copy, regenerate) are 16 px instead of 12 px
 - A long reply updates the screen at most once per frame while it streams ([#62])
+- The chat input is more comfortable: it shows three lines of text in a new chat and two lines in a chat with messages, with 12 px around the text and the toolbar and 4 px between the buttons. It grows to 40% of the window, at most 320 px, before it scrolls. When the chat input is narrower than 768 px, the Thinking button shows only its level
 
 #### Fixed
 
@@ -85,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A model search with a dot, for example "Haiku 5.5", found nothing
 - The scroll-to-bottom button covered the text of the chat; it now sits in a strip between the chat and the chat input
 - On narrow screens the chat input covered the end of the chat when its toolbar took more than one row; the chat now ends above the measured height of the input
+- The empty Saved Prompts list said to click a bookmark button that is gone; it now says to click + and then Save as prompt
 
 ## [1.1.0] - 2026-11-12
 

@@ -1,6 +1,6 @@
 # UI and UX improvements
 
-Status: approved, in progress. Last updated 2026-11-24. See [Progress](#progress) for the state of each item.
+Status: Plan 1 (items 1 to 14) is done. [Plan 2](#plan-2) (items 15 to 18) is approved and in progress. Last updated 2026-11-24. See [Progress](#progress) for the state of each item.
 
 This document reviews the current chat UI and proposes changes, in order of impact. It also records the decisions made so far and the questions that are still open.
 
@@ -18,6 +18,7 @@ This document reviews the current chat UI and proposes changes, in order of impa
 - [Projected scores](#projected-scores)
 - [Delivery plan](#delivery-plan)
 - [Open questions](#open-questions)
+- [Plan 2](#plan-2)
 
 ## Decisions
 
@@ -28,6 +29,14 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | D3 | Save Preferences when a setting changes, and remove the Save button? | Approved | Item 11 moves from P3 to P2 |
 | D4 | Which font? | Keep Inter and JetBrains Mono (bundled since PR #62). PR 2 sets the size, line height, line length, and spacing from [Typography](#typography). | Items 2 and 8, in PR 2 |
 | D5 | Centred composer on an empty chat? | Approved | Item 13, in PR 4 |
+| D6 | How tall is the chat input? | (b): three lines in an empty chat, two lines at the bottom | Item 15, PR 6 |
+| D7 | How do the sidebar groups look? | (b): the groups stay collapsible, with larger headers. The app keeps the open groups after a reload. | Item 16, PR 7 |
+| D8 | Which date groups? | (a): Today, Yesterday, Previous 7 days, Previous 30 days, then one group for each month | Item 16, PR 7 |
+| D9 | What else does a sidebar row show? | (a): the time of the last message at the right. The "…" button takes its place on hover and focus. | Item 16, PR 7 |
+| D10 | What does the globe button do when search is on by default? | (a): it changes the open chat only. The next chat starts from the preference again. | Item 17, PR 8 |
+| D11 | What happens with models that cannot call tools? | (a): Ollama models without the "tools" capability get no tools, and the globe and MCP buttons say "This model cannot use tools" | Item 17, PR 8 |
+| D12 | How do you start a rename in the header? | (a): click the title. A pencil button shows on hover and focus. | Item 18, PR 9 |
+| D13 | Does a rename move the chat to the top of the sidebar? | (a): no. A rename keeps the date of the last message. | Item 18, PR 9 |
 
 ## Progress
 
@@ -47,6 +56,10 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 11 | Preferences save on change | 5 `feat/preferences-autosave` ([#68](https://github.com/praveenc/local-llm-ui/pull/68)) | Done, merged |
 | 12 | Accessibility polish | 5 `feat/preferences-autosave` ([#68](https://github.com/praveenc/local-llm-ui/pull/68)) | Done, merged |
 | 9 | One theme control | None | Dropped (D2) |
+| 15 | A more comfortable chat input | 6 `feat/composer-comfort` ([#70](https://github.com/praveenc/local-llm-ui/pull/70)) | PR open |
+| 16 | Sidebar groups with more structure | 7 `feat/sidebar-groups` ([#71](https://github.com/praveenc/local-llm-ui/pull/71)) | PR open |
+| 17 | Web search on by default | 8 `feat/web-search-default` | Planned, after PR 6 |
+| 18 | Rename a chat from the header | 9 `feat/rename-title` | Planned, after PR 7 |
 
 ### Found during the work
 
@@ -438,4 +451,138 @@ Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes.
 
 ## Open questions
 
-1. **D4:** Keep Inter and JetBrains Mono or change them, and which size, line height, word spacing, and line length? Choose in the type specimen.
+None. D4 is decided: Inter and JetBrains Mono stay. D6 to D13 are decided: see [Decisions](#decisions).
+
+## Plan 2
+
+Plan 2 starts after PRs #63 to #69. It adds four items (15 to 18) and the decisions D6 to D13. All decisions have answers; the [Decisions](#decisions) table records them.
+
+Evidence comes from `main` at `6d09748` and from three screenshots of 2026-11-24: an empty chat (Grok 4.7), the Saved Prompts dialog, and an open chat with the header title marked "Make this editable".
+
+### 15. A more comfortable chat input
+
+- **Categories:** Visual hierarchy, Core flows. **Effort:** S.
+- **Problem:** The chat input looks cramped. It shows one line of text, the text sits close to the toolbar, and the toolbar buttons almost touch. The empty chat uses the same small card under a 24 px heading, so the input does not look like the main control of the page.
+- **Evidence:**
+  - `ChatContainer.tsx:572`: the textarea is `min-h-14 px-4 pt-4 pb-1`. 56 px fits one line of 15 px text (24 px high at line height 1.625) and 20 px of padding.
+  - `ChatContainer.tsx:572` and `:574`: 4 px under the text (`pb-1`) and 4 px above the toolbar (`pt-1`) leave 8 px between the text and the buttons.
+  - `ChatContainer.tsx:575` and `:616`: 2 px between toolbar buttons (`gap-0.5`).
+  - `ChatContainer.tsx:574`: 10 px around the toolbar (`px-2.5 pb-2.5`), less than the 16 px around the text.
+  - `prompt-input.tsx:901`: the textarea grows to 192 px (`max-h-48`), about 7 lines, and then scrolls.
+  - `ChatContainer.tsx:527` and `:528`: the empty chat and the bottom position use the same textarea height.
+  - Screenshots 1 and 3.
+- **Fix** (D6 (b)):
+  - The textarea shows two lines at the bottom and three lines in an empty chat. That is about 72 px and 96 px.
+  - 12 px between the text and the toolbar. 12 px around the toolbar, so the space inside the card is even.
+  - 4 px between toolbar buttons (`gap-1`).
+  - The textarea grows to 40% of the window height, at most 320 px, before it scrolls.
+  - No shadow and no new colour. The card keeps its border and `--composer` fill (item 8).
+  - The toolbar must stay on one row at 768 px with the longest model label (38 characters), the Thinking chip, the Search chip, and the context ring. Measure this in the browser before the PR opens.
+- **Trade-offs:** At the bottom, the input is 16 px taller, so a phone shows a little less of the chat. The chat already ends above the measured input height (item 12), so no text goes under it.
+- **Done in PR 6:**
+  - The minimum height is a whole number of lines of the textarea's own line height: `calc(3lh + 1.5rem)` in an empty chat and `calc(2lh + 1.5rem)` at the bottom. Measured in Chromium: 97 px (3 lines) and 73 px (2 lines) at 15 px, and 102 px and 76 px at 16 px on a phone. Compact density keeps the line counts.
+  - 12 px between the text and the toolbar, 12 px around the toolbar, and 4 px between buttons. The textarea stops at `min(40vh, 320px)` and then scrolls: 320 px in a 900 px window, 240 px in a 600 px window.
+  - At a 1024 px window the chat input is 704 px wide. With Claude Sonnet 4.6 · Global, XHigh, Search on, and the context ring, the toolbar needed 44 px more, and it already wrapped before this PR. The word "Thinking" now hides when the chat input is narrower than 768 px (a container query). The icon, the level, and the accessible name ("Thinking: XHigh") stay. The toolbar is then one row at 1440 and 1024 px for 20 Claude models and the longest label (38 characters), with at least 15 px free.
+  - At 390 px the toolbar takes three rows, as before this PR.
+  - The empty Saved Prompts list says "Type a prompt in the chat input, click +, and then click Save as prompt."
+
+### 16. Sidebar groups with more structure
+
+- **Categories:** Core flows, Visual hierarchy. **Effort:** M.
+- **Problem:** The groups look like a plain file tree. Each header is a small grey line with a 12 px chevron and a count in brackets. Only one group is open when the app loads, so most chats are hidden behind closed groups. Each row has only its title, so rows look the same and give no sense of time. The groups use rolling windows with unclear names: "This Month" holds chats from 8 to 30 days ago, and "Older" holds everything before that in one long group.
+- **Evidence:**
+  - `ConversationList.tsx:61` to `:62`: "This Week" is the last 7 days and "This Month" is the last 30 days, not the calendar week or month.
+  - `ConversationList.tsx:65` to `:69`: the labels use title case ("This Week"). UI text is sentence case (guidelines, Controls and settings).
+  - `ConversationList.tsx:124` to `:137`: only Today opens, or Yesterday, or the first group. The open groups are in memory only (`:119`) and reset on reload.
+  - `ConversationList.tsx:232` and `:235`: 12 px header text and a 12 px chevron. The guidelines ask for icons of 16 px or more.
+  - `ConversationList.tsx:240`: the count "(12)" after each header.
+  - `ConversationList.tsx:249` and `:282`: each row is the title in 14 px, and nothing else.
+  - Screenshots 1 to 3: "This Month (12)" with eight rows that start "I have vast knowledge…" or "Find out everything…". Screenshot 2 shows three closed groups.
+- **Fix** (D7 (b), D8 (a), D9 (a)):
+  - The groups stay collapsible. A group header is 13 px, weight 500, muted, in sentence case, with a 16 px chevron and 12 px of space above it. On touch screens the header is 44 px high.
+  - The app stores the open groups in the browser (`localStorage`), so they stay the same after a reload. Groups that you have not opened or closed yet use the default: Today, Yesterday, and Previous 7 days open, older groups closed.
+  - A closed group shows its number of chats at the right, without brackets ("12"), so you can see how many chats it hides. An open group shows no number.
+  - The header of the group you scroll through stays at the top of the list (`position: sticky`), so you always see the period of the rows under it, and can close the group from there.
+  - Groups follow the calendar: Today, Yesterday, Previous 7 days, Previous 30 days, then one group for each month ("October", or "October 2025" for an earlier year).
+  - Each row shows the time of its last message at the right, in 12 px muted text with tabular figures: "14:05" in Today and Yesterday, "Mon" in Previous 7 days, "12 Oct" in older groups. The browser's locale sets the format.
+  - The "…" menu button takes the place of the time on hover and focus, so the title does not get narrower. On touch screens the button always shows, as it does today, next to the time.
+  - The open chat keeps its look (`bg-sidebar-active`, `text-tint-text`).
+  - Each header button is inside an `h3`, under the "Conversations" `h2` (`Sidebar.tsx:46`), so a screen reader can move from group to group. The button has `aria-expanded`.
+  - The list loads all active chats, not only the 50 newest (see [Found during the planning](#found-during-the-planning)).
+  - Search works as today: it opens every group with a match, and it does not change the stored open groups.
+  - Compact density keeps less space between rows and groups.
+- **Trade-offs:** Closed groups still hide chats, but you choose which ones, and the choice stays. A month group gets a new key each month, so it starts closed.
+
+```text
+Conversations
+[ Search chats              ]
+⌄ Today                        <- stays at the top while you scroll
+  continual-learning     14:05
+  system-design          09:12
+⌄ Yesterday
+  Find out everything…   18:40
+⌄ Previous 7 days
+  Howdy, Haiku. Tell…      Mon
+› Previous 30 days           8
+› October                   12
+```
+
+### 17. Web search on by default
+
+- **Categories:** Core flows, Chrome economy. **Effort:** M.
+- **Problem:** Web search starts off. You must click the globe button in each session before the model can search. There is no preference for it. Without a search key, the globe button still shows, at half opacity, and does nothing.
+- **Evidence:**
+  - `ChatContainer.tsx:192`: `useState(false)`. The state lives in the chat container. The container has no `key` (`AppShell.tsx:260`), so the state stays the same across chats in one session and goes back to off on reload.
+  - `webSearch.ts:28` to `:36`: the web search preferences hold the keys, the primary provider, and the fallback switch. There is no setting for search on or off.
+  - `WebSearchToggle.tsx:32` to `:36`, `:52`, and `:56`: without a key, the button shows with `opacity-50` and `aria-disabled`, and the tooltip asks for a key.
+  - `useBedrockChat.ts:228` and `:240` to `:241`: the request sends `enableWebSearch`, and the key headers only when it is on.
+  - `ollama-aisdk-proxy.ts:130`: when a request asks for search but has no key, the proxy returns an error. The browser must not send `enableWebSearch: true` without a key.
+  - `ollama-aisdk-proxy.ts:146` to `:150`: the proxy sends the tools to every model. `ollama.ts:23` to `:28` reads the model capabilities only for thinking.
+- **Fix:**
+  - A new preference, `webSearchByDefault`. It is on when it is not set (`prefs.webSearchByDefault !== false`), the same pattern as `isWebSearchFallbackEnabled` (`webSearch.ts:76`). Existing users get it on without a migration.
+  - **Preferences → Web Search** gets a switch at the top: "Search the web by default", with the line "New chats start with web search on. Use the globe button in the chat input to turn it off for one chat." It saves on change (D3). Without a key, the switch is off and disabled, with the line "Add a key to use this." The layout copies the fallback switch (`WebSearchSettings.tsx:163` to `:181`).
+  - The globe button shows only when a provider has a key (`getPrimaryWebSearchProvider(prefs) !== undefined`). It shows as soon as you add a key, because the chat input reads the preferences on each render (`ChatContainer.tsx:199`).
+  - New chats and chats that you open from the sidebar start with the preference. The globe button changes only the open chat (D10). The reset happens on **New chat** and when you select a chat, not when the first message creates the chat (`useBedrockChat.ts:147`), so a choice made before the first message stays.
+  - The request sends search only when it is on and a key is set.
+  - Ollama models without the "tools" capability get no tools, and the globe and MCP buttons say "This model cannot use tools" (D11). Ollama rejects tools for these models with "… does not support tools". Check this with a model that has no tool support during the testing. Other providers do not report tool support, so their behaviour stays the same.
+- **Trade-offs:**
+  - The model can search in every chat, so some replies use more tokens and more search quota. The model still decides when to search.
+  - Without a key, nothing in the chat input says that web search exists. The Web Search tab in Preferences and the README tell how to add a key.
+
+### 18. Rename a chat from the header
+
+- **Categories:** Core flows. **Effort:** S.
+- **Problem:** The title in the header is plain text. To rename a chat, you must find it in the sidebar, open its "…" menu, and click **Rename**. With the sidebar closed or on a phone, you must open the sidebar first. Most titles need a rename, because the app makes them from the first 47 characters of the first message and cuts the last word.
+- **Evidence:**
+  - `AppLayout.tsx:124` to `:126`: the header title is an `h1` with text only.
+  - `ConversationList.tsx:143` to `:154` and `:255` to `:270`: the only rename is in the sidebar row menu.
+  - `conversationService.ts:23` to `:27` and `:133`: the title is the first message, cut at 47 characters, plus "...". Screenshot 3 shows "Find out everything about the company trajector...".
+  - `conversationService.ts:80` to `:87`: an update sets `updatedAt` to now. The sidebar sorts and groups by `updatedAt` (`useConversations.ts:27`), so a rename moves an old chat to Today.
+  - `AppShell.tsx:71` to `:76`: the header reads the title with a live query, so it changes when the title changes in IndexedDB.
+- **Fix** (as recommended in D12 and D13):
+  - Click the title to edit it in place. A 16 px pencil button after the title shows on hover and focus, and always on touch screens. Its name is "Rename chat", so keyboard and screen reader users can start a rename too. The `h1` keeps the title as its text.
+  - The field uses the size and weight of the title (15 px, 600) and fills the free space in the header.
+  - **Enter** or a click outside saves. **Esc** cancels. An empty title is not saved, and the old title stays. Text in an IME composition does not save early (the same guard as `ConversationList.tsx:263`).
+  - The header and the sidebar use the same save rules, from one shared helper.
+  - A new chat ("New conversation") has no stored chat, so its title cannot be edited until the first message.
+  - A rename does not change `updatedAt` (D13), so the chat stays in its date group.
+- **Trade-offs:** A click on the title no longer selects its text for a copy. The text in the edit field can still be selected and copied.
+
+### Found during the planning
+
+- **Stale text in Saved Prompts.** The empty Saved Prompts dialog says "click the bookmark button to save it" (`ViewPromptsModal.tsx:192`, screenshot 2). PR 4 moved that button into the **+** menu as "Save as prompt". PR 6 changes the text to "Type a prompt in the chat input, click +, and then click Save as prompt."
+- **The sidebar shows only 50 chats.** `useConversations` loads the 50 newest chats (`useConversations.ts:20`), and the sidebar uses that default (`ConversationList.tsx:95`). Older chats do not show, and **Search chats** does not find them. PR 7 loads all active chats. A chat row holds no messages, so the list stays small.
+- **Titles cut in the middle of a word** (`conversationService.ts:26`). Plan 2 does not change this. A later item can cut at a space, or ask the model for a short title.
+
+### Delivery plan for Plan 2
+
+| PR | Branch | Items | Waits on |
+|---|---|---|---|
+| 6 | `feat/composer-comfort` | 15, stale Saved Prompts text | D6 |
+| 7 | `feat/sidebar-groups` | 16, the 50-chat limit | D7, D8, D9 |
+| 8 | `feat/web-search-default` | 17 | D10, D11, and PR 6 merged (both change the chat input toolbar in `ChatContainer.tsx`) |
+| 9 | `feat/rename-title` | 18 | D12, D13, and PR 7 merged (both change the rename code in `ConversationList.tsx`) |
+
+Merge order: 6, 7, 8, 9. PRs 6 and 7 can start at the same time. Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes: PR 7 for the groups ("Find a chat"), PR 8 for "Web search", and PR 9 for a new "Rename a chat" part.
+
+Each PR is tested as the guidelines say: headless Chromium with a real Bedrock reply, light and dark mode, 1440, 1024, and 390 px, no sideways scroll, and a reload. PR 7 also checks the contrast of the row time on the sidebar in all eight theme variants (muted text on the sidebar is 4.92:1 or more today).

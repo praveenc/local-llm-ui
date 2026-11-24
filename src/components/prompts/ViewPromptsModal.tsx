@@ -189,8 +189,7 @@ export function ViewPromptsModal({ visible, onDismiss, onInsertPrompt }: ViewPro
                         <div className="flex flex-col items-center gap-2">
                           <p className="font-medium">No saved prompts</p>
                           <p className="text-sm text-muted-foreground">
-                            Type a prompt in the chat input and click the bookmark button to save
-                            it.
+                            Type a prompt in the chat input, click +, and then click Save as prompt.
                           </p>
                         </div>
                       </TableCell>
