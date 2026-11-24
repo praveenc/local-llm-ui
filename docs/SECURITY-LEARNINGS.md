@@ -178,6 +178,8 @@ const ALLOWED_ORIGINS = new Set([
 
 Only recognized dev server origins get the CORS header. Same-origin requests (no `Origin` header) always work.
 
+**Superseded in part by SEC-13**: the guard now rejects every cross-origin request to `/api`, also from the origins in this list, before a proxy can set the header.
+
 **For custom headers** (e.g., Mantle API key):
 ```typescript
 setCORSHeaders(req, res, 'Content-Type, X-Mantle-Api-Key, X-Mantle-Region');
@@ -209,6 +211,45 @@ if (body === null) return; // 413 already sent
 ```typescript
 maxOutputTokens: capMaxTokens(request.max_tokens), // Math.min(val ?? 2048, 32768)
 ```
+
+### SEC-13: Same-Origin Guard
+
+**Before**: SEC-05 only stopped another site from *reading* a response. The request itself still ran. A page on any site could send a form post, or a `fetch` with `mode: 'no-cors'` and a `text/plain` body, to `http://localhost:5173/api/...`. These are "simple" requests, so the browser sends them without a preflight. The proxies parsed the body as JSON whatever its `Content-Type` was. So the page could:
+
+- start a chat that used the host's AWS credentials or API keys;
+- send `mcpServers` to `/api/bedrock-aisdk/mcp-status` or a chat route, and so start an allowed MCP command such as `npx -y <package>` on the host;
+- send requests to Ollama and LM Studio through `/api/ollama` and `/api/lmstudio`.
+
+**After** (`server/security.ts: checkApiRequest()`, `createApiGuard()`, `apiGuardPlugin()`): one middleware checks every HTTP request to `/api` before any proxy:
+
+1. When the request has `Sec-Fetch-Site`, the value must be `same-origin` or `none` (a typed URL). Browsers set this header, and a page cannot change it. `same-site` is rejected too, so another app on a different `localhost` port cannot call the API.
+2. When the request has no `Sec-Fetch-Site` but has `Origin` (older browsers, or a plain-HTTP address that is not `localhost`), the Origin host must equal `Host`. For an `https` Origin, `X-Forwarded-Host` can match too. The tunnel sends `Host: localhost:5173` and its public `https` host in `X-Forwarded-Host`, and it replaces any `X-Forwarded-Host` that the client sends.
+3. `POST`, `PUT`, `PATCH`, and `DELETE` must have `Content-Type: application/json`. A cross-site page cannot send JSON without a preflight, and the preflight fails rule 1 or 2.
+
+A request that fails rule 1 or 2 gets `403 {"error":"Cross-site request blocked"}`. A request that fails rule 3 gets `415`. The server logs one line for each rejected request. Requests with neither header (curl, scripts) are not from a browser and pass rules 1 and 2.
+
+The guard reads the path in two forms: the raw `req.url`, as most proxies match it, and the path after `new URL()`, as the OpenRouter proxy reads it (`/./api/x`, `/a/../api/x`, and `http://host/api/x` all become `/api/x`). Upper case counts too.
+
+```typescript
+// vite.config.ts
+plugins: [apiGuardPlugin(), tailwindcss(), react(), /* provider proxies */],
+server: { cors: false, /* ... */ },
+preview: { cors: false, /* ... */ },
+```
+
+**Order matters**:
+
+- Vite adds the middlewares of `configureServer` and `configurePreviewServer` in plugin order, sorted by `enforce`, and all of them before `server.proxy` and `preview.proxy`. The guard uses `enforce: 'pre'` and is the first plugin. Do not add another plugin with `enforce: 'pre'` or `order: 'pre'` that serves `/api`.
+- Vite's own CORS middleware runs before every plugin. It answers preflights from any `localhost` port with `Access-Control-Allow-Origin`. In a browser without `Sec-Fetch-Site`, a page on another port could then add a forged `X-Forwarded-Host`. `server.cors` and `preview.cors` are `false`, so preflights reach the guard and get 403. The app calls only its own origin, so it does not need Vite's CORS.
+
+`server/__tests__/api-guard.test.ts` starts real Vite servers in a child process: a test config with `server.proxy` and `preview.proxy`, and the app's own `vite.config.ts`. It checks that a cross-site post never reaches a proxy, that the guard runs first, and that a preflight from another `localhost` port fails.
+
+**Rules for new routes**:
+
+- A `GET` under `/api` must not change state. Older browsers send a cross-site `GET` (for example from `<img>`) without `Origin` or `Sec-Fetch-Site`, so rules 1 and 2 cannot stop it.
+- A WebSocket upgrade does not go through the middleware, so the guard does not see it. A route that accepts upgrades must check `Origin` itself.
+
+**What the guard does not do**: it does not authenticate. Anyone who can open the app in a browser can use it. Keep the dev server on `localhost`, and share it only through an authenticated tunnel.
 
 ---
 
@@ -305,6 +346,8 @@ All shared utilities live in `server/security.ts`:
 
 | Function | Purpose | Used By |
 |----------|---------|---------|
+| `apiGuardPlugin()` | Vite plugin that rejects cross-site and non-JSON requests to `/api` (SEC-13) | `vite.config.ts`, first plugin, `enforce: 'pre'` |
+| `checkApiRequest(req)` | The rules of the guard; returns `null` or a 403/415 rejection | `createApiGuard()` |
 | `setCORSHeaders(req, res, headers?)` | Restrict CORS to dev server origins | All proxies with CORS |
 | `readBodyWithLimit(req, res, maxSize?)` | Read body with 10MB limit, returns null + 413 on overflow | All proxies reading bodies |
 | `capMaxTokens(requested?)` | Cap maxOutputTokens at 32,768, default 2,048 | All proxies with token params |
@@ -375,6 +418,7 @@ Items identified but not yet implemented (long-term):
 | Date | Scope | Findings | Fixed |
 |------|-------|----------|-------|
 | 2026-03-06 | Full project (first audit) | 14 (1C, 3H, 5M, 2L, 3I) | 8 of 14 |
+| 2026-11-24 | `/api` routes before the Kiro provider | 1 (SEC-13: cross-site requests reach the proxies, including the MCP command start) | 1 of 1 |
 
 ---
 
@@ -382,7 +426,7 @@ Items identified but not yet implemented (long-term):
 
 ```
 server/
-├── security.ts             # Shared: CORS, body limits, token cap
+├── security.ts             # Shared: same-origin guard, CORS, body limits, token cap
 ├── mcp-manager.ts          # MCP: command allowlist, env allowlist, SSRF, timeout, validation
 ├── aisdk-proxy.ts          # Groq/Cerebras (uses security.ts)
 ├── anthropic-aisdk-proxy.ts # Anthropic (uses security.ts)

@@ -46,7 +46,7 @@ make fix                 # format + lint:fix
 
 ### Server Proxies (vite.config.ts → server/)
 
-Vite middleware keeps credentials and SDK calls on the server. Each chat proxy uses the AI SDK `streamText` with the shared tool loop (`tool-loop.ts`), web search tool (`web-search.ts`), and MCP tools (`mcp-manager.ts`). Shared helpers: `security.ts` (CORS, body limit, token cap, `endStreamWithError`), `think-tags.ts` (splits inline `<think>` tags into reasoning for Ollama and LM Studio).
+Vite middleware keeps credentials and SDK calls on the server. Each chat proxy uses the AI SDK `streamText` with the shared tool loop (`tool-loop.ts`), web search tool (`web-search.ts`), and MCP tools (`mcp-manager.ts`). Shared helpers: `security.ts` (`apiGuardPlugin`, the same-origin guard for every `/api` route: keep it the first plugin, add no other `enforce: 'pre'` plugin that serves `/api`, keep `server.cors` off, and add no `GET` that changes state; CORS, body limit, token cap, `endStreamWithError`), `think-tags.ts` (splits inline `<think>` tags into reasoning for Ollama and LM Studio).
 
 - `/api/bedrock` (models), `/api/bedrock-aisdk` (chat, MCP status) → AWS SDK
 - `/api/mantle` → Bedrock Mantle (OpenAI-compatible, no AI SDK)

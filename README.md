@@ -461,6 +461,8 @@ The React app runs in the browser. Vite middleware in `vite.config.ts` adds serv
 | `/api/openrouter` | OpenRouter |
 | `/api/aisdk` | Groq and Cerebras |
 
+The routes accept requests only from the pages of the app. A request from a different website gets the error 403. A request with a body (`POST`, `PUT`, `PATCH`, or `DELETE`) that is not JSON gets the error 415. Scripts and `curl` can still call the routes: they do not send the headers of a browser, but a request with a body must send `Content-Type: application/json`.
+
 ### Project structure
 
 ```text

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11
+
+#### Fixed
+
+- A web page on a different site could send requests to the `/api` routes: a form post could start a chat with your AWS credentials or API keys, or start an MCP server command. The routes now accept requests only from the app's own pages, and a request with a body must be JSON ([#76])
+
 ## [1.2.0] - 2026-11-24
 
 PR numbers link to GitHub.
@@ -221,6 +227,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#76]: https://github.com/praveenc/local-llm-ui/pull/76
 [#74]: https://github.com/praveenc/local-llm-ui/pull/74
 [#73]: https://github.com/praveenc/local-llm-ui/pull/73
 [#72]: https://github.com/praveenc/local-llm-ui/pull/72
