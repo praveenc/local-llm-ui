@@ -1194,7 +1194,7 @@ export const PromptInputSpeechButton = ({
     <PromptInputButton
       className={cn(
         'relative transition-colors duration-200',
-        isListening && 'animate-pulse bg-accent text-accent-foreground',
+        isListening && 'animate-pulse bg-accent text-accent-foreground motion-reduce:animate-none',
         className
       )}
       disabled={!isSpeechRecognitionSupported()}
