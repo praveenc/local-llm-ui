@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { modelLabel } from '@/utils/modelLabel';
 import { isModelPickerShortcut, modelPickerShortcutLabel } from '@/utils/shortcuts';
 
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
@@ -84,6 +85,7 @@ export function ModelSelectorButton({
   };
 
   const activeProviders = providers.filter((provider) => provider.models.length > 0);
+  const selectedLabel = selectedModel ? modelLabel(selectedModel).label : undefined;
   const unavailableProviders = providers.filter((provider) => provider.status === 'error');
   const checkingProviders = providers.filter((provider) => provider.status === 'loading');
 
@@ -95,7 +97,11 @@ export function ModelSelectorButton({
           size="sm"
           disabled={blocked}
           className={cn(composerChip, 'min-w-0 text-foreground', className)}
-          title={`Select model (${modelPickerShortcutLabel()})`}
+          title={
+            selectedModel
+              ? `${selectedModel.name} · ${selectedModel.providerName} (${modelPickerShortcutLabel()} to change)`
+              : `Select model (${modelPickerShortcutLabel()})`
+          }
           aria-keyshortcuts="Meta+K Control+K"
         >
           {isLoading ? (
@@ -109,14 +115,8 @@ export function ModelSelectorButton({
                 provider={PROVIDER_LOGO_MAP[selectedModel.provider] || selectedModel.provider}
                 className="size-3.5"
               />
-              <span
-                className="truncate max-w-[160px] sm:max-w-[260px] font-medium"
-                title={selectedModel.name}
-              >
-                {selectedModel.name}
-              </span>
-              <span className="hidden text-muted-foreground sm:inline">
-                {selectedModel.providerName}
+              <span className="truncate max-w-[160px] sm:max-w-[260px] font-medium">
+                {selectedLabel}
               </span>
               <ChevronDown className="size-3 opacity-60" />
             </>
@@ -142,7 +142,13 @@ export function ModelSelectorButton({
                   <ModelSelectorItem
                     key={`${model.provider}-${model.id}`}
                     value={`${model.provider}:${model.id}`}
-                    keywords={[model.providerName, model.family ?? '']}
+                    // The value is the ID; the name ("Claude Haiku 5.5", with its dot) is a keyword
+                    keywords={[
+                      model.name,
+                      modelLabel(model).label,
+                      model.providerName,
+                      model.family ?? '',
+                    ]}
                     onSelect={() => handleSelect(model)}
                     className="cursor-pointer items-start"
                   >
@@ -151,7 +157,9 @@ export function ModelSelectorButton({
                       className="mt-0.5 h-4 w-4"
                     />
                     <div className="min-w-0 flex-1">
-                      <ModelSelectorName>{model.name}</ModelSelectorName>
+                      <ModelSelectorName title={model.name}>
+                        {modelLabel(model).label}
+                      </ModelSelectorName>
                       {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
                     </div>
                     {selectedModel?.id === model.id &&

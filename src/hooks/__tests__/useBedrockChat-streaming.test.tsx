@@ -162,7 +162,7 @@ describe('useBedrockChat streaming', () => {
 
     const reply = result.current.messages.find((m) => m.role === 'assistant');
     expect(reply?.usage).toEqual({ ...usage, latencyMs: 2100 });
-    expect(reply?.model).toEqual({ provider: 'bedrock', id: 'anthropic.claude' });
+    expect(reply?.model).toEqual({ provider: 'bedrock', id: 'anthropic.claude', name: 'Claude' });
   });
 
   it('stores tool calls with the reply, marks a failed tool, and closes one left open', async () => {

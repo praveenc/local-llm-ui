@@ -53,4 +53,50 @@ describe('ModelSelectorButton', () => {
     expect(screen.getByText('LM Studio · Not running')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'How to start' })).toBeInTheDocument();
   });
+
+  it('shows a short label with the profile, and finds a model by a name with a dot', async () => {
+    const haiku = {
+      id: 'global.anthropic.claude-haiku-5-5',
+      name: 'Global Anthropic Claude Haiku 5.5',
+      provider: 'bedrock' as const,
+      providerName: 'Amazon Bedrock',
+    };
+    render(
+      <ModelSelectorButton
+        providers={[
+          {
+            provider: 'bedrock',
+            providerName: 'Amazon Bedrock',
+            status: 'success',
+            models: [
+              haiku,
+              {
+                id: 'us.anthropic.claude-sonnet-5-5',
+                name: 'US Anthropic Claude Sonnet 5.5',
+                provider: 'bedrock',
+                providerName: 'Amazon Bedrock',
+              },
+            ],
+          },
+        ]}
+        selectedModel={haiku}
+        onSelectModel={vi.fn()}
+      />
+    );
+    const chip = screen.getByRole('button', { name: /Claude Haiku 5\.5 · Global/ });
+    expect(chip).not.toHaveTextContent('Amazon Bedrock');
+    expect(chip).toHaveAttribute(
+      'title',
+      expect.stringContaining('Global Anthropic Claude Haiku 5.5 · Amazon Bedrock')
+    );
+
+    fireEvent.click(chip);
+    fireEvent.change(screen.getByPlaceholderText('Search models...'), {
+      target: { value: 'Sonnet 5.5' },
+    });
+    expect(
+      await screen.findByRole('option', { name: /Claude Sonnet 5\.5 · US/ })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Haiku/ })).not.toBeInTheDocument();
+  });
 });

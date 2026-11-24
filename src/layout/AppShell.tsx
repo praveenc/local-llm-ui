@@ -240,7 +240,7 @@ export default function AppShell() {
   return (
     <AppLayout
       title={activeTitle || 'New conversation'}
-      scope={selectedModel ? `${selectedModel.providerName} · ${selectedModel.name}` : undefined}
+      onNewChat={handleNewChat}
       navigationOpen={navigationOpen}
       onNavigationChange={setNavigationOpen}
       visualMode={userPreferences.visualMode}

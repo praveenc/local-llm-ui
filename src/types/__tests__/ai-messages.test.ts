@@ -30,7 +30,7 @@ describe('toUIMessage', () => {
     const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15, latencyMs: 900 };
     const ui = toUIMessage(dbMessage({ usage }));
     expect(ui.usage).toEqual(usage);
-    expect(ui.model).toEqual({ provider: 'ollama', id: 'llama3' });
+    expect(ui.model).toEqual({ provider: 'ollama', id: 'llama3', name: 'Llama 3' });
     expect(toUIMessage(dbMessage({ role: 'user' }))).not.toHaveProperty('model');
   });
 

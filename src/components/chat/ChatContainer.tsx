@@ -9,6 +9,7 @@
 
 import {
   ArrowUp,
+  BookmarkPlus,
   Copy,
   Loader2,
   RefreshCw,
@@ -16,7 +17,6 @@ import {
   StopCircle,
   ThumbsDown,
   ThumbsUp,
-  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -34,6 +34,7 @@ import { summarizeChatUsage } from '../../utils/chatUsage';
 import { normalizeMediaType } from '../../utils/fileUtils';
 import { lookupFormat } from '../../utils/mediaTypes';
 import { getModelContextLimits } from '../../utils/modelContext';
+import { modelLabel } from '../../utils/modelLabel';
 import { loadPreferences } from '../../utils/preferences';
 import { formatQuoteMessage, quoteTagsToMarkdown } from '../../utils/quote';
 import { isFocusComposerShortcut } from '../../utils/shortcuts';
@@ -59,10 +60,10 @@ import {
   PromptInputActionAddAttachments,
   PromptInputActionMenu,
   PromptInputActionMenuContent,
+  PromptInputActionMenuItem,
   PromptInputActionMenuTrigger,
   PromptInputAttachment,
   PromptInputAttachments,
-  PromptInputButton,
   PromptInputFooter,
   PromptInputHeader,
   PromptInputSubmit,
@@ -72,7 +73,6 @@ import {
 } from '../ai-elements/prompt-input';
 import { WorkRow } from '../ai-elements/work-row';
 import { FittedContainer } from '../layout';
-import { ActiveModelBadge } from './ActiveModelBadge';
 import { ChatErrorAlert } from './ChatErrorAlert';
 import { ContextIndicator } from './ContextIndicator';
 import { InferenceSettings } from './InferenceSettings';
@@ -81,7 +81,7 @@ import { ModelSelectorButton } from './ModelSelectorButton';
 import { ProviderChecklist } from './ProviderChecklist';
 import { QuoteRespondDialog } from './QuoteRespondDialog';
 import { type QuoteSelection, QuoteSelectionButton } from './QuoteSelectionButton';
-import { SavePromptButton } from './SavePromptButton';
+import { SavePromptDialog } from './SavePromptDialog';
 import { StreamStatusAnnouncer } from './StreamStatusAnnouncer';
 import { ThinkingEffortSelector } from './ThinkingEffortSelector';
 import { WebSearchToggle } from './WebSearchToggle';
@@ -92,6 +92,36 @@ import { composerCard, composerIconButton } from './composerStyles';
 const hasWork = (message: UIMessage | undefined) =>
   message?.role === 'assistant' &&
   message.parts.some((p) => p.type === 'reasoning' || p.type === 'tool-call');
+
+/** The short label of the model that wrote a reply, for example "Claude Haiku 5.5 · Global" */
+const replyModelLabel = (message: UIMessage): string | undefined =>
+  message.model?.name
+    ? modelLabel({
+        provider: message.model.provider,
+        id: message.model.id,
+        name: message.model.name,
+      }).label
+    : undefined;
+
+/**
+ * Where the model changes: a map from the index of the turn that starts the reply (the user
+ * message before it) to the new model's label. The first reply is not a change.
+ */
+function findModelSwitches(messages: UIMessage[]): Map<number, string> {
+  const switches = new Map<number, string>();
+  let previous: string | undefined;
+  messages.forEach((message, index) => {
+    if (message.role !== 'assistant' || !message.model) return;
+    const key = `${message.model.provider}:${message.model.id}`;
+    if (previous !== undefined && key !== previous) {
+      const label = replyModelLabel(message) ?? message.model.id;
+      const turnStart = messages[index - 1]?.role === 'user' ? index - 1 : index;
+      switches.set(turnStart, label);
+    }
+    previous = key;
+  });
+  return switches;
+}
 
 const getToolCalls = (message: { parts: Array<{ type: string }> }): ToolCallPart[] => {
   return message.parts.filter((p): p is ToolCallPart => p.type === 'tool-call');
@@ -191,6 +221,9 @@ const ChatContainer = ({
 
   // Context use and cost come from the usage stored with each reply, so they survive a reload
   const chatUsage = useMemo(() => summarizeChatUsage(messages), [messages]);
+  const modelSwitches = useMemo(() => findModelSwitches(messages), [messages]);
+  const isEmpty = messages.length === 0;
+  const [savePromptOpen, setSavePromptOpen] = useState(false);
 
   // Get context limits for current model
   const contextLimits = selectedModel
@@ -348,19 +381,11 @@ const ChatContainer = ({
       <div className="relative flex flex-col h-full">
         <FittedContainer>
           <div className="h-full pb-44">
-            {messages.length === 0 ? (
-              <EmptyState
-                selectedModel={selectedModel}
-                providers={providers}
-                isLoadingModels={isLoadingModels}
-                autoSelectNote={autoSelectNote}
-                onOpenPreferences={onOpenPreferences}
-              />
-            ) : (
+            {/* An empty chat has no transcript: the chat input sits in the middle instead */}
+            {isEmpty ? null : (
               <div ref={messagesRef} className="h-full">
                 <Conversation className="h-full max-w-3xl mx-auto">
                   <ConversationContent className="p-4 compact:p-3">
-                    {selectedModel && <ActiveModelBadge model={selectedModel} />}
                     {messages.map((message, index) => {
                       const isLastMessage = index === messages.length - 1;
                       const toolCalls = getToolCalls(message);
@@ -385,8 +410,10 @@ const ChatContainer = ({
                         </MessageContent>
                       );
 
+                      const switchedTo = modelSwitches.get(index);
                       return (
                         <Fragment key={message.id}>
+                          {switchedTo && <ModelSwitchDivider label={switchedTo} />}
                           <Message from={message.role} data-message-index={index}>
                             {showAvatar ? (
                               <div className="flex items-start justify-end gap-2">
@@ -432,6 +459,7 @@ const ChatContainer = ({
                                 <ReplyUsage
                                   usage={message.usage}
                                   cost={chatUsage.replyCosts.get(message.id)}
+                                  model={replyModelLabel(message)}
                                 />
                               )}
                             </MessageActions>
@@ -469,7 +497,27 @@ const ChatContainer = ({
           onSendToFork={handleQuoteToFork}
           forkDisabledReason={forkDisabledReason}
         />
-        <div className="absolute bottom-0 left-0 right-0 z-20 bg-background px-2 pb-2 pt-2 md:px-4 md:pb-4">
+        {/*
+         * The chat input: in the middle of an empty chat, under a heading, so you type where you
+         * look; at the bottom once the chat has messages. It is one element, so the text and the
+         * attachments stay when it moves. It moves without animation.
+         */}
+        <div
+          className={cn(
+            'absolute left-0 right-0 z-20 px-2 md:px-4',
+            isEmpty
+              ? 'inset-y-0 flex flex-col justify-center gap-4 overflow-y-auto pb-[12vh] pt-6 compact:gap-3'
+              : 'bottom-0 bg-background pb-2 pt-2 md:pb-4'
+          )}
+        >
+          {isEmpty && (
+            <EmptyHeader
+              selectedModel={selectedModel}
+              providers={providers}
+              isLoadingModels={isLoadingModels}
+              onOpenPreferences={onOpenPreferences}
+            />
+          )}
           <PromptInput
             onSubmit={handleSubmit}
             onError={handleFileError}
@@ -477,9 +525,7 @@ const ChatContainer = ({
             multiple
             maxFileSize={BEDROCK_DOC_MAX_SIZE}
             maxFiles={20}
-            // Wider than the reading column until PR 4 shortens the model chip: at 768 px the
-            // toolbar wraps to a second row
-            className="max-w-4xl mx-auto"
+            className="w-full max-w-3xl mx-auto"
             inputGroupClassName={composerCard}
           >
             <PromptInputHeader className="px-3 pb-0 pt-3 empty:hidden">
@@ -516,6 +562,13 @@ const ChatContainer = ({
                   />
                   <PromptInputActionMenuContent>
                     <PromptInputActionAddAttachments label="Add photos or files" />
+                    <PromptInputActionMenuItem
+                      disabled={isLoading || !inputValue.trim()}
+                      onSelect={() => setSavePromptOpen(true)}
+                    >
+                      <BookmarkPlus className="mr-2 size-4" aria-hidden />
+                      Save as prompt
+                    </PromptInputActionMenuItem>
                   </PromptInputActionMenuContent>
                 </PromptInputActionMenu>
                 <ModelSelectorButton
@@ -541,7 +594,6 @@ const ChatContainer = ({
                       options={thinkingEffortOptions(selectedModel.provider, selectedModel.id)}
                     />
                   )}
-                <SavePromptButton text={inputValue} disabled={isLoading} />
               </PromptInputTools>
               <PromptInputTools className="ml-auto gap-0.5">
                 <WebSearchToggle
@@ -559,17 +611,8 @@ const ChatContainer = ({
                   setMaxToolSteps={setMaxToolSteps}
                   disabled={isLoading}
                 />
-                {messages.length > 0 && <span aria-hidden className="mx-1 h-5 w-px bg-border" />}
-                {messages.length > 0 && (
-                  <PromptInputButton
-                    onClick={clearMessages}
-                    disabled={isLoading}
-                    className={cn(composerIconButton, 'hover:text-destructive')}
-                    aria-label="Clear chat"
-                    title="Clear chat"
-                  >
-                    <Trash2 className="size-4" />
-                  </PromptInputButton>
+                {contextLimits && chatUsage.contextTokens > 0 && (
+                  <span aria-hidden className="mx-1 h-5 w-px bg-border" />
                 )}
                 {contextLimits && (
                   <ContextIndicator usage={chatUsage} maxTokens={contextLimits.contextWindow} />
@@ -583,50 +626,76 @@ const ChatContainer = ({
               </PromptInputTools>
             </PromptInputFooter>
           </PromptInput>
+          {isEmpty && selectedModel && autoSelectNote && (
+            <p className="mx-auto max-w-3xl text-center text-sm text-muted-foreground">
+              {autoSelectNote}
+            </p>
+          )}
         </div>
+        <SavePromptDialog
+          open={savePromptOpen}
+          onOpenChange={setSavePromptOpen}
+          text={inputValue}
+        />
       </div>
     </>
   );
 };
 
-const EmptyState = ({
+/** Above the chat input of an empty chat: a heading, or the provider checklist without a model */
+const EmptyHeader = ({
   selectedModel,
   providers,
   isLoadingModels,
-  autoSelectNote,
   onOpenPreferences,
 }: {
   selectedModel: UnifiedModel | null;
   providers: ProviderModels[];
   isLoadingModels?: boolean;
-  autoSelectNote?: string;
   onOpenPreferences?: () => void;
-}) => (
-  <div className="flex flex-col items-center justify-center h-full min-h-[400px] gap-4 compact:gap-2">
-    {selectedModel ? (
-      <div className="max-w-xl px-4 text-center">
-        <h2 className="text-xl font-semibold text-foreground">Ready to chat</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Send a message to start chatting with <strong>{selectedModel.name}</strong>
-        </p>
-        {autoSelectNote && <p className="text-sm text-muted-foreground mt-2">{autoSelectNote}</p>}
-      </div>
-    ) : (
+}) =>
+  selectedModel ? (
+    <h2 className="mx-auto text-center text-2xl font-semibold text-foreground">
+      What can I help with?
+    </h2>
+  ) : (
+    <div className="mx-auto w-full max-w-3xl">
       <ProviderChecklist
         providers={providers}
         isLoading={isLoadingModels}
         onOpenPreferences={onOpenPreferences}
       />
-    )}
+    </div>
+  );
+
+/** Between two turns when the next reply comes from another model */
+const ModelSwitchDivider = ({ label }: { label: string }) => (
+  <div
+    role="separator"
+    aria-label={`Switched to ${label}`}
+    className="flex items-center gap-3 py-1 text-xs text-muted-foreground"
+  >
+    <span aria-hidden className="h-px flex-1 bg-border" />
+    <span aria-hidden>Switched to {label}</span>
+    <span aria-hidden className="h-px flex-1 bg-border" />
   </div>
 );
 
 /** Tokens, time and cost of one reply, after its action buttons */
-const ReplyUsage = ({ usage, cost }: { usage: MessageUsage; cost?: number }) => {
+const ReplyUsage = ({
+  usage,
+  cost,
+  model,
+}: {
+  usage: MessageUsage;
+  cost?: number;
+  model?: string;
+}) => {
   const input = usage.inputTokens ?? 0;
   const output = usage.outputTokens ?? 0;
   const calls = usage.steps?.length ?? 0;
   const details = [
+    model ?? '',
     `Input: ${input.toLocaleString()} tokens`,
     usage.cacheReadTokens ? `${usage.cacheReadTokens.toLocaleString()} read from the cache` : '',
     `Output: ${output.toLocaleString()} tokens`,

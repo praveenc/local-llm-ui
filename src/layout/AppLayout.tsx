@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-react';
+import { Menu, Moon, PanelLeftClose, PanelLeftOpen, SquarePen, Sun } from 'lucide-react';
 
 import { useState } from 'react';
 
@@ -19,8 +19,8 @@ interface AppLayoutProps {
   children: React.ReactNode;
   /** Title of the open conversation; the header h1 */
   title?: string;
-  /** Shown under the product name, for example "Ollama · llama3.2"; nothing when unset */
-  scope?: string;
+  /** Starts a new chat; the header button shows when this is set */
+  onNewChat?: () => void;
   navigationOpen?: boolean;
   onNavigationChange?: (open: boolean) => void;
   /** Stored mode, shown in the theme menu: system, light, or dark */
@@ -37,7 +37,7 @@ export function AppLayout({
   navigation,
   children,
   title = 'New conversation',
-  scope,
+  onNewChat,
   navigationOpen = true,
   onNavigationChange,
   visualMode,
@@ -69,7 +69,7 @@ export function AppLayout({
           <>
             {/* Sidebar Header */}
             <div className="border-b border-sidebar-border px-4 py-3">
-              <SidebarBrand scope={scope} />
+              <SidebarBrand />
             </div>
             {/* Sidebar Content */}
             <div className="flex-1 overflow-y-auto">{navigation}</div>
@@ -83,7 +83,7 @@ export function AppLayout({
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           {/* Sidebar Header; SheetContent draws the close button */}
           <div className="border-b border-sidebar-border px-4 py-3 pr-12">
-            <SidebarBrand scope={scope} />
+            <SidebarBrand />
           </div>
           {/* Sidebar Content */}
           <div className="flex-1 overflow-y-auto">{navigation}</div>
@@ -126,6 +126,18 @@ export function AppLayout({
             </h1>
           </div>
           <div className="flex items-center gap-1">
+            {onNewChat && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-11 md:size-9"
+                onClick={onNewChat}
+                aria-label="New chat"
+                title="New chat"
+              >
+                <SquarePen className="h-5 w-5" />
+              </Button>
+            )}
             <ThemeMenu
               colorTheme={colorTheme}
               visualMode={visualMode}
@@ -156,18 +168,11 @@ export function AppLayout({
   );
 }
 
-function SidebarBrand({ scope }: { scope?: string }) {
+function SidebarBrand() {
   return (
     <div className="flex min-w-0 items-center gap-2">
       <ProductMark className="size-7 shrink-0 text-primary" />
-      <div className="flex min-w-0 flex-col">
-        <span className="text-sm font-semibold text-sidebar-foreground">Local LLM UI</span>
-        {scope && (
-          <span className="truncate text-xs text-muted-foreground" title={scope}>
-            {scope}
-          </span>
-        )}
-      </div>
+      <span className="text-sm font-semibold text-sidebar-foreground">Local LLM UI</span>
     </div>
   );
 }
