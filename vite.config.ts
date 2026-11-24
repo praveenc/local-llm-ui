@@ -13,6 +13,16 @@ import { handleMantleRequest } from './server/mantle-proxy.ts';
 import { createOllamaAISDKProxy } from './server/ollama-aisdk-proxy.ts';
 import { createOpenRouterAISDKProxy } from './server/openrouter-aisdk-proxy.ts';
 
+// No script-src or style-src: the dev server and the pre-paint script in index.html need inline code
+// img-src: public/ icons, models.dev provider logos, attachments as blob: and data: URLs
+export const securityHeaders = {
+  'Content-Security-Policy':
+    "frame-ancestors 'none'; object-src 'none'; base-uri 'none'; img-src 'self' data: blob: https://models.dev",
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+};
+
 // https://vite.dev/config/
 export default defineConfig({
   resolve: {
@@ -118,7 +128,9 @@ export default defineConfig({
       },
     },
   ],
+  // Vite sends these on what it serves itself (HTML, modules, public/); not on the /api proxies
   server: {
+    headers: securityHeaders,
     proxy: {
       '/api/lmstudio': {
         target: 'http://localhost:1234',
@@ -141,5 +153,8 @@ export default defineConfig({
         },
       },
     },
+  },
+  preview: {
+    headers: securityHeaders,
   },
 });
