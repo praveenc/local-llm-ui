@@ -8,6 +8,7 @@ import type { Conversation, ConversationStatus } from '../db';
 
 interface UseConversationsOptions {
   status?: ConversationStatus;
+  /** Most chats to return; all of them when not given */
   limit?: number;
 }
 
@@ -17,7 +18,7 @@ interface UseConversationsResult {
 }
 
 export function useConversations(options?: UseConversationsOptions): UseConversationsResult {
-  const { status = 'active', limit = 50 } = options || {};
+  const { status = 'active', limit } = options || {};
 
   const conversations = useLiveQuery(async () => {
     const results = await db.conversations
@@ -26,7 +27,7 @@ export function useConversations(options?: UseConversationsOptions): UseConversa
       .reverse()
       .sortBy('updatedAt');
 
-    return results.slice(0, limit);
+    return limit === undefined ? results : results.slice(0, limit);
   }, [status, limit]);
 
   return {
