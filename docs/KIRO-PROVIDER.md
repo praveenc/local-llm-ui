@@ -40,8 +40,8 @@ The plan supports kiro-cli 3 only. kiro-cli 2 gets a clear message and no Kiro f
 
 | PR | Branch | Items | State |
 |---|---|---|---|
-| K1 | `fix/api-same-origin` | 1 | In review ([#76](https://github.com/praveenc/local-llm-ui/pull/76)) |
-| K2 | `feat/kiro-detect` | 2 | Planned |
+| K1 | `fix/api-same-origin` | 1 | Done, merged ([#76](https://github.com/praveenc/local-llm-ui/pull/76)) |
+| K2 | `feat/kiro-detect` | 2 | In review ([#77](https://github.com/praveenc/local-llm-ui/pull/77)) |
 | K3 | `feat/kiro-sign-in` | 3 | Planned |
 | K4 | `feat/kiro-acp-client` | 4 | Planned |
 | K5 | `feat/kiro-chat` | 5 | Planned |
@@ -53,6 +53,9 @@ The plan supports kiro-cli 3 only. kiro-cli 2 gets a clear message and no Kiro f
 
 - **Vite's CORS answered preflights from other ports (K1).** Vite's default CORS middleware runs before every plugin and allows any `localhost` origin. In a browser without `Sec-Fetch-Site`, a page on another port could then send a forged `X-Forwarded-Host`. K1 turns Vite's CORS off and accepts `X-Forwarded-Host` only for an `https` Origin.
 - **The proxies read paths in two ways (K1).** Most match the raw `req.url`, and the OpenRouter proxy reads `new URL(req.url).pathname`, which resolves `.` and `..`. The guard checks both forms.
+- **`whoami -f json` has three shapes (K2).** Signed in: `{"accountType":"IamIdentityCenter",…,"email":…}` on the first line, then text. With `KIRO_API_KEY`: `{"accountType":"ApiKey","email":null}`. Signed out: `{"account":null}` and exit code 1. The app reads only the first JSON line.
+- **Kiro can be the default provider before it has models (K2).** The radio button is on when Kiro CLI is signed in. A default provider with no models is safe: new chats use the last model that you picked (`pickDefaultModel`). K5 adds the models.
+- **README waits for the chat (K2).** The "Connect a provider" table gets Kiro in K5, when chat works. K2 adds a short "Kiro" part that says what works now.
 - **Rules for the Kiro routes.** No `GET` under `/api/kiro` may change state, because older browsers send a cross-site `GET` without the headers that the guard checks. `GET /api/kiro/status` only reads. Sign-in, chat, approvals, and sign-out are `POST` with JSON. A WebSocket route would need its own `Origin` check, so the plan uses SSE only.
 
 ## What kiro-cli 3 does

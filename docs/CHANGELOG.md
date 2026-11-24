@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 2026-11
 
+#### Added
+
+- Kiro row in **Preferences → Providers**: when Kiro CLI 3 is installed, it shows the account, the sign-in method, and the version, or what to do when Kiro CLI is signed out or too old. **Check again** reads the state again ([#77])
+
 #### Fixed
 
 - A web page on a different site could send requests to the `/api` routes: a form post could start a chat with your AWS credentials or API keys, or start an MCP server command. The routes now accept requests only from the app's own pages, and a request with a body must be JSON ([#76])
@@ -227,6 +231,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#77]: https://github.com/praveenc/local-llm-ui/pull/77
 [#76]: https://github.com/praveenc/local-llm-ui/pull/76
 [#74]: https://github.com/praveenc/local-llm-ui/pull/74
 [#73]: https://github.com/praveenc/local-llm-ui/pull/73

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Local LLM UI is a React chat interface for interacting with multiple LLM providers: Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Anthropic, OpenRouter, Groq, and Cerebras. Built with TypeScript, Vite, shadcn/ui (Radix primitives + Tailwind CSS), and Dexie.js for client-side persistence.
+Local LLM UI is a React chat interface for interacting with multiple LLM providers: Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Anthropic, OpenRouter, Groq, Cerebras, and Kiro (Kiro CLI 3 over the Agent Client Protocol; see `docs/KIRO-PROVIDER.md`). Built with TypeScript, Vite, shadcn/ui (Radix primitives + Tailwind CSS), and Dexie.js for client-side persistence.
 
 ## Commands
 
@@ -43,6 +43,7 @@ make fix                 # format + lint:fix
 | `mantle.ts` | Bedrock Mantle | `/api/mantle/models` |
 | `aisdk.ts` | Groq, Cerebras, Anthropic | `/api/aisdk/models` (Anthropic: static list) |
 | `openrouter.ts` | OpenRouter | `/api/openrouter/models` |
+| `kiro.ts` | Kiro | `/api/kiro/status` (install and sign-in state; no models yet) |
 
 ### Server Proxies (vite.config.ts → server/)
 
@@ -54,8 +55,9 @@ Vite middleware keeps credentials and SDK calls on the server. Each chat proxy u
 - `/api/ollama-aisdk`, `/api/lmstudio-aisdk` → local servers through the AI SDK (Ollama provider, OpenAI-compatible provider)
 - `/api/lmstudio-sdk` → LM Studio SDK (model list)
 - `/api/lmstudio`, `/api/ollama` → plain HTTP proxies
+- `/api/kiro` → Kiro CLI (`server/kiro-proxy.ts`, `server/kiro/`). `GET /api/kiro/status` runs `kiro-cli --version` and `kiro-cli whoami -f json` with `execFile` (no shell) and keeps the result 30 s
 
-Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`). Keep these free of DOM and Node imports.
+Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`, `kiroStatus.ts`). Keep these free of DOM and Node imports.
 
 ### Data Persistence (Dexie.js/IndexedDB)
 

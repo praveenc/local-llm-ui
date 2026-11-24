@@ -140,6 +140,29 @@ If the Bedrock console asks you to request model access, do that for the models 
 > [!IMPORTANT]
 > The app reads AWS credentials on the computer that runs `npm run dev`. If you open the app through a tunnel or from a different computer, set the credentials on the host, not on your desktop.
 
+### Kiro
+
+[Kiro CLI](https://kiro.dev/docs/cli/) 3 gives access to Kiro's agents and models from your computer. The app uses the `kiro-cli` that you use in the terminal. Kiro CLI 2 is not supported.
+
+Support for Kiro comes in steps. In this version, the app checks Kiro CLI and shows its state. Chat with Kiro models comes in a later version.
+
+1. Install Kiro CLI 3. See [the Kiro CLI documentation](https://kiro.dev/docs/cli/).
+2. In a terminal, sign in:
+
+   ```bash
+   kiro-cli login
+   ```
+
+3. Open **Preferences → Providers**. The **Kiro** row shows the account, its sign-in method, and the Kiro CLI version. If you sign in after the app started, click **Check again**.
+
+The app shows the Kiro row only when it finds `kiro-cli`. It looks in these places, in this order:
+
+1. The path in the `LOCAL_LLM_UI_KIRO_CLI` environment variable, for example `LOCAL_LLM_UI_KIRO_CLI=/opt/kiro/kiro-cli npm run dev`.
+2. `~/.local/bin/kiro-cli`, the usual install folder.
+3. Each folder in `PATH`.
+
+The app runs Kiro CLI on the computer that runs `npm run dev`, as it does with AWS credentials. Sign in on that computer, also when you open the app through a tunnel.
+
 ### Providers with an API key
 
 Anthropic, OpenRouter, Groq, Cerebras, and Bedrock Mantle use an API key:
@@ -460,6 +483,7 @@ The React app runs in the browser. Vite middleware in `vite.config.ts` adds serv
 | `/api/anthropic` | Anthropic |
 | `/api/openrouter` | OpenRouter |
 | `/api/aisdk` | Groq and Cerebras |
+| `/api/kiro` | Kiro CLI on the computer that runs the app |
 
 The routes accept requests only from the pages of the app. A request from a different website gets the error 403. A request with a body (`POST`, `PUT`, `PATCH`, or `DELETE`) that is not JSON gets the error 415. Scripts and `curl` can still call the routes: they do not send the headers of a browser, but a request with a body must send `Content-Type: application/json`.
 
@@ -479,7 +503,7 @@ local-llm-ui/
 │   ├── layout/            # App shell and layout
 │   ├── services/          # Provider model lists, conversations, saved prompts
 │   └── utils/             # Helper functions; some are shared with server/
-├── server/                # Provider proxies, MCP manager, web search, security
+├── server/                # Provider proxies, Kiro CLI, MCP manager, web search, security
 ├── docs/                  # Design and security notes
 └── vite.config.ts         # Vite configuration and proxy middleware
 ```
