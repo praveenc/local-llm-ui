@@ -4,6 +4,7 @@ import {
   MessageSquare,
   MoreHorizontal,
   Pencil,
+  Search,
   Trash2,
 } from 'lucide-react';
 
@@ -101,28 +102,39 @@ export function ConversationList({
     title: string;
   } | null>(null);
 
-  const grouped = groupConversationsByDate(conversations ?? []);
+  const [query, setQuery] = useState('');
+  const needle = query.trim().toLowerCase();
+  const allGroups = groupConversationsByDate(conversations ?? []);
+  // A search shows only the matching conversations, in their date groups, all open
+  const grouped = needle
+    ? allGroups
+        .map((g) => ({
+          ...g,
+          conversations: g.conversations.filter((c) => c.title.toLowerCase().includes(needle)),
+        }))
+        .filter((g) => g.conversations.length > 0)
+    : allGroups;
 
   // Initialize open groups based on available conversations
   const [openGroups, setOpenGroups] = useState<Record<string, boolean> | null>(null);
 
   // Set default open groups when conversations first load (adjusting state during render)
-  if (openGroups === null && grouped.length > 0) {
+  if (openGroups === null && allGroups.length > 0) {
     // Determine which groups should be open by default
     // Only "Today" is expanded, unless there are no today conversations, then expand "Yesterday"
-    const hasTodayConversations = grouped.some(
+    const hasTodayConversations = allGroups.some(
       (g) => g.label === 'Today' && g.conversations.length > 0
     );
     if (hasTodayConversations) {
       setOpenGroups({ Today: true });
     } else {
-      const hasYesterdayConversations = grouped.some(
+      const hasYesterdayConversations = allGroups.some(
         (g) => g.label === 'Yesterday' && g.conversations.length > 0
       );
       if (hasYesterdayConversations) {
         setOpenGroups({ Yesterday: true });
-      } else if (grouped.length > 0) {
-        setOpenGroups({ [grouped[0].label]: true });
+      } else if (allGroups.length > 0) {
+        setOpenGroups({ [allGroups[0].label]: true });
       }
     }
   }
@@ -183,18 +195,45 @@ export function ConversationList({
 
   return (
     <div className="flex flex-col gap-1 compact:gap-0">
+      <div className="relative px-2 pb-1">
+        <Search
+          className="pointer-events-none absolute left-4 top-1/2 size-3.5 -translate-y-[calc(50%+2px)] text-muted-foreground"
+          aria-hidden
+        />
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && query) {
+              e.preventDefault();
+              setQuery('');
+            }
+          }}
+          placeholder="Search chats"
+          aria-label="Search chats"
+          className="h-8 pl-7 text-sm"
+        />
+      </div>
+      {needle && grouped.length === 0 && (
+        <p className="px-3 py-2 text-sm text-muted-foreground" role="status">
+          No chats match “{query.trim()}”
+        </p>
+      )}
       {grouped.map((group) => (
         <Collapsible
           key={group.label}
-          open={openGroups?.[group.label] ?? false}
-          onOpenChange={() => toggleGroup(group.label)}
+          open={needle ? true : (openGroups?.[group.label] ?? false)}
+          onOpenChange={() => {
+            if (!needle) toggleGroup(group.label);
+          }}
         >
           <CollapsibleTrigger asChild>
             <button className="flex w-full items-center gap-1 px-3 py-1.5 compact:py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
               <ChevronRight
                 className={cn(
                   'h-3 w-3 transition-transform motion-reduce:transition-none',
-                  openGroups?.[group.label] && 'rotate-90'
+                  (needle || openGroups?.[group.label]) && 'rotate-90'
                 )}
               />
               <span>{group.label}</span>
@@ -215,7 +254,6 @@ export function ConversationList({
                 >
                   {editingId === conv.id ? (
                     <>
-                      <MessageSquare className="h-4 w-4 shrink-0 text-tint-text" />
                       <Input
                         value={editTitle}
                         onChange={(e) => setEditTitle(e.target.value)}
@@ -241,14 +279,6 @@ export function ConversationList({
                         aria-current={activeConversationId === conv.id ? 'page' : undefined}
                         onClick={() => onSelectConversation(conv.id)}
                       >
-                        <MessageSquare
-                          className={cn(
-                            'h-4 w-4 shrink-0',
-                            activeConversationId === conv.id
-                              ? 'text-tint-text'
-                              : 'text-muted-foreground'
-                          )}
-                        />
                         <span className="truncate" title={conv.title}>
                           {conv.title}
                         </span>

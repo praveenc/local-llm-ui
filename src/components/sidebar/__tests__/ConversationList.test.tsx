@@ -104,3 +104,24 @@ describe('ConversationList rename with an IME', () => {
     expect(updateConversationTitle).toHaveBeenCalledWith('c1', '日本語');
   });
 });
+
+describe('ConversationList search', () => {
+  it('shows only the chats whose title matches, case-insensitively', async () => {
+    const user = userEvent.setup();
+    renderList();
+    await user.type(screen.getByRole('searchbox', { name: 'Search chats' }), 'OLD');
+    expect(screen.getByRole('button', { name: 'Old title' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /much longer/ })).not.toBeInTheDocument();
+  });
+
+  it('says so when no chat matches, and Escape clears the search', async () => {
+    const user = userEvent.setup();
+    renderList();
+    const search = screen.getByRole('searchbox', { name: 'Search chats' });
+    await user.type(search, 'zebra');
+    expect(screen.getByRole('status')).toHaveTextContent('No chats match “zebra”');
+    await user.keyboard('{Escape}');
+    expect(search).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Old title' })).toBeInTheDocument();
+  });
+});
