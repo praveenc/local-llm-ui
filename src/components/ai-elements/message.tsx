@@ -38,7 +38,7 @@ export const MessageContent = ({ children, className, ...props }: MessageContent
   <div
     className={cn(
       'is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm',
-      'group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-tint-soft group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground',
+      'group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-surface-quiet group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground',
       'group-[.is-user]:compact:px-3 group-[.is-user]:compact:py-2',
       'group-[.is-assistant]:text-foreground',
       className
@@ -55,7 +55,7 @@ export const MessageAvatar = ({ initials, className, ...props }: MessageAvatarPr
   <div
     aria-hidden="true"
     className={cn(
-      'flex size-7 shrink-0 select-none items-center justify-center rounded-full bg-tint-soft text-[11px] font-semibold text-tint-text ring-1 ring-tint-line compact:size-6 compact:text-[10px]',
+      'flex size-7 shrink-0 select-none items-center justify-center rounded-full bg-surface-quiet text-[11px] font-semibold text-foreground ring-1 ring-border compact:size-6 compact:text-[10px]',
       className
     )}
     title={initials}

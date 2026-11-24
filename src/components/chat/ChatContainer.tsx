@@ -354,7 +354,7 @@ const ChatContainer = ({
               />
             ) : (
               <div ref={messagesRef} className="h-full">
-                <Conversation className="h-full max-w-4xl mx-auto">
+                <Conversation className="h-full max-w-3xl mx-auto">
                   <ConversationContent className="p-4 compact:p-3">
                     {selectedModel && <ActiveModelBadge model={selectedModel} />}
                     {messages.map((message, index) => {
@@ -388,7 +388,7 @@ const ChatContainer = ({
                               ))}
                             </div>
                           )}
-                          <MessageResponse>
+                          <MessageResponse className="reply-text">
                             {message.role === 'user'
                               ? quoteTagsToMarkdown(getTextContent(message))
                               : getTextContent(message)}
@@ -487,6 +487,8 @@ const ChatContainer = ({
             multiple
             maxFileSize={BEDROCK_DOC_MAX_SIZE}
             maxFiles={20}
+            // Wider than the reading column until PR 4 shortens the model chip: at 768 px the
+            // toolbar wraps to a second row
             className="max-w-4xl mx-auto"
             inputGroupClassName={composerCard}
           >

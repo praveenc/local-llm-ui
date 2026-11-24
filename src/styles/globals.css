@@ -14,19 +14,20 @@
   /* Both schemes until the theme script picks one, so native UI follows the OS without JS */
   color-scheme: light dark;
   --background: #fafafa;
-  --foreground: #111111;
+  /* Body text at about 15:1, not 18:1: less glare on the near-white page */
+  --foreground: #222222;
   --card: #ffffff;
-  --card-foreground: #111111;
+  --card-foreground: #222222;
   --popover: #ffffff;
-  --popover-foreground: #111111;
+  --popover-foreground: #222222;
   --primary: #0f6e73;
   --primary-foreground: #ffffff;
   --secondary: #f0f0f0;
-  --secondary-foreground: #111111;
+  --secondary-foreground: #222222;
   --muted: #f2f2f2;
   --muted-foreground: #5f6368;
   --accent: #ededed;
-  --accent-foreground: #111111;
+  --accent-foreground: #222222;
   --destructive: #c62828;
   --destructive-foreground: #ffffff;
   --border: #e5e5e5;
@@ -38,11 +39,11 @@
   --chart-4: #0f766e;
   --chart-5: #c2410c;
   --sidebar: #f5f5f5;
-  --sidebar-foreground: #111111;
+  --sidebar-foreground: #222222;
   --sidebar-primary: #0f6e73;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #e8e8e8;
-  --sidebar-accent-foreground: #111111;
+  --sidebar-accent-foreground: #222222;
   --sidebar-border: #e5e5e5;
   --sidebar-ring: #0f6e73;
   /* Status colours, used only on real status (see "Colour accents" below) */
@@ -68,19 +69,19 @@
 .dark {
   color-scheme: dark;
   --background: #111111;
-  --foreground: #ededed;
+  --foreground: #e0e0e0;
   --card: #1a1a1a;
-  --card-foreground: #ededed;
+  --card-foreground: #e0e0e0;
   --popover: #1a1a1a;
-  --popover-foreground: #ededed;
+  --popover-foreground: #e0e0e0;
   --primary: #5ec4c0;
   --primary-foreground: #111111;
   --secondary: #262626;
-  --secondary-foreground: #ededed;
+  --secondary-foreground: #e0e0e0;
   --muted: #222222;
   --muted-foreground: #a3a3a3;
   --accent: #2a2a2a;
-  --accent-foreground: #ededed;
+  --accent-foreground: #e0e0e0;
   --destructive: #f87171;
   --destructive-foreground: #111111;
   --border: #2a2a2a;
@@ -92,11 +93,11 @@
   --chart-4: #2dd4bf;
   --chart-5: #fb923c;
   --sidebar: #161616;
-  --sidebar-foreground: #ededed;
+  --sidebar-foreground: #e0e0e0;
   --sidebar-primary: #5ec4c0;
   --sidebar-primary-foreground: #111111;
   --sidebar-accent: #262626;
-  --sidebar-accent-foreground: #ededed;
+  --sidebar-accent-foreground: #e0e0e0;
   --sidebar-border: #2a2a2a;
   --sidebar-ring: #5ec4c0;
   --status-ok: #7fcf9a;
@@ -110,8 +111,7 @@
 
 /*
  * Colour accents: one family per palette, its primary. --tint colours small surfaces as a
- * soft fill (user bubble, active conversation, reasoning chip, model badge, avatar, code
- * block frame); --tint-text is the same hue at a shade that holds 4.5:1 for small text and
+ * soft fill (active conversation, reasoning chip, model badge); --tint-text is the same hue at a shade that holds 4.5:1 for small text and
  * icons. A palette overrides these only where its primary is too light for text. Headings
  * stay the foreground colour. Status colours (--status-*) go on real status only.
  */
@@ -124,7 +124,19 @@
   --tint-line: color-mix(in srgb, var(--tint) 35%, var(--border));
   --sidebar-active: color-mix(in srgb, var(--tint) 12%, var(--sidebar));
   --sidebar-hover: color-mix(in srgb, var(--tint) 6%, var(--sidebar));
-  --code-inline-bg: color-mix(in srgb, var(--tint) 8%, var(--background));
+  /*
+   * Quiet surfaces carry no tint: the user's messages and the avatar take a trace of the text
+   * colour, and the chat input sits halfway between the card and the page, so it does not
+   * glow on a light page. The tint stays on small accents only: links, the open conversation,
+   * the focus ring and the send button.
+   */
+  --surface-quiet: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  --composer: color-mix(in srgb, var(--card) 50%, var(--background));
+  /* Reply text (docs/UIUX-IMPROVEMENTS.md, Typography) */
+  --reply-font-size: 0.9375rem;
+  --reply-line-height: 1.65;
+  --reply-measure: 70ch;
+  --reply-gap: 0.9em;
 }
 
 .dark {
@@ -132,7 +144,13 @@
   --tint-line: color-mix(in srgb, var(--tint) 40%, var(--border));
   --sidebar-active: color-mix(in srgb, var(--tint) 14%, var(--sidebar));
   --sidebar-hover: color-mix(in srgb, var(--tint) 7%, var(--sidebar));
-  --code-inline-bg: color-mix(in srgb, var(--tint) 10%, var(--background));
+  --surface-quiet: color-mix(in srgb, var(--foreground) 7%, var(--background));
+}
+
+/* Compact density: tighter lines and paragraphs, same text size */
+[data-density='compact'] {
+  --reply-line-height: 1.55;
+  --reply-gap: 0.7em;
 }
 
 /* Tailwind v4 theme integration */
@@ -175,6 +193,8 @@
   --color-tint-soft: var(--tint-soft);
   --color-tint-line: var(--tint-line);
   --color-tint-text: var(--tint-text);
+  --color-surface-quiet: var(--surface-quiet);
+  --color-composer: var(--composer);
   --color-status-ok: var(--status-ok);
   --color-status-warn: var(--status-warn);
   --color-status-error: var(--status-error);
@@ -270,9 +290,9 @@
 }
 
 /*
- * Replies (Streamdown): links, inline code and the code block frame take the accent; headings
- * and body text stay the foreground colour (Cobaltz dark keeps its gold headings). Unlayered,
- * so these win over the utility classes Streamdown puts on the same elements.
+ * Replies (Streamdown): links take the accent; headings, body text, inline code and the code
+ * block frame stay neutral (Cobaltz dark keeps its gold headings). Unlayered, so these win
+ * over the utility classes Streamdown puts on the same elements.
  */
 [data-streamdown^='heading-'] {
   color: var(--heading);
@@ -280,17 +300,92 @@
 [data-streamdown='link'] {
   color: var(--tint-text);
   text-decoration-color: color-mix(in srgb, var(--tint-text) 45%, transparent);
-  text-underline-offset: 2px;
+  text-underline-offset: 0.18em;
 }
 [data-streamdown='inline-code'] {
-  color: var(--tint-text);
-  background-color: var(--code-inline-bg);
+  background-color: var(--surface-quiet);
 }
-[data-streamdown='code-block'] {
-  border-color: var(--tint-line);
+
+/*
+ * Reply typography (docs/UIUX-IMPROVEMENTS.md, Typography): about 15 px text with a 1.65 line
+ * height, paragraphs and lists at most 70 characters wide, and code blocks and tables at the
+ * full column width. Sizes are in em, so they follow --reply-font-size.
+ */
+.reply-text {
+  font-size: var(--reply-font-size);
+  line-height: var(--reply-line-height);
 }
-[data-streamdown='code-block-header'] {
-  background-color: var(--tint-soft);
+.reply-text > :not(:last-child) {
+  margin-block-end: var(--reply-gap);
+}
+.reply-text > :is(p, ul, ol, blockquote, [data-streamdown^='heading-']) {
+  max-width: var(--reply-measure);
+}
+.reply-text :is(p, li) {
+  text-wrap: pretty;
+}
+.reply-text > [data-streamdown^='heading-'] {
+  margin-block: 1.4em 0.5em;
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+.reply-text > :first-child {
+  margin-block-start: 0;
+}
+.reply-text > [data-streamdown='heading-1'] {
+  font-size: 1.35em;
+  letter-spacing: -0.01em;
+}
+.reply-text > [data-streamdown='heading-2'] {
+  font-size: 1.2em;
+  letter-spacing: -0.01em;
+}
+.reply-text > [data-streamdown='heading-3'] {
+  font-size: 1.05em;
+}
+.reply-text
+  > :is(
+    [data-streamdown='heading-4'],
+    [data-streamdown='heading-5'],
+    [data-streamdown='heading-6']
+  ) {
+  font-size: 1em;
+}
+/* Bullets outside the text, so a wrapped line starts under the first word, not the bullet */
+.reply-text :is([data-streamdown='unordered-list'], [data-streamdown='ordered-list']) {
+  list-style-position: outside;
+  padding-inline-start: 1.25em;
+}
+.reply-text [data-streamdown='list-item'] {
+  padding-block: 0;
+  padding-inline-start: 0.15em;
+}
+.reply-text [data-streamdown='list-item'] + [data-streamdown='list-item'] {
+  margin-block-start: 0.3em;
+}
+.reply-text [data-streamdown='inline-code'] {
+  font-size: 0.875em;
+  padding: 0.1em 0.3em;
+}
+.reply-text [data-streamdown='code-block-body'] {
+  font-size: 0.875em;
+  line-height: 1.55;
+}
+.reply-text :is(code, pre) {
+  font-variant-ligatures: none;
+  tab-size: 2;
+}
+.reply-text :is([data-streamdown='table-cell'], [data-streamdown='table-header-cell']) {
+  font-size: 0.93em;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Light text on a dark page looks heavier; on macOS, thinner smoothing evens it out */
+.dark body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /*
