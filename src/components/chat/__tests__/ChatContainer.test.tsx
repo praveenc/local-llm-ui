@@ -6,20 +6,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import ChatContainer from '../ChatContainer';
 
 const chatMessages = vi.hoisted(() => ({ current: [] as unknown[] }));
+const chatOptions = vi.hoisted(() => ({ current: {} as { enableWebSearch?: boolean } }));
 
 vi.mock('../../../hooks/useBedrockChat', () => ({
-  useBedrockChat: () => ({
-    messages: chatMessages.current,
-    status: 'ready',
-    error: null,
-    wasInterrupted: false,
-    sendMessage: vi.fn(),
-    regenerate: vi.fn(),
-    retryLast: vi.fn(),
-    forkAndSend: vi.fn(),
-    stopGeneration: vi.fn(),
-    clearMessages: vi.fn(),
-  }),
+  useBedrockChat: (options: { enableWebSearch?: boolean }) => {
+    chatOptions.current = options;
+    return {
+      messages: chatMessages.current,
+      status: 'ready',
+      error: null,
+      wasInterrupted: false,
+      sendMessage: vi.fn(),
+      regenerate: vi.fn(),
+      retryLast: vi.fn(),
+      forkAndSend: vi.fn(),
+      stopGeneration: vi.fn(),
+      clearMessages: vi.fn(),
+    };
+  },
 }));
 
 const renderChat = (props: Partial<React.ComponentProps<typeof ChatContainer>> = {}) =>
@@ -151,5 +155,51 @@ describe('ChatContainer', () => {
     expect(dividers).toHaveLength(1);
     expect(dividers[0]).toHaveAccessibleName('Switched to Claude Sonnet 5.5 · US');
     expect(screen.queryByLabelText(/Active model/)).not.toBeInTheDocument();
+  });
+
+  describe('web search', () => {
+    const ollamaModel = {
+      id: 'qwen3:8b',
+      name: 'qwen3:8b',
+      provider: 'ollama' as const,
+      providerName: 'Ollama',
+    };
+    const on = { available: true, on: true, send: true };
+
+    it('shows no globe button without a key, and sends no search', () => {
+      renderChat({ selectedModel: ollamaModel });
+      expect(screen.queryByRole('button', { name: 'Web search' })).not.toBeInTheDocument();
+      expect(chatOptions.current.enableWebSearch).toBe(false);
+    });
+
+    it('shows the Search chip when on, sends search, and toggles through the callback', () => {
+      const onToggleWebSearch = vi.fn();
+      renderChat({ selectedModel: ollamaModel, webSearch: on, onToggleWebSearch });
+      const globe = screen.getByRole('button', { name: 'Web search' });
+      expect(globe).toHaveTextContent('Search');
+      expect(globe).toHaveAttribute('aria-pressed', 'true');
+      expect(chatOptions.current.enableWebSearch).toBe(true);
+      fireEvent.click(globe);
+      expect(onToggleWebSearch).toHaveBeenCalledTimes(1);
+    });
+
+    it('greys the globe and MCP buttons for a model that cannot use tools', () => {
+      const onToggleWebSearch = vi.fn();
+      renderChat({
+        selectedModel: { ...ollamaModel, id: 'gemma3:4b', name: 'gemma3:4b', supportsTools: false },
+        webSearch: { available: true, on: true, send: false },
+        onToggleWebSearch,
+      });
+      const globe = screen.getByRole('button', { name: 'Web search' });
+      expect(globe).toHaveAttribute('aria-disabled', 'true');
+      expect(globe).not.toHaveTextContent('Search');
+      fireEvent.click(globe);
+      expect(onToggleWebSearch).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'MCP tools' })).toHaveAttribute(
+        'aria-disabled',
+        'true'
+      );
+      expect(chatOptions.current.enableWebSearch).toBe(false);
+    });
   });
 });

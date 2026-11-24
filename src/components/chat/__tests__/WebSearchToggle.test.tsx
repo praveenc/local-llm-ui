@@ -18,14 +18,32 @@ describe('WebSearchToggle', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('stays focusable without a key but does not toggle', () => {
+  it('stays focusable when the model cannot use tools, but does not toggle', async () => {
     const onToggle = vi.fn();
-    render(<WebSearchToggle enabled={false} onToggle={onToggle} hasApiKey={false} />);
+    render(<WebSearchToggle enabled onToggle={onToggle} toolsSupported={false} />);
     const button = screen.getByRole('button', { name: 'Web search' });
     expect(button).not.toBeDisabled();
     expect(button).toHaveAttribute('aria-disabled', 'true');
+    // Shows off, with no Search chip, although the chat keeps search on
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(button).not.toHaveTextContent('Search');
     fireEvent.click(button);
     expect(onToggle).not.toHaveBeenCalled();
+    fireEvent.focus(button);
+    expect((await screen.findAllByText('This model cannot use tools')).length).toBeGreaterThan(0);
+  });
+
+  it('names the primary provider in the tooltip', async () => {
+    render(<WebSearchToggle enabled onToggle={vi.fn()} providerLabel="Brave Search" />);
+    fireEvent.focus(screen.getByRole('button', { name: 'Web search' }));
+    expect(
+      (await screen.findAllByText('Web search enabled (Brave Search)')).length
+    ).toBeGreaterThan(0);
+  });
+
+  it('cannot be clicked while a reply streams', () => {
+    render(<WebSearchToggle enabled onToggle={vi.fn()} disabled />);
+    expect(screen.getByRole('button', { name: 'Web search' })).toBeDisabled();
   });
 
   it('says Search in words when it is on, and shows only the icon when it is off', () => {

@@ -1,7 +1,8 @@
 /**
  * WebSearchSettings
  *
- * API keys for the web search providers, the provider tried first, and the fallback switch.
+ * Web search on by default, the API keys for the web search providers, the provider tried
+ * first, and the fallback switch.
  * A provider can become the primary provider only after its key is set.
  */
 import { Check } from 'lucide-react';
@@ -22,6 +23,7 @@ import {
   WEB_SEARCH_PROVIDER_LABELS,
   getPrimaryWebSearchProvider,
   hasWebSearchKey,
+  isWebSearchByDefault,
   isWebSearchFallbackEnabled,
   isWebSearchProvider,
 } from '../../utils/webSearch';
@@ -74,6 +76,26 @@ export function WebSearchSettings({ preferences, onUpdate }: WebSearchSettingsPr
           With a key set, the globe button in the chat input lets the model search the web. The
           primary provider is tried first. Add a key to make a provider available.
         </p>
+      </div>
+
+      <div className="flex items-start gap-3 rounded-lg border px-3 py-3">
+        <Label
+          htmlFor="web-search-default"
+          className="flex flex-1 flex-col items-start gap-1 leading-snug"
+        >
+          Search the web by default
+          <span className="text-xs font-normal text-muted-foreground">
+            {primary
+              ? 'New chats start with web search on. Use the globe button in the chat input to turn it off for one chat.'
+              : 'Add a key to use this.'}
+          </span>
+        </Label>
+        <Switch
+          id="web-search-default"
+          checked={primary !== undefined && isWebSearchByDefault(preferences)}
+          onCheckedChange={(checked) => onUpdate('webSearchByDefault', checked)}
+          disabled={primary === undefined}
+        />
       </div>
 
       <div role="group" aria-label="Web search providers" className="space-y-2">

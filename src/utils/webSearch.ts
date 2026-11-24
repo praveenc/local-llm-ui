@@ -33,6 +33,8 @@ export interface WebSearchPreferences {
   webSearchProvider?: WebSearchProvider;
   /** Try the next provider that has a key when one fails. On when not set. */
   webSearchFallback?: boolean;
+  /** New chats start with web search on. On when not set. */
+  webSearchByDefault?: boolean;
 }
 
 export const WEB_SEARCH_KEY_HEADERS: Record<WebSearchProvider, string> = {
@@ -75,6 +77,35 @@ export const getPrimaryWebSearchProvider = (
 
 export const isWebSearchFallbackEnabled = (prefs: WebSearchPreferences): boolean =>
   prefs.webSearchFallback !== false;
+
+export const isWebSearchByDefault = (prefs: WebSearchPreferences): boolean =>
+  prefs.webSearchByDefault !== false;
+
+/** Web search state of the open chat, as the chat input shows it and the request sends it */
+export interface WebSearchState {
+  /** A provider has a key, so the globe button shows */
+  available: boolean;
+  /** The globe button is on: the user's choice for this chat, else the preference */
+  on: boolean;
+  /** The request asks for web search: on, and the model can use tools */
+  send: boolean;
+}
+
+/**
+ * Resolves the web search state of the open chat.
+ *
+ * @param override The user's choice for the open chat, or null to follow the preference
+ * @param toolsSupported False when the model cannot use tools; undefined means unknown
+ */
+export const resolveWebSearch = (
+  prefs: WebSearchPreferences,
+  override: boolean | null,
+  toolsSupported?: boolean
+): WebSearchState => {
+  const available = getPrimaryWebSearchProvider(prefs) !== undefined;
+  const on = available && (override ?? isWebSearchByDefault(prefs));
+  return { available, on, send: on && toolsSupported !== false };
+};
 
 /**
  * Providers in the order the server tries them. Includes only providers that have a key.

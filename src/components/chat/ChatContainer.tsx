@@ -35,13 +35,12 @@ import { normalizeMediaType } from '../../utils/fileUtils';
 import { lookupFormat } from '../../utils/mediaTypes';
 import { getModelContextLimits } from '../../utils/modelContext';
 import { modelLabel } from '../../utils/modelLabel';
-import { loadPreferences } from '../../utils/preferences';
 import { formatQuoteMessage, quoteTagsToMarkdown } from '../../utils/quote';
 import { isFocusComposerShortcut } from '../../utils/shortcuts';
 import { supportsThinkingEffort, thinkingEffortOptions } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
 import { formatCost, formatLatency, formatTokens } from '../../utils/usage';
-import { WEB_SEARCH_PROVIDER_LABELS, getPrimaryWebSearchProvider } from '../../utils/webSearch';
+import type { WebSearchState } from '../../utils/webSearch';
 import {
   Conversation,
   ConversationContent,
@@ -153,6 +152,12 @@ interface BedrockChatContainerProps {
   setMaxToolSteps: (steps: number) => void;
   thinkingEffort: ThinkingEffort;
   setThinkingEffort: (effort: ThinkingEffort) => void;
+  /** Web search of the open chat. Without it, the globe button does not show. */
+  webSearch?: WebSearchState;
+  /** Primary web search provider, shown in the globe button tooltip */
+  webSearchProviderLabel?: string;
+  /** The globe button: turns web search on or off for the open chat */
+  onToggleWebSearch?: () => void;
   conversationId?: string | null;
   onConversationChange?: (id: string | null) => void;
   onClearHistoryRef?: React.MutableRefObject<(() => void) | null>;
@@ -185,6 +190,9 @@ const ChatContainer = ({
   setMaxToolSteps,
   thinkingEffort,
   setThinkingEffort,
+  webSearch,
+  webSearchProviderLabel,
+  onToggleWebSearch,
   conversationId: externalConversationId,
   onConversationChange,
   onClearHistoryRef,
@@ -195,15 +203,13 @@ const ChatContainer = ({
 }: BedrockChatContainerProps) => {
   const [inputValue, setInputValue] = useState('');
   const [fileError, setFileError] = useState<string | null>(null);
-  const [enableWebSearch, setEnableWebSearch] = useState(false);
   const [activeQuote, setActiveQuote] = useState<QuoteSelection | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // The web search provider tried first; undefined when no web search key is set
-  const prefs = loadPreferences();
-  const primaryWebSearch = getPrimaryWebSearchProvider(prefs);
+  // False when the provider reports that the model cannot use tools (Ollama); unknown counts as yes
+  const toolsSupported = selectedModel?.supportsTools !== false;
 
   const {
     messages,
@@ -223,7 +229,7 @@ const ChatContainer = ({
     maxTokens,
     maxToolSteps,
     thinkingEffort,
-    enableWebSearch,
+    enableWebSearch: webSearch?.send ?? false,
     onConversationChange,
   });
 
@@ -623,14 +629,16 @@ const ChatContainer = ({
                   )}
               </PromptInputTools>
               <PromptInputTools className="ml-auto gap-1">
-                <WebSearchToggle
-                  enabled={enableWebSearch}
-                  onToggle={setEnableWebSearch}
-                  disabled={isLoading}
-                  hasApiKey={primaryWebSearch !== undefined}
-                  providerLabel={primaryWebSearch && WEB_SEARCH_PROVIDER_LABELS[primaryWebSearch]}
-                />
-                <MCPToolsIndicator disabled={isLoading} />
+                {webSearch?.available && (
+                  <WebSearchToggle
+                    enabled={webSearch.on}
+                    onToggle={() => onToggleWebSearch?.()}
+                    disabled={isLoading}
+                    toolsSupported={toolsSupported}
+                    providerLabel={webSearchProviderLabel}
+                  />
+                )}
+                <MCPToolsIndicator disabled={isLoading} toolsSupported={toolsSupported} />
                 <InferenceSettings
                   maxTokens={maxTokens}
                   setMaxTokens={setMaxTokens}
