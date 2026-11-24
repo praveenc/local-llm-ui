@@ -1,6 +1,6 @@
 # UI and UX improvements
 
-Status: Plan 1 (items 1 to 14) is done. [Plan 2](#plan-2) (items 15 to 18) is approved and in progress. Last updated 2026-11-24. See [Progress](#progress) for the state of each item.
+Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Last updated 2026-11-24. See [Progress](#progress) for the state of each item.
 
 This document reviews the current chat UI and proposes changes, in order of impact. It also records the decisions made so far and the questions that are still open.
 
@@ -58,8 +58,8 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 9 | One theme control | None | Dropped (D2) |
 | 15 | A more comfortable chat input | 6 `feat/composer-comfort` ([#70](https://github.com/praveenc/local-llm-ui/pull/70)) | Done, merged |
 | 16 | Sidebar groups with more structure | 7 `feat/sidebar-groups` ([#71](https://github.com/praveenc/local-llm-ui/pull/71)) | Done, merged |
-| 17 | Web search on by default | 8 `feat/web-search-default` ([#72](https://github.com/praveenc/local-llm-ui/pull/72)) | PR open |
-| 18 | Rename a chat from the header | 9 `feat/rename-title` ([#73](https://github.com/praveenc/local-llm-ui/pull/73), stacked on #72) | PR open |
+| 17 | Web search on by default | 8 `feat/web-search-default` ([#72](https://github.com/praveenc/local-llm-ui/pull/72)) | Done, merged |
+| 18 | Rename a chat from the header | 9 `feat/rename-title` ([#73](https://github.com/praveenc/local-llm-ui/pull/73), stacked on #72) | Done, merged |
 
 ### Found during the work
 
