@@ -33,7 +33,7 @@ export function useConversationMutations(): UseConversationMutationsResult {
   }, []);
 
   const updateConversationTitle = useCallback(async (id: string, title: string) => {
-    return conversationService.update(id, { title });
+    return conversationService.rename(id, title);
   }, []);
 
   const addMessage = useCallback(async (input: CreateMessageInput) => {

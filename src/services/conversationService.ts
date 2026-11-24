@@ -88,6 +88,14 @@ export const conversationService = {
   },
 
   /**
+   * Change only the title. The date of the last message (updatedAt) stays, so a renamed
+   * chat keeps its place in the sidebar's date groups.
+   */
+  async rename(id: string, title: string): Promise<void> {
+    await db.conversations.update(id, { title });
+  },
+
+  /**
    * Archive a conversation (soft delete)
    */
   async archive(id: string): Promise<void> {
