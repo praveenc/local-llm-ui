@@ -43,7 +43,7 @@ make fix                 # format + lint:fix
 | `mantle.ts` | Bedrock Mantle | `/api/mantle/models` |
 | `aisdk.ts` | Groq, Cerebras, Anthropic | `/api/aisdk/models` (Anthropic: static list) |
 | `openrouter.ts` | OpenRouter | `/api/openrouter/models` |
-| `kiro.ts` | Kiro | `/api/kiro/status` (install and sign-in state; no models yet) |
+| `kiro.ts` | Kiro | `/api/kiro/status` (install and sign-in state), sign-in and sign-out; no models yet |
 
 ### Server Proxies (vite.config.ts → server/)
 
@@ -55,7 +55,7 @@ Vite middleware keeps credentials and SDK calls on the server. Each chat proxy u
 - `/api/ollama-aisdk`, `/api/lmstudio-aisdk` → local servers through the AI SDK (Ollama provider, OpenAI-compatible provider)
 - `/api/lmstudio-sdk` → LM Studio SDK (model list)
 - `/api/lmstudio`, `/api/ollama` → plain HTTP proxies
-- `/api/kiro` → Kiro CLI (`server/kiro-proxy.ts`, `server/kiro/`). `GET /api/kiro/status` runs `kiro-cli --version` and `kiro-cli whoami -f json` with `execFile` (no shell) and keeps the result 30 s
+- `/api/kiro` → Kiro CLI (`server/kiro-proxy.ts`, `server/kiro/`). `GET /api/kiro/status` runs `kiro-cli --version` and `kiro-cli whoami -f json` with `execFile` (no shell) and keeps the result 30 s. `POST /api/kiro/login` runs `kiro-cli login --use-device-flow` and streams the code and the sign-in URL as SSE; `POST /api/kiro/login/cancel` and `POST /api/kiro/logout`
 
 Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`, `kiroStatus.ts`). Keep these free of DOM and Node imports.
 

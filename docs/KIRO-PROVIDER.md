@@ -41,9 +41,9 @@ The plan supports kiro-cli 3 only. kiro-cli 2 gets a clear message and no Kiro f
 | PR | Branch | Items | State |
 |---|---|---|---|
 | K1 | `fix/api-same-origin` | 1 | Done, merged ([#76](https://github.com/praveenc/local-llm-ui/pull/76)) |
-| K2 | `feat/kiro-detect` | 2 | In review ([#77](https://github.com/praveenc/local-llm-ui/pull/77)) |
-| K3 | `feat/kiro-sign-in` | 3 | Planned |
-| K4 | `feat/kiro-acp-client` | 4 | Planned |
+| K2 | `feat/kiro-detect` | 2 | Done, merged ([#77](https://github.com/praveenc/local-llm-ui/pull/77)) |
+| K3 | `feat/kiro-sign-in` | 3 | In review ([#78](https://github.com/praveenc/local-llm-ui/pull/78)) |
+| K4 | `feat/kiro-acp-client` | 4 | In review ([#79](https://github.com/praveenc/local-llm-ui/pull/79)) |
 | K5 | `feat/kiro-chat` | 5 | Planned |
 | K6 | `feat/kiro-approvals` | 6 | Planned |
 | K7 | `feat/kiro-sessions` | 7 | Planned |
@@ -56,6 +56,13 @@ The plan supports kiro-cli 3 only. kiro-cli 2 gets a clear message and no Kiro f
 - **`whoami -f json` has three shapes (K2).** Signed in: `{"accountType":"IamIdentityCenter",…,"email":…}` on the first line, then text. With `KIRO_API_KEY`: `{"accountType":"ApiKey","email":null}`. Signed out: `{"account":null}` and exit code 1. The app reads only the first JSON line.
 - **Kiro can be the default provider before it has models (K2).** The radio button is on when Kiro CLI is signed in. A default provider with no models is safe: new chats use the last model that you picked (`pickDefaultModel`). K5 adds the models.
 - **README waits for the chat (K2).** The "Connect a provider" table gets Kiro in K5, when chat works. K2 adds a short "Kiro" part that says what works now.
+- **Device-flow output (K3).** `kiro-cli login --use-device-flow` prints `Code: XXXX-XXXX` and `Open this URL: https://view.awsapps.com/start/#/device?user_code=…` on stdout, also through a wrapper script, then waits. A bad start URL prints `error: InvalidRequestException` and exits 1; the app says "The start URL or the Region is not correct". `kiro-cli logout` exits 0 also when you are signed out already.
+- **The new tab opens on the click (K3).** Browsers block a tab that a page opens after a `fetch`. The app opens an empty tab when you click **Continue**, and sends it to the sign-in page when the code comes. If the browser blocks the tab, the row shows an **Open sign-in page** link.
+- **Kiro as the default before sign-in (K3).** The Kiro radio button is on while Kiro CLI is signed out. A click starts the sign-in and does not save the default. The app saves Kiro as the default after the sign-in.
+- **Sign-out signs out everywhere (K3).** `kiro-cli logout` signs out every Kiro CLI on the computer, also in terminals. The app asks before it signs out.
+- **The engine has its own process groups (K4).** The v3 engine runs in a process group of its own, and a wrapper script adds one more. One `kiro-cli acp` starts 20 to 26 processes, the user's MCP servers, which is another reason for one shared process (D5). A stop reads all descendant groups with `ps` before it closes stdin, then sends `SIGTERM` and `SIGKILL` to each group. With kiro-cli 3.6.0, nothing was left 1.5 s after a stop. Exit code 143 after `SIGTERM` is normal.
+- **No engine check (K4).** The `initialize` result has no field that names the engine. The app starts `--agent-engine v3`, and K2 already refuses Kiro CLI 2, so K4 does not check it again.
+- **Real check of K4.** With kiro-cli 3.6.0: two sessions on one process in 4.0 s, Autopilot off and read back on both, two replies at the same time, a shell command denied by default (its file was not made), a cancel in 2.6 s, and a stop in 1.5 s with no process left.
 - **Rules for the Kiro routes.** No `GET` under `/api/kiro` may change state, because older browsers send a cross-site `GET` without the headers that the guard checks. `GET /api/kiro/status` only reads. Sign-in, chat, approvals, and sign-out are `POST` with JSON. A WebSocket route would need its own `Origin` check, so the plan uses SSE only.
 
 ## What kiro-cli 3 does

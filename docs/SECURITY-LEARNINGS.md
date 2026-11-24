@@ -260,6 +260,9 @@ preview: { cors: false, /* ... */ },
 - **Time limits.** 5 s for `--version` and 15 s for `whoami`, then `SIGKILL`. This kills only the direct child. The two short commands end by themselves. The long-running `kiro-cli acp` process for chat must run in its own process group, and a stop must end the whole group.
 - **Environment.** The child gets the environment of the dev server, as in a terminal. Kiro CLI needs `HOME`, `PATH`, and `KIRO_API_KEY` when set.
 - **Account data.** `GET /api/kiro/status` returns the account email. Only the app's own pages can read it (SEC-13). The server does not log it.
+- **Sign-in arguments.** `POST /api/kiro/login` builds the arguments of `kiro-cli login --use-device-flow` only from a validated method: the start URL must be `https` on `*.awsapps.com`, `*.awsapps.cn`, or `*.app.aws`, with no user name or password, and the Region must match the Region pattern. The same checks run in the browser and on the server (`src/utils/kiroLogin.ts`).
+- **Sign-in page.** The server sends the sign-in URL to the browser only when it is `https` on `*.awsapps.com` or `*.awsapps.cn`, or on the host of the given start URL. Any other URL stops the sign-in. The browser checks the URL again before it opens the tab, and it cuts `window.opener`. The code and the URL are never logged.
+- **Sign-in process.** The login runs as its own process group, because `~/.local/bin/kiro-cli` can be a wrapper. Cancel, a closed browser tab (the response closes), a 10-minute time limit, and the end of the dev server stop the whole group. Only one sign-in runs at a time.
 - **Read only.** The status route is a `GET` and must not change state (SEC-13). Sign-in and sign-out are `POST` with JSON.
 
 ---
