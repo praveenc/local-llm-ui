@@ -30,61 +30,20 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 import { useConversationMutations, useConversations } from '../../hooks';
+import {
+  type GroupOpenState,
+  formatFullDateTime,
+  formatRowTime,
+  groupConversations,
+  isGroupOpen,
+  loadGroupOpenState,
+  saveGroupOpenState,
+} from '../../utils/conversationGroups';
 
 interface ConversationListProps {
   activeConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
-}
-
-interface GroupedConversations {
-  label: string;
-  conversations: Array<{
-    id: string;
-    title: string;
-    messageCount: number;
-    updatedAt: Date;
-  }>;
-}
-
-function groupConversationsByDate(
-  conversations: Array<{
-    id: string;
-    title: string;
-    messageCount: number;
-    updatedAt: Date;
-  }>
-): GroupedConversations[] {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-  const thisWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const thisMonth = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-  const groups: Record<string, GroupedConversations> = {
-    today: { label: 'Today', conversations: [] },
-    yesterday: { label: 'Yesterday', conversations: [] },
-    thisWeek: { label: 'This Week', conversations: [] },
-    thisMonth: { label: 'This Month', conversations: [] },
-    older: { label: 'Older', conversations: [] },
-  };
-
-  conversations.forEach((conv) => {
-    const date = new Date(conv.updatedAt);
-    if (date >= today) {
-      groups.today.conversations.push(conv);
-    } else if (date >= yesterday) {
-      groups.yesterday.conversations.push(conv);
-    } else if (date >= thisWeek) {
-      groups.thisWeek.conversations.push(conv);
-    } else if (date >= thisMonth) {
-      groups.thisMonth.conversations.push(conv);
-    } else {
-      groups.older.conversations.push(conv);
-    }
-  });
-
-  return Object.values(groups).filter((g) => g.conversations.length > 0);
 }
 
 export function ConversationList({
@@ -104,40 +63,20 @@ export function ConversationList({
 
   const [query, setQuery] = useState('');
   const needle = query.trim().toLowerCase();
-  const allGroups = groupConversationsByDate(conversations ?? []);
+  const now = new Date();
+  const allGroups = groupConversations(conversations ?? [], now);
   // A search shows only the matching conversations, in their date groups, all open
   const grouped = needle
     ? allGroups
         .map((g) => ({
           ...g,
-          conversations: g.conversations.filter((c) => c.title.toLowerCase().includes(needle)),
+          items: g.items.filter((c) => c.title.toLowerCase().includes(needle)),
         }))
-        .filter((g) => g.conversations.length > 0)
+        .filter((g) => g.items.length > 0)
     : allGroups;
 
-  // Initialize open groups based on available conversations
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean> | null>(null);
-
-  // Set default open groups when conversations first load (adjusting state during render)
-  if (openGroups === null && allGroups.length > 0) {
-    // Determine which groups should be open by default
-    // Only "Today" is expanded, unless there are no today conversations, then expand "Yesterday"
-    const hasTodayConversations = allGroups.some(
-      (g) => g.label === 'Today' && g.conversations.length > 0
-    );
-    if (hasTodayConversations) {
-      setOpenGroups({ Today: true });
-    } else {
-      const hasYesterdayConversations = allGroups.some(
-        (g) => g.label === 'Yesterday' && g.conversations.length > 0
-      );
-      if (hasYesterdayConversations) {
-        setOpenGroups({ Yesterday: true });
-      } else if (allGroups.length > 0) {
-        setOpenGroups({ [allGroups[0].label]: true });
-      }
-    }
-  }
+  // Open groups are kept in the browser; groups without a stored value use the default
+  const [openState, setOpenState] = useState<GroupOpenState>(loadGroupOpenState);
 
   const handleRename = (id: string, currentTitle: string) => {
     setEditingId(id);
@@ -162,7 +101,7 @@ export function ConversationList({
 
   const handleConfirmDelete = async () => {
     if (conversationToDelete) {
-      const ids = grouped.flatMap((g) => g.conversations.map((c) => c.id));
+      const ids = grouped.flatMap((g) => g.items.map((c) => c.id));
       const index = ids.indexOf(conversationToDelete.id);
       focusAfterDelete.current = ids[index + 1] ?? ids[index - 1] ?? null;
       await deleteConversation(conversationToDelete.id);
@@ -179,8 +118,10 @@ export function ConversationList({
     setConversationToDelete(null);
   };
 
-  const toggleGroup = (label: string) => {
-    setOpenGroups((prev) => ({ ...prev, [label]: !prev?.[label] }));
+  const toggleGroup = (key: string) => {
+    const next = { ...openState, [key]: !isGroupOpen(openState, key) };
+    setOpenState(next);
+    saveGroupOpenState(next);
   };
 
   if (!conversations || conversations.length === 0) {
@@ -194,7 +135,7 @@ export function ConversationList({
   }
 
   return (
-    <div className="flex flex-col gap-1 compact:gap-0">
+    <div className="flex flex-col">
       <div className="relative px-2 pb-1">
         <Search
           className="pointer-events-none absolute left-4 top-1/2 size-3.5 -translate-y-[calc(50%+2px)] text-muted-foreground"
@@ -220,102 +161,146 @@ export function ConversationList({
           No chats match “{query.trim()}”
         </p>
       )}
-      {grouped.map((group) => (
-        <Collapsible
-          key={group.label}
-          open={needle ? true : (openGroups?.[group.label] ?? false)}
-          onOpenChange={() => {
-            if (!needle) toggleGroup(group.label);
-          }}
-        >
-          <CollapsibleTrigger asChild>
-            <button className="flex w-full items-center gap-1 px-3 py-1.5 compact:py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
-              <ChevronRight
-                className={cn(
-                  'h-3 w-3 transition-transform motion-reduce:transition-none',
-                  (needle || openGroups?.[group.label]) && 'rotate-90'
-                )}
-              />
-              <span>{group.label}</span>
-              <span className="ml-auto text-muted-foreground">({group.conversations.length})</span>
-            </button>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="flex flex-col gap-0.5 compact:gap-0 px-2">
-              {group.conversations.map((conv) => (
-                <div
-                  key={conv.id}
-                  className={cn(
-                    'group flex items-center gap-2 rounded-md px-2 py-1.5 compact:py-1 text-sm transition-colors min-w-0 has-[[data-row-title]:focus-visible]:inset-ring-2 has-[[data-row-title]:focus-visible]:inset-ring-ring',
-                    activeConversationId === conv.id
-                      ? 'bg-sidebar-active font-medium text-tint-text'
-                      : 'hover:bg-sidebar-hover'
-                  )}
+      {grouped.map((group) => {
+        const open = needle ? true : isGroupOpen(openState, group.key);
+        const count = group.items.length;
+        return (
+          <Collapsible
+            key={group.key}
+            open={open}
+            onOpenChange={() => {
+              // A search opens every group with a match and leaves the stored state alone
+              if (!needle) toggleGroup(group.key);
+            }}
+            className="pt-3 compact:pt-1.5"
+          >
+            {/* The header stays at the top of the list while its rows scroll by */}
+            <h3 className="sticky top-0 z-10 bg-sidebar px-2">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  // A closed group says how many chats it hides: "Previous 30 days, 8 chats"
+                  aria-label={
+                    open ? undefined : `${group.label}, ${count} ${count === 1 ? 'chat' : 'chats'}`
+                  }
+                  className="flex min-h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-[13px] font-medium text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:inset-ring-2 focus-visible:inset-ring-ring motion-reduce:transition-none pointer-coarse:min-h-11"
                 >
-                  {editingId === conv.id ? (
-                    <>
-                      <Input
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        onBlur={() => handleSaveRename(conv.id)}
-                        onKeyDown={(e) => {
-                          // keyCode 229 covers Safari, which clears isComposing before this keydown
-                          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                          if (e.key === 'Enter') handleSaveRename(conv.id);
-                          if (e.key === 'Escape') setEditingId(null);
-                        }}
-                        className="h-6 text-sm"
-                        autoFocus
-                        aria-label="Conversation title"
-                      />
-                    </>
-                  ) : (
-                    <>
-                      {/* The whole title area is one button, so Tab reaches it and Enter opens it */}
-                      <button
-                        type="button"
-                        data-row-title={conv.id}
-                        className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none cursor-pointer"
-                        aria-current={activeConversationId === conv.id ? 'page' : undefined}
-                        onClick={() => onSelectConversation(conv.id)}
-                      >
-                        <span className="truncate" title={conv.title}>
-                          {conv.title}
-                        </span>
-                      </button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Options for ${conv.title}`}
-                            className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100 transition-opacity"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleRename(conv.id, conv.title)}>
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => handleDeleteClick(conv)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </>
+                  <ChevronRight
+                    aria-hidden
+                    className={cn(
+                      'size-4 shrink-0 transition-transform motion-reduce:transition-none',
+                      open && 'rotate-90'
+                    )}
+                  />
+                  <span className="truncate">{group.label}</span>
+                  {!open && (
+                    <span
+                      aria-hidden
+                      className="ml-auto pl-2 text-xs tabular-nums text-muted-foreground"
+                    >
+                      {count}
+                    </span>
                   )}
-                </div>
-              ))}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      ))}
+                </button>
+              </CollapsibleTrigger>
+            </h3>
+            <CollapsibleContent>
+              <div className="flex flex-col gap-0.5 compact:gap-0 px-2">
+                {group.items.map((conv) => {
+                  const updatedAt = new Date(conv.updatedAt);
+                  const isActive = activeConversationId === conv.id;
+                  return (
+                    <div
+                      key={conv.id}
+                      className={cn(
+                        'group flex items-center gap-2 rounded-md px-2 py-1.5 compact:py-1 text-sm transition-colors min-w-0 has-[[data-row-title]:focus-visible]:inset-ring-2 has-[[data-row-title]:focus-visible]:inset-ring-ring',
+                        isActive
+                          ? 'bg-sidebar-active font-medium text-tint-text'
+                          : 'hover:bg-sidebar-hover'
+                      )}
+                    >
+                      {editingId === conv.id ? (
+                        <>
+                          <Input
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            onBlur={() => handleSaveRename(conv.id)}
+                            onKeyDown={(e) => {
+                              // keyCode 229 covers Safari, which clears isComposing before this keydown
+                              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                              if (e.key === 'Enter') handleSaveRename(conv.id);
+                              if (e.key === 'Escape') setEditingId(null);
+                            }}
+                            className="h-6 text-sm"
+                            autoFocus
+                            aria-label="Conversation title"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          {/* The whole title area is one button, so Tab reaches it and Enter opens it */}
+                          <button
+                            type="button"
+                            data-row-title={conv.id}
+                            className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none cursor-pointer"
+                            aria-current={isActive ? 'page' : undefined}
+                            onClick={() => onSelectConversation(conv.id)}
+                          >
+                            <span className="truncate" title={conv.title}>
+                              {conv.title}
+                            </span>
+                          </button>
+                          {/* The time and the options button share one cell, so the title keeps
+                              its width when the button replaces the time. On touch screens the
+                              button always shows, next to the time. */}
+                          <div className="grid shrink-0 items-center gap-1 font-normal">
+                            <time
+                              dateTime={updatedAt.toISOString()}
+                              title={formatFullDateTime(updatedAt)}
+                              className={cn(
+                                'col-start-1 row-start-1 justify-self-end text-xs tabular-nums whitespace-nowrap group-focus-within:invisible group-hover:invisible group-has-[[data-state=open]]:invisible pointer-coarse:visible!',
+                                // Muted grey is below 4.5:1 on the active row in some themes
+                                isActive ? 'text-tint-text' : 'text-muted-foreground'
+                              )}
+                            >
+                              {formatRowTime(updatedAt, group.key)}
+                            </time>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label={`Options for ${conv.title}`}
+                                  className="col-start-1 row-start-1 h-6 w-6 justify-self-end opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 pointer-coarse:col-start-2 pointer-coarse:opacity-100 transition-opacity motion-reduce:transition-none"
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleRename(conv.id, conv.title)}>
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => handleDeleteClick(conv)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        );
+      })}
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteModalVisible} onOpenChange={setDeleteModalVisible}>
