@@ -23,7 +23,12 @@ import {
 import type { ReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, endStreamWithError, readBodyWithLimit, setCORSHeaders } from './security.ts';
-import { noAnswerNotice, streamErrorMessage, toolLoopOptions } from './tool-loop.ts';
+import {
+  noAnswerNotice,
+  streamErrorMessage,
+  toolErrorEvent,
+  toolLoopOptions,
+} from './tool-loop.ts';
 import { usageEvent } from './usage.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
@@ -371,6 +376,8 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
               },
             })}\n\n`
           );
+        } else if (part.type === 'tool-error') {
+          res.write(toolErrorEvent(part));
         } else if (part.type === 'tool-result') {
           res.write(
             `data: ${JSON.stringify({

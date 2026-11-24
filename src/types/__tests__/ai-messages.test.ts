@@ -34,6 +34,21 @@ describe('toUIMessage', () => {
     expect(toUIMessage(dbMessage({ role: 'user' }))).not.toHaveProperty('model');
   });
 
+  it('restores stored tool calls between the thinking and the answer, with the thinking time', () => {
+    const ui = toUIMessage(
+      dbMessage({
+        content: '<think>plan</think>\nanswer',
+        reasoningMs: 4200,
+        toolCalls: [
+          { toolCallId: 'c1', toolName: 'webSearch', args: { query: 'q' }, status: 'complete' },
+        ],
+      })
+    );
+    expect(ui.parts.map((p) => p.type)).toEqual(['reasoning', 'tool-call', 'text']);
+    expect(ui.parts[1]).toMatchObject({ type: 'tool-call', toolCallId: 'c1', status: 'complete' });
+    expect(ui.reasoningMs).toBe(4200);
+  });
+
   it('splits <think> tags into a reasoning part', () => {
     const ui = toUIMessage(dbMessage({ content: '<think>plan</think>\nanswer' }));
     expect(ui.parts).toEqual([

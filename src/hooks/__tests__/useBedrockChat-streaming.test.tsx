@@ -4,12 +4,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getTextContent } from '../../types/ai-messages';
 import { useBedrockChat } from '../useBedrockChat';
 
+const addMessageMock = vi.hoisted(() =>
+  vi.fn(async (input: Record<string, unknown>) => ({ ...input, id: 'saved-1' }))
+);
+
 // The hook loads a conversation and persists messages through these hooks.
 vi.mock('../index', () => ({
   useConversation: () => ({ conversation: undefined, messages: undefined, isLoading: false }),
   useConversationMutations: () => ({
     createConversation: vi.fn(async () => ({ id: 'conv-1' })),
-    addMessage: vi.fn(async (input: Record<string, unknown>) => ({ ...input, id: 'saved-1' })),
+    addMessage: addMessageMock,
     getNextSequence: vi.fn(async () => 1),
     deleteMessagesFromSequence: vi.fn(async () => 0),
     forkConversation: vi.fn(),
@@ -159,5 +163,48 @@ describe('useBedrockChat streaming', () => {
     const reply = result.current.messages.find((m) => m.role === 'assistant');
     expect(reply?.usage).toEqual({ ...usage, latencyMs: 2100 });
     expect(reply?.model).toEqual({ provider: 'bedrock', id: 'anthropic.claude' });
+  });
+
+  it('stores tool calls with the reply, marks a failed tool, and closes one left open', async () => {
+    const event = (payload: unknown) => encoder.encode(`data: ${JSON.stringify(payload)}\n`);
+    const lines = [
+      event({ reasoning: 'plan' }),
+      event({ toolCall: { id: 'a', name: 'webSearch', args: { query: 'q' } } }),
+      event({ toolResult: { id: 'a', result: { provider: 'brave', results: [] } } }),
+      event({ toolCall: { id: 'b', name: 'fetch', args: { url: 'https://a.test' } } }),
+      event({ toolResult: { id: 'b', name: 'fetch', error: 'Connection refused' } }),
+      event({ toolCall: { id: 'c', name: 'fetch', args: { url: 'https://b.test' } } }),
+      chunk('Answer'),
+    ];
+    let i = 0;
+    const reader = {
+      read: vi.fn(async () =>
+        i < lines.length ? { done: false, value: lines[i++] } : { done: true, value: undefined }
+      ),
+    };
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      body: { getReader: () => reader },
+    })) as never;
+    addMessageMock.mockClear();
+
+    const { result } = renderHook(() => useBedrockChat(options));
+    await act(async () => {
+      await result.current.sendMessage('hello');
+    });
+
+    const reply = result.current.messages.find((m) => m.role === 'assistant');
+    const statuses = reply?.parts
+      .filter((p) => p.type === 'tool-call')
+      .map((p) => (p as { status: string }).status);
+    expect(statuses).toEqual(['complete', 'error', 'error']);
+
+    const stored = addMessageMock.mock.calls
+      .map(([input]) => input)
+      .find((input) => input.role === 'assistant') as { toolCalls: Array<Record<string, unknown>> };
+    expect(stored.toolCalls).toHaveLength(3);
+    expect(stored.toolCalls[1]).toMatchObject({ status: 'error', result: 'Connection refused' });
+    expect(stored.toolCalls[2]).toMatchObject({ status: 'error' });
+    expect(stored.toolCalls[0]).not.toHaveProperty('type');
   });
 });

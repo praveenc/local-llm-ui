@@ -17,7 +17,7 @@ import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { WEB_SEARCH_HEADER_NAMES } from '../src/utils/webSearch.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, endStreamWithError, readBodyWithLimit, setCORSHeaders } from './security.ts';
-import { noAnswerNotice, toolLoopOptions } from './tool-loop.ts';
+import { noAnswerNotice, toolErrorEvent, toolLoopOptions } from './tool-loop.ts';
 import { usageEvent } from './usage.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
@@ -410,6 +410,8 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
               },
             })}\n\n`
           );
+        } else if (part.type === 'tool-error') {
+          res.write(toolErrorEvent(part));
         } else if (part.type === 'tool-result') {
           res.write(
             `data: ${JSON.stringify({

@@ -65,6 +65,8 @@ export interface UIMessage {
   model?: { provider: Provider; id: string };
   /** Token usage of an assistant message, when the provider sent it */
   usage?: MessageUsage;
+  /** About how long the model thought, for the work row */
+  reasoningMs?: number;
 }
 
 /**
@@ -81,6 +83,11 @@ export function toUIMessage(dbMessage: DbMessage): UIMessage {
       type: 'reasoning',
       reasoning: thinkingContent,
     });
+  }
+
+  // Tool calls go between the thinking and the answer, as while the reply streamed
+  for (const toolCall of dbMessage.toolCalls ?? []) {
+    parts.push({ type: 'tool-call', ...toolCall });
   }
 
   if (mainContent) {
@@ -111,6 +118,7 @@ export function toUIMessage(dbMessage: DbMessage): UIMessage {
       model: { provider: dbMessage.provider, id: dbMessage.modelId },
     }),
     ...(dbMessage.usage ? { usage: dbMessage.usage } : {}),
+    ...(dbMessage.reasoningMs ? { reasoningMs: dbMessage.reasoningMs } : {}),
   };
 }
 
