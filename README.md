@@ -31,7 +31,7 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 **Answers**
 
 - See replies as they stream.
-- Read the thinking of reasoning models in a section that you can expand.
+- See what the model did before it answered (thinking, web searches, tool calls) in one line above the answer. Click the line to see each step.
 - Set the thinking effort, from Off to XHigh.
 - See the tokens, time, and cost of each reply.
 - See how full the context window is, with a warning before it fills.
@@ -156,7 +156,7 @@ The chat input has two groups of controls below the text box:
 - **Left:** add files (**+**), the model picker, and the thinking effort.
 - **Right:** web search, MCP tools, and inference settings. After the first message, this group also shows **Clear chat** and the context usage.
 
-The send button is at the end. While a reply streams, the send button changes to a stop button. When web search or MCP tools are on, their buttons show in the theme color.
+The send button is at the end. While a reply streams, the send button changes to a stop button. When web search is on, its button says **Search**. When MCP tools are on, their button shows in the theme color.
 
 ### Model picker
 
@@ -193,7 +193,19 @@ Some models have fewer levels:
 
 To set the start level for each provider, open **Preferences → Providers**, select the provider, and set **Default thinking**.
 
-Reasoning models show their thinking in a **Thinking** section above the answer. Click the section to expand or collapse it. The app saves the thinking with the chat. OpenAI models do not return their thinking text. For these models, only the output token count shows that they thought.
+### What the model did
+
+When a model thinks or uses tools, one line above its answer says what it did, for example `Thought 6 s · 2 searches · 7 sources · 1 fetch call`. While the reply streams, the line shows the step that runs now, for example `Searching "riemann zeros"`. If a tool fails, the line says how many failed.
+
+Click the line to see each step:
+
+- **Thinking:** the thinking text of the model.
+- **Web search:** the query, the number of results, the provider, and the sites of the results. Click the search to see each result.
+- **MCP tool:** the tool name and its main argument, for example the URL that it fetched. Click the tool to see its output.
+
+The app saves the steps with the chat, so they stay when you open the chat again. It keeps the title, link, and a short part of the text of up to 10 results for each search, and the first 8,000 characters of other tool output. The thinking time is an estimate.
+
+OpenAI models do not return their thinking text. For these models, only the output token count shows that they thought.
 
 ### Inference settings
 
@@ -222,7 +234,7 @@ Free plans can change. Look at the pricing page of each provider for the current
 3. Select the **primary provider**. The app tries this provider first.
 4. Keep **Use the next provider when one fails** on. If the primary provider has no quota, is rate limited, or does not respond, the app tries the next provider that has a key.
 
-Each tool call shows as a card in the reply. A search card shows the query, the number of results, and the provider that sent them. An MCP tool card shows the tool name and its main argument, for example the URL that it fetched. Click a card to open it.
+Each search and each tool call shows as a step under the line above the answer. See [What the model did](#what-the-model-did).
 
 The model decides how many searches it makes. For a wide question, it often splits the question into several searches, one for each part. To limit this, lower **Max tool steps** or ask for one search in your message.
 

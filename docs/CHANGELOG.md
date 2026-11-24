@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A show and hide button on API key fields, so a pasted key can be checked ([#62])
 - Each reply shows its tokens, time, and cost next to the rating buttons, also after a reload
 - The context indicator says "Near the limit" at 70% and "Almost full" at 90%; its card shows the tokens read from the prompt cache, the reasoning tokens, and the cost of the chat
+- One line above an answer says what the model did, for example "Thought 6 s · 2 searches · 7 sources · 1 fetch call"; while the reply streams it shows the step that runs now, and a click lists each step
+- Search and tool steps are saved with the reply, so they stay when you open the chat again
 
 #### Changed
 
@@ -45,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replies are easier to read: 15 px text with a 1.65 line height, paragraphs and lists at most 70 characters wide, list bullets outside the text, and headings, code, and tables sized from the reply text; the chat column is 768 px wide
 - Calmer surfaces: the user's messages, the avatar, inline code, and code blocks no longer take the theme tint; the chat input is closer to the page colour; Neutral body text is 15:1 instead of 18:1; dark themes use thinner font smoothing on macOS
 - README: the Neutral theme, the System appearance, and the bundled fonts
+- The Thinking chip and the tool cards are replaced by the work line; a search step lists the sites of its results, and an MCP step shows the text of its output, not JSON
+- The web search button says "Search" when it is on
+- The `motion` package is removed; nothing uses it any more
 - A long reply updates the screen at most once per frame while it streams ([#62])
 
 #### Fixed
@@ -65,6 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The app sends a Content Security Policy, a referrer policy, and frame protection, so other sites cannot embed it ([#62])
 - The context indicator showed too much: it added up every reply, and each model call in a tool loop sends the whole chat again. It now shows the size of the last model call
 - Token usage and the context indicator came back empty after a reload or a model change; they now come from the usage stored with each reply
+- A tool that failed looked like it was still running; it now shows as failed with its error, and a tool that has no result when the reply ends is marked failed
+- MCP tools said "Searching..." while they ran; they now say "Running…"
 
 ## [1.1.0] - 2026-11-12
 
