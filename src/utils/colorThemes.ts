@@ -1,3 +1,5 @@
+import type { VisualMode } from './preferences';
+
 /**
  * Color themes
  *
@@ -114,14 +116,60 @@ export const COLOR_THEMES: readonly ColorThemeOption[] = [
 export const isColorTheme = (value: unknown): value is ColorTheme =>
   COLOR_THEMES.some((theme) => theme.value === value);
 
-/** Sets the theme attribute and the dark class on the root element */
+export type ResolvedVisualMode = 'light' | 'dark';
+
+const DARK_QUERY = '(prefers-color-scheme: dark)';
+
+/** The OS color scheme; light when the browser cannot tell */
+export const systemVisualMode = (): ResolvedVisualMode =>
+  typeof window !== 'undefined' && window.matchMedia?.(DARK_QUERY).matches ? 'dark' : 'light';
+
+/** The scheme to draw: 'system' becomes the OS scheme, anything unknown becomes light */
+export const resolveVisualMode = (mode: unknown): ResolvedVisualMode =>
+  mode === 'dark'
+    ? 'dark'
+    : mode === 'light'
+      ? 'light'
+      : mode === 'system' || mode === undefined
+        ? systemVisualMode()
+        : 'light';
+
+/**
+ * The header toggle switches to the opposite of what is drawn. When that is the OS scheme it
+ * returns 'system', so the app follows the OS again instead of pinning a scheme.
+ */
+export const toggledVisualMode = (
+  drawn: ResolvedVisualMode,
+  system: ResolvedVisualMode
+): VisualMode => {
+  const target = drawn === 'dark' ? 'light' : 'dark';
+  return target === system ? 'system' : target;
+};
+
+/** Calls onChange when the OS color scheme changes; returns the unsubscribe function */
+export const onSystemVisualModeChange = (onChange: () => void): (() => void) => {
+  const query = typeof window !== 'undefined' ? window.matchMedia?.(DARK_QUERY) : undefined;
+  if (!query) return () => {};
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+};
+
+/**
+ * Sets the theme attribute, the dark class, and the color scheme on the root element.
+ * The meta tag and the color-scheme property tell the browser to draw its own UI
+ * (form controls, autofill, the page canvas) in the same scheme as the palette.
+ */
 export const applyColorTheme = (
   root: HTMLElement,
   colorTheme: unknown,
-  visualMode: 'light' | 'dark'
+  visualMode: unknown
 ): void => {
+  const resolved = resolveVisualMode(visualMode);
   root.dataset.theme = isColorTheme(colorTheme) ? colorTheme : DEFAULT_COLOR_THEME;
-  root.classList.toggle('dark', visualMode === 'dark');
+  root.classList.toggle('dark', resolved === 'dark');
+  root.style.colorScheme = resolved;
+  const meta = root.ownerDocument.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+  if (meta) meta.content = resolved;
 };
 
 /**

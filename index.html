@@ -5,6 +5,8 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Both schemes, so the browser follows the OS before the script below picks one -->
+    <meta name="color-scheme" content="light dark" />
     <title>Local LLM UI</title>
     <script>
       // Apply the saved color theme before the first paint (AppShell keeps it in sync)
@@ -14,7 +16,16 @@
         var themes = ['neutral', 'cosmic-night', 'cobaltz', 'rose-pine'];
         var root = document.documentElement;
         root.dataset.theme = themes.indexOf(prefs.colorTheme) >= 0 ? prefs.colorTheme : themes[0];
-        if (prefs.visualMode === 'dark') root.classList.add('dark');
+        // visualMode is 'light', 'dark', or 'system' (also when unset): system follows the OS
+        var mode =
+          prefs.visualMode === 'light' || prefs.visualMode === 'dark'
+            ? prefs.visualMode
+            : matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+        if (mode === 'dark') root.classList.add('dark');
+        root.style.colorScheme = mode;
+        document.querySelector('meta[name="color-scheme"]').content = mode;
         root.dataset.density = prefs.contentDensity === 'compact' ? 'compact' : 'comfortable';
       } catch (e) {}
     </script>

@@ -1,10 +1,10 @@
 /**
  * ThemeMenu
  *
- * Header menu for the color theme and the light or dark mode. It saves the same
+ * Header menu for the color theme and the visual mode (system, light, or dark). It saves the same
  * preferences as Preferences > Display.
  */
-import { Moon, Palette, Sun } from 'lucide-react';
+import { Monitor, Moon, Palette, Sun } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -17,21 +17,25 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { COLOR_THEMES, isColorTheme } from '@/utils/colorThemes';
-import type { ColorTheme } from '@/utils/colorThemes';
+import type { ColorTheme, ResolvedVisualMode } from '@/utils/colorThemes';
 import type { VisualMode } from '@/utils/preferences';
 
 interface ThemeMenuProps {
   colorTheme: ColorTheme;
   visualMode: VisualMode;
+  /** Scheme drawn now, so the swatches show the variant the user sees */
+  resolvedVisualMode: ResolvedVisualMode;
   onColorThemeChange: (value: ColorTheme) => void;
   onVisualModeChange: (value: VisualMode) => void;
 }
 
-const isVisualMode = (value: string): value is VisualMode => value === 'light' || value === 'dark';
+const isVisualMode = (value: string): value is VisualMode =>
+  value === 'system' || value === 'light' || value === 'dark';
 
 export function ThemeMenu({
   colorTheme,
   visualMode,
+  resolvedVisualMode,
   onColorThemeChange,
   onVisualModeChange,
 }: ThemeMenuProps) {
@@ -59,7 +63,7 @@ export function ThemeMenu({
           }}
         >
           {COLOR_THEMES.map((theme) => {
-            const swatch = theme[visualMode];
+            const swatch = theme[resolvedVisualMode];
             return (
               <DropdownMenuRadioItem key={theme.value} value={theme.value}>
                 <span className="flex-1">{theme.label}</span>
@@ -68,7 +72,8 @@ export function ThemeMenu({
                   {[swatch.background, swatch.primary, ...swatch.accents].map((color, index) => (
                     <span
                       key={`${color}-${index}`}
-                      className="size-3 rounded-full ring-1 ring-border"
+                      // The swatch is the information: keep its colour in forced-colors mode
+                      className="size-3 rounded-full ring-1 ring-border forced-color-adjust-none"
                       style={{ background: color }}
                     />
                   ))}
@@ -87,6 +92,10 @@ export function ThemeMenu({
             if (isVisualMode(next)) onVisualModeChange(next);
           }}
         >
+          <DropdownMenuRadioItem value="system">
+            <Monitor className="size-4" aria-hidden />
+            System
+          </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="light">
             <Sun className="size-4" aria-hidden />
             Light

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
-import type { ColorTheme } from '@/utils/colorThemes';
+import type { ColorTheme, ResolvedVisualMode } from '@/utils/colorThemes';
 import type { VisualMode } from '@/utils/preferences';
 
 import { ProductMark } from './ProductMark';
@@ -23,7 +23,10 @@ interface AppLayoutProps {
   scope?: string;
   navigationOpen?: boolean;
   onNavigationChange?: (open: boolean) => void;
-  theme: VisualMode;
+  /** Stored mode, shown in the theme menu: system, light, or dark */
+  visualMode: VisualMode;
+  /** Scheme drawn now; the header toggle and the toasts follow it */
+  theme: ResolvedVisualMode;
   onToggleTheme: () => void;
   colorTheme: ColorTheme;
   onColorThemeChange: (value: ColorTheme) => void;
@@ -37,6 +40,7 @@ export function AppLayout({
   scope,
   navigationOpen = true,
   onNavigationChange,
+  visualMode,
   theme,
   onToggleTheme,
   colorTheme,
@@ -124,7 +128,8 @@ export function AppLayout({
           <div className="flex items-center gap-1">
             <ThemeMenu
               colorTheme={colorTheme}
-              visualMode={theme}
+              visualMode={visualMode}
+              resolvedVisualMode={theme}
               onColorThemeChange={onColorThemeChange}
               onVisualModeChange={onVisualModeChange}
             />

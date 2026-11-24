@@ -11,6 +11,8 @@
 
 /* Neutral: the default palette, used for any data-theme without its own block */
 :root {
+  /* Both schemes until the theme script picks one, so native UI follows the OS without JS */
+  color-scheme: light dark;
   --background: #fafafa;
   --foreground: #111111;
   --card: #ffffff;
@@ -63,6 +65,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: #111111;
   --foreground: #ededed;
   --card: #1a1a1a;

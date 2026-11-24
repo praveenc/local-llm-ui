@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PreferencesDialog } from '../PreferencesDialog';
@@ -234,5 +234,27 @@ describe('PreferencesDialog display radio groups', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Display/ }));
     expect(screen.getByRole('radiogroup', { name: 'Appearance' })).toBeInTheDocument();
     expect(screen.getByRole('radiogroup', { name: 'Content density' })).toBeInTheDocument();
+  });
+});
+
+describe('PreferencesDialog appearance', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('offers System, Light, and Dark, with System selected by default', () => {
+    renderDialog({});
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Display' }), { button: 0 });
+    const group = screen.getByRole('radiogroup', { name: 'Appearance' });
+    expect(
+      within(group)
+        .getAllByRole('radio')
+        .map((r) => r.getAttribute('value'))
+    ).toEqual(['system', 'light', 'dark']);
+    expect(within(group).getByRole('radio', { name: 'System' })).toBeChecked();
+  });
+
+  it('keeps a stored Dark choice', () => {
+    renderDialog({ visualMode: 'dark' });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Display' }), { button: 0 });
+    expect(screen.getByRole('radio', { name: 'Dark' })).toBeChecked();
   });
 });

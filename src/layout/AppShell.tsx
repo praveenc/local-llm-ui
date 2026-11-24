@@ -8,12 +8,15 @@ import { PreferencesDialog, Sidebar } from '../components/sidebar';
 import { db } from '../db';
 import { useAllModels } from '../hooks/useAllModels';
 import type { UnifiedModel } from '../hooks/useAllModels';
+import { useResolvedVisualMode } from '../hooks/useResolvedVisualMode';
 import { conversationService } from '../services';
 import {
   DEFAULT_COLOR_THEME,
   applyColorTheme,
   applyContentDensity,
   isColorTheme,
+  systemVisualMode,
+  toggledVisualMode,
 } from '../utils/colorThemes';
 import { findModel, pickDefaultModel, pickLocalModel } from '../utils/modelSelection';
 import type { ModelRef } from '../utils/modelSelection';
@@ -156,14 +159,16 @@ export default function AppShell() {
     requestDefaultModel(loadPreferences().preferredProvider);
   }, [requestDefaultModel]);
 
-  // Apply the color theme and visual mode on mount and when preferences change
+  // The scheme drawn now: for 'system', the OS scheme, followed live. Apply it with the
+  // color theme on mount and whenever either changes
+  const resolvedVisualMode = useResolvedVisualMode(userPreferences.visualMode);
   useEffect(() => {
     applyColorTheme(
       window.document.documentElement,
       userPreferences.colorTheme,
-      userPreferences.visualMode
+      resolvedVisualMode
     );
-  }, [userPreferences.colorTheme, userPreferences.visualMode]);
+  }, [userPreferences.colorTheme, resolvedVisualMode]);
 
   useEffect(() => {
     applyContentDensity(window.document.documentElement, userPreferences.contentDensity);
@@ -188,7 +193,7 @@ export default function AppShell() {
 
   const handleToggleTheme = () => {
     handleAppearanceChange({
-      visualMode: userPreferences.visualMode === 'dark' ? 'light' : 'dark',
+      visualMode: toggledVisualMode(resolvedVisualMode, systemVisualMode()),
     });
   };
 
@@ -238,7 +243,8 @@ export default function AppShell() {
       scope={selectedModel ? `${selectedModel.providerName} · ${selectedModel.name}` : undefined}
       navigationOpen={navigationOpen}
       onNavigationChange={setNavigationOpen}
-      theme={userPreferences.visualMode}
+      visualMode={userPreferences.visualMode}
+      theme={resolvedVisualMode}
       onToggleTheme={handleToggleTheme}
       colorTheme={
         isColorTheme(userPreferences.colorTheme) ? userPreferences.colorTheme : DEFAULT_COLOR_THEME
