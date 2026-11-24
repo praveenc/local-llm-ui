@@ -41,11 +41,11 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 14 | README | 2 `feat/typography` ([#64](https://github.com/praveenc/local-llm-ui/pull/64)) | Done, merged |
 | 3 | Work row | 3 `feat/work-row` ([#65](https://github.com/praveenc/local-llm-ui/pull/65)) | Done, merged |
 | 7 | Web search state in words | 3 `feat/work-row` ([#65](https://github.com/praveenc/local-llm-ui/pull/65)) | Done, merged |
-| 4 | Fewer controls | 4 `feat/lean-chrome` (PR 4) | Done, in review |
-| 10 | Conversation search | 4 `feat/lean-chrome` (PR 4) | Done, in review |
-| 13 | Centred composer | 4 `feat/lean-chrome` (PR 4) | Done, in review |
-| 11 | Preferences save on change | 5 `feat/preferences-autosave` | Not started |
-| 12 | Accessibility polish | 5 `feat/preferences-autosave` | Not started |
+| 4 | Fewer controls | 4 `feat/lean-chrome` ([#67](https://github.com/praveenc/local-llm-ui/pull/67)) | Done, merged |
+| 10 | Conversation search | 4 `feat/lean-chrome` ([#67](https://github.com/praveenc/local-llm-ui/pull/67)) | Done, merged |
+| 13 | Centred composer | 4 `feat/lean-chrome` ([#67](https://github.com/praveenc/local-llm-ui/pull/67)) | Done, merged |
+| 11 | Preferences save on change | 5 `feat/preferences-autosave` | Done, waits on PR |
+| 12 | Accessibility polish | 5 `feat/preferences-autosave` | Done, waits on PR |
 | 9 | One theme control | None | Dropped (D2) |
 
 ### Found during the work
@@ -238,6 +238,12 @@ Effort is relative. **S** is one or two files. **M** is several components and t
   - The dialog footer has one **Close** button and the text "Changes save automatically". A short "Saved" label shows next to a setting after it saves.
   - Theme changes in Preferences apply at once, so the palette menu, the moon button, and Preferences always agree (D2).
 - **Trade-offs:** There is no Cancel to undo a change. The `PreferencesDialog` tests need updates.
+- **Done in PR 5:**
+  - Radio buttons, selects, switches, and the theme picker save at once. Typed values (the API keys, avatar initials, and MCP server fields, which change on each key press) save after 700 ms without typing, when focus leaves the field, on Enter, and when the dialog closes.
+  - The footer says "Changes save automatically." and shows "Saved" for 2 seconds after a save, in a `role="status"` region. This is one place for the feedback, not a label next to each setting.
+  - The footer button is **Done**, not Close, because the dialog's X button is already named Close.
+  - The rule that the default provider needs an API key stays: a change that breaks it is not saved, and the dialog says "Not saved" until you select a different default provider. If you close the dialog first, that one change is dropped; the stored preferences stay valid.
+  - The unsaved-changes prompt (Discard) is gone from Preferences. Quote and Ask keeps it.
 
 ### P3
 
@@ -245,6 +251,11 @@ Effort is relative. **S** is one or two files. **M** is several components and t
 
 - **Categories:** Accessibility and responsive layout. **Effort:** S.
 - **Change:** Message action icons go from 12 px to 16 px. The work row gets an explicit `focus-visible` ring. Reduced-motion guards are added to `animate-pulse` (`prompt-input.tsx:1197`) and `animate-in` (`reasoning.tsx:175`). The scroll-to-bottom button moves to the top edge of the composer, so it does not cover text.
+- **Done in PR 5:**
+  - The message action icons are 16 px.
+  - The work row got its `focus-visible` outline in PR 3.
+  - `animate-pulse` on the microphone button stops with reduced motion. The `animate-in`, `fade-in`, `zoom-in`, and `slide-in` classes on dialogs and menus have no effect: the app has no animation plugin for them (the built CSS has no such rules), so nothing moves.
+  - The chat measures the height of the chat input and ends 48 px above it. The scroll-to-bottom button sits in that strip, so it covers no text. This also fixes the end of the chat that the input covered on phones, where its toolbar takes two or three rows.
 
 #### 13. Centred composer on an empty chat (D5, approved)
 
@@ -421,7 +432,7 @@ One PR for each group, in this order:
 | 2 | `feat/typography` | 2, 8, 14 | Nothing (PR 1 merged as #63) |
 | 3 | `feat/work-row` | 3, 7 | Nothing (PR 2 merged as #64) |
 | 4 | `feat/lean-chrome` | 4, 10, 13 | Nothing |
-| 5 | `feat/preferences-autosave` | 11, 12 | Nothing |
+| 5 | `feat/preferences-autosave` | 11, 12 | Nothing (PR 4 merged as #67) |
 
 Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes.
 
