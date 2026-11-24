@@ -58,8 +58,8 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 9 | One theme control | None | Dropped (D2) |
 | 15 | A more comfortable chat input | 6 `feat/composer-comfort` ([#70](https://github.com/praveenc/local-llm-ui/pull/70)) | Done, merged |
 | 16 | Sidebar groups with more structure | 7 `feat/sidebar-groups` ([#71](https://github.com/praveenc/local-llm-ui/pull/71)) | Done, merged |
-| 17 | Web search on by default | 8 `feat/web-search-default` | In progress |
-| 18 | Rename a chat from the header | 9 `feat/rename-title` (stacked on PR 8) | In progress |
+| 17 | Web search on by default | 8 `feat/web-search-default` ([#72](https://github.com/praveenc/local-llm-ui/pull/72)) | PR open |
+| 18 | Rename a chat from the header | 9 `feat/rename-title` ([#73](https://github.com/praveenc/local-llm-ui/pull/73), stacked on #72) | PR open |
 
 ### Found during the work
 
