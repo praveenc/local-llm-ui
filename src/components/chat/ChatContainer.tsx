@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils';
 import type { MessageUsage } from '../../db/types';
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
 import { useBedrockChat } from '../../hooks/useBedrockChat';
-import type { ToolCallPart } from '../../types/ai-messages';
+import type { ToolCallPart, UIMessage } from '../../types/ai-messages';
 import { getReasoningContent, getTextContent, hasReasoning } from '../../types/ai-messages';
 import { summarizeChatUsage } from '../../utils/chatUsage';
 import { normalizeMediaType } from '../../utils/fileUtils';
@@ -70,8 +70,7 @@ import {
   PromptInputTools,
   usePromptInputAttachments,
 } from '../ai-elements/prompt-input';
-import { Reasoning, ReasoningContent, ReasoningTrigger } from '../ai-elements/reasoning';
-import { ToolCall } from '../ai-elements/tool-call';
+import { WorkRow } from '../ai-elements/work-row';
 import { FittedContainer } from '../layout';
 import { ActiveModelBadge } from './ActiveModelBadge';
 import { ChatErrorAlert } from './ChatErrorAlert';
@@ -89,6 +88,11 @@ import { WebSearchToggle } from './WebSearchToggle';
 import { composerCard, composerIconButton } from './composerStyles';
 
 // Helper to extract tool calls from message parts
+/** The reply has thinking or tool calls, so it has a work row */
+const hasWork = (message: UIMessage | undefined) =>
+  message?.role === 'assistant' &&
+  message.parts.some((p) => p.type === 'reasoning' || p.type === 'tool-call');
+
 const getToolCalls = (message: { parts: Array<{ type: string }> }): ToolCallPart[] => {
   return message.parts.filter((p): p is ToolCallPart => p.type === 'tool-call');
 };
@@ -358,35 +362,20 @@ const ChatContainer = ({
                   <ConversationContent className="p-4 compact:p-3">
                     {selectedModel && <ActiveModelBadge model={selectedModel} />}
                     {messages.map((message, index) => {
-                      // Determine if this message's reasoning is still streaming
                       const isLastMessage = index === messages.length - 1;
-                      const isReasoningStreaming =
-                        isLastMessage &&
-                        isLoading &&
-                        hasReasoning(message) &&
-                        !getTextContent(message);
+                      const toolCalls = getToolCalls(message);
 
                       const showAvatar = message.role === 'user' && !!avatarInitials;
                       const content = (
                         <MessageContent>
-                          {hasReasoning(message) && (
-                            <Reasoning
-                              className="w-full"
-                              isStreaming={isReasoningStreaming}
-                              defaultOpen={false}
-                            >
-                              <ReasoningTrigger getThinkingMessage={thinkingMessage} />
-                              <ReasoningContent>
-                                {getReasoningContent(message) || ''}
-                              </ReasoningContent>
-                            </Reasoning>
-                          )}
-                          {getToolCalls(message).length > 0 && (
-                            <div className="my-2 space-y-1">
-                              {getToolCalls(message).map((toolCall) => (
-                                <ToolCall key={toolCall.toolCallId} toolCall={toolCall} />
-                              ))}
-                            </div>
+                          {(hasReasoning(message) || toolCalls.length > 0) && (
+                            <WorkRow
+                              reasoning={getReasoningContent(message) || undefined}
+                              reasoningMs={message.reasoningMs}
+                              toolCalls={toolCalls}
+                              isRunning={isLastMessage && isLoading}
+                              hasText={getTextContent(message).trim().length > 0}
+                            />
                           )}
                           <MessageResponse className="reply-text">
                             {message.role === 'user'
@@ -453,7 +442,8 @@ const ChatContainer = ({
                         </Fragment>
                       );
                     })}
-                    {isLoading && !hasReasoning(messages[messages.length - 1] || { parts: [] }) && (
+                    {/* The work row shows its own live step */}
+                    {isLoading && !hasWork(messages[messages.length - 1]) && (
                       <GeneratingIndicator />
                     )}
                   </ConversationContent>
@@ -688,20 +678,6 @@ const PromptInputSubmitWithAttachments = ({
       )}
     </PromptInputSubmit>
   );
-};
-
-// Reasoning label: flat muted text and a spinner instead of the stock gradient shimmer
-const thinkingMessage = (isStreaming: boolean, duration?: number) => {
-  if (isStreaming || duration === 0) {
-    return (
-      <span className="inline-flex items-center gap-1.5">
-        <Loader2 className="size-3.5 animate-spin" aria-hidden />
-        Thinking…
-      </span>
-    );
-  }
-  if (duration === undefined) return <p>Thought for a few seconds</p>;
-  return <p>Thought for {duration} seconds</p>;
 };
 
 // Loading indicator shown during AI response generation

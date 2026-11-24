@@ -28,6 +28,13 @@ describe('WebSearchToggle', () => {
     expect(onToggle).not.toHaveBeenCalled();
   });
 
+  it('says Search in words when it is on, and shows only the icon when it is off', () => {
+    const { rerender } = render(<WebSearchToggle enabled onToggle={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Web search' })).toHaveTextContent('Search');
+    rerender(<WebSearchToggle enabled={false} onToggle={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Web search' })).not.toHaveTextContent('Search');
+  });
+
   it('reports its state to assistive technology', () => {
     render(<WebSearchToggle enabled onToggle={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Web search' })).toHaveAttribute(
