@@ -8,7 +8,7 @@
 
 Local LLM UI is a chat app for large language models. It runs on your computer and connects to local models (Ollama, LM Studio) and cloud models (Amazon Bedrock, Anthropic, Groq, and more) from one window.
 
-![Local LLM UI](.github/images/local-llm-ui-ex1.png)
+![An empty chat with the chat input in the middle and the conversation list grouped by date in the sidebar.](.github/images/home.png)
 
 ## Contents
 
@@ -27,6 +27,7 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 - Chat with models from Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Anthropic, OpenRouter, Groq, and Cerebras.
 - Find a model in one searchable list, grouped by provider.
 - Start each new chat with the model that you used last.
+- See a checklist of the providers when no model is ready. Each row tells you what is missing.
 
 **Answers**
 
@@ -38,15 +39,18 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 
 **Tools**
 
-- Let the model search the web with Brave Search, Exa, or Tavily.
+- Let the model search the web with Brave Search, Exa, or Tavily. When a search key is set, web search is on in each new chat.
 - Connect external tools with [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) servers.
 - Attach documents and images to Bedrock models.
 
 **Your workflow**
 
 - Keep all chats in your browser (IndexedDB). No account is necessary.
+- Find a chat in the conversation list. The list groups the chats by date and shows the time of each chat. The app remembers which groups are open.
+- Rename a chat from the header.
 - Select text in a reply and ask about it with **Quote and Ask**.
 - Save prompts that you use frequently.
+- Use the keyboard: `/` puts the cursor in the chat input, and Cmd+K (macOS) or Ctrl+K opens the model picker.
 - Pick a color theme (Neutral, Cosmic Night, Cobaltz, or Rosé Pine), each with a light and a dark variant. The app can follow the light or dark setting of your system.
 
 ## Quick start
@@ -160,7 +164,7 @@ The chat input has two groups of controls below the text box:
 
 To start a new chat, click **New chat** (the pencil button in the header) or **New Conversation** in the sidebar.
 
-The send button is at the end. While a reply streams, the send button changes to a stop button. When web search is on, its button says **Search**. When MCP tools are on, their button shows in the theme color.
+The send button is at the end. While a reply streams, the send button changes to a stop button. When web search is on, its button says **Search**. When one or more MCP servers are connected, the MCP button shows the number of tools in the theme color.
 
 ### Model picker
 
@@ -201,6 +205,8 @@ Some models have fewer levels:
 
 To set the start level for each provider, open **Preferences → Providers**, select the provider, and set **Default thinking**.
 
+![The Providers tab of Preferences with Ollama selected and its Default thinking menu open.](.github/images/preferences-providers.png)
+
 ### What the model did
 
 When a model thinks or uses tools, one line above its answer says what it did, for example `Thought 6 s · 2 searches · 7 sources · 1 fetch call`. While the reply streams, the line shows the step that runs now, for example `Searching "riemann zeros"`. If a tool fails, the line says how many failed.
@@ -219,8 +225,8 @@ OpenAI models do not return their thinking text. For these models, only the outp
 
 Click the settings button in the chat input to set these values:
 
-- **Max tokens:** the maximum length of the reply.
-- **Max tool steps:** the maximum number of model calls in one reply when tools are on. See [Max tool steps](#max-tool-steps).
+- **Max Tokens:** the maximum length of the reply.
+- **Max Tool Steps:** the maximum number of model calls in one reply when tools are on. See [Max tool steps](#max-tool-steps).
 
 > [!NOTE]
 > The app does not send `temperature` or `top_p` to any model. Each model uses its own default sampling settings. Newer models (for example, Claude Opus 4.7 and later) reject these settings with the error "`temperature` is deprecated for this model". To keep the behavior the same for all models, the app also does not send them to older models.
@@ -241,14 +247,16 @@ Free plans can change. Look at the pricing page of each provider for the current
 
 1. Open **Preferences → Web Search**.
 2. Click **Add key** next to a provider and paste the key.
-3. Select the **primary provider**. The app tries this provider first.
+3. Under **Primary provider**, select the provider that the app tries first.
 4. Keep **Use the next provider when one fails** on. If the primary provider has no quota, is rate limited, or does not respond, the app tries the next provider that has a key.
+
+![The Web Search tab of Preferences with keys for Brave Search and Exa, and Brave Search as the primary provider.](.github/images/preferences-web-search.png)
 
 The globe button shows only when a provider has a key. Web search is then on in each new chat, and the button says **Search**. To turn web search off for one chat, click the button. The next new chat, or a chat that you open from the sidebar, starts with web search on again. To start each chat with web search off, turn off **Search the web by default** in **Preferences → Web Search**.
 
 Each search and each tool call shows as a step under the line above the answer. See [What the model did](#what-the-model-did).
 
-The model decides how many searches it makes. For a wide question, it often splits the question into several searches, one for each part. To limit this, lower **Max tool steps** or ask for one search in your message.
+The model decides how many searches it makes. For a wide question, it often splits the question into several searches, one for each part. To limit this, lower **Max Tool Steps** or ask for one search in your message.
 
 ### Max tool steps
 
@@ -258,11 +266,15 @@ The limit is 2 to 25 steps. The default is 10. If a reply stops before it gives 
 
 ### MCP servers
 
-MCP servers give the model access to external tools. To add a server, open **Preferences → MCP Servers**. The app supports local servers (stdio) and remote servers (HTTP and SSE).
+MCP servers give the model access to external tools. The app supports local servers (stdio) and remote servers (HTTP and SSE).
 
-| MCP tools status | MCP server configuration |
-|:---:|:---:|
-| ![MCP tools status in the chat input](.github/images/local-llm-mcp-servers-support_1.png) | ![MCP server configuration in Preferences](.github/images/local-llm-mcp-servers-support_2.png) |
+To add a server:
+
+1. Open **Preferences → MCP Servers**.
+2. Click **Local** for a stdio server or **Remote** for an HTTP or SSE server. If you have no servers yet, the buttons are **Add Local Server** and **Add Remote Server**.
+3. Fill in the form. A local server needs a command and its arguments. A remote server needs a URL and, if necessary, headers.
+
+![The MCP Servers tab of Preferences with a local server and the form of a remote HTTP server.](.github/images/preferences-mcp-servers.png)
 
 The MCP button in the chat input shows the connected servers and their tools.
 
@@ -275,7 +287,7 @@ Use **Quote and Ask** to ask about one part of a reply:
 1. Select text in a message. A **Quote and Ask** button shows above the selection.
 2. Click the button and type your question.
 3. Select where to send it:
-   - **Send to Compose** puts the quote and your question in the message box. You can edit the text before you send it.
+   - **Send to Compose** puts the quote and your question in the chat input. You can edit the text before you send it.
    - **Send to Fork** makes a new chat with the messages up to the quoted message. Then it sends your question there. The original chat does not change.
 
 The app sends the quote in a `<quote>` tag, before your question:
@@ -289,6 +301,8 @@ your question
 ```
 
 The chat shows the quote as an indented block. **Send to Fork** needs a selected model.
+
+![A reply with selected text and the Quote and Ask button above the selection.](.github/images/chat-quote-and-ask.png)
 
 ### Rate a reply
 
@@ -307,7 +321,7 @@ Supported formats: PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX, and images.
 
 The context indicator in the chat input shows how full the context window of the selected model is. The value is the size of the chat after the last reply, because the model gets the whole chat again with each new message. The indicator also shows after you open a saved chat.
 
-- At 70%, the indicator changes colour and says **Near the limit**.
+- At 70%, the indicator changes color and says **Near the limit**.
 - At 90%, it says **Almost full**. A reply can fail when the window is full. Start a new chat.
 
 Click the indicator to see the input and output tokens of the chat, the tokens read from the prompt cache, the reasoning tokens, and the cost.
@@ -336,7 +350,7 @@ Type in **Search chats** at the top of the conversation list. The list shows onl
 The app makes the title of a chat from your first message. To change it:
 
 1. Open the chat.
-2. Click the title in the header. You can also click the pencil button next to it, or use **Rename** in the **...** menu of the chat in the sidebar.
+2. Click the title in the header. You can also click **Rename chat** (the pencil button next to it), or use **Rename** in the **...** menu of the chat in the sidebar.
 3. Type the new title and push **Enter**. A click outside the field also saves it. Push **Esc** to keep the old title.
 
 An empty title is not saved. A rename does not move the chat to a different date group. A new chat has no title to rename until you send the first message.
@@ -369,6 +383,8 @@ You can also select the theme in **Preferences → Display**. The same tab has t
 - **Content density**: **Comfortable** is the default. **Compact** uses less space between messages and in the sidebar.
 - **Avatar initials**: one or two letters that show next to your messages. Leave the field empty for no avatar.
 
+![The Display tab of Preferences with the Cobaltz theme selected.](.github/images/preferences-display.png)
+
 | Theme | Light variant | Dark variant | Code colors (light / dark) |
 |---|---|---|---|
 | Neutral (default) | Light, teal accent | Dark, teal accent | GitHub Light / GitHub Dark |
@@ -380,7 +396,7 @@ Replies use the Inter font and code uses JetBrains Mono. The app includes both f
 
 The app loads the syntax highlighter when the first code block shows, not when the page loads.
 
-The app keeps all preferences in your browser. Preferences has no Save button: a setting saves when you change it, and the footer shows **Saved**. A key or other typed text saves when you stop typing, when you go to a different field, or when you push **Enter**. Click **Done** or press **Esc** to close Preferences.
+The app keeps all preferences in your browser. Preferences has no Save button. The footer says **Changes save automatically.** A setting saves when you change it, and the footer then shows **Saved**. A key or other typed text saves when you stop typing, when you go to a different field, or when you push **Enter**. Click **Done** or push **Esc** to close Preferences.
 
 ## Troubleshooting
 
@@ -401,7 +417,7 @@ The app keeps all preferences in your browser. Preferences has no Save button: a
 
 ### The reply stops before the answer
 
-When tools are on, the model can use all its tool steps. Increase **Max tool steps** in the inference settings and send the message again.
+When tools are on, the model can use all its tool steps. Increase **Max Tool Steps** in the inference settings and send the message again.
 
 ### The thinking section does not show
 
