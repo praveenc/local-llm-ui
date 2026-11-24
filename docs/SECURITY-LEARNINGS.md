@@ -262,6 +262,18 @@ preview: { cors: false, /* ... */ },
 - **Account data.** `GET /api/kiro/status` returns the account email. Only the app's own pages can read it (SEC-13). The server does not log it.
 - **Read only.** The status route is a `GET` and must not change state (SEC-13). Sign-in and sign-out are `POST` with JSON.
 
+### SEC-15: The Kiro Agent Process
+
+`server/kiro/agent.ts` runs one long-lived `kiro-cli acp` for all Kiro chats. Kiro is a coding agent: its tools can read and change files and run shell commands in the session folder. The rules:
+
+- **Tools ask.** Each new or loaded session gets `autopilot` set to `off`, and the app reads the value back. If Kiro does not turn it off, the app deletes the session and fails. Until the approval UI lands, the default answer to `session/request_permission` is **Deny** (`reject_once`). Options are chosen by `kind`, never by id. A cancelled reply answers `cancelled`.
+- **Nothing else from the agent.** Every other request from Kiro to the app gets JSON-RPC error `-32601` at once, so the app gives Kiro no file system or terminal access of its own (`clientCapabilities` `fs` and `terminal` are `false`).
+- **Own folder.** New sessions run in `~/.local-llm-ui/kiro` (mode `0700`), not in the app's repository.
+- **No shell.** `spawn` with fixed arguments: `acp --agent-engine v3 --auth-method cli`.
+- **Stop the whole tree.** The engine runs in process groups of its own. A stop reads every descendant group with `ps` before it closes stdin, then sends `SIGTERM` and `SIGKILL` to each group, never to the app's own group. The same runs when the app exits. The process also stops after 10 idle minutes.
+- **Limits.** One JSON-RPC line may be at most 64 MB. `initialize` and `session/new` time out after 30 s, `session/load` after 120 s, and a reply that ignores `session/cancel` for 30 s stops the process.
+- **Logs.** Only lifecycle lines (started, stopped, exited). No prompt text, tool input, or account data.
+
 ---
 
 ## Client-Side Security
