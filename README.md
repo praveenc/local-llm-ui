@@ -319,7 +319,13 @@ Under each reply, next to the rating buttons, the app shows the input and output
 
 ### Find a chat
 
-Type in **Search chats** at the top of the conversation list. The list shows only the chats whose title contains the text. Push **Esc** to clear the search.
+The conversation list groups the chats by the date of their last message: **Today**, **Yesterday**, **Previous 7 days**, **Previous 30 days**, and then one group for each month, for example **October**. A month of an earlier year also shows the year, for example **October 2025**.
+
+Click a group heading to open or close the group. The app remembers which groups are open, also after a page reload. At first, Today, Yesterday, and Previous 7 days are open, and the older groups are closed. A closed group shows how many chats it has. While you scroll, the heading of the group stays at the top of the list.
+
+Each chat shows the time of its last message at the right: the time of day for Today and Yesterday, the day of the week for Previous 7 days, and the date for older chats. Put the pointer on the time to see the full date. Put the pointer on the chat to see the **...** button, with **Rename** and **Delete**.
+
+Type in **Search chats** at the top of the conversation list. The list shows only the chats whose title contains the text, and opens all the groups that have a match. Push **Esc** to clear the search.
 
 ### Saved prompts
 

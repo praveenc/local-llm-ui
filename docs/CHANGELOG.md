@@ -31,9 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Search chats: a filter at the top of the conversation list
 - A New chat button in the header
 - A line in the chat shows when the next reply comes from another model
+- Each chat in the conversation list shows the time of its last message, and a closed date group shows how many chats it has
+- The conversation list remembers which date groups are open, also after a reload
 
 #### Changed
 
+- The conversation list groups chats by the calendar: Today, Yesterday, Previous 7 days, Previous 30 days, and then one group for each month. The group headings are larger and stay at the top of the list while you scroll
 - Text meets 4.5:1 contrast in every theme ([#59])
 - Every theme tints the user's messages, the open conversation, the reasoning label, the model badge, the avatar, and code blocks with its own primary colour, and colours links, inline code, and tool icons with it; status dots show ready, needs a fix, or checking. Neutral takes one teal accent, also on the send button ([#59])
 - The chat input has a border and no shadow or gradient; disabled tools say why they are off ([#59])
@@ -64,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- The conversation list showed only the 50 newest chats, and Search chats did not find older ones; it now shows all chats
 - Icon buttons and the chat input have accessible names, and screen readers announce when a reply starts and ends ([#59])
 - Scrollbar thumbs have 3:1 contrast in every theme and show no light track when macOS shows scroll bars always ([#59])
 - Renaming a conversation with a Japanese, Chinese, or Korean input method no longer saves early when Enter confirms a candidate ([#59])

@@ -506,6 +506,26 @@ Evidence comes from `main` at `6d09748` and from three screenshots of 2026-11-24
   - Search works as today: it opens every group with a match, and it does not change the stored open groups.
   - Compact density keeps less space between rows and groups.
 - **Trade-offs:** Closed groups still hide chats, but you choose which ones, and the choice stays. A month group gets a new key each month, so it starts closed.
+- **Done in PR 7:**
+  - `src/utils/conversationGroups.ts` holds the groups, the row time, and the open state (`localStorage` key `local-llm-ui-sidebar-groups`). It has no DOM or React imports.
+  - The time of day uses the locale's short format: "14:05" in en-GB, "3:05 PM" in en-US. The groups change at the next update of the list after midnight, not at midnight.
+  - A closed group's button is named, for example, "Previous 30 days, 14 chats", and its digits are hidden from screen readers. A hidden word next to the digits was read as "Previous 30 days14chats".
+  - The sticky headers needed no change: `scroll-area.tsx` already makes the Radix wrapper `display: block`.
+  - Muted text on the active row is below 4.5:1 in four variants, so the time on the active row uses the row's own text colour (`--tint-text`):
+
+    | Theme | Muted on sidebar | Muted on active row | Tint text on active row |
+    | --- | --- | --- | --- |
+    | Neutral Light | 5.55 | 4.69 | 4.66 |
+    | Neutral Dark | 7.17 | 5.58 | 6.79 |
+    | Cosmic Night Light | 4.89 | 4.20 | 4.90 |
+    | Cosmic Night Dark | 6.73 | 5.36 | 5.15 |
+    | Cobaltz Light | 4.94 | 4.20 | 4.69 |
+    | Cobaltz Dark | 5.61 | 4.09 | 7.10 |
+    | Rosé Pine Dawn | 5.82 | 4.93 | 4.98 |
+    | Rosé Pine Main | 5.12 | 3.74 | 7.13 |
+
+  - Tested with 70 seeded chats from today to 16 months ago and one real Bedrock chat: all 71 show, and the title keeps its width when the "…" button replaces the time.
+  - Found: the "…" button is 24 px, below the 44 px touch target. This PR does not change it.
 
 ```text
 Conversations
