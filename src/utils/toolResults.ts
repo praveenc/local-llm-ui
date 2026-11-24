@@ -106,6 +106,19 @@ export function toolResultText(result: unknown): string {
   }
 }
 
+/**
+ * The tool call failed: the proxy sent an error, or a web search failed on every provider. The
+ * search tool returns those errors as its output (an `error` field and no results), not as a
+ * tool error, so the model can read them.
+ */
+export function isToolCallFailed(
+  part: Pick<ToolCallPart, 'toolName' | 'status' | 'result'>
+): boolean {
+  if (part.status === 'error') return true;
+  if (!isWebSearchTool(part.toolName)) return false;
+  return Boolean(parseSearchInfo(part.result).error) && !parseSearchResults(part.result)?.length;
+}
+
 const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
 /**

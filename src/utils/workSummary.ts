@@ -5,7 +5,12 @@
  */
 import type { ToolCallPart } from '../types/ai-messages';
 import { argsSummary } from './toolCallSummary';
-import { isWebSearchTool, parseSearchResults, shortToolName } from './toolResults';
+import {
+  isToolCallFailed,
+  isWebSearchTool,
+  parseSearchResults,
+  shortToolName,
+} from './toolResults';
 
 export interface WorkSummary {
   /** Parts of the summary line, for example ["Thought 4 s", "3 searches", "18 sources"] */
@@ -60,7 +65,7 @@ export function summarizeWork({
     for (const [name, count] of byName) parts.push(`${plural(count, `${name} call`)}`);
   }
 
-  return { parts, failed: toolCalls.filter((t) => t.status === 'error').length };
+  return { parts, failed: toolCalls.filter(isToolCallFailed).length };
 }
 
 const shorten = (text: string, max = 60) => (text.length > max ? `${text.slice(0, max)}…` : text);

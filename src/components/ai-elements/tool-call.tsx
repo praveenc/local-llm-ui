@@ -13,6 +13,7 @@ import { argsSummary } from '../../utils/toolCallSummary';
 import {
   type SearchResult,
   hostnameOf,
+  isToolCallFailed,
   isWebSearchTool,
   parseSearchInfo,
   parseSearchResults,
@@ -37,8 +38,8 @@ export function ToolCall({ toolCall, className }: ToolCallProps) {
 
   const searchResults = isWebSearch ? parseSearchResults(toolCall.result) : null;
   const searchInfo = isWebSearch ? parseSearchInfo(toolCall.result) : {};
-  const searchFailed = Boolean(searchInfo.error) && !searchResults?.length;
-  const showError = isError || searchFailed;
+  const showError = isToolCallFailed(toolCall);
+  const searchFailed = showError && !isError;
   const summary = argsSummary(toolCall.args);
   const name = isWebSearch ? 'Web search' : shortToolName(toolCall.toolName);
   const domains = [...new Set((searchResults ?? []).map((r) => hostnameOf(r.url)))];
