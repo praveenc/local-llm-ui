@@ -574,6 +574,7 @@ Conversations
   - The Preferences switch "Search the web by default" is at the top of the Web Search tab. It saves on change. Without a key it is off and disabled, with "Add a key to use this."
   - `supportsTools` comes from the Ollama capabilities, and is not set when Ollama reports no capabilities. A model with `supportsTools: false` gets no search, no key headers, and no MCP servers. The globe and MCP buttons stay focusable, show "This model cannot use tools", and keep the choice for the next model. Ollama does not run on the test host, so this path has unit tests only.
   - Tested in Chromium with Claude Haiku 5.5 · Global and a fake Brave key: the request has `enableWebSearch: true` and the key headers in a new chat, `false` after the globe turns it off, and `false` after the key is removed. The toolbar stays on one row at 1440 and 1024 px.
+  - A search that fails on every provider counts as failed in the work row: "2 searches · 2 failed" with the rejected key, also after a reload (see [Found during the planning](#found-during-the-planning)).
 
 ### 18. Rename a chat from the header
 
@@ -599,7 +600,8 @@ Conversations
 - **Stale text in Saved Prompts.** The empty Saved Prompts dialog says "click the bookmark button to save it" (`ViewPromptsModal.tsx:192`, screenshot 2). PR 4 moved that button into the **+** menu as "Save as prompt". PR 6 changes the text to "Type a prompt in the chat input, click +, and then click Save as prompt."
 - **The sidebar shows only 50 chats.** `useConversations` loads the 50 newest chats (`useConversations.ts:20`), and the sidebar uses that default (`ConversationList.tsx:95`). Older chats do not show, and **Search chats** does not find them. PR 7 loads all active chats. A chat row holds no messages, so the list stays small.
 - **Titles cut in the middle of a word** (`conversationService.ts:26`). Plan 2 does not change this. A later item can cut at a space, or ask the model for a short title.
-- **A search that fails on all providers does not say "failed" (PR 8 testing).** With a key that the provider rejects, the work row says "2 searches" and nothing about the failure. The search tool returns the errors as its output (`server/web-search.ts:131`, `error` field) instead of sending `tool-error`, so the step keeps the status `success`, and `workSummary.ts:63` counts only steps with the status `error`. With web search on by default, an expired key now affects every chat. Fix: mark a search step as failed when its output has `error`. Not in PR 8.
+- **A search that fails on all providers did not say "failed" (PR 8 testing).** With a key that the provider rejects, the work row said "2 searches" and nothing about the failure. The search tool returns the errors as its output (`server/web-search.ts:131`, `error` field) instead of sending `tool-error`, so the step kept the status `success`, and `workSummary.ts:63` counted only steps with the status `error`. Each step already said "Failed" (`tool-call.tsx:40`). Fixed in PR 8: `isToolCallFailed` in `src/utils/toolResults.ts` holds the rule, and the summary and the step both use it.
+- **Reply text from two model calls runs together (PR 8 testing).** When the model writes text, calls a tool, and writes again, the two texts join with no space, for example "…a different query.I couldn't find…". PR 8 does not change how reply text is joined. Not fixed.
 
 ### Delivery plan for Plan 2
 

@@ -92,6 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A model search with a dot, for example "Haiku 5.5", found nothing
 - The scroll-to-bottom button covered the text of the chat; it now sits in a strip between the chat and the chat input
 - On narrow screens the chat input covered the end of the chat when its toolbar took more than one row; the chat now ends above the measured height of the input
+- A web search that failed on every provider, for example with a rejected key, was not counted as failed in the line above the answer; it now says, for example, "2 searches · 2 failed", also after a reload
 - The empty Saved Prompts list said to click a bookmark button that is gone; it now says to click + and then Save as prompt
 
 ## [1.1.0] - 2026-11-12
