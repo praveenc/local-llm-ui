@@ -11,6 +11,8 @@
 
 /* Neutral: the default palette, used for any data-theme without its own block */
 :root {
+  /* Both schemes until the theme script picks one, so native UI follows the OS without JS */
+  color-scheme: light dark;
   --background: #fafafa;
   --foreground: #111111;
   --card: #ffffff;
@@ -46,9 +48,10 @@
   /* Status colours, used only on real status (see "Colour accents" below) */
   --status-ok: #2f7a4d;
   --status-warn: #8a6100;
-  --font-sans: Inter, sans-serif;
+  --font-sans: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: JetBrains Mono, monospace;
+  --font-mono:
+    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
   --radius: 0.5rem;
   --shadow-2xs: 0px 1px 2px 0px rgb(0 0 0 / 0.04);
   --shadow-xs: 0px 1px 2px 0px rgb(0 0 0 / 0.05);
@@ -63,6 +66,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: #111111;
   --foreground: #ededed;
   --card: #1a1a1a;
@@ -230,7 +234,8 @@
 }
 
 /*
- * Scrollbars: thin, no track, thumb from --muted-foreground so every theme colours it.
+ * Scrollbars: default width (a thin thumb is too small a target), no track, thumb from
+ * --muted-foreground so every theme colours it.
  * Matters when macOS "Show scroll bars" is "Always" (or a mouse is attached): the chat log,
  * code blocks (capped at 400 px by Streamdown) and tables (300 px) then show classic bars.
  * Chrome and Firefox use the standard properties; Safari, without scrollbar-color, the
@@ -243,18 +248,12 @@
     --scrollbar-thumb: color-mix(in oklab, var(--muted-foreground) 85%, var(--background));
   }
   * {
-    scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thumb) transparent;
   }
   @supports not (scrollbar-color: auto) {
-    /* Safari 18.2 to 26.1 has scrollbar-width but not scrollbar-color; thin would turn off
-       the ::-webkit-scrollbar rules below */
-    * {
-      scrollbar-width: auto;
-    }
     ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
+      width: 12px;
+      height: 12px;
     }
     ::-webkit-scrollbar-track,
     ::-webkit-scrollbar-corner {

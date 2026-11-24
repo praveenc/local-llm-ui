@@ -2,18 +2,21 @@ import { Toaster as Sonner } from 'sonner';
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
-const Toaster = ({ ...props }: ToasterProps) => {
-  // Check if dark mode is active by looking at the document class
-  const isDark =
-    typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
-  const theme = isDark ? 'dark' : 'light';
-
+// AppLayout passes the drawn scheme as `theme`, so toasts follow the app, not only the OS
+const Toaster = ({ theme = 'system', ...props }: ToasterProps) => {
   return (
     <Sonner
-      theme={theme as ToasterProps['theme']}
+      theme={theme}
       // Top center keeps toasts clear of the composer at the bottom and the header buttons
       position="top-center"
       className="toaster group"
+      style={
+        {
+          '--normal-bg': 'var(--popover)',
+          '--normal-text': 'var(--popover-foreground)',
+          '--normal-border': 'var(--border)',
+        } as React.CSSProperties
+      }
       toastOptions={{
         classNames: {
           toast:

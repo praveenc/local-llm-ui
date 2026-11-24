@@ -11,12 +11,12 @@ import * as RadioGroupPrimitive from '@radix-ui/react-radio-group';
 import { cn } from '@/lib/utils';
 
 import { COLOR_THEMES, isColorTheme } from '../../utils/colorThemes';
-import type { ColorTheme } from '../../utils/colorThemes';
-import type { VisualMode } from '../../utils/preferences';
+import type { ColorTheme, ResolvedVisualMode } from '../../utils/colorThemes';
 
 interface ColorThemePickerProps {
   value: ColorTheme;
-  visualMode: VisualMode;
+  /** Scheme the previews are drawn in */
+  visualMode: ResolvedVisualMode;
   onChange: (value: ColorTheme) => void;
 }
 
@@ -41,13 +41,15 @@ export function ColorThemePicker({ value, visualMode, onChange }: ColorThemePick
             className={cn(
               'group overflow-hidden rounded-xl border bg-card text-left transition-[border-color,box-shadow] outline-none',
               'hover:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-ring/50',
-              selected ? 'border-primary ring-1 ring-primary' : 'border-border'
+              selected
+                ? 'border-primary ring-1 ring-primary forced-colors:outline-2 forced-colors:outline-solid forced-colors:outline-[Highlight] forced-colors:-outline-offset-2'
+                : 'border-border'
             )}
           >
             {/* Small composer-shaped preview drawn in the theme colors */}
             <div
               aria-hidden
-              className="flex h-20 flex-col justify-between p-3"
+              className="flex h-20 flex-col justify-between p-3 forced-color-adjust-none"
               style={{ background: swatch.background }}
             >
               <div className="space-y-1.5">

@@ -15,6 +15,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { useDiscardGuard } from '../../hooks/useDiscardGuard';
+import { useResolvedVisualMode } from '../../hooks/useResolvedVisualMode';
 import {
   isProviderConfigured,
   loadPreferences,
@@ -58,6 +59,8 @@ export function PreferencesDialog({
     }
   }
   const [providerError, setProviderError] = useState('');
+  // Theme previews show the variant this draft would draw now
+  const resolvedVisualMode = useResolvedVisualMode(preferences.visualMode);
   // Edits are dirty until saved; compare with what is stored now
   const dirty = open && JSON.stringify(preferences) !== JSON.stringify(loadPreferences());
   const guard = useDiscardGuard({ open, dirty, onClose: () => onOpenChange(false) });
@@ -122,7 +125,7 @@ export function PreferencesDialog({
                 <Label>Color theme</Label>
                 <ColorThemePicker
                   value={preferences.colorTheme}
-                  visualMode={preferences.visualMode}
+                  visualMode={resolvedVisualMode}
                   onChange={(v) => updatePreference('colorTheme', v)}
                 />
               </div>
@@ -137,6 +140,12 @@ export function PreferencesDialog({
                   onValueChange={(v) => updatePreference('visualMode', v as VisualMode)}
                   className="flex gap-4"
                 >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="system" id="system" />
+                    <Label htmlFor="system" className="font-normal">
+                      System
+                    </Label>
+                  </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="light" id="light" />
                     <Label htmlFor="light" className="font-normal">

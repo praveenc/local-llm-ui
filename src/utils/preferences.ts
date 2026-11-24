@@ -8,13 +8,14 @@ import type { ThinkingEffort } from './thinkingEffort';
 import type { WebSearchPreferences } from './webSearch';
 
 export type { Provider };
-export type VisualMode = 'light' | 'dark';
+/** 'system' follows the OS setting; 'light' and 'dark' pin one scheme */
+export type VisualMode = 'system' | 'light' | 'dark';
 export type ContentDensity = 'comfortable' | 'compact';
 
 export interface UserPreferences extends WebSearchPreferences {
   preferredProvider: Provider;
   visualMode: VisualMode;
-  /** Color palette; visualMode picks its light or dark variant */
+  /** Color palette; the resolved visual mode picks its light or dark variant */
   colorTheme: ColorTheme;
   /** Spacing of the chat and the sidebar. Set as data-density on <html>. */
   contentDensity: ContentDensity;
@@ -39,7 +40,7 @@ const STORAGE_KEY = 'local-llm-ui-preferences';
 
 const DEFAULT_PREFERENCES: UserPreferences = {
   preferredProvider: 'ollama',
-  visualMode: 'light',
+  visualMode: 'system',
   colorTheme: 'neutral',
   contentDensity: 'comfortable',
   avatarInitials: '',

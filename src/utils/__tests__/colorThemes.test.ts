@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { COLOR_THEMES, applyColorTheme, applyContentDensity, isColorTheme } from '../colorThemes';
+import {
+  COLOR_THEMES,
+  applyColorTheme,
+  applyContentDensity,
+  isColorTheme,
+  resolveVisualMode,
+  toggledVisualMode,
+} from '../colorThemes';
 
 describe('colorThemes', () => {
   it('offers Neutral first, then Cosmic Night, Cobaltz, and Rosé Pine', () => {
@@ -59,5 +66,54 @@ describe('colorThemes', () => {
     applyContentDensity(root, 'compact');
     applyContentDensity(root, 'bogus');
     expect(root.dataset.density).toBe('comfortable');
+  });
+
+  describe('visual mode', () => {
+    const mockSystem = (dark: boolean) =>
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn((query: string) => ({
+          matches: dark && query === '(prefers-color-scheme: dark)',
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        }))
+      );
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('resolves system from the OS setting and keeps an explicit light or dark', () => {
+      mockSystem(true);
+      expect(resolveVisualMode('system')).toBe('dark');
+      expect(resolveVisualMode(undefined)).toBe('dark');
+      expect(resolveVisualMode('light')).toBe('light');
+      mockSystem(false);
+      expect(resolveVisualMode('system')).toBe('light');
+      expect(resolveVisualMode('dark')).toBe('dark');
+    });
+
+    it('toggles to the opposite scheme, and to system when that matches the OS', () => {
+      expect(toggledVisualMode('light', 'light')).toBe('dark');
+      expect(toggledVisualMode('dark', 'light')).toBe('system');
+      expect(toggledVisualMode('dark', 'dark')).toBe('light');
+      expect(toggledVisualMode('light', 'dark')).toBe('system');
+    });
+
+    it('sets color-scheme and the meta tag to the drawn scheme', () => {
+      mockSystem(true);
+      const meta = document.createElement('meta');
+      meta.name = 'color-scheme';
+      meta.content = 'light dark';
+      document.head.appendChild(meta);
+      const root = document.documentElement;
+      applyColorTheme(root, 'neutral', 'system');
+      expect(root.classList.contains('dark')).toBe(true);
+      expect(root.style.colorScheme).toBe('dark');
+      expect(meta.content).toBe('dark');
+      applyColorTheme(root, 'neutral', 'light');
+      expect(root.style.colorScheme).toBe('light');
+      expect(meta.content).toBe('light');
+      meta.remove();
+      root.classList.remove('dark');
+      root.style.colorScheme = '';
+    });
   });
 });

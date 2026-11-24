@@ -11,6 +11,7 @@ const renderMenu = () => {
     <ThemeMenu
       colorTheme="cobaltz"
       visualMode="dark"
+      resolvedVisualMode="dark"
       onColorThemeChange={onColorThemeChange}
       onVisualModeChange={onVisualModeChange}
     />
@@ -25,7 +26,15 @@ describe('ThemeMenu', () => {
     await user.click(screen.getByRole('button', { name: 'Theme' }));
 
     const items = screen.getAllByRole('menuitemradio').map((item) => item.textContent);
-    expect(items).toEqual(['Neutral', 'Cosmic Night', 'Cobaltz', 'Rosé Pine', 'Light', 'Dark']);
+    expect(items).toEqual([
+      'Neutral',
+      'Cosmic Night',
+      'Cobaltz',
+      'Rosé Pine',
+      'System',
+      'Light',
+      'Dark',
+    ]);
     expect(screen.getByRole('menuitemradio', { name: 'Cobaltz' })).toBeChecked();
     expect(screen.getByRole('menuitemradio', { name: 'Dark' })).toBeChecked();
   });
@@ -45,5 +54,13 @@ describe('ThemeMenu', () => {
     await user.click(screen.getByRole('button', { name: 'Theme' }));
     await user.click(screen.getByRole('menuitemradio', { name: 'Light' }));
     expect(onVisualModeChange).toHaveBeenCalledWith('light');
+  });
+
+  it('offers System and returns it when picked', async () => {
+    const user = userEvent.setup();
+    const { onVisualModeChange } = renderMenu();
+    await user.click(screen.getByRole('button', { name: 'Theme' }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'System' }));
+    expect(onVisualModeChange).toHaveBeenCalledWith('system');
   });
 });

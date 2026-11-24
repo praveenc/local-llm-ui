@@ -8,6 +8,7 @@ const renderLayout = () =>
   render(
     <AppLayout
       navigation={<div>nav</div>}
+      visualMode="light"
       theme="light"
       onToggleTheme={vi.fn()}
       colorTheme="cobaltz"
@@ -28,6 +29,7 @@ describe('AppLayout', () => {
       <AppLayout
         navigation={<div>nav</div>}
         title="Trip plan"
+        visualMode="light"
         theme="light"
         onToggleTheme={vi.fn()}
         colorTheme="cobaltz"

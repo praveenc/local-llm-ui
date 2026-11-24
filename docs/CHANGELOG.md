@@ -11,28 +11,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
-- Neutral color theme, now the default; Cosmic Night, Cobaltz, and Rosé Pine stay in the theme menu
-- First-run checklist: when no model is ready, the empty chat lists each provider's status and how to fix it, with a button that opens Preferences
-- A working local model is picked on first run, with a note saying so; a paid provider is never picked automatically
-- Model picker groups models by provider and shows each provider's status
-- Each provider is probed on its own, so fast providers list their models while a slow one shows "Checking..."
-- Retry and Change model buttons in the chat error alert
-- Keyboard: `/` focuses the chat input; Cmd+K (Ctrl+K) opens the model picker
-- Product mark in the sidebar and a favicon; the header shows the open conversation's title
+- Neutral color theme, now the default; Cosmic Night, Cobaltz, and Rosé Pine stay in the theme menu ([#59])
+- First-run checklist: when no model is ready, the empty chat lists each provider's status and how to fix it, with a button that opens Preferences ([#59])
+- A working local model is picked on first run, with a note saying so; a paid provider is never picked automatically ([#59])
+- Model picker groups models by provider and shows each provider's status ([#59])
+- Each provider is probed on its own, so fast providers list their models while a slow one shows "Checking..." ([#59])
+- Retry and Change model buttons in the chat error alert ([#59])
+- Keyboard: `/` focuses the chat input; Cmd+K (Ctrl+K) opens the model picker ([#59])
+- Product mark in the sidebar and a favicon; the header shows the open conversation's title ([#59])
+- Preferences and Quote and Ask stay open on Esc or a click outside while they hold unsaved edits, with a "You have unsaved changes." line and a Discard button ([#60])
+- Copying a message, code, or an error shows a "Copied" or "Copy failed" toast ([#61])
+- System appearance, now the default: the app follows the OS light or dark setting and switches when it changes; the theme menu and Preferences offer System, Light, and Dark ([#62])
+- A show and hide button on API key fields, so a pasted key can be checked ([#62])
 
 #### Changed
 
-- Text meets 4.5:1 contrast in every theme
-- Every theme tints the user's messages, the open conversation, the reasoning label, the model badge, the avatar, and code blocks with its own primary colour, and colours links, inline code, and tool icons with it; status dots show ready, needs a fix, or checking. Neutral takes one teal accent, also on the send button
-- The chat input has a border and no shadow or gradient; disabled tools say why they are off
-- Glass and shimmer effects are gone; motion uses named transitions and follows the system reduced-motion setting
-- Below 1024 px the sidebar folds into a sheet; touch targets are 44 px below 768 px
-- Preferences has a fixed height, so the tabs and the Save button stay in place
+- Text meets 4.5:1 contrast in every theme ([#59])
+- Every theme tints the user's messages, the open conversation, the reasoning label, the model badge, the avatar, and code blocks with its own primary colour, and colours links, inline code, and tool icons with it; status dots show ready, needs a fix, or checking. Neutral takes one teal accent, also on the send button ([#59])
+- The chat input has a border and no shadow or gradient; disabled tools say why they are off ([#59])
+- Glass and shimmer effects are gone; with reduced motion on, spinners turn slowly and movement stops, while colour and opacity fades still run ([#59])
+- Below 1024 px the sidebar folds into a sheet; touch targets are 44 px below 768 px ([#59])
+- Preferences has a fixed height, so the tabs and the Save button stay in place ([#59])
+- Images in replies are no longer loaded, so a reply cannot send chat text to another site; each shows as "[Image blocked]" with its description ([#60])
+- Conversation titles in the sidebar are cut at the row width, not at 25 characters ([#60])
+- The context usage card opens by click, tap, Enter, or Space, so it also works on touch screens ([#61])
+- The header theme button switches to the opposite of what is shown; when that matches the OS, the app goes back to following the OS ([#62])
+- The app uses the Inter and JetBrains Mono fonts on every system; they are bundled with the app ([#62])
+- Scrollbars are the default width; the thumb keeps the theme's colour at 3:1 contrast ([#62])
+- A long reply updates the screen at most once per frame while it streams ([#62])
 
 #### Fixed
 
-- Icon buttons and the chat input have accessible names, and screen readers announce when a reply starts and ends
-- Scrollbars are thin and take the theme's colors, with no light track beside them when macOS shows scroll bars always
+- Icon buttons and the chat input have accessible names, and screen readers announce when a reply starts and ends ([#59])
+- Scrollbar thumbs have 3:1 contrast in every theme and show no light track when macOS shows scroll bars always ([#59])
+- Renaming a conversation with a Japanese, Chinese, or Korean input method no longer saves early when Enter confirms a candidate ([#59])
+- Conversations in the sidebar open with Tab and Enter, and each options button is named after its conversation ([#60])
+- Closing a dialog or sheet returns keyboard focus to what opened it; deleting a conversation moves focus to the next row ([#60])
+- Skipped attachments are named with the reason, and the valid files in the same batch are still added ([#61])
+- A file dropped outside the chat input no longer opens in the browser and loses the unsent message ([#61])
+- Typing a header or variable name in the MCP server form no longer loses focus after each letter; fields, rows, and errors are labelled for screen readers ([#61])
+- Pressing Enter in the Save Prompt name field saves the prompt, and an empty name shows its error on the field ([#61])
+- The scroll-to-bottom button is named and keeps keyboard focus in the chat when it disappears ([#61])
+- In dark mode, form controls, autofill, and the page background before it loads are dark too ([#62])
+- Theme previews keep their colours in Windows High Contrast, and the selected theme is outlined ([#62])
+- The model picker's search no longer runs under its close button ([#62])
+- The app sends a Content Security Policy, a referrer policy, and frame protection, so other sites cannot embed it ([#62])
 
 ## [1.1.0] - 2026-11-12
 
@@ -149,6 +172,10 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#62]: https://github.com/praveenc/local-llm-ui/pull/62
+[#61]: https://github.com/praveenc/local-llm-ui/pull/61
+[#60]: https://github.com/praveenc/local-llm-ui/pull/60
+[#59]: https://github.com/praveenc/local-llm-ui/pull/59
 [#57]: https://github.com/praveenc/local-llm-ui/pull/57
 [#56]: https://github.com/praveenc/local-llm-ui/pull/56
 [#55]: https://github.com/praveenc/local-llm-ui/pull/55

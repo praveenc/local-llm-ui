@@ -225,6 +225,9 @@ export function useBedrockChat({
         createdAt: new Date(),
       };
 
+      // Set by the stream loop so the abort handler can flush text received so far
+      let flushOnAbort: (() => void) | null = null;
+
       try {
         // Build request - filter out messages with empty content
         const chatMessages = [...(target?.history ?? messages), userMessage]
@@ -376,8 +379,8 @@ export function useBedrockChat({
           return parts;
         };
 
-        // Show the assistant message with its current parts (replaces the streaming one)
-        const showAssistantMessage = () => {
+        // Push the assistant message's current parts into state (replaces the streaming one)
+        const flushAssistantMessage = () => {
           assistantMessage.parts = buildParts();
           setMessages((prev) => {
             const newMessages = [...prev];
@@ -390,6 +393,28 @@ export function useBedrockChat({
             return newMessages;
           });
         };
+
+        // Coalesce per-chunk updates to at most one state update per animation frame.
+        // Streamdown re-parses the whole reply on every render, so one render per chunk
+        // (hundreds per reply) is the hot path. Callers still call this on every event;
+        // the final flush on done/error/abort guarantees the last chunk is shown.
+        let rafId: number | null = null;
+        const showAssistantMessage = () => {
+          if (rafId !== null) return;
+          rafId = requestAnimationFrame(() => {
+            rafId = null;
+            flushAssistantMessage();
+          });
+        };
+        const flushNow = () => {
+          // Only a pending frame needs flushing; this also keeps an error that arrives before
+          // any content from adding an empty assistant message
+          if (rafId === null) return;
+          cancelAnimationFrame(rafId);
+          rafId = null;
+          flushAssistantMessage();
+        };
+        flushOnAbort = flushNow;
 
         // Both Bedrock and Mantle now use SSE format: data: {"content": "..."} or data: {"metadata": {...}}
         let buffer = '';
@@ -476,6 +501,9 @@ export function useBedrockChat({
           }
         }
 
+        // Flush the last pending frame so the final chunk always shows
+        flushNow();
+
         // Set usage metadata if available
         if (usageData) {
           setMetadata(usageData);
@@ -514,11 +542,15 @@ export function useBedrockChat({
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
           console.log('Generation stopped by user');
+          // Keep the text received before the abort
+          flushOnAbort?.();
           setStatus('idle');
           return;
         }
 
         console.error('Bedrock chat error:', err);
+        // Keep whatever streamed before the error
+        flushOnAbort?.();
         setError((err as Error).message || 'Failed to send message');
         setStatus('error');
       } finally {
