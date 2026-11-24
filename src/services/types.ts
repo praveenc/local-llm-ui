@@ -8,4 +8,5 @@ export interface ModelInfo {
   modelFamily?: string; // For Bedrock: Anthropic Claude, Meta Llama, etc.
   ownedBy?: string; // For Mantle: model owner
   supportsThinking?: boolean; // For Ollama: the model lists the "thinking" capability
+  supportsTools?: boolean; // For Ollama: the model lists the "tools" capability; unset = unknown
 }

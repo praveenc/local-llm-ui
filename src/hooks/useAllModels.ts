@@ -27,6 +27,8 @@ export interface UnifiedModel {
   family?: string;
   /** The provider reports that the model can think (Ollama) */
   supportsThinking?: boolean;
+  /** False when the provider reports that the model cannot use tools (Ollama); unset = unknown */
+  supportsTools?: boolean;
 }
 
 export interface ProviderModels {
@@ -166,6 +168,7 @@ async function fetchProviderModels(
       ...(model.supportsThinking !== undefined && {
         supportsThinking: model.supportsThinking,
       }),
+      ...(model.supportsTools !== undefined && { supportsTools: model.supportsTools }),
     }));
     return { provider, providerName: PROVIDER_NAMES[provider], models, status: 'success' };
   } catch (err) {

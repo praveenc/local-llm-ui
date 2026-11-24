@@ -33,6 +33,8 @@ export interface ChatModel {
   provider: Provider;
   /** The provider reports that the model can think (Ollama) */
   supportsThinking?: boolean;
+  /** False when the provider reports that the model cannot use tools (Ollama) */
+  supportsTools?: boolean;
 }
 
 interface UseBedrockChatOptions {
@@ -137,6 +139,8 @@ export function useBedrockChat({
       setWasInterrupted(false);
 
       const { provider, id: modelId, name: modelName } = selectedModel;
+      // A model that cannot use tools gets no web search and no MCP tools (Ollama rejects them)
+      const useTools = selectedModel.supportsTools !== false;
 
       // Create conversation if needed
       let currentConversationId = target?.conversationId ?? activeConversationId;
@@ -225,7 +229,7 @@ export function useBedrockChat({
           messages: chatMessages,
           max_tokens: maxTokens,
           maxToolSteps,
-          enableWebSearch,
+          enableWebSearch: useTools && enableWebSearch,
           ...(effort && { thinkingEffort: effort }),
         };
 
@@ -237,14 +241,15 @@ export function useBedrockChat({
         const prefs = loadPreferences();
 
         // Add web search API keys and the provider order if web search is enabled
-        if (enableWebSearch) {
+        if (useTools && enableWebSearch) {
           Object.assign(headers, buildWebSearchHeaders(prefs));
         }
 
         // Add enabled MCP server configs
-        const enabledMCPServers = prefs.mcpServers
-          ? Object.values(prefs.mcpServers).filter((s) => s.enabled)
-          : [];
+        const enabledMCPServers =
+          useTools && prefs.mcpServers
+            ? Object.values(prefs.mcpServers).filter((s) => s.enabled)
+            : [];
         if (enabledMCPServers.length > 0) {
           (requestBody as Record<string, unknown>).mcpServers = enabledMCPServers;
         }

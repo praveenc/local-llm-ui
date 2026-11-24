@@ -26,6 +26,8 @@ export class OllamaService {
           provider: 'ollama' as const,
           // Ollama 0.6+ lists capabilities in /api/tags
           supportsThinking: model.capabilities?.includes('thinking') ?? false,
+          // Unknown when Ollama does not list capabilities: then the app sends tools as before
+          supportsTools: model.capabilities ? model.capabilities.includes('tools') : undefined,
         }));
     } catch (error) {
       console.error('Ollama: Failed to fetch models:', error);
