@@ -26,6 +26,14 @@ describe('toUIMessage', () => {
     expect(toUIMessage(dbMessage())).not.toHaveProperty('feedback');
   });
 
+  it('restores the usage and the model of a stored reply, so a reopened chat keeps them', () => {
+    const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15, latencyMs: 900 };
+    const ui = toUIMessage(dbMessage({ usage }));
+    expect(ui.usage).toEqual(usage);
+    expect(ui.model).toEqual({ provider: 'ollama', id: 'llama3' });
+    expect(toUIMessage(dbMessage({ role: 'user' }))).not.toHaveProperty('model');
+  });
+
   it('splits <think> tags into a reasoning part', () => {
     const ui = toUIMessage(dbMessage({ content: '<think>plan</think>\nanswer' }));
     expect(ui.parts).toEqual([

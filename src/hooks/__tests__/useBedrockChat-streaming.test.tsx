@@ -125,4 +125,39 @@ describe('useBedrockChat streaming', () => {
     expect(lastAssistant(result.current.messages)).toBe('abc');
     expect(result.current.status).toBe('idle');
   });
+
+  it('keeps the usage event on the reply, with the model that wrote it', async () => {
+    const usage = {
+      inputTokens: 2400,
+      outputTokens: 250,
+      totalTokens: 2650,
+      steps: [
+        { inputTokens: 1000, outputTokens: 50 },
+        { inputTokens: 1400, outputTokens: 200 },
+      ],
+    };
+    const lines = [
+      chunk('Answer'),
+      encoder.encode(`data: ${JSON.stringify({ metadata: { usage, latencyMs: 2100 } })}\n`),
+    ];
+    let i = 0;
+    const reader = {
+      read: vi.fn(async () =>
+        i < lines.length ? { done: false, value: lines[i++] } : { done: true, value: undefined }
+      ),
+    };
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      body: { getReader: () => reader },
+    })) as never;
+
+    const { result } = renderHook(() => useBedrockChat(options));
+    await act(async () => {
+      await result.current.sendMessage('hello');
+    });
+
+    const reply = result.current.messages.find((m) => m.role === 'assistant');
+    expect(reply?.usage).toEqual({ ...usage, latencyMs: 2100 });
+    expect(reply?.model).toEqual({ provider: 'bedrock', id: 'anthropic.claude' });
+  });
 });

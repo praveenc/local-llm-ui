@@ -4,7 +4,7 @@
  * These types align with AI SDK's UIMessage format used by AI Elements components.
  * Adapter functions convert between our DB format and UIMessage format.
  */
-import type { Message as DbMessage, MessageFeedback } from '../db/types';
+import type { Message as DbMessage, MessageFeedback, MessageUsage, Provider } from '../db/types';
 import { getMediaTypeFromFormat } from '../utils/mediaTypes';
 
 /**
@@ -61,6 +61,10 @@ export interface UIMessage {
   createdAt?: Date;
   /** The user's thumbs up or thumbs down, when set */
   feedback?: MessageFeedback;
+  /** The model that wrote an assistant message */
+  model?: { provider: Provider; id: string };
+  /** Token usage of an assistant message, when the provider sent it */
+  usage?: MessageUsage;
 }
 
 /**
@@ -103,6 +107,10 @@ export function toUIMessage(dbMessage: DbMessage): UIMessage {
     parts,
     createdAt: dbMessage.createdAt,
     ...(dbMessage.feedback ? { feedback: dbMessage.feedback } : {}),
+    ...(dbMessage.role === 'assistant' && {
+      model: { provider: dbMessage.provider, id: dbMessage.modelId },
+    }),
+    ...(dbMessage.usage ? { usage: dbMessage.usage } : {}),
   };
 }
 

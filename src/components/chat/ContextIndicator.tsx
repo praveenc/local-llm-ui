@@ -1,12 +1,11 @@
 /**
- * ContextIndicator Component
+ * ContextIndicator
  *
- * Displays context window usage in the PromptInput footer.
- * Shows percentage used with hover card for detailed breakdown.
+ * The context ring in the chat input. The ring shows how full the context window was after the
+ * last reply. The popover adds the token totals and the cost of the chat.
  */
-import type { LanguageModelUsage } from 'ai';
-
-import { Progress } from '@/components/ui/progress';
+import type { ChatUsage } from '@/utils/chatUsage';
+import { formatCost, formatTokens } from '@/utils/usage';
 
 import {
   Context,
@@ -14,62 +13,78 @@ import {
   ContextContentBody,
   ContextContentFooter,
   ContextContentHeader,
-  ContextInputUsage,
-  ContextOutputUsage,
   ContextTrigger,
 } from '../ai-elements/context';
 import { composerChip } from './composerStyles';
 
-const percent = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 1 });
-const compact = new Intl.NumberFormat('en-US', { notation: 'compact' });
-
 interface ContextIndicatorProps {
-  usedTokens: number;
+  usage: ChatUsage;
+  /** Context window of the selected model */
   maxTokens: number;
-  inputTokens?: number;
-  outputTokens?: number;
-  modelId?: string;
 }
 
-export function ContextIndicator({
-  usedTokens,
-  maxTokens,
-  inputTokens = 0,
-  outputTokens = 0,
-  modelId,
-}: ContextIndicatorProps) {
-  // Don't show if no tokens used yet
-  if (usedTokens === 0) {
-    return null;
-  }
+function Row({ label, tokens, detail }: { label: string; tokens: number; detail?: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs tabular-nums">
+      <span className="text-muted-foreground">{label}</span>
+      <span>
+        {formatTokens(tokens)}
+        {detail && <span className="ml-1.5 text-muted-foreground">{detail}</span>}
+      </span>
+    </div>
+  );
+}
 
-  // Create usage object - cast to satisfy LanguageModelUsage type
-  // The context component only uses inputTokens, outputTokens, totalTokens
-  const usage = {
-    inputTokens,
-    outputTokens,
-    totalTokens: usedTokens,
-  } as LanguageModelUsage;
+/** The cost line: a price, "Free", or "No price data" */
+function costText(usage: ChatUsage): { value: string; note?: string } {
+  if (usage.allLocal) return { value: 'Free', note: 'Local model' };
+  if (usage.cost === undefined) return { value: 'No price data' };
+  const unpriced = usage.unpricedReplies;
+  return {
+    value: formatCost(usage.cost),
+    note: unpriced
+      ? `${unpriced} ${unpriced === 1 ? 'reply has' : 'replies have'} no price`
+      : undefined,
+  };
+}
+
+export function ContextIndicator({ usage, maxTokens }: ContextIndicatorProps) {
+  if (usage.contextTokens === 0) return null;
+
+  const { totals } = usage;
+  const cost = costText(usage);
 
   return (
-    <Context usedTokens={usedTokens} maxTokens={maxTokens} usage={usage} modelId={modelId}>
+    <Context usedTokens={usage.contextTokens} maxTokens={maxTokens}>
       <ContextTrigger className={`${composerChip} gap-1 px-2 tabular-nums has-[>svg]:px-2`} />
       <ContextContent side="top" align="end" className="z-[1100]">
-        {/* Own header body: Inter tabular figures instead of the stock font-mono */}
-        <ContextContentHeader>
-          <div className="flex items-center justify-between gap-3 text-xs tabular-nums">
-            <p>{percent.format(usedTokens / maxTokens)}</p>
-            <p className="text-muted-foreground">
-              {compact.format(usedTokens)} / {compact.format(maxTokens)}
-            </p>
-          </div>
-          <Progress className="bg-muted" value={(usedTokens / maxTokens) * 100} />
-        </ContextContentHeader>
+        <ContextContentHeader />
         <ContextContentBody className="space-y-1">
-          <ContextInputUsage />
-          <ContextOutputUsage />
+          <p className="pb-1 text-xs font-medium">This chat</p>
+          <Row
+            label="Input"
+            tokens={totals.inputTokens}
+            detail={
+              totals.cacheReadTokens ? `${formatTokens(totals.cacheReadTokens)} cached` : undefined
+            }
+          />
+          <Row
+            label="Output"
+            tokens={totals.outputTokens}
+            detail={
+              totals.reasoningTokens
+                ? `${formatTokens(totals.reasoningTokens)} reasoning`
+                : undefined
+            }
+          />
         </ContextContentBody>
-        {modelId && <ContextContentFooter />}
+        <ContextContentFooter>
+          <span className="text-muted-foreground">Cost</span>
+          <span className="text-right tabular-nums">
+            {cost.value}
+            {cost.note && <span className="block text-muted-foreground">{cost.note}</span>}
+          </span>
+        </ContextContentFooter>
       </ContextContent>
     </Context>
   );

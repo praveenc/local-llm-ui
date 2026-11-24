@@ -9,8 +9,6 @@ vi.mock('../../../hooks/useBedrockChat', () => ({
     messages: [],
     status: 'ready',
     error: null,
-    metadata: null,
-    cumulativeUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
     wasInterrupted: false,
     sendMessage: vi.fn(),
     regenerate: vi.fn(),
@@ -18,7 +16,6 @@ vi.mock('../../../hooks/useBedrockChat', () => ({
     forkAndSend: vi.fn(),
     stopGeneration: vi.fn(),
     clearMessages: vi.fn(),
-    resetUsage: vi.fn(),
   }),
 }));
 

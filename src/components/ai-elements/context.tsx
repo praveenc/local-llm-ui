@@ -1,15 +1,12 @@
 'use client';
 
-import type { LanguageModelUsage } from 'ai';
-import { getUsage } from 'tokenlens';
-
 import { type ComponentProps, createContext, useContext } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
-import { calculateAnthropicCost, isAnthropicModel } from '@/utils/anthropicPricing';
+import { type ContextLevel, contextLevel, formatTokens } from '@/utils/usage';
 
 const PERCENT_MAX = 100;
 const ICON_RADIUS = 10;
@@ -17,62 +14,60 @@ const ICON_VIEWBOX = 24;
 const ICON_CENTER = 12;
 const ICON_STROKE_WIDTH = 2;
 
-/**
- * Format cost with appropriate precision for small amounts
- * Shows more decimal places for sub-cent amounts
- */
-function formatCost(cost: number): string {
-  if (cost === 0) {
-    return '$0.00';
-  }
-  // For very small amounts (< $0.01), show 4 decimal places
-  if (cost < 0.01) {
-    return `$${cost.toFixed(4)}`;
-  }
-  // For small amounts (< $1), show 3 decimal places
-  if (cost < 1) {
-    return `$${cost.toFixed(3)}`;
-  }
-  // For larger amounts, use standard currency formatting
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(cost);
-}
+const percentFormat = new Intl.NumberFormat('en-US', {
+  style: 'percent',
+  maximumFractionDigits: 1,
+});
 
-type ModelId = string;
+/** 12%, 0.4%, and <0.1% for a small chat in a large window, so a used context never reads 0% */
+const formatPercent = (fraction: number) =>
+  fraction > 0 && fraction < 0.001 ? '<0.1%' : percentFormat.format(fraction);
+
+/** Text colour for each level, also on hover. Words go with the colour, so colour is never the only signal. */
+const LEVEL_TEXT: Record<ContextLevel, string> = {
+  ok: 'text-muted-foreground',
+  near: 'text-status-warn hover:text-status-warn',
+  full: 'text-status-error hover:text-status-error',
+};
+
+const LEVEL_BAR: Record<ContextLevel, string> = {
+  ok: '',
+  near: 'bg-status-warn/20 [&>div]:bg-status-warn',
+  full: 'bg-status-error/20 [&>div]:bg-status-error',
+};
 
 type ContextSchema = {
   usedTokens: number;
   maxTokens: number;
-  usage?: LanguageModelUsage;
-  modelId?: ModelId;
+  level: ContextLevel;
+  /** usedTokens / maxTokens, not capped */
+  fraction: number;
 };
 
 const ContextContext = createContext<ContextSchema | null>(null);
 
 const useContextValue = () => {
   const context = useContext(ContextContext);
-
   if (!context) {
     throw new Error('Context components must be used within Context');
   }
-
   return context;
 };
 
-export type ContextProps = ComponentProps<typeof Popover> & ContextSchema;
+export type ContextProps = ComponentProps<typeof Popover> & {
+  usedTokens: number;
+  maxTokens: number;
+};
 
-// Switched from HoverCard to Popover so click, tap, Enter and Space open the
-// breakdown and screen readers reach it. Click-only avoids the WCAG 1.4.13
-// hoverable requirement that a bare HoverCard does not meet.
-export const Context = ({ usedTokens, maxTokens, usage, modelId, ...props }: ContextProps) => (
+// A Popover, not a HoverCard, so click, tap, Enter and Space open the breakdown and screen
+// readers reach it. Click-only avoids the WCAG 1.4.13 hoverable requirement.
+export const Context = ({ usedTokens, maxTokens, ...props }: ContextProps) => (
   <ContextContext.Provider
     value={{
       usedTokens,
       maxTokens,
-      usage,
-      modelId,
+      level: contextLevel(usedTokens, maxTokens),
+      fraction: maxTokens > 0 ? usedTokens / maxTokens : 0,
     }}
   >
     <Popover {...props} />
@@ -80,20 +75,12 @@ export const Context = ({ usedTokens, maxTokens, usage, modelId, ...props }: Con
 );
 
 const ContextIcon = () => {
-  const { usedTokens, maxTokens } = useContextValue();
+  const { fraction } = useContextValue();
   const circumference = 2 * Math.PI * ICON_RADIUS;
-  const usedPercent = usedTokens / maxTokens;
-  const dashOffset = circumference * (1 - usedPercent);
+  const dashOffset = circumference * (1 - Math.min(fraction, 1));
 
   return (
-    <svg
-      aria-label="Model context usage"
-      height="20"
-      role="img"
-      style={{ color: 'currentcolor' }}
-      viewBox={`0 0 ${ICON_VIEWBOX} ${ICON_VIEWBOX}`}
-      width="20"
-    >
+    <svg aria-hidden height="20" viewBox={`0 0 ${ICON_VIEWBOX} ${ICON_VIEWBOX}`} width="20">
       <circle
         cx={ICON_CENTER}
         cy={ICON_CENTER}
@@ -107,7 +94,7 @@ const ContextIcon = () => {
         cx={ICON_CENTER}
         cy={ICON_CENTER}
         fill="none"
-        opacity="0.7"
+        opacity="0.85"
         r={ICON_RADIUS}
         stroke="currentColor"
         strokeDasharray={`${circumference} ${circumference}`}
@@ -120,15 +107,19 @@ const ContextIcon = () => {
   );
 };
 
+/** "Near the limit" or "Almost full", or undefined below 70% */
+function levelLabel(level: ContextLevel): string | undefined {
+  if (level === 'near') return 'Near the limit';
+  if (level === 'full') return 'Almost full';
+  return undefined;
+}
+
 export type ContextTriggerProps = ComponentProps<typeof Button>;
 
-export const ContextTrigger = ({ children, ...props }: ContextTriggerProps) => {
-  const { usedTokens, maxTokens } = useContextValue();
-  const usedPercent = usedTokens / maxTokens;
-  const renderedPercent = new Intl.NumberFormat('en-US', {
-    style: 'percent',
-    maximumFractionDigits: 1,
-  }).format(usedPercent);
+export const ContextTrigger = ({ children, className, ...props }: ContextTriggerProps) => {
+  const { fraction, level } = useContextValue();
+  const percent = formatPercent(fraction);
+  const label = levelLabel(level);
 
   return (
     <PopoverTrigger asChild>
@@ -136,10 +127,12 @@ export const ContextTrigger = ({ children, ...props }: ContextTriggerProps) => {
         <Button
           type="button"
           variant="ghost"
-          aria-label={`Context used: ${renderedPercent}`}
+          aria-label={`Context used: ${percent}${label ? `, ${label.toLowerCase()}` : ''}`}
+          data-level={level}
+          className={cn(className, level !== 'ok' && LEVEL_TEXT[level])}
           {...props}
         >
-          <span className="font-medium text-muted-foreground">{renderedPercent}</span>
+          <span className="font-medium">{percent}</span>
           <ContextIcon />
         </Button>
       )}
@@ -151,45 +144,40 @@ export type ContextContentProps = ComponentProps<typeof PopoverContent>;
 
 export const ContextContent = ({ className, ...props }: ContextContentProps) => (
   <PopoverContent
-    className={cn('w-64 min-w-60 divide-y overflow-hidden p-0', className)}
+    className={cn('w-72 min-w-60 divide-y overflow-hidden p-0', className)}
     {...props}
   />
 );
 
 export type ContextContentHeaderProps = ComponentProps<'div'>;
 
-export const ContextContentHeader = ({
-  children,
-  className,
-  ...props
-}: ContextContentHeaderProps) => {
-  const { usedTokens, maxTokens } = useContextValue();
-  const usedPercent = usedTokens / maxTokens;
-  const displayPct = new Intl.NumberFormat('en-US', {
-    style: 'percent',
-    maximumFractionDigits: 1,
-  }).format(usedPercent);
-  const used = new Intl.NumberFormat('en-US', {
-    notation: 'compact',
-  }).format(usedTokens);
-  const total = new Intl.NumberFormat('en-US', {
-    notation: 'compact',
-  }).format(maxTokens);
+/** Percentage, tokens used of the window, a bar, and the level in words */
+export const ContextContentHeader = ({ className, ...props }: ContextContentHeaderProps) => {
+  const { usedTokens, maxTokens, fraction, level } = useContextValue();
+  const label = levelLabel(level);
 
   return (
-    <div className={cn('w-full space-y-2 p-3', className)} {...props}>
-      {children ?? (
-        <>
-          <div className="flex items-center justify-between gap-3 text-xs">
-            <p>{displayPct}</p>
-            <p className="font-mono text-muted-foreground">
-              {used} / {total}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Progress className="bg-muted" value={usedPercent * PERCENT_MAX} />
-          </div>
-        </>
+    <div className={cn('w-full space-y-2 p-3 text-xs tabular-nums', className)} {...props}>
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-medium">{formatPercent(fraction)} of the context window</p>
+        <p className="text-muted-foreground">
+          {formatTokens(usedTokens)} / {formatTokens(maxTokens)}
+        </p>
+      </div>
+      <Progress
+        className={cn('bg-muted', LEVEL_BAR[level])}
+        value={Math.min(fraction, 1) * PERCENT_MAX}
+        aria-label="Context used"
+      />
+      {label && (
+        <p className={cn('font-medium', LEVEL_TEXT[level])}>
+          {label}.{' '}
+          <span className="font-normal text-muted-foreground">
+            {level === 'full'
+              ? 'A reply can fail when the window is full. Start a new chat.'
+              : 'Each reply sends the whole chat again. A new chat sends less.'}
+          </span>
+        </p>
       )}
     </div>
   );
@@ -197,203 +185,18 @@ export const ContextContentHeader = ({
 
 export type ContextContentBodyProps = ComponentProps<'div'>;
 
-export const ContextContentBody = ({ children, className, ...props }: ContextContentBodyProps) => (
-  <div className={cn('w-full p-3', className)} {...props}>
-    {children}
-  </div>
+export const ContextContentBody = ({ className, ...props }: ContextContentBodyProps) => (
+  <div className={cn('w-full p-3', className)} {...props} />
 );
 
 export type ContextContentFooterProps = ComponentProps<'div'>;
 
-export const ContextContentFooter = ({
-  children,
-  className,
-  ...props
-}: ContextContentFooterProps) => {
-  const { modelId, usage } = useContextValue();
-
-  // Calculate cost - use custom Anthropic pricing or tokenlens
-  let costUSD: number | undefined;
-  if (modelId && isAnthropicModel(modelId)) {
-    const anthropicCost = calculateAnthropicCost(
-      modelId,
-      usage?.inputTokens ?? 0,
-      usage?.outputTokens ?? 0
-    );
-    costUSD = anthropicCost?.totalCost;
-  } else if (modelId) {
-    costUSD = getUsage({
-      modelId,
-      usage: {
-        input: usage?.inputTokens ?? 0,
-        output: usage?.outputTokens ?? 0,
-      },
-    }).costUSD?.totalUSD;
-  }
-
-  const totalCost = formatCost(costUSD ?? 0);
-
-  return (
-    <div
-      className={cn(
-        'flex w-full items-center justify-between gap-3 bg-secondary p-3 text-xs',
-        className
-      )}
-      {...props}
-    >
-      {children ?? (
-        <>
-          <span className="text-muted-foreground">Total cost</span>
-          <span>{totalCost}</span>
-        </>
-      )}
-    </div>
-  );
-};
-
-export type ContextInputUsageProps = ComponentProps<'div'>;
-
-export const ContextInputUsage = ({ className, children, ...props }: ContextInputUsageProps) => {
-  const { usage, modelId } = useContextValue();
-  const inputTokens = usage?.inputTokens ?? 0;
-
-  if (children) {
-    return children;
-  }
-
-  if (!inputTokens) {
-    return null;
-  }
-
-  // Calculate input cost - use custom Anthropic pricing or tokenlens
-  let inputCost: number | undefined;
-  if (modelId && isAnthropicModel(modelId)) {
-    const anthropicCost = calculateAnthropicCost(modelId, inputTokens, 0);
-    inputCost = anthropicCost?.inputCost;
-  } else if (modelId) {
-    inputCost = getUsage({
-      modelId,
-      usage: { input: inputTokens, output: 0 },
-    }).costUSD?.totalUSD;
-  }
-
-  const inputCostText = formatCost(inputCost ?? 0);
-
-  return (
-    <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
-      <span className="text-muted-foreground">Input</span>
-      <TokensWithCost costText={inputCostText} tokens={inputTokens} />
-    </div>
-  );
-};
-
-export type ContextOutputUsageProps = ComponentProps<'div'>;
-
-export const ContextOutputUsage = ({ className, children, ...props }: ContextOutputUsageProps) => {
-  const { usage, modelId } = useContextValue();
-  const outputTokens = usage?.outputTokens ?? 0;
-
-  if (children) {
-    return children;
-  }
-
-  if (!outputTokens) {
-    return null;
-  }
-
-  // Calculate output cost - use custom Anthropic pricing or tokenlens
-  let outputCost: number | undefined;
-  if (modelId && isAnthropicModel(modelId)) {
-    const anthropicCost = calculateAnthropicCost(modelId, 0, outputTokens);
-    outputCost = anthropicCost?.outputCost;
-  } else if (modelId) {
-    outputCost = getUsage({
-      modelId,
-      usage: { input: 0, output: outputTokens },
-    }).costUSD?.totalUSD;
-  }
-
-  const outputCostText = formatCost(outputCost ?? 0);
-
-  return (
-    <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
-      <span className="text-muted-foreground">Output</span>
-      <TokensWithCost costText={outputCostText} tokens={outputTokens} />
-    </div>
-  );
-};
-
-export type ContextReasoningUsageProps = ComponentProps<'div'>;
-
-export const ContextReasoningUsage = ({
-  className,
-  children,
-  ...props
-}: ContextReasoningUsageProps) => {
-  const { usage, modelId } = useContextValue();
-  const reasoningTokens = usage?.outputTokenDetails?.reasoningTokens ?? 0;
-
-  if (children) {
-    return children;
-  }
-
-  if (!reasoningTokens) {
-    return null;
-  }
-
-  const reasoningCost = modelId
-    ? getUsage({
-        modelId,
-        usage: { reasoningTokens },
-      }).costUSD?.totalUSD
-    : undefined;
-  const reasoningCostText = formatCost(reasoningCost ?? 0);
-
-  return (
-    <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
-      <span className="text-muted-foreground">Reasoning</span>
-      <TokensWithCost costText={reasoningCostText} tokens={reasoningTokens} />
-    </div>
-  );
-};
-
-export type ContextCacheUsageProps = ComponentProps<'div'>;
-
-export const ContextCacheUsage = ({ className, children, ...props }: ContextCacheUsageProps) => {
-  const { usage, modelId } = useContextValue();
-  const cacheTokens = usage?.inputTokenDetails?.cacheReadTokens ?? 0;
-
-  if (children) {
-    return children;
-  }
-
-  if (!cacheTokens) {
-    return null;
-  }
-
-  const cacheCost = modelId
-    ? getUsage({
-        modelId,
-        usage: { cacheReads: cacheTokens, input: 0, output: 0 },
-      }).costUSD?.totalUSD
-    : undefined;
-  const cacheCostText = formatCost(cacheCost ?? 0);
-
-  return (
-    <div className={cn('flex items-center justify-between text-xs', className)} {...props}>
-      <span className="text-muted-foreground">Cache</span>
-      <TokensWithCost costText={cacheCostText} tokens={cacheTokens} />
-    </div>
-  );
-};
-
-const TokensWithCost = ({ tokens, costText }: { tokens?: number; costText?: string }) => (
-  <span>
-    {tokens === undefined
-      ? '—'
-      : new Intl.NumberFormat('en-US', {
-          notation: 'compact',
-        }).format(tokens)}
-    {costText ? <span className="ml-2 text-muted-foreground">• {costText}</span> : null}
-  </span>
+export const ContextContentFooter = ({ className, ...props }: ContextContentFooterProps) => (
+  <div
+    className={cn(
+      'flex w-full items-center justify-between gap-3 bg-secondary p-3 text-xs',
+      className
+    )}
+    {...props}
+  />
 );
