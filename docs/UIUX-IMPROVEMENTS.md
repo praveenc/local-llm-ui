@@ -479,6 +479,12 @@ Evidence comes from `main` at `6d09748` and from three screenshots of 2026-11-24
   - No shadow and no new colour. The card keeps its border and `--composer` fill (item 8).
   - The toolbar must stay on one row at 768 px with the longest model label (38 characters), the Thinking chip, the Search chip, and the context ring. Measure this in the browser before the PR opens.
 - **Trade-offs:** At the bottom, the input is 16 px taller, so a phone shows a little less of the chat. The chat already ends above the measured input height (item 12), so no text goes under it.
+- **Done in PR 6:**
+  - The minimum height is a whole number of lines of the textarea's own line height: `calc(3lh + 1.5rem)` in an empty chat and `calc(2lh + 1.5rem)` at the bottom. Measured in Chromium: 97 px (3 lines) and 73 px (2 lines) at 15 px, and 102 px and 76 px at 16 px on a phone. Compact density keeps the line counts.
+  - 12 px between the text and the toolbar, 12 px around the toolbar, and 4 px between buttons. The textarea stops at `min(40vh, 320px)` and then scrolls: 320 px in a 900 px window, 240 px in a 600 px window.
+  - At a 1024 px window the chat input is 704 px wide. With Claude Sonnet 4.6 · Global, XHigh, Search on, and the context ring, the toolbar needed 44 px more, and it already wrapped before this PR. The word "Thinking" now hides when the chat input is narrower than 768 px (a container query). The icon, the level, and the accessible name ("Thinking: XHigh") stay. The toolbar is then one row at 1440 and 1024 px for 20 Claude models and the longest label (38 characters), with at least 15 px free.
+  - At 390 px the toolbar takes three rows, as before this PR.
+  - The empty Saved Prompts list says "Type a prompt in the chat input, click +, and then click Save as prompt."
 
 ### 16. Sidebar groups with more structure
 
