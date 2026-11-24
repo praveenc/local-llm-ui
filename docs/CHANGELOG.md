@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The context indicator says "Near the limit" at 70% and "Almost full" at 90%; its card shows the tokens read from the prompt cache, the reasoning tokens, and the cost of the chat
 - One line above an answer says what the model did, for example "Thought 6 s · 2 searches · 7 sources · 1 fetch call"; while the reply streams it shows the step that runs now, and a click lists each step
 - Search and tool steps are saved with the reply, so they stay when you open the chat again
+- A new chat puts the chat input in the middle of the window, under "What can I help with?"; it moves to the bottom after the first message
+- Search chats: a filter at the top of the conversation list
+- A New chat button in the header
+- A line in the chat shows when the next reply comes from another model
 
 #### Changed
 
@@ -50,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Thinking chip and the tool cards are replaced by the work line; a search step lists the sites of its results, and an MCP step shows the text of its output, not JSON
 - The web search button says "Search" when it is on
 - The `motion` package is removed; nothing uses it any more
+- The model chip in the chat input shows a short name with the inference profile, for example "Claude Haiku 5.5 · Global"; the full name and the provider are in its tooltip
+- The sticky model badge above the chat, the model line under the product name, and the chat icon on each conversation are removed
+- Clear chat is removed from the chat input (it did the same as New chat); Save prompt moved into the + menu as "Save as prompt"
+- The chat input is as wide as the reply column (768 px)
 - A long reply updates the screen at most once per frame while it streams ([#62])
 
 #### Fixed
@@ -72,6 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Token usage and the context indicator came back empty after a reload or a model change; they now come from the usage stored with each reply
 - A tool that failed looked like it was still running; it now shows as failed with its error, and a tool that has no result when the reply ends is marked failed
 - MCP tools said "Searching..." while they ran; they now say "Running…"
+- A model search with a dot, for example "Haiku 5.5", found nothing
 
 ## [1.1.0] - 2026-11-12
 

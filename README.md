@@ -151,16 +151,24 @@ The app keeps the keys in your browser.
 
 ### Chat input
 
+In a new chat, the chat input is in the middle of the window, below the question **What can I help with?**. After you send the first message, it moves to the bottom.
+
 The chat input has two groups of controls below the text box:
 
-- **Left:** add files (**+**), the model picker, and the thinking effort.
-- **Right:** web search, MCP tools, and inference settings. After the first message, this group also shows **Clear chat** and the context usage.
+- **Left:** the **+** menu (add photos or files, save the text as a prompt), the model picker, and the thinking effort.
+- **Right:** web search, MCP tools, and inference settings. After the first reply, this group also shows the context usage.
+
+To start a new chat, click **New chat** (the pencil button in the header) or **New Conversation** in the sidebar.
 
 The send button is at the end. While a reply streams, the send button changes to a stop button. When web search is on, its button says **Search**. When MCP tools are on, their button shows in the theme color.
 
 ### Model picker
 
 The model picker groups the models by provider. Type in the search box to filter the list. If a provider is not available, the picker shows a short hint that tells you how to connect it.
+
+For Amazon Bedrock, the picker shows a short name with the inference profile at the end, for example **Claude Haiku 5.5 · Global**. Put the pointer on the model in the chat input to see its full name and its provider.
+
+When the next reply in a chat comes from a different model, a line in the chat shows the change, for example **Switched to Claude Sonnet 5.5 · US**. Put the pointer on the usage text under a reply to see the model that wrote it.
 
 The app remembers the model that you used last. New chats start with this model, also after a page reload. If the model is not available, the app uses the last model of your default provider. To change the default provider, open **Preferences → Providers**.
 
@@ -309,12 +317,16 @@ Under each reply, next to the rating buttons, the app shows the input and output
 - If the app has no price for a model, it shows no cost under the reply and **No price data** in the popover.
 - Claude prices come from the Anthropic pricing page. For the prices and how the app applies them, see [docs/ANTHROPIC_PRICING.md](docs/ANTHROPIC_PRICING.md). The cost is an estimate. Your provider's bill is the real cost.
 
+### Find a chat
+
+Type in **Search chats** at the top of the conversation list. The list shows only the chats whose title contains the text. Push **Esc** to clear the search.
+
 ### Saved prompts
 
 To save a prompt:
 
 1. Type the prompt in the chat input.
-2. Click the bookmark button next to the model picker.
+2. Click **+** in the chat input, then click **Save as prompt**.
 3. Give the prompt a name and, if you want, a category. Click **Save**.
 
 To use a saved prompt:
@@ -419,7 +431,7 @@ The React app runs in the browser. Vite middleware in `vite.config.ts` adds serv
 local-llm-ui/
 ├── src/
 │   ├── components/
-│   │   ├── ai-elements/   # Chat UI parts: message, prompt input, model picker, reasoning, context
+│   │   ├── ai-elements/   # Chat UI parts: message, prompt input, model picker, work row, context
 │   │   ├── chat/          # Chat container, inference settings, Quote and Ask
 │   │   ├── prompts/       # Saved prompts
 │   │   ├── sidebar/       # Sidebar, preferences, MCP settings

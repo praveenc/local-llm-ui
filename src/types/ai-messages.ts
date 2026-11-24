@@ -62,7 +62,7 @@ export interface UIMessage {
   /** The user's thumbs up or thumbs down, when set */
   feedback?: MessageFeedback;
   /** The model that wrote an assistant message */
-  model?: { provider: Provider; id: string };
+  model?: { provider: Provider; id: string; name?: string };
   /** Token usage of an assistant message, when the provider sent it */
   usage?: MessageUsage;
   /** About how long the model thought, for the work row */
@@ -115,7 +115,7 @@ export function toUIMessage(dbMessage: DbMessage): UIMessage {
     createdAt: dbMessage.createdAt,
     ...(dbMessage.feedback ? { feedback: dbMessage.feedback } : {}),
     ...(dbMessage.role === 'assistant' && {
-      model: { provider: dbMessage.provider, id: dbMessage.modelId },
+      model: { provider: dbMessage.provider, id: dbMessage.modelId, name: dbMessage.modelName },
     }),
     ...(dbMessage.usage ? { usage: dbMessage.usage } : {}),
     ...(dbMessage.reasoningMs ? { reasoningMs: dbMessage.reasoningMs } : {}),

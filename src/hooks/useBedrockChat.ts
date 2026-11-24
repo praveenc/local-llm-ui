@@ -195,7 +195,7 @@ export function useBedrockChat({
         role: 'assistant',
         parts: [],
         createdAt: new Date(),
-        model: { provider, id: modelId },
+        model: { provider, id: modelId, name: modelName },
       };
 
       // Set by the stream loop so the abort handler can flush text received so far

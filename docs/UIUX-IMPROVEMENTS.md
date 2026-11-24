@@ -36,24 +36,24 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 1 | Correct the context and cost numbers | 1 `fix/context-usage` ([#63](https://github.com/praveenc/local-llm-ui/pull/63)) | Done, merged |
 | 5 | Usage on every reply | 1 `fix/context-usage` ([#63](https://github.com/praveenc/local-llm-ui/pull/63)) | Done, merged |
 | 6 | Context meter states | 1 `fix/context-usage` ([#63](https://github.com/praveenc/local-llm-ui/pull/63)) | Done, merged |
-| 2 | Comfortable reading column | 2 `feat/typography` | Done, waits on PR |
-| 8 | Calmer surfaces | 2 `feat/typography` | Done, waits on PR |
-| 14 | README | 2 `feat/typography` | Done, waits on PR |
-| 3 | Work row | 3 `feat/work-row` | Done, waits on PR |
-| 7 | Web search state in words | 3 `feat/work-row` | Done, waits on PR |
-| 4 | Fewer controls | 4 `feat/lean-chrome` | Not started |
-| 10 | Conversation search | 4 `feat/lean-chrome` | Not started |
-| 13 | Centred composer | 4 `feat/lean-chrome` | Not started |
+| 2 | Comfortable reading column | 2 `feat/typography` ([#64](https://github.com/praveenc/local-llm-ui/pull/64)) | Done, merged |
+| 8 | Calmer surfaces | 2 `feat/typography` ([#64](https://github.com/praveenc/local-llm-ui/pull/64)) | Done, merged |
+| 14 | README | 2 `feat/typography` ([#64](https://github.com/praveenc/local-llm-ui/pull/64)) | Done, merged |
+| 3 | Work row | 3 `feat/work-row` ([#65](https://github.com/praveenc/local-llm-ui/pull/65)) | Done, merged |
+| 7 | Web search state in words | 3 `feat/work-row` ([#65](https://github.com/praveenc/local-llm-ui/pull/65)) | Done, merged |
+| 4 | Fewer controls | 4 `feat/lean-chrome` (PR 4) | Done, in review |
+| 10 | Conversation search | 4 `feat/lean-chrome` (PR 4) | Done, in review |
+| 13 | Centred composer | 4 `feat/lean-chrome` (PR 4) | Done, in review |
 | 11 | Preferences save on change | 5 `feat/preferences-autosave` | Not started |
 | 12 | Accessibility polish | 5 `feat/preferences-autosave` | Not started |
 | 9 | One theme control | None | Dropped (D2) |
 
 ### Found during the work
 
-- **Model picker search (PR 1 testing).** A search with a dot finds nothing: "Haiku 5.5" shows "No models found", but "Haiku 5" lists Claude Haiku 5.5. Planned for PR 4 (`feat/lean-chrome`, item 4), which changes the model chip.
+- **Model picker search (PR 1 testing).** A search with a dot finds nothing: "Haiku 5.5" shows "No models found", but "Haiku 5" lists Claude Haiku 5.5. Fixed in PR 4: the search also matches the model name.
 - **Context window per model.** Claude 4.6 and later models have a 1M-token window. The app used 200K for all Claude models. PR 1 fixes this for Anthropic, Bedrock, and OpenRouter.
-- **Composer width (PR 2).** The chat input stays 896 px wide in PR 2, wider than the 768 px reading column. With a long model name such as "Global Anthropic Claude Haiku 5.5 Amazon Bedrock", the toolbar does not fit in one row at 768 px, and it wraps to two rows also at 896 px when the context indicator shows. PR 4 shortens the model chip; then the input can take the column width.
-- **Sticky model badge (PR 2).** The badge covers the first line of the reply under it while you scroll. PR 4 removes it (D1).
+- **Composer width (PR 2).** The chat input stays 896 px wide in PR 2, wider than the 768 px reading column. With a long model name such as "Global Anthropic Claude Haiku 5.5 Amazon Bedrock", the toolbar does not fit in one row at 768 px, and it wraps to two rows also at 896 px when the context indicator shows. Fixed in PR 4: the chip shows a short name, and the input is 768 px with the toolbar on one row.
+- **Sticky model badge (PR 2).** The badge covered the first line of the reply under it while you scroll. Fixed in PR 4: the badge is removed (D1).
 - **Tool calls were not stored (PR 3).** A reply kept its thinking and its answer, but not its searches or tool calls, so they were gone when the chat opened again. PR 3 stores each call with a compact result: up to 10 results for each search (title, link, and 400 characters of text), and the first 8,000 characters of other output.
 - **Failed tools looked like they ran forever (PR 3).** The proxies did not send the AI SDK `tool-error` part, so a failed tool kept its spinner. PR 3 sends it as a `toolResult` with an `error`, in all six AI SDK proxies.
 - **Thinking time was not known.** The model sends no thinking duration. PR 3 estimates it in the browser: each wait that ends with a thinking chunk counts, from the time the request is sent.
@@ -166,6 +166,10 @@ Effort is relative. **S** is one or two files. **M** is several components and t
   - **Clear chat** is removed from the composer. A **New chat** button goes in the header.
   - **Save prompt** moves into the **+** menu as "Save as prompt".
 - **Trade-offs:** The provider name is no longer visible as text at a glance. The short-name rules must keep Global and US profiles apart.
+- **Done in PR 4:**
+  - `src/utils/modelLabel.ts` makes the short name. The profile comes from the model ID prefix (`global.`, `us.`, `eu.`, ...), not from the name, so Global and US stay apart. The 92 Bedrock models in the test account give 92 different labels; the longest has 38 characters. The picker list uses the same labels.
+  - The "Switched to" line goes before the user message that starts the reply from the new model. The usage tooltip under each reply names its model, because the badge is gone.
+  - The header button is **New chat** (a pencil icon). Clear chat called the chat hook's clear function directly and did not reset the default model; New chat does both.
 
 #### 5. Usage on every reply, in the existing action row
 
@@ -222,6 +226,7 @@ Effort is relative. **S** is one or two files. **M** is several components and t
 - **Categories:** Core flows, Chrome economy. **Effort:** M.
 - **Change:** A filter Input above the list searches conversation titles in IndexedDB. Groups with a match open. The chat icon on each row is removed.
 - **Trade-offs:** Titles only. A search of message text is a later change.
+- **Done in PR 4:** the filter is in the list component and filters the titles already loaded from IndexedDB, so it needs no new query. While it has text, every group with a match is open. Esc clears it.
 
 #### 11. Preferences save on change (D3)
 
@@ -244,6 +249,7 @@ Effort is relative. **S** is one or two files. **M** is several components and t
 #### 13. Centred composer on an empty chat (D5, approved)
 
 - **Categories:** Visual hierarchy, Core flows. **Effort:** M. See [Empty state](#empty-state-centred-composer).
+- **Done in PR 4:** the chat input is one element that changes its position, so its text and attachments stay when it moves. Without a model, the provider checklist shows above it in place of the heading. The note about an automatic model choice shows below it.
 
 #### 14. README
 
@@ -413,7 +419,7 @@ One PR for each group, in this order:
 |---|---|---|---|
 | 1 | `fix/context-usage` | 1, 5, 6 | Nothing |
 | 2 | `feat/typography` | 2, 8, 14 | Nothing (PR 1 merged as #63) |
-| 3 | `feat/work-row` | 3, 7 | PR 2 (stacked on it) |
+| 3 | `feat/work-row` | 3, 7 | Nothing (PR 2 merged as #64) |
 | 4 | `feat/lean-chrome` | 4, 10, 13 | Nothing |
 | 5 | `feat/preferences-autosave` | 11, 12 | Nothing |
 
