@@ -13,7 +13,8 @@ export type Provider =
   | 'groq'
   | 'cerebras'
   | 'anthropic'
-  | 'openrouter';
+  | 'openrouter'
+  | 'kiro';
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type ConversationStatus = 'active' | 'archived';
 /** The user's thumbs up or thumbs down on an assistant message */

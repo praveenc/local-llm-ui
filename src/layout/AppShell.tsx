@@ -8,6 +8,7 @@ import { db } from '../db';
 import { useAllModels } from '../hooks/useAllModels';
 import type { UnifiedModel } from '../hooks/useAllModels';
 import { useConversationMutations } from '../hooks/useConversationMutations';
+import { useKiroStatus } from '../hooks/useKiroStatus';
 import { useResolvedVisualMode } from '../hooks/useResolvedVisualMode';
 import { conversationService } from '../services';
 import {
@@ -53,6 +54,8 @@ const toModelRef = (message?: { modelId: string; provider: Provider }): ModelRef
   message ? { id: message.modelId, provider: message.provider } : undefined;
 
 export default function AppShell() {
+  // Checks kiro-cli at launch, so Preferences can show it at once
+  useKiroStatus();
   const [maxTokens, setMaxTokens] = useState<number>(4096);
   // Max tool steps is kept across sessions
   const [maxToolSteps, setMaxToolStepsState] = useState<number>(() => loadMaxToolSteps());

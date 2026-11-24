@@ -8,6 +8,7 @@ import { useAllModels } from '../useAllModels';
 const never = () => new Promise<never>(() => {});
 
 vi.mock('../../services', () => ({
+  kiroService: { getModels: () => Promise.resolve([]) },
   bedrockService: { getModels: () => never() },
   lmstudioService: { getModels: () => Promise.reject(new Error('LM Studio is not connected')) },
   ollamaService: {
