@@ -12,6 +12,7 @@ import { handleLMStudioRequest } from './server/lmstudio-proxy.ts';
 import { handleMantleRequest } from './server/mantle-proxy.ts';
 import { createOllamaAISDKProxy } from './server/ollama-aisdk-proxy.ts';
 import { createOpenRouterAISDKProxy } from './server/openrouter-aisdk-proxy.ts';
+import { apiGuardPlugin } from './server/security.ts';
 
 // No script-src or style-src: the dev server and the pre-paint script in index.html need inline code
 // img-src: public/ icons, models.dev provider logos, attachments as blob: and data: URLs
@@ -31,6 +32,8 @@ export default defineConfig({
     },
   },
   plugins: [
+    // Rejects cross-site requests to /api (SEC-13). Keep it first, before every proxy
+    apiGuardPlugin(),
     tailwindcss(),
     react(),
     // Bedrock proxy for AWS SDK integration
@@ -131,6 +134,9 @@ export default defineConfig({
   // Vite sends these on what it serves itself (HTML, modules, public/); not on the /api proxies
   server: {
     headers: securityHeaders,
+    // The app calls only its own origin. Vite's CORS middleware would answer preflights from other
+    // localhost ports before the /api guard runs (SEC-13), so it stays off
+    cors: false,
     proxy: {
       '/api/lmstudio': {
         target: 'http://localhost:1234',
@@ -156,5 +162,6 @@ export default defineConfig({
   },
   preview: {
     headers: securityHeaders,
+    cors: false,
   },
 });
