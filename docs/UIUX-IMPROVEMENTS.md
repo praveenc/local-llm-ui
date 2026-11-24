@@ -56,10 +56,10 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 11 | Preferences save on change | 5 `feat/preferences-autosave` ([#68](https://github.com/praveenc/local-llm-ui/pull/68)) | Done, merged |
 | 12 | Accessibility polish | 5 `feat/preferences-autosave` ([#68](https://github.com/praveenc/local-llm-ui/pull/68)) | Done, merged |
 | 9 | One theme control | None | Dropped (D2) |
-| 15 | A more comfortable chat input | 6 `feat/composer-comfort` ([#70](https://github.com/praveenc/local-llm-ui/pull/70)) | PR open |
-| 16 | Sidebar groups with more structure | 7 `feat/sidebar-groups` ([#71](https://github.com/praveenc/local-llm-ui/pull/71)) | PR open |
-| 17 | Web search on by default | 8 `feat/web-search-default` | Planned, after PR 6 |
-| 18 | Rename a chat from the header | 9 `feat/rename-title` | Planned, after PR 7 |
+| 15 | A more comfortable chat input | 6 `feat/composer-comfort` ([#70](https://github.com/praveenc/local-llm-ui/pull/70)) | Done, merged |
+| 16 | Sidebar groups with more structure | 7 `feat/sidebar-groups` ([#71](https://github.com/praveenc/local-llm-ui/pull/71)) | Done, merged |
+| 17 | Web search on by default | 8 `feat/web-search-default` | In progress |
+| 18 | Rename a chat from the header | 9 `feat/rename-title` (stacked on PR 8) | In progress |
 
 ### Found during the work
 
@@ -603,6 +603,6 @@ Conversations
 | 8 | `feat/web-search-default` | 17 | D10, D11, and PR 6 merged (both change the chat input toolbar in `ChatContainer.tsx`) |
 | 9 | `feat/rename-title` | 18 | D12, D13, and PR 7 merged (both change the rename code in `ConversationList.tsx`) |
 
-Merge order: 6, 7, 8, 9. PRs 6 and 7 can start at the same time. Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes: PR 7 for the groups ("Find a chat"), PR 8 for "Web search", and PR 9 for a new "Rename a chat" part.
+Merge order: 6, 7, 8, 9. PRs 6 and 7 can start at the same time. PRs 6 and 7 are merged (#70 and #71). PR 9 is stacked on PR 8: its branch starts from `feat/web-search-default`, and its PR targets that branch until PR 8 merges. Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes: PR 7 for the groups ("Find a chat"), PR 8 for "Web search", and PR 9 for a new "Rename a chat" part.
 
 Each PR is tested as the guidelines say: headless Chromium with a real Bedrock reply, light and dark mode, 1440, 1024, and 390 px, no sideways scroll, and a reload. PR 7 also checks the contrast of the row time on the sidebar in all eight theme variants (muted text on the sidebar is 4.92:1 or more today).
