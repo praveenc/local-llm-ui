@@ -40,7 +40,7 @@ The plan supports kiro-cli 3 only. kiro-cli 2 gets a clear message and no Kiro f
 
 | PR | Branch | Items | State |
 |---|---|---|---|
-| K1 | `fix/api-same-origin` | 1 | In progress |
+| K1 | `fix/api-same-origin` | 1 | In review ([#76](https://github.com/praveenc/local-llm-ui/pull/76)) |
 | K2 | `feat/kiro-detect` | 2 | Planned |
 | K3 | `feat/kiro-sign-in` | 3 | Planned |
 | K4 | `feat/kiro-acp-client` | 4 | Planned |
