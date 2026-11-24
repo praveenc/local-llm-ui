@@ -84,3 +84,15 @@ describe('ViewPromptsModal Insert action', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ViewPromptsModal empty state', () => {
+  it('tells you to save a prompt from the + menu, not with a bookmark button', () => {
+    setup();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'no prompt has this' } });
+    expect(screen.getByText('No saved prompts')).toBeInTheDocument();
+    expect(
+      screen.getByText('Type a prompt in the chat input, click +, and then click Save as prompt.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/bookmark/i)).not.toBeInTheDocument();
+  });
+});
