@@ -233,7 +233,8 @@
 }
 
 /*
- * Scrollbars: thin, no track, thumb from --muted-foreground so every theme colours it.
+ * Scrollbars: default width (a thin thumb is too small a target), no track, thumb from
+ * --muted-foreground so every theme colours it.
  * Matters when macOS "Show scroll bars" is "Always" (or a mouse is attached): the chat log,
  * code blocks (capped at 400 px by Streamdown) and tables (300 px) then show classic bars.
  * Chrome and Firefox use the standard properties; Safari, without scrollbar-color, the
@@ -246,18 +247,12 @@
     --scrollbar-thumb: color-mix(in oklab, var(--muted-foreground) 85%, var(--background));
   }
   * {
-    scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thumb) transparent;
   }
   @supports not (scrollbar-color: auto) {
-    /* Safari 18.2 to 26.1 has scrollbar-width but not scrollbar-color; thin would turn off
-       the ::-webkit-scrollbar rules below */
-    * {
-      scrollbar-width: auto;
-    }
     ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
+      width: 12px;
+      height: 12px;
     }
     ::-webkit-scrollbar-track,
     ::-webkit-scrollbar-corner {
