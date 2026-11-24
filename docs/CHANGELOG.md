@@ -58,6 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The sticky model badge above the chat, the model line under the product name, and the chat icon on each conversation are removed
 - Clear chat is removed from the chat input (it did the same as New chat); Save prompt moved into the + menu as "Save as prompt"
 - The chat input is as wide as the reply column (768 px)
+- Preferences saves each setting when you change it; typed values (API keys, avatar initials, MCP server fields) save when you stop typing, leave the field, push Enter, or close the dialog. The footer shows "Saved", and one Done button replaces Save and Cancel. Theme changes in Preferences show at once
+- Message action icons (rating, copy, regenerate) are 16 px instead of 12 px
 - A long reply updates the screen at most once per frame while it streams ([#62])
 
 #### Fixed
@@ -81,6 +83,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A tool that failed looked like it was still running; it now shows as failed with its error, and a tool that has no result when the reply ends is marked failed
 - MCP tools said "Searching..." while they ran; they now say "Running…"
 - A model search with a dot, for example "Haiku 5.5", found nothing
+- The scroll-to-bottom button covered the text of the chat; it now sits in a strip between the chat and the chat input
+- On narrow screens the chat input covered the end of the chat when its toolbar took more than one row; the chat now ends above the measured height of the input
 
 ## [1.1.0] - 2026-11-12
 

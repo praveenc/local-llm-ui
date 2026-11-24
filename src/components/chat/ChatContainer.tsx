@@ -93,6 +93,10 @@ const hasWork = (message: UIMessage | undefined) =>
   message?.role === 'assistant' &&
   message.parts.some((p) => p.type === 'reasoning' || p.type === 'tool-call');
 
+/** Height of the chat input before it is measured, and the strip above it for the scroll button */
+const DEFAULT_COMPOSER_HEIGHT = 128;
+const SCROLL_BUTTON_STRIP = 48;
+
 /** The short label of the model that wrote a reply, for example "Claude Haiku 5.5 · Global" */
 const replyModelLabel = (message: UIMessage): string | undefined =>
   message.model?.name
@@ -223,6 +227,18 @@ const ChatContainer = ({
   const chatUsage = useMemo(() => summarizeChatUsage(messages), [messages]);
   const modelSwitches = useMemo(() => findModelSwitches(messages), [messages]);
   const isEmpty = messages.length === 0;
+
+  // The transcript ends above the chat input, with a strip for the scroll-to-bottom button. The
+  // input grows with its text and wraps its toolbar on narrow screens, so measure it.
+  const composerRef = useRef<HTMLDivElement>(null);
+  const [composerHeight, setComposerHeight] = useState(DEFAULT_COMPOSER_HEIGHT);
+  useEffect(() => {
+    const el = composerRef.current;
+    if (isEmpty || !el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => setComposerHeight(el.offsetHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isEmpty]);
   const [savePromptOpen, setSavePromptOpen] = useState(false);
 
   // Get context limits for current model
@@ -380,11 +396,12 @@ const ChatContainer = ({
       <StreamStatusAnnouncer isLoading={isLoading} hasError={Boolean(error)} />
       <div className="relative flex flex-col h-full">
         <FittedContainer>
-          <div className="h-full pb-44">
+          <div className="h-full" style={{ paddingBottom: composerHeight + SCROLL_BUTTON_STRIP }}>
             {/* An empty chat has no transcript: the chat input sits in the middle instead */}
             {isEmpty ? null : (
               <div ref={messagesRef} className="h-full">
-                <Conversation className="h-full max-w-3xl mx-auto">
+                {/* Visible overflow: the scroll button sits in the strip under the transcript */}
+                <Conversation className="h-full max-w-3xl mx-auto overflow-y-visible">
                   <ConversationContent className="p-4 compact:p-3">
                     {messages.map((message, index) => {
                       const isLastMessage = index === messages.length - 1;
@@ -431,7 +448,7 @@ const ChatContainer = ({
                                 onClick={() => rateMessage(message.id, 'helpful')}
                               >
                                 <ThumbsUp
-                                  className={`h-3 w-3 ${message.feedback === 'helpful' ? 'fill-current' : ''}`}
+                                  className={`size-4 ${message.feedback === 'helpful' ? 'fill-current' : ''}`}
                                 />
                               </MessageAction>
                               <MessageAction
@@ -439,21 +456,21 @@ const ChatContainer = ({
                                 onClick={() => rateMessage(message.id, 'not-helpful')}
                               >
                                 <ThumbsDown
-                                  className={`h-3 w-3 ${message.feedback === 'not-helpful' ? 'fill-current' : ''}`}
+                                  className={`size-4 ${message.feedback === 'not-helpful' ? 'fill-current' : ''}`}
                                 />
                               </MessageAction>
                               <MessageAction
                                 tooltip="Copy"
                                 onClick={() => handleCopy(getTextContent(message))}
                               >
-                                <Copy className="h-3 w-3" />
+                                <Copy className="size-4" />
                               </MessageAction>
                               <MessageAction
                                 tooltip="Regenerate"
                                 onClick={() => regenerate(index)}
                                 disabled={isLoading}
                               >
-                                <RefreshCw className="h-3 w-3" />
+                                <RefreshCw className="size-4" />
                               </MessageAction>
                               {message.usage && (
                                 <ReplyUsage
@@ -475,7 +492,7 @@ const ChatContainer = ({
                       <GeneratingIndicator />
                     )}
                   </ConversationContent>
-                  <ConversationScrollButton />
+                  <ConversationScrollButton className="bottom-0 size-8 translate-y-[calc(100%+0.5rem)]" />
                 </Conversation>
               </div>
             )}
@@ -503,6 +520,7 @@ const ChatContainer = ({
          * attachments stay when it moves. It moves without animation.
          */}
         <div
+          ref={composerRef}
           className={cn(
             'absolute left-0 right-0 z-20 px-2 md:px-4',
             isEmpty

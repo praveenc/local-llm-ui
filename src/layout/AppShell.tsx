@@ -1,5 +1,4 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { toast } from 'sonner';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -233,10 +232,6 @@ export default function AppShell() {
     }
   };
 
-  const handlePreferencesSaved = () => {
-    toast.success('Preferences saved successfully');
-  };
-
   return (
     <AppLayout
       title={activeTitle || 'New conversation'}
@@ -286,10 +281,7 @@ export default function AppShell() {
         open={preferencesOpen}
         onOpenChange={setPreferencesOpen}
         initialTab={preferencesTab}
-        onSave={(preferences) => {
-          handlePreferencesChange(preferences);
-          handlePreferencesSaved();
-        }}
+        onChange={handlePreferencesChange}
       />
     </AppLayout>
   );

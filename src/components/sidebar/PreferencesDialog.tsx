@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -14,16 +14,16 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-import { useDiscardGuard } from '../../hooks/useDiscardGuard';
 import { useResolvedVisualMode } from '../../hooks/useResolvedVisualMode';
 import {
+  PROVIDER_API_KEY_FIELDS,
   isProviderConfigured,
   loadPreferences,
   savePreferences,
   validateInitials,
 } from '../../utils/preferences';
 import type { ContentDensity, UserPreferences, VisualMode } from '../../utils/preferences';
-import { DiscardChangesNotice } from '../shared/DiscardChangesNotice';
+import { WEB_SEARCH_KEY_FIELDS } from '../../utils/webSearch';
 import { ColorThemePicker } from './ColorThemePicker';
 import { MCPServerSettings } from './MCPServerSettings';
 import { ProviderSettings } from './ProviderSettings';
@@ -33,60 +33,130 @@ import { providerLabel } from './providerOptions';
 interface PreferencesDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (preferences: UserPreferences) => void;
+  /** Called after each save, with the preferences that were stored */
+  onChange: (preferences: UserPreferences) => void;
   /** Tab to show each time the dialog opens; unset keeps the last tab */
   initialTab?: PreferencesTab;
 }
 
 export type PreferencesTab = 'providers' | 'web-search' | 'mcp' | 'display';
 
+/**
+ * Settings that change while you type (API keys, avatar initials, MCP server fields). They
+ * save when you stop typing for SAVE_DELAY_MS, when focus leaves the field, on Enter, and when
+ * the dialog closes. Every other setting saves at once.
+ */
+const TYPED_KEYS = new Set<keyof UserPreferences>([
+  ...Object.values(PROVIDER_API_KEY_FIELDS),
+  ...Object.values(WEB_SEARCH_KEY_FIELDS),
+  'avatarInitials',
+  'mcpServers',
+]);
+const SAVE_DELAY_MS = 700;
+const SAVED_LABEL_MS = 2000;
+
+type SaveStatus = 'idle' | 'saved' | 'not-saved';
+
 export function PreferencesDialog({
   open,
   onOpenChange,
-  onSave,
+  onChange,
   initialTab,
 }: PreferencesDialogProps) {
   const [preferences, setPreferences] = useState<UserPreferences>(() => loadPreferences());
   const [tab, setTab] = useState<PreferencesTab>('providers');
   const [wasOpen, setWasOpen] = useState(open);
 
+  const [providerError, setProviderError] = useState('');
+  const [status, setStatus] = useState<SaveStatus>('idle');
+
   // Reload on open: other controls (the header theme toggle) also save preferences
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
       setPreferences(loadPreferences());
+      setProviderError('');
+      setStatus('idle');
       if (initialTab) setTab(initialTab);
     }
   }
-  const [providerError, setProviderError] = useState('');
-  // Theme previews show the variant this draft would draw now
+  // Theme previews show the variant these preferences draw now
   const resolvedVisualMode = useResolvedVisualMode(preferences.visualMode);
-  // Edits are dirty until saved; compare with what is stored now
-  const dirty = open && JSON.stringify(preferences) !== JSON.stringify(loadPreferences());
-  const guard = useDiscardGuard({ open, dirty, onClose: () => onOpenChange(false) });
 
-  const handleSave = () => {
-    if (!isProviderConfigured(preferences, preferences.preferredProvider)) {
-      setProviderError(
-        `Add an API key for ${providerLabel(preferences.preferredProvider)}, or choose a different default provider.`
-      );
-      setTab('providers');
-      return;
-    }
-    savePreferences(preferences);
-    onSave(preferences);
-    onOpenChange(false);
+  // The latest preferences, for saves that run after this render (timer, blur, close)
+  const latest = useRef(preferences);
+  useLayoutEffect(() => {
+    latest.current = preferences;
+  });
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelPending = () => {
+    if (pending.current) clearTimeout(pending.current);
+    pending.current = null;
   };
 
+  /** Store the preferences, unless the default provider has no API key */
+  const save = useCallback(
+    (next: UserPreferences) => {
+      cancelPending();
+      if (JSON.stringify(next) === JSON.stringify(loadPreferences())) return;
+      if (!isProviderConfigured(next, next.preferredProvider)) {
+        setProviderError(
+          `Not saved. Add an API key for ${providerLabel(next.preferredProvider)}, or choose a different default provider.`
+        );
+        setStatus('not-saved');
+        return;
+      }
+      savePreferences(next);
+      onChange(next);
+      setProviderError('');
+      setStatus('saved');
+    },
+    [onChange]
+  );
+
+  const savePending = () => {
+    if (pending.current) save(latest.current);
+  };
+
+  // "Saved" shows for a moment, then the footer says again that changes save automatically
+  useEffect(() => {
+    if (status !== 'saved') return;
+    const timer = setTimeout(() => setStatus('idle'), SAVED_LABEL_MS);
+    return () => clearTimeout(timer);
+  }, [status]);
+
+  useEffect(() => cancelPending, []);
+
   const updatePreference = <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
-    setPreferences((prev) => ({ ...prev, [key]: value }));
-    setProviderError('');
+    // Two updates from one handler (a key and the primary search provider) both land
+    const next = { ...latest.current, [key]: value };
+    latest.current = next;
+    setPreferences(next);
+    if (TYPED_KEYS.has(key)) {
+      cancelPending();
+      pending.current = setTimeout(() => save(latest.current), SAVE_DELAY_MS);
+    } else {
+      save(next);
+    }
+  };
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next) savePending();
+    onOpenChange(next);
   };
 
   return (
-    <Dialog open={open} onOpenChange={guard.onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       {/* Fixed height, so the tabs and the footer do not move between tabs */}
-      <DialogContent className="sm:max-w-2xl h-[min(85vh,760px)] flex flex-col gap-4">
+      <DialogContent
+        className="sm:max-w-2xl h-[min(85vh,760px)] flex flex-col gap-4"
+        // A typed value saves when focus leaves its field, or on Enter
+        onBlur={savePending}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && e.target instanceof HTMLInputElement) savePending();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Preferences</DialogTitle>
           <DialogDescription>Choose your providers, tools, and display settings.</DialogDescription>
@@ -215,13 +285,20 @@ export function PreferencesDialog({
           </p>
         )}
 
-        {guard.asking && <DiscardChangesNotice onDiscard={guard.discard} />}
-
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+        <DialogFooter className="items-center gap-2 sm:justify-between">
+          <p role="status" className="text-sm text-muted-foreground">
+            {status === 'saved' ? (
+              <span className="text-status-ok">Saved</span>
+            ) : status === 'not-saved' ? (
+              <span className="text-destructive">Not saved</span>
+            ) : (
+              'Changes save automatically.'
+            )}
+          </p>
+          {/* "Done", not "Close": the dialog's X button is already named Close */}
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            Done
           </Button>
-          <Button onClick={handleSave}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

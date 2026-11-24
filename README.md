@@ -360,7 +360,7 @@ Replies use the Inter font and code uses JetBrains Mono. The app includes both f
 
 The app loads the syntax highlighter when the first code block shows, not when the page loads.
 
-The app keeps all preferences in your browser.
+The app keeps all preferences in your browser. Preferences has no Save button: a setting saves when you change it, and the footer shows **Saved**. A key or other typed text saves when you stop typing, when you go to a different field, or when you push **Enter**. Click **Done** or press **Esc** to close Preferences.
 
 ## Troubleshooting
 
@@ -371,7 +371,7 @@ The app keeps all preferences in your browser.
    - **Ollama:** Make sure that Ollama runs and that `ollama list` shows one or more models.
    - **LM Studio:** Make sure that the LM Studio server runs on port `1234`.
    - **Amazon Bedrock:** Make sure that the AWS credentials are set on the computer that runs the app. Make sure that the IAM permissions are correct.
-   - **Providers with an API key:** Look at the key in **Preferences → Providers**. A provider without a key cannot be the default provider.
+   - **Providers with an API key:** Look at the key in **Preferences → Providers**. A provider without a key cannot be the default provider. If you remove the key of the default provider, Preferences shows **Not saved** until you select a different default provider.
 
 ### "Cannot connect" error
 

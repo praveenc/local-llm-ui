@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PreferencesDialog } from '../PreferencesDialog';
@@ -8,11 +8,12 @@ const STORAGE_KEY = 'local-llm-ui-preferences';
 const renderDialog = (stored: Record<string, unknown>) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
   const onSave = vi.fn();
-  render(<PreferencesDialog open onOpenChange={vi.fn()} onSave={onSave} />);
-  return { onSave };
+  const onOpenChange = vi.fn();
+  render(<PreferencesDialog open onOpenChange={onOpenChange} onChange={onSave} />);
+  return { onSave, onOpenChange };
 };
 
-const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+const stored = () => JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
 
 describe('PreferencesDialog providers', () => {
   beforeEach(() => localStorage.clear());
@@ -29,8 +30,9 @@ describe('PreferencesDialog providers', () => {
   it('saves the chosen provider', () => {
     const { onSave } = renderDialog({ preferredProvider: 'anthropic', anthropicApiKey: 'sk-ant' });
     fireEvent.click(screen.getByRole('radio', { name: /Amazon Bedrock/ }));
-    save();
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ preferredProvider: 'bedrock' }));
+    expect(stored().preferredProvider).toBe('bedrock');
+    expect(screen.getByRole('status')).toHaveTextContent('Saved');
   });
 
   it('enables a provider once its key is added in its row', () => {
@@ -42,9 +44,9 @@ describe('PreferencesDialog providers', () => {
     fireEvent.change(screen.getByLabelText('Groq API key'), { target: { value: ' gsk_1 ' } });
     expect(groq).toBeEnabled();
 
+    // Choosing the provider saves at once, with the key typed before it
     fireEvent.click(groq);
-    save();
-    expect(onSave).toHaveBeenCalledWith(
+    expect(onSave).toHaveBeenLastCalledWith(
       expect.objectContaining({ preferredProvider: 'groq', groqApiKey: 'gsk_1' })
     );
   });
@@ -57,11 +59,33 @@ describe('PreferencesDialog providers', () => {
     expect(screen.queryByLabelText('Region')).not.toBeInTheDocument();
   });
 
-  it('blocks save when the default provider has lost its API key', () => {
-    const { onSave } = renderDialog({ preferredProvider: 'groq' });
-    save();
+  it('does not save while the default provider has no API key', () => {
+    const { onSave } = renderDialog({ preferredProvider: 'groq', groqApiKey: 'gsk_1' });
+    fireEvent.click(screen.getByRole('button', { name: /Edit key \(Groq\)/ }));
+    const key = screen.getByLabelText('Groq API key');
+    fireEvent.change(key, { target: { value: '' } });
+    fireEvent.blur(key);
     expect(onSave).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent('Add an API key for Groq');
+    expect(screen.getByRole('alert')).toHaveTextContent('Not saved. Add an API key for Groq');
+    expect(screen.getByRole('status')).toHaveTextContent('Not saved');
+
+    // A provider that needs no key makes the change valid, and both parts save
+    fireEvent.click(screen.getByRole('radio', { name: /Amazon Bedrock/ }));
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredProvider: 'bedrock', groqApiKey: '' })
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('saves a typed key when you stop typing, and not on each letter', async () => {
+    const { onSave } = renderDialog({ preferredProvider: 'bedrock' });
+    fireEvent.click(screen.getByRole('button', { name: /Add key \(Groq\)/ }));
+    fireEvent.change(screen.getByLabelText('Groq API key'), { target: { value: 'gsk_2' } });
+    expect(onSave).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ groqApiKey: 'gsk_2' }))
+    );
+    expect(onSave).toHaveBeenCalledTimes(1);
   });
 
   it('shows Default thinking only on the selected provider row', () => {
@@ -87,7 +111,6 @@ describe('PreferencesDialog providers', () => {
     trigger.focus();
     fireEvent.keyDown(trigger, { key: 'Enter' });
     fireEvent.click(screen.getByRole('option', { name: 'High' }));
-    save();
     expect(onSave).toHaveBeenCalledWith(
       expect.objectContaining({
         thinkingEffortByProvider: { anthropic: 'low', bedrock: 'high' },
@@ -123,8 +146,7 @@ describe('PreferencesDialog web search', () => {
     expect(exa).toBeEnabled();
 
     fireEvent.click(exa);
-    save();
-    expect(onSave).toHaveBeenCalledWith(
+    expect(onSave).toHaveBeenLastCalledWith(
       expect.objectContaining({ exaApiKey: 'exa-1', webSearchProvider: 'exa' })
     );
   });
@@ -137,8 +159,8 @@ describe('PreferencesDialog web search', () => {
     fireEvent.change(screen.getByLabelText('Brave Search API key'), { target: { value: 'b' } });
     expect(screen.getByRole('radio', { name: /Tavily/ })).toBeChecked();
 
-    save();
-    expect(onSave).toHaveBeenCalledWith(
+    fireEvent.blur(screen.getByLabelText('Brave Search API key'));
+    expect(onSave).toHaveBeenLastCalledWith(
       expect.objectContaining({ braveApiKey: 'b', webSearchProvider: 'tavily' })
     );
   });
@@ -155,8 +177,9 @@ describe('PreferencesDialog web search', () => {
     expect(fallback).toBeChecked();
 
     fireEvent.click(fallback);
-    save();
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ webSearchFallback: false }));
+    expect(onSave).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tavilyApiKey: 'tvly-1', webSearchFallback: false })
+    );
   });
 });
 
@@ -175,7 +198,6 @@ describe('PreferencesDialog color theme', () => {
     expect(screen.getByRole('radio', { name: 'Neutral' })).toBeChecked();
 
     fireEvent.click(screen.getByRole('radio', { name: 'Rosé Pine' }));
-    save();
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ colorTheme: 'rose-pine' }));
   });
 
@@ -189,39 +211,43 @@ describe('PreferencesDialog color theme', () => {
   });
 });
 
-describe('PreferencesDialog unsaved changes', () => {
+describe('PreferencesDialog closing', () => {
   beforeEach(() => localStorage.clear());
 
-  const renderWithClose = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ preferredProvider: 'bedrock' }));
-    const onOpenChange = vi.fn();
-    render(<PreferencesDialog open onOpenChange={onOpenChange} onSave={vi.fn()} />);
-    return { onOpenChange };
-  };
+  it('has a Done button instead of Save and Cancel, and says that changes save automatically', () => {
+    renderDialog({ preferredProvider: 'bedrock' });
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Changes save automatically.');
+  });
 
-  it('closes on Escape when nothing changed', () => {
-    const { onOpenChange } = renderWithClose();
+  it('closes on Escape after a change, with the change already saved', () => {
+    const { onSave, onOpenChange } = renderDialog({ preferredProvider: 'bedrock' });
+    fireEvent.click(screen.getByRole('radio', { name: /Ollama/ }));
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ preferredProvider: 'ollama' }));
+    expect(screen.queryByRole('button', { name: 'Discard' })).not.toBeInTheDocument();
+  });
+
+  it('saves a value that is still being typed when the dialog closes', () => {
+    const { onSave, onOpenChange } = renderDialog({ preferredProvider: 'bedrock' });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Display' }), { button: 0 });
+    fireEvent.change(screen.getByLabelText('Avatar initials'), { target: { value: 'pc' } });
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ avatarInitials: 'PC' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it('stays open on Escape with an unsaved edit and asks to discard', () => {
-    const { onOpenChange } = renderWithClose();
-    fireEvent.click(screen.getByRole('radio', { name: /Ollama/ }));
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
-    expect(onOpenChange).not.toHaveBeenCalled();
-    const discard = screen.getByRole('button', { name: 'Discard' });
-    expect(discard).toHaveAccessibleDescription('You have unsaved changes.');
-    expect(discard).toHaveFocus();
-    fireEvent.click(discard);
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-  });
-
-  it('still closes from Cancel with an unsaved edit', () => {
-    const { onOpenChange } = renderWithClose();
-    fireEvent.click(screen.getByRole('radio', { name: /Ollama/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+  it('saves a typed value on Enter', () => {
+    const { onSave } = renderDialog({ preferredProvider: 'bedrock' });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Display' }), { button: 0 });
+    const initials = screen.getByLabelText('Avatar initials');
+    fireEvent.change(initials, { target: { value: 'ab' } });
+    fireEvent.keyDown(initials, { key: 'Enter' });
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ avatarInitials: 'AB' }));
   });
 });
 
