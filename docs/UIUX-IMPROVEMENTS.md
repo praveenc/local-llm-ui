@@ -39,8 +39,8 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 2 | Comfortable reading column | 2 `feat/typography` | Done, waits on PR |
 | 8 | Calmer surfaces | 2 `feat/typography` | Done, waits on PR |
 | 14 | README | 2 `feat/typography` | Done, waits on PR |
-| 3 | Work row | 3 `feat/work-row` | Not started |
-| 7 | Web search state in words | 3 `feat/work-row` | Not started |
+| 3 | Work row | 3 `feat/work-row` | Done, waits on PR |
+| 7 | Web search state in words | 3 `feat/work-row` | Done, waits on PR |
 | 4 | Fewer controls | 4 `feat/lean-chrome` | Not started |
 | 10 | Conversation search | 4 `feat/lean-chrome` | Not started |
 | 13 | Centred composer | 4 `feat/lean-chrome` | Not started |
@@ -54,6 +54,9 @@ This document reviews the current chat UI and proposes changes, in order of impa
 - **Context window per model.** Claude 4.6 and later models have a 1M-token window. The app used 200K for all Claude models. PR 1 fixes this for Anthropic, Bedrock, and OpenRouter.
 - **Composer width (PR 2).** The chat input stays 896 px wide in PR 2, wider than the 768 px reading column. With a long model name such as "Global Anthropic Claude Haiku 5.5 Amazon Bedrock", the toolbar does not fit in one row at 768 px, and it wraps to two rows also at 896 px when the context indicator shows. PR 4 shortens the model chip; then the input can take the column width.
 - **Sticky model badge (PR 2).** The badge covers the first line of the reply under it while you scroll. PR 4 removes it (D1).
+- **Tool calls were not stored (PR 3).** A reply kept its thinking and its answer, but not its searches or tool calls, so they were gone when the chat opened again. PR 3 stores each call with a compact result: up to 10 results for each search (title, link, and 400 characters of text), and the first 8,000 characters of other output.
+- **Failed tools looked like they ran forever (PR 3).** The proxies did not send the AI SDK `tool-error` part, so a failed tool kept its spinner. PR 3 sends it as a `toolResult` with an `error`, in all six AI SDK proxies.
+- **Thinking time was not known.** The model sends no thinking duration. PR 3 estimates it in the browser: each wait that ends with a thinking chunk counts, from the time the request is sent.
 
 ## What the product needs
 
@@ -150,6 +153,7 @@ Effort is relative. **S** is one or two files. **M** is several components and t
   - When expanded, the row lists the steps in order: the thinking text, each search with its query and the domains of its results, and each MCP call with its main argument.
   - The tinted reasoning chip is removed.
 - **Trade-offs:** One more click to see the result of one tool. Steps use today's order (reasoning first, then tools). Showing the exact order of message parts is a later change.
+- **Done in PR 3:** `src/components/ai-elements/work-row.tsx` replaces the Thinking chip and the tool cards. The live step and the summary come from `src/utils/workSummary.ts`. Search steps list the sites of their results without a click. MCP steps show the short tool name (`fetch`, not `fetchv2__fetch`; the full name is the tooltip) and the text of the output. The steps are stored with the reply. The `motion` package went with the old shimmer.
 
 #### 4. Fewer controls in the composer and the header
 
@@ -183,6 +187,7 @@ Effort is relative. **S** is one or two files. **M** is several components and t
 - **Categories:** Feedback and state, Accessibility. **Effort:** S.
 - **Change:** When search is on, the globe button becomes a chip with the text "Search", like the Thinking chip. When search is off, only the icon shows. MCP tools that run say "Running…", not "Searching...".
 - **Trade-offs:** The chip is about 70 px wider when search is on.
+- **Done in PR 3:** the Search chip, and "Running…" for MCP tools in the work row.
 
 #### 8. Calmer surfaces
 
@@ -408,7 +413,7 @@ One PR for each group, in this order:
 |---|---|---|---|
 | 1 | `fix/context-usage` | 1, 5, 6 | Nothing |
 | 2 | `feat/typography` | 2, 8, 14 | Nothing (PR 1 merged as #63) |
-| 3 | `feat/work-row` | 3, 7 | Nothing |
+| 3 | `feat/work-row` | 3, 7 | PR 2 (stacked on it) |
 | 4 | `feat/lean-chrome` | 4, 10, 13 | Nothing |
 | 5 | `feat/preferences-autosave` | 11, 12 | Nothing |
 

@@ -15,7 +15,12 @@ import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, endStreamWithError, readBodyWithLimit } from './security.ts';
 import { createThinkTagSplitter } from './think-tags.ts';
-import { noAnswerNotice, streamErrorMessage, toolLoopOptions } from './tool-loop.ts';
+import {
+  noAnswerNotice,
+  streamErrorMessage,
+  toolErrorEvent,
+  toolLoopOptions,
+} from './tool-loop.ts';
 import { usageEvent } from './usage.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
@@ -155,6 +160,8 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
               },
             })}\n\n`
           );
+        } else if (part.type === 'tool-error') {
+          res.write(toolErrorEvent(part));
         } else if (part.type === 'tool-result') {
           res.write(
             `data: ${JSON.stringify({

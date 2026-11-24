@@ -11,7 +11,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import type { MessageFeedback, Provider } from '../db/types';
 import { mantleService } from '../services';
-import type { MessagePart, UIMessage } from '../types/ai-messages';
+import type { MessagePart, ToolCallPart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
 import { extractErrorMessage } from '../utils/errorMessage';
 import { normalizeMediaType } from '../utils/fileUtils';
@@ -19,6 +19,7 @@ import { getMediaTypeFromFormat, lookupFormat } from '../utils/mediaTypes';
 import { loadPreferences } from '../utils/preferences';
 import { supportsThinkingEffort } from '../utils/thinkingEffort';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
+import { toStoredToolCall } from '../utils/toolResults';
 import { type MessageUsage, parseMessageUsage } from '../utils/usage';
 import { buildWebSearchHeaders } from '../utils/webSearch';
 import { useConversation, useConversationMutations } from './index';
@@ -293,6 +294,8 @@ export function useBedrockChat({
           endpoint = '/api/bedrock-aisdk/chat';
         }
 
+        // The model thinks before its first chunk arrives, so thinking time counts from here
+        const requestStart = Date.now();
         const response = await fetch(endpoint, {
           method: 'POST',
           headers,
@@ -316,6 +319,10 @@ export function useBedrockChat({
         let fullReasoning = '';
         let usageData: MessageUsage | undefined;
         const startTime = Date.now();
+        // Thinking time: each gap that ends with a reasoning chunk counts as thinking, also the
+        // wait for the first chunk when that chunk is reasoning
+        let reasoningMs = 0;
+        let lastEventAt = requestStart;
 
         // Track pending tool calls
         const toolCalls: Map<
@@ -411,6 +418,10 @@ export function useBedrockChat({
                 continue;
               }
 
+              const now = Date.now();
+              if (parsed.reasoning) reasoningMs += now - lastEventAt;
+              lastEventAt = now;
+
               // Handle explicit error payloads in stream
               if (parsed.error) {
                 const streamError =
@@ -440,12 +451,19 @@ export function useBedrockChat({
               if (parsed.toolResult) {
                 const toolResult = parsed.toolResult as {
                   id: string;
-                  result: unknown;
+                  result?: unknown;
+                  /** Set when the tool failed: see server/tool-loop.ts toolErrorEvent */
+                  error?: string;
                 };
-                const { id, result } = toolResult;
+                const { id, result, error } = toolResult;
                 const existing = toolCalls.get(id);
                 if (existing) {
-                  toolCalls.set(id, { ...existing, result, status: 'complete' });
+                  toolCalls.set(
+                    id,
+                    error
+                      ? { ...existing, result: error, status: 'error' }
+                      : { ...existing, result, status: 'complete' }
+                  );
                   showAssistantMessage();
                 }
               }
@@ -469,6 +487,19 @@ export function useBedrockChat({
 
         // Flush the last pending frame so the final chunk always shows
         flushNow();
+
+        // A tool without a result when the reply ends failed; keep the thinking time
+        const storedToolCalls = buildParts()
+          .filter((p): p is ToolCallPart => p.type === 'tool-call')
+          .map(toStoredToolCall);
+        for (const tc of storedToolCalls) {
+          const existing = toolCalls.get(tc.toolCallId);
+          if (existing?.status === 'pending') {
+            toolCalls.set(tc.toolCallId, { ...existing, status: 'error', result: tc.result });
+          }
+        }
+        if (fullReasoning && reasoningMs > 0) assistantMessage.reasoningMs = reasoningMs;
+        flushAssistantMessage();
 
         // Show the reply's usage; the context meter and the cost are read from the messages
         if (usageData) {
@@ -496,6 +527,8 @@ export function useBedrockChat({
           modelName,
           parameters,
           usage: usageData,
+          ...(storedToolCalls.length > 0 && { toolCalls: storedToolCalls }),
+          ...(assistantMessage.reasoningMs && { reasoningMs: assistantMessage.reasoningMs }),
         });
         // Give the shown message the stored id, so feedback on it finds the DB row
         setMessages((prev) =>

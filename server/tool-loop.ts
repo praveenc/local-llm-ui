@@ -50,6 +50,20 @@ export function toolLoopOptions(
   };
 }
 
+/**
+ * The SSE line for a tool call that failed (a `tool-error` stream part). The chat shows the
+ * call as failed with this message; without it the call looks like it is still running.
+ */
+export function toolErrorEvent(part: {
+  toolCallId: string;
+  toolName: string;
+  error: unknown;
+}): string {
+  return `data: ${JSON.stringify({
+    toolResult: { id: part.toolCallId, name: part.toolName, error: streamErrorMessage(part.error) },
+  })}\n\n`;
+}
+
 /** A safe, short message for a stream error part */
 export function streamErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);

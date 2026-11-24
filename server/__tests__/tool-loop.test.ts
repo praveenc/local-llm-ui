@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { DEFAULT_TOOL_STEPS, MAX_TOOL_STEPS } from '../../src/utils/toolSteps';
-import { FINAL_STEP_PROMPT, noAnswerNotice, toolLoopOptions } from '../tool-loop';
+import { FINAL_STEP_PROMPT, noAnswerNotice, toolErrorEvent, toolLoopOptions } from '../tool-loop';
 
 const usage = {
   inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
@@ -147,5 +147,38 @@ describe('noAnswerNotice', () => {
     expect(
       await noAnswerNotice({ text: failed, finishReason: failed, steps: failed })
     ).toBeUndefined();
+  });
+});
+
+describe('toolErrorEvent', () => {
+  it('turns a tool that throws into a toolResult with an error for the chat', async () => {
+    let calls = 0;
+    const model = new MockLanguageModelV4({
+      doStream: async () => (++calls === 1 ? toolCallStep(1) : answerStep()),
+    });
+    const failing: ToolSet = {
+      fetch: tool({
+        description: 'Fetch a page',
+        inputSchema: z.object({ url: z.string() }),
+        execute: async (): Promise<string> => {
+          throw new Error('Connection refused');
+        },
+      }),
+    };
+    const result = streamText({
+      model,
+      messages: [{ role: 'user', content: 'Read a page' }],
+      tools: failing,
+      stopWhen: ({ steps }) => steps.length >= 2,
+    });
+
+    const lines: string[] = [];
+    for await (const part of result.stream) {
+      if (part.type === 'tool-error') lines.push(toolErrorEvent(part));
+    }
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0].slice(6))).toEqual({
+      toolResult: { id: 'call-1', name: 'fetch', error: 'Connection refused' },
+    });
   });
 });

@@ -90,7 +90,6 @@
     "dexie": "^4.4.7",
     "dexie-react-hooks": "^4.4.0",
     "lucide-react": "^1.69.0",
-    "motion": "^14.9.1",
     "nanoid": "^6.0.2",
     "ollama-ai-provider-v2": "^4.1.0",
     "react": "^19.3.1",

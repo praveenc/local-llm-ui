@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
-import { composerActive, composerIconButton } from './composerStyles';
+import { composerActive, composerChip, composerIconButton } from './composerStyles';
 
 interface WebSearchToggleProps {
   enabled: boolean;
@@ -35,6 +35,9 @@ export function WebSearchToggle({
       ? `Web search enabled${via}`
       : `Enable web search${via}`;
 
+  // On: a chip that says "Search", so the state is in words, not only in colour
+  const showLabel = enabled && hasApiKey;
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -44,7 +47,7 @@ export function WebSearchToggle({
             variant="ghost"
             size="sm"
             className={cn(
-              composerIconButton,
+              showLabel ? composerChip : composerIconButton,
               enabled && composerActive,
               !hasApiKey && 'cursor-default opacity-50 hover:bg-transparent'
             )}
@@ -58,6 +61,7 @@ export function WebSearchToggle({
             }}
           >
             <Globe className="h-4 w-4" />
+            {showLabel && <span>Search</span>}
           </Button>
         </TooltipTrigger>
         <TooltipContent>

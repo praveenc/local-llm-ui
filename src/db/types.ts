@@ -2,6 +2,7 @@
  * Database types for conversation persistence
  */
 import type { ThinkingEffort } from '../utils/thinkingEffort';
+import type { StoredToolCall } from '../utils/toolResults';
 import type { MessageUsage } from '../utils/usage';
 
 export type Provider =
@@ -44,6 +45,10 @@ export interface Message {
   modelName: string;
   parameters?: MessageParameters;
   usage?: MessageUsage;
+  /** Tool calls of an assistant reply (web search, MCP tools), with compact results */
+  toolCalls?: StoredToolCall[];
+  /** About how long the model thought before and between its answer steps */
+  reasoningMs?: number;
   attachments?: MessageAttachment[];
   /** Set when the user rates the message; absent until then */
   feedback?: MessageFeedback;
