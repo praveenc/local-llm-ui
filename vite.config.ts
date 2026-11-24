@@ -101,11 +101,14 @@ export default defineConfig({
         server.middlewares.use(createOpenRouterAISDKProxy());
       },
     },
-    // Kiro CLI status (installed, version, signed in)
+    // Kiro CLI status, sign-in, and sign-out
     {
       name: 'kiro-proxy',
       configureServer(server) {
-        server.middlewares.use(createKiroProxy());
+        const kiro = createKiroProxy();
+        server.middlewares.use(kiro);
+        // A sign-in that waits for approval must not outlive the server
+        server.httpServer?.once('close', () => kiro.close());
       },
     },
     // LMStudio SDK proxy for model management

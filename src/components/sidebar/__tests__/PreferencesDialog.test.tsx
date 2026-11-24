@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { KiroSignInPhase } from '../../../hooks/useKiroSignIn';
 import type { KiroStatus } from '../../../utils/kiroStatus';
 import { PreferencesDialog } from '../PreferencesDialog';
 
@@ -13,14 +14,45 @@ vi.mock('../../../hooks/useKiroStatus', () => ({
   useKiroStatus: () => kiro,
 }));
 
+const signIn = vi.hoisted(() => ({
+  phase: 'idle' as KiroSignInPhase,
+  code: undefined as string | undefined,
+  url: undefined as string | undefined,
+  message: undefined as string | undefined,
+  start: vi.fn(),
+  cancel: vi.fn(),
+  reset: vi.fn(),
+  signOut: vi.fn(),
+  isSigningOut: false,
+  signOutError: undefined as string | undefined,
+}));
+vi.mock('../../../hooks/useKiroSignIn', () => ({
+  useKiroSignIn: () => signIn,
+}));
+
 const STORAGE_KEY = 'local-llm-ui-preferences';
+
+const resetSignIn = () => {
+  signIn.phase = 'idle';
+  signIn.code = undefined;
+  signIn.url = undefined;
+  signIn.message = undefined;
+  signIn.isSigningOut = false;
+  signIn.signOutError = undefined;
+  signIn.start.mockReset();
+  signIn.cancel.mockReset();
+  signIn.reset.mockReset();
+  signIn.signOut.mockReset();
+};
 
 const renderDialog = (stored: Record<string, unknown>) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
   const onSave = vi.fn();
   const onOpenChange = vi.fn();
-  render(<PreferencesDialog open onOpenChange={onOpenChange} onChange={onSave} />);
-  return { onSave, onOpenChange };
+  const ui = () => <PreferencesDialog open onOpenChange={onOpenChange} onChange={onSave} />;
+  const result = render(ui());
+  // A new element each time, so that React renders again
+  return { onSave, onOpenChange, rerender: () => result.rerender(ui()) };
 };
 
 const stored = () => JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
@@ -136,6 +168,7 @@ describe('PreferencesDialog providers', () => {
 
 describe('PreferencesDialog Kiro', () => {
   beforeEach(() => {
+    resetSignIn();
     localStorage.clear();
     kiro.status = { state: 'not-installed' };
     kiro.refresh.mockReset();
@@ -200,9 +233,13 @@ describe('PreferencesDialog Kiro', () => {
     kiro.status = { state: 'signed-out', path: '~/.local/bin/kiro-cli', version: '3.5.0' };
     renderDialog({});
     expect(screen.getByText('Not signed in')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Sign in with AWS Builder ID or IAM Identity Center\./)
+    ).toBeInTheDocument();
     expect(screen.getByText('kiro-cli login')).toBeInTheDocument();
-    expect(screen.getByText(/in a terminal, then click Check again\./)).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /Kiro/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Sign in (Kiro)' })).toBeEnabled();
+    // Signed out, Kiro can be picked: the app then asks you to sign in
+    expect(screen.getByRole('radio', { name: /Kiro/ })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Check again (Kiro)' }));
     expect(kiro.refresh).toHaveBeenCalledTimes(1);
@@ -247,6 +284,249 @@ describe('PreferencesDialog Kiro', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Not saved');
     expect(stored().contentDensity).toBe(undefined);
     expect(stored().preferredProvider).toBe('kiro');
+  });
+});
+
+describe('PreferencesDialog Kiro sign-in', () => {
+  const SIGNED_OUT: KiroStatus = {
+    state: 'signed-out',
+    path: '~/.local/bin/kiro-cli',
+    version: '3.6.0',
+  };
+  const SIGNED_IN: KiroStatus = {
+    state: 'signed-in',
+    path: '~/.local/bin/kiro-cli',
+    version: '3.6.0',
+    account: { type: 'builder-id', email: 'dev@example.com' },
+  };
+
+  beforeEach(() => {
+    resetSignIn();
+    localStorage.clear();
+    kiro.status = SIGNED_OUT;
+    kiro.refresh.mockReset();
+    kiro.isRefreshing = false;
+  });
+
+  const openForm = () => fireEvent.click(screen.getByRole('button', { name: 'Sign in (Kiro)' }));
+
+  const chooseIdentityCenter = () => {
+    const trigger = screen.getByLabelText('Sign-in method');
+    // jsdom lacks the pointer APIs that Radix Select uses, so open it with the keyboard
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('option', { name: 'IAM Identity Center' }));
+  };
+
+  it('opens the form with Builder ID selected', () => {
+    renderDialog({});
+    expect(screen.queryByLabelText('Sign-in method')).not.toBeInTheDocument();
+    openForm();
+    expect(screen.getByLabelText('Sign-in method')).toHaveTextContent('AWS Builder ID');
+    expect(screen.queryByLabelText('Start URL')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+  });
+
+  it('starts a Builder ID sign-in and keeps the method', () => {
+    renderDialog({});
+    openForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(signIn.start).toHaveBeenCalledWith({ method: 'builder-id' });
+    expect(stored().kiroSignIn).toEqual({ method: 'builder-id' });
+  });
+
+  it('asks for the start URL and the Region for IAM Identity Center, and checks them', () => {
+    renderDialog({});
+    openForm();
+    chooseIdentityCenter();
+    const url = screen.getByLabelText('Start URL');
+    const region = screen.getByLabelText('Region');
+    expect(url).toHaveAttribute('placeholder', 'https://my-company.awsapps.com/start');
+    expect(region).toHaveAttribute('placeholder', 'us-east-1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(signIn.start).not.toHaveBeenCalled();
+    expect(url).toHaveAccessibleDescription(/Enter the start URL of your IAM Identity Center/);
+    expect(region).toHaveAccessibleDescription('Enter a Region, for example us-east-1');
+
+    fireEvent.change(url, { target: { value: 'https://evil.example/start' } });
+    fireEvent.change(region, { target: { value: 'us-east-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(signIn.start).not.toHaveBeenCalled();
+    expect(region).not.toHaveAccessibleDescription(/Region/);
+
+    fireEvent.change(url, { target: { value: ' https://my-company.awsapps.com/start ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(signIn.start).toHaveBeenCalledWith({
+      method: 'identity-center',
+      startUrl: 'https://my-company.awsapps.com/start',
+      region: 'us-east-1',
+    });
+    expect(stored().kiroSignIn).toEqual({
+      method: 'identity-center',
+      startUrl: 'https://my-company.awsapps.com/start',
+      region: 'us-east-1',
+    });
+  });
+
+  it('starts the form with the method that you used last', () => {
+    renderDialog({
+      kiroSignIn: {
+        method: 'identity-center',
+        startUrl: 'https://my-company.awsapps.com/start',
+        region: 'eu-west-1',
+      },
+    });
+    openForm();
+    expect(screen.getByLabelText('Sign-in method')).toHaveTextContent('IAM Identity Center');
+    expect(screen.getByLabelText('Start URL')).toHaveValue('https://my-company.awsapps.com/start');
+    expect(screen.getByLabelText('Region')).toHaveValue('eu-west-1');
+  });
+
+  it('closes the form with Cancel and does not start', () => {
+    renderDialog({});
+    openForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByLabelText('Sign-in method')).not.toBeInTheDocument();
+    expect(signIn.start).not.toHaveBeenCalled();
+  });
+
+  it('shows the code and the sign-in link while it waits', () => {
+    signIn.phase = 'waiting';
+    signIn.code = 'FVVW-JCBH';
+    signIn.url = 'https://view.awsapps.com/start/#/device?user_code=FVVW-JCBH';
+    renderDialog({});
+    expect(
+      screen.getByText('Approve the sign-in in the new browser tab. Check that it shows this code:')
+    ).toBeInTheDocument();
+    const code = screen.getByText('FVVW-JCBH');
+    expect(code).toHaveClass('font-mono', 'text-base', 'font-semibold', 'tracking-wider');
+    const link = screen.getByRole('link', { name: 'Open sign-in page' });
+    expect(link).toHaveAttribute('href', signIn.url);
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(code.closest('[aria-live="polite"]')).not.toBeNull();
+    // One sign-in at a time
+    expect(screen.getByRole('button', { name: 'Sign in (Kiro)' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(signIn.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('says that the sign-in starts', () => {
+    signIn.phase = 'starting';
+    renderDialog({});
+    expect(screen.getByText('Starting the sign-in…')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(signIn.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an error, and Try again goes back to the form', () => {
+    signIn.phase = 'error';
+    signIn.message = 'Sign-in timed out';
+    signIn.reset.mockImplementation(() => {
+      signIn.phase = 'idle';
+    });
+    renderDialog({});
+    const message = screen.getByText('Sign-in timed out');
+    expect(message).toHaveClass('text-destructive');
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(signIn.reset).toHaveBeenCalled();
+    expect(screen.getByLabelText('Sign-in method')).toBeInTheDocument();
+  });
+
+  it('closes an error with Close', () => {
+    signIn.phase = 'error';
+    signIn.message = 'Already signed in';
+    signIn.reset.mockImplementation(() => {
+      signIn.phase = 'idle';
+    });
+    const { rerender } = renderDialog({});
+    // The dialog has its own Close button, so look inside the error panel
+    const panel = screen.getByRole('alert').parentElement as HTMLElement;
+    fireEvent.click(within(panel).getByRole('button', { name: 'Close' }));
+    expect(signIn.reset).toHaveBeenCalled();
+    // The real hook renders again by itself; the mock needs a push
+    rerender();
+    expect(screen.queryByText('Already signed in')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Sign-in method')).not.toBeInTheDocument();
+  });
+
+  it('opens the sign-in when you pick Kiro while signed out, and does not save the choice', () => {
+    const { onSave } = renderDialog({ preferredProvider: 'bedrock' });
+    fireEvent.click(screen.getByRole('radio', { name: /Kiro/ }));
+    expect(screen.getByLabelText('Sign-in method')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(stored().preferredProvider).toBe('bedrock');
+    expect(screen.getByRole('radio', { name: /Amazon Bedrock/ })).toBeChecked();
+  });
+
+  it('makes Kiro the default when the sign-in ends', () => {
+    const { onSave, rerender } = renderDialog({ preferredProvider: 'bedrock' });
+    fireEvent.click(screen.getByRole('radio', { name: /Kiro/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(signIn.start).toHaveBeenCalledWith({ method: 'builder-id' });
+    expect(stored().preferredProvider).toBe('bedrock');
+
+    kiro.status = SIGNED_IN;
+    rerender();
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ preferredProvider: 'kiro' }));
+    expect(stored().preferredProvider).toBe('kiro');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('keeps the default when you cancel the sign-in that the pick started', () => {
+    const { onSave, rerender } = renderDialog({ preferredProvider: 'bedrock' });
+    fireEvent.click(screen.getByRole('radio', { name: /Kiro/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    kiro.status = SIGNED_IN;
+    rerender();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(stored().preferredProvider).toBe('bedrock');
+  });
+
+  it('offers Sign out when signed in, and confirms it first', async () => {
+    kiro.status = SIGNED_IN;
+    signIn.signOut.mockResolvedValue(true);
+    renderDialog({ preferredProvider: 'bedrock' });
+    expect(screen.queryByRole('button', { name: 'Sign in (Kiro)' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out (Kiro)' }));
+    const text = screen.getByText(/Sign out of Kiro\?/);
+    expect(text).toHaveTextContent(
+      'Sign out of Kiro? This also signs out Kiro CLI in your terminals and in other apps on this computer.'
+    );
+    expect(text).not.toHaveTextContent('Choose a different default provider');
+    expect(signIn.signOut).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(signIn.signOut).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByText(/Sign out of Kiro\?/)).not.toBeInTheDocument());
+  });
+
+  it('keeps the confirmation open when sign-out fails', async () => {
+    kiro.status = SIGNED_IN;
+    signIn.signOut.mockResolvedValue(false);
+    signIn.signOutError = 'Kiro CLI could not sign out';
+    renderDialog({});
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out (Kiro)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await waitFor(() => expect(signIn.signOut).toHaveBeenCalled());
+    expect(screen.getByText('Kiro CLI could not sign out')).toBeInTheDocument();
+    expect(screen.getByText(/Sign out of Kiro\?/)).toBeInTheDocument();
+  });
+
+  it('tells you to pick another default provider when Kiro is the default', () => {
+    kiro.status = SIGNED_IN;
+    renderDialog({ preferredProvider: 'kiro' });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out (Kiro)' }));
+    expect(screen.getByText(/Sign out of Kiro\?/)).toHaveTextContent(
+      'Choose a different default provider after you sign out.'
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText(/Sign out of Kiro\?/)).not.toBeInTheDocument();
+    expect(signIn.signOut).not.toHaveBeenCalled();
   });
 });
 
