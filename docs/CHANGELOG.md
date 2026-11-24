@@ -64,6 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preferences saves each setting when you change it; typed values (API keys, avatar initials, MCP server fields) save when you stop typing, leave the field, push Enter, or close the dialog. The footer shows "Saved", and one Done button replaces Save and Cancel. Theme changes in Preferences show at once
 - Message action icons (rating, copy, regenerate) are 16 px instead of 12 px
 - A long reply updates the screen at most once per frame while it streams ([#62])
+- Web search is on in each new chat when a search key is set; the globe button turns it off for one chat, and **Search the web by default** in Preferences → Web Search turns the default off. Without a key, the globe button does not show
+- Ollama models that cannot use tools get no web search or MCP tools; the globe and MCP buttons say "This model cannot use tools"
 - The chat input is more comfortable: it shows three lines of text in a new chat and two lines in a chat with messages, with 12 px around the text and the toolbar and 4 px between the buttons. It grows to 40% of the window, at most 320 px, before it scrolls. When the chat input is narrower than 768 px, the Thinking button shows only its level
 
 #### Fixed

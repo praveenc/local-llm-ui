@@ -156,7 +156,7 @@ In a new chat, the chat input is in the middle of the window, below the question
 The chat input has two groups of controls below the text box:
 
 - **Left:** the **+** menu (add photos or files, save the text as a prompt), the model picker, and the thinking effort.
-- **Right:** web search, MCP tools, and inference settings. After the first reply, this group also shows the context usage.
+- **Right:** web search (when a search key is set), MCP tools, and inference settings. After the first reply, this group also shows the context usage.
 
 To start a new chat, click **New chat** (the pencil button in the header) or **New Conversation** in the sidebar.
 
@@ -227,7 +227,9 @@ Click the settings button in the chat input to set these values:
 
 ### Web search
 
-The globe button in the chat input lets the model search the web. Web search and MCP tools work with all providers, also the local ones (Ollama and LM Studio), if the model supports tool calls. You need an API key for one or more of these providers:
+The globe button in the chat input lets the model search the web. Web search and MCP tools work with all providers, also the local ones (Ollama and LM Studio), if the model supports tool calls. If Ollama reports that a model cannot use tools, the app sends no tools to it, and the globe and MCP buttons say **This model cannot use tools**.
+
+You need an API key for one or more of these providers:
 
 | Provider | Free plan | Credit card | Get a key |
 |---|---|---|---|
@@ -241,6 +243,8 @@ Free plans can change. Look at the pricing page of each provider for the current
 2. Click **Add key** next to a provider and paste the key.
 3. Select the **primary provider**. The app tries this provider first.
 4. Keep **Use the next provider when one fails** on. If the primary provider has no quota, is rate limited, or does not respond, the app tries the next provider that has a key.
+
+The globe button shows only when a provider has a key. Web search is then on in each new chat, and the button says **Search**. To turn web search off for one chat, click the button. The next new chat, or a chat that you open from the sidebar, starts with web search on again. To start each chat with web search off, turn off **Search the web by default** in **Preferences → Web Search**.
 
 Each search and each tool call shows as a step under the line above the answer. See [What the model did](#what-the-model-did).
 
