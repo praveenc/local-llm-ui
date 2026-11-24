@@ -26,6 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { EditableTitleInput } from '@/components/ui/editable-title-input';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
@@ -54,7 +55,6 @@ export function ConversationList({
   const { conversations } = useConversations();
   const { deleteConversation, updateConversationTitle } = useConversationMutations();
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState('');
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [conversationToDelete, setConversationToDelete] = useState<{
     id: string;
@@ -77,19 +77,6 @@ export function ConversationList({
 
   // Open groups are kept in the browser; groups without a stored value use the default
   const [openState, setOpenState] = useState<GroupOpenState>(loadGroupOpenState);
-
-  const handleRename = (id: string, currentTitle: string) => {
-    setEditingId(id);
-    setEditTitle(currentTitle);
-  };
-
-  const handleSaveRename = async (id: string) => {
-    if (editTitle.trim()) {
-      await updateConversationTitle(id, editTitle.trim());
-    }
-    setEditingId(null);
-    setEditTitle('');
-  };
 
   const handleDeleteClick = (conv: { id: string; title: string }) => {
     setConversationToDelete(conv);
@@ -221,18 +208,11 @@ export function ConversationList({
                     >
                       {editingId === conv.id ? (
                         <>
-                          <Input
-                            value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
-                            onBlur={() => handleSaveRename(conv.id)}
-                            onKeyDown={(e) => {
-                              // keyCode 229 covers Safari, which clears isComposing before this keydown
-                              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                              if (e.key === 'Enter') handleSaveRename(conv.id);
-                              if (e.key === 'Escape') setEditingId(null);
-                            }}
+                          <EditableTitleInput
+                            value={conv.title}
+                            onSave={(title) => updateConversationTitle(conv.id, title)}
+                            onEnd={() => setEditingId(null)}
                             className="h-6 text-sm"
-                            autoFocus
                             aria-label="Conversation title"
                           />
                         </>
@@ -277,7 +257,7 @@ export function ConversationList({
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleRename(conv.id, conv.title)}>
+                                <DropdownMenuItem onClick={() => setEditingId(conv.id)}>
                                   <Pencil className="h-4 w-4 mr-2" />
                                   Rename
                                 </DropdownMenuItem>

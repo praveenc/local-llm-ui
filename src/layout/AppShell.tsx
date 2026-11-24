@@ -7,6 +7,7 @@ import { PreferencesDialog, Sidebar } from '../components/sidebar';
 import { db } from '../db';
 import { useAllModels } from '../hooks/useAllModels';
 import type { UnifiedModel } from '../hooks/useAllModels';
+import { useConversationMutations } from '../hooks/useConversationMutations';
 import { useResolvedVisualMode } from '../hooks/useResolvedVisualMode';
 import { conversationService } from '../services';
 import {
@@ -73,7 +74,8 @@ export default function AppShell() {
 
   // Conversation state
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  // Header title; follows renames in the sidebar
+  const { updateConversationTitle } = useConversationMutations();
+  // Header title; follows renames in the sidebar and in the header
   const activeTitle = useLiveQuery(
     async () =>
       activeConversationId ? (await db.conversations.get(activeConversationId))?.title : undefined,
@@ -256,6 +258,11 @@ export default function AppShell() {
   return (
     <AppLayout
       title={activeTitle || 'New conversation'}
+      onRenameTitle={
+        activeConversationId
+          ? (newTitle) => updateConversationTitle(activeConversationId, newTitle)
+          : undefined
+      }
       onNewChat={handleNewChat}
       navigationOpen={navigationOpen}
       onNavigationChange={setNavigationOpen}

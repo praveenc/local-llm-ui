@@ -120,6 +120,43 @@ describe('ConversationList rename with an IME', () => {
   });
 });
 
+describe('ConversationList rename rules', () => {
+  const openRename = async () => {
+    const user = userEvent.setup();
+    renderList();
+    await user.click(screen.getByRole('button', { name: 'Options for Old title' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Rename/ }));
+    return { user, input: screen.getByDisplayValue('Old title') };
+  };
+
+  it('saves the trimmed text with collapsed spaces', async () => {
+    const { user, input } = await openRename();
+    await user.clear(input);
+    await user.type(input, '  New   name  {Enter}');
+    expect(updateConversationTitle).toHaveBeenCalledWith('c1', 'New name');
+  });
+
+  it('keeps the old title when the text is empty', async () => {
+    const { user, input } = await openRename();
+    await user.clear(input);
+    await user.type(input, '   {Enter}');
+    expect(updateConversationTitle).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Old title' })).toBeInTheDocument();
+  });
+
+  it('writes nothing when the title did not change, and Esc cancels', async () => {
+    const { user, input } = await openRename();
+    await user.type(input, '{Enter}');
+    expect(updateConversationTitle).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Options for Old title' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Rename/ }));
+    await user.keyboard('x{Escape}');
+    expect(updateConversationTitle).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Old title' })).toBeInTheDocument();
+  });
+});
+
 describe('ConversationList search', () => {
   it('shows only the chats whose title matches, case-insensitively', async () => {
     const user = userEvent.setup();
