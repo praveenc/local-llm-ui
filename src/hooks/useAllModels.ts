@@ -8,7 +8,13 @@ import { useQueries, useQueryClient } from '@tanstack/react-query';
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
-import { bedrockService, lmstudioService, mantleService, ollamaService } from '../services';
+import {
+  bedrockService,
+  kiroService,
+  lmstudioService,
+  mantleService,
+  ollamaService,
+} from '../services';
 import {
   anthropicService,
   cerebrasService,
@@ -55,6 +61,7 @@ const PROVIDER_NAMES: Record<Provider, string> = {
   openrouter: 'OpenRouter',
   lmstudio: 'LM Studio',
   ollama: 'Ollama',
+  kiro: 'Kiro',
 };
 
 const ALL_MODELS_QUERY_KEY = ['all-models'] as const;
@@ -150,6 +157,7 @@ const servicesByProvider = () =>
     cerebras: cerebrasService,
     anthropic: anthropicService,
     openrouter: openrouterService,
+    kiro: kiroService,
   }) satisfies Record<Provider, { getModels: () => Promise<unknown[]> }>;
 
 async function fetchProviderModels(

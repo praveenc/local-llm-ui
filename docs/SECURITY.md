@@ -64,6 +64,7 @@ We take the security of Local LLM UI seriously. If you believe you have found a 
 
 - **Ollama**: Connects to `localhost:11434`
 - **LM Studio**: Connects to `localhost:1234`
+- **Kiro CLI**: When `kiro-cli` is installed, the server runs `kiro-cli --version` and `kiro-cli whoami -f json` to show its state in Preferences. It runs the program directly, with no shell and fixed arguments. The account email goes only to the app's own pages and is not logged
 - **No External APIs**: No connections to external services
 
 ### Data Storage

@@ -6,7 +6,7 @@
  */
 import { Check } from 'lucide-react';
 
-import { type ReactNode, useState } from 'react';
+import { Fragment, type ReactNode, useState } from 'react';
 
 import { SecretInput } from '@/components/shared/SecretInput';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,8 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
+import { isKiroReady, kiroAccountLabel } from '../../utils/kiroStatus';
+import type { KiroStatus } from '../../utils/kiroStatus';
 import { PROVIDER_API_KEY_FIELDS, isProviderConfigured } from '../../utils/preferences';
 import type { ApiKeyField, Provider, UserPreferences } from '../../utils/preferences';
 import {
@@ -30,15 +32,26 @@ import {
   isThinkingEffort,
 } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
-import { API_KEY_PROVIDERS, MANTLE_REGIONS, NO_KEY_PROVIDERS } from './providerOptions';
+import {
+  API_KEY_PROVIDERS,
+  KIRO_PROVIDER,
+  MANTLE_REGIONS,
+  NO_KEY_PROVIDERS,
+} from './providerOptions';
 import type { ProviderOption } from './providerOptions';
 
 interface ProviderSettingsProps {
   preferences: UserPreferences;
   onUpdate: <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => void;
+  /** State of kiro-cli. The Kiro row shows only when it is known and kiro-cli is installed. */
+  kiro?: {
+    status: KiroStatus | undefined;
+    refresh: () => void | Promise<void>;
+    isRefreshing: boolean;
+  };
 }
 
-export function ProviderSettings({ preferences, onUpdate }: ProviderSettingsProps) {
+export function ProviderSettings({ preferences, onUpdate, kiro }: ProviderSettingsProps) {
   const [editing, setEditing] = useState<Provider | null>(null);
 
   // Default thinking effort, shown on the selected provider's row
@@ -75,13 +88,16 @@ export function ProviderSettings({ preferences, onUpdate }: ProviderSettingsProp
       >
         <ProviderGroup title="AWS and local">
           {NO_KEY_PROVIDERS.map((option) => (
-            <ProviderRow
-              key={option.value}
-              option={option}
-              status={<span className="text-xs text-muted-foreground">{option.detail}</span>}
-            >
-              {thinkingRow(option)}
-            </ProviderRow>
+            <Fragment key={option.value}>
+              <ProviderRow
+                option={option}
+                status={<span className="text-xs text-muted-foreground">{option.detail}</span>}
+              >
+                {thinkingRow(option)}
+              </ProviderRow>
+              {/* Alphabetical: Kiro comes after Amazon Bedrock */}
+              {option.value === 'bedrock' && kiro && <KiroRow {...kiro} />}
+            </Fragment>
           ))}
         </ProviderGroup>
 
@@ -187,6 +203,98 @@ function ProviderGroup({ title, children }: { title: string; children: ReactNode
       <div className="divide-y rounded-lg border">{children}</div>
     </div>
   );
+}
+
+type KiroRowProps = NonNullable<ProviderSettingsProps['kiro']>;
+
+/** The Kiro row: shows whether kiro-cli is installed, up to date, and signed in */
+function KiroRow({ status, refresh, isRefreshing }: KiroRowProps) {
+  if (!status || status.state === 'not-installed') return null;
+  const signedIn = status.state === 'signed-in';
+
+  return (
+    <ProviderRow
+      option={KIRO_PROVIDER}
+      disabled={!isKiroReady(status)}
+      status={
+        <span
+          aria-live="polite"
+          className={cn(
+            'flex items-center gap-1 text-xs',
+            signedIn ? 'text-status-ok' : 'text-muted-foreground'
+          )}
+        >
+          {signedIn && <Check className="h-3 w-3" aria-hidden />}
+          {KIRO_STATUS_TEXT[status.state]}
+        </span>
+      }
+      action={
+        !signedIn && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7"
+            disabled={isRefreshing}
+            aria-label="Check again (Kiro)"
+            onClick={() => void refresh()}
+          >
+            {isRefreshing ? 'Checking…' : 'Check again'}
+          </Button>
+        )
+      }
+    >
+      <div className="break-words border-t bg-muted/40 py-2 pl-10 pr-3 text-xs text-muted-foreground">
+        <KiroDetail status={status} />
+      </div>
+    </ProviderRow>
+  );
+}
+
+const KIRO_STATUS_TEXT: Record<Exclude<KiroStatus['state'], 'not-installed'>, string> = {
+  'signed-in': 'Signed in',
+  'signed-out': 'Not signed in',
+  unsupported: 'Update needed',
+  error: 'Cannot run',
+};
+
+function KiroDetail({ status }: { status: KiroStatus }) {
+  switch (status.state) {
+    case 'signed-in':
+      return (
+        <>
+          {[
+            status.account.email,
+            kiroAccountLabel(status.account.type),
+            `Kiro CLI ${status.version}`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </>
+      );
+    case 'signed-out':
+      return (
+        <>
+          Run <code className="font-mono">kiro-cli login</code> in a terminal, then click Check
+          again.
+        </>
+      );
+    case 'unsupported':
+      return (
+        <>
+          Kiro CLI {status.version} is not supported. Update to Kiro CLI 3 with{' '}
+          <code className="font-mono">kiro-cli update</code>.
+        </>
+      );
+    case 'error':
+      return (
+        <>
+          Could not run <code className="font-mono">{status.path}</code>: {status.message}
+        </>
+      );
+    default:
+      return null;
+  }
 }
 
 interface ProviderRowProps {

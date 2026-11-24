@@ -4,4 +4,5 @@ export { useConversationMutations } from './useConversationMutations';
 export { useSavedPrompts } from './useSavedPrompts';
 export { usePromptMutations } from './usePromptMutations';
 export { useAllModels } from './useAllModels';
+export { useKiroStatus, KIRO_STATUS_QUERY_KEY } from './useKiroStatus';
 export type { UnifiedModel, ProviderModels } from './useAllModels';

@@ -251,6 +251,17 @@ preview: { cors: false, /* ... */ },
 
 **What the guard does not do**: it does not authenticate. Anyone who can open the app in a browser can use it. Keep the dev server on `localhost`, and share it only through an authenticated tunnel.
 
+### SEC-14: Running Kiro CLI
+
+`server/kiro/` runs `kiro-cli` on the host. The rules:
+
+- **No shell.** `execFile` with fixed arguments (`--version`, `whoami -f json`). No value from a request goes into the arguments.
+- **Known binary.** `LOCAL_LLM_UI_KIRO_CLI`, else `~/.local/bin/kiro-cli`, else `PATH`. The file must be a regular, executable file. A bad `LOCAL_LLM_UI_KIRO_CLI` is an error, not a silent fallback to another binary.
+- **Time limits.** 5 s for `--version` and 15 s for `whoami`, then `SIGKILL`. This kills only the direct child. The two short commands end by themselves. The long-running `kiro-cli acp` process for chat must run in its own process group, and a stop must end the whole group.
+- **Environment.** The child gets the environment of the dev server, as in a terminal. Kiro CLI needs `HOME`, `PATH`, and `KIRO_API_KEY` when set.
+- **Account data.** `GET /api/kiro/status` returns the account email. Only the app's own pages can read it (SEC-13). The server does not log it.
+- **Read only.** The status route is a `GET` and must not change state (SEC-13). Sign-in and sign-out are `POST` with JSON.
+
 ---
 
 ## Client-Side Security

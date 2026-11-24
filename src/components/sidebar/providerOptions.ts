@@ -39,6 +39,13 @@ export const NO_KEY_PROVIDERS: ProviderOption[] = [
   },
 ];
 
+/** Shown in Preferences only when kiro-cli is installed, so it is not in NO_KEY_PROVIDERS */
+export const KIRO_PROVIDER: ProviderOption = {
+  value: 'kiro',
+  label: 'Kiro',
+  icon: '/kiro-color.svg',
+};
+
 export const API_KEY_PROVIDERS: ProviderOption[] = [
   {
     value: 'anthropic',
@@ -85,4 +92,5 @@ export const MANTLE_REGIONS = [
 ];
 
 export const providerLabel = (provider: Provider): string =>
-  [...NO_KEY_PROVIDERS, ...API_KEY_PROVIDERS].find((p) => p.value === provider)?.label ?? provider;
+  [...NO_KEY_PROVIDERS, KIRO_PROVIDER, ...API_KEY_PROVIDERS].find((p) => p.value === provider)
+    ?.label ?? provider;

@@ -1,7 +1,17 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { KiroStatus } from '../../../utils/kiroStatus';
 import { PreferencesDialog } from '../PreferencesDialog';
+
+const kiro = vi.hoisted(() => ({
+  status: undefined as KiroStatus | undefined,
+  refresh: vi.fn(),
+  isRefreshing: false,
+}));
+vi.mock('../../../hooks/useKiroStatus', () => ({
+  useKiroStatus: () => kiro,
+}));
 
 const STORAGE_KEY = 'local-llm-ui-preferences';
 
@@ -16,7 +26,12 @@ const renderDialog = (stored: Record<string, unknown>) => {
 const stored = () => JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
 
 describe('PreferencesDialog providers', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    kiro.status = { state: 'not-installed' };
+    kiro.refresh.mockReset();
+    kiro.isRefreshing = false;
+  });
 
   it('disables providers that have no API key', () => {
     renderDialog({ anthropicApiKey: 'sk-ant' });
@@ -116,6 +131,122 @@ describe('PreferencesDialog providers', () => {
         thinkingEffortByProvider: { anthropic: 'low', bedrock: 'high' },
       })
     );
+  });
+});
+
+describe('PreferencesDialog Kiro', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    kiro.status = { state: 'not-installed' };
+    kiro.refresh.mockReset();
+    kiro.isRefreshing = false;
+  });
+
+  it('has no Kiro row when kiro-cli is not installed or the status is not known', () => {
+    renderDialog({});
+    expect(screen.queryByRole('radio', { name: /Kiro/ })).not.toBeInTheDocument();
+    cleanup();
+    kiro.status = undefined;
+    renderDialog({});
+    expect(screen.queryByRole('radio', { name: /Kiro/ })).not.toBeInTheDocument();
+  });
+
+  it('shows a signed-in account and lets you choose Kiro as the default provider', () => {
+    kiro.status = {
+      state: 'signed-in',
+      path: '~/.local/bin/kiro-cli',
+      version: '3.5.0',
+      account: { type: 'identity-center', email: 'dev@example.com' },
+    };
+    const { onSave } = renderDialog({ preferredProvider: 'bedrock' });
+    const group = screen.getByRole('group', { name: 'AWS and local' });
+    const names = within(group)
+      .getAllByRole('radio')
+      .map((radio) => radio.getAttribute('id'));
+    expect(names).toEqual([
+      'provider-bedrock',
+      'provider-kiro',
+      'provider-lmstudio',
+      'provider-ollama',
+    ]);
+
+    expect(screen.getByText('Signed in')).toBeInTheDocument();
+    expect(
+      screen.getByText('dev@example.com · IAM Identity Center · Kiro CLI 3.5.0')
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Check again/ })).not.toBeInTheDocument();
+
+    const radio = screen.getByRole('radio', { name: /Kiro/ });
+    expect(radio).toBeEnabled();
+    fireEvent.click(radio);
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ preferredProvider: 'kiro' }));
+    expect(stored().preferredProvider).toBe('kiro');
+    // Kiro has no thinking effort row
+    expect(screen.queryByText('Default thinking')).not.toBeInTheDocument();
+  });
+
+  it('leaves out the email when the account has none', () => {
+    kiro.status = {
+      state: 'signed-in',
+      path: '~/.local/bin/kiro-cli',
+      version: '3.5.0',
+      account: { type: 'api-key' },
+    };
+    renderDialog({});
+    expect(screen.getByText('API key · Kiro CLI 3.5.0')).toBeInTheDocument();
+  });
+
+  it('tells you to sign in when signed out, and checks again on request', () => {
+    kiro.status = { state: 'signed-out', path: '~/.local/bin/kiro-cli', version: '3.5.0' };
+    renderDialog({});
+    expect(screen.getByText('Not signed in')).toBeInTheDocument();
+    expect(screen.getByText('kiro-cli login')).toBeInTheDocument();
+    expect(screen.getByText(/in a terminal, then click Check again\./)).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Kiro/ })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check again (Kiro)' }));
+    expect(kiro.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables Check again while it checks', () => {
+    kiro.status = { state: 'signed-out', path: '~/.local/bin/kiro-cli', version: '3.5.0' };
+    kiro.isRefreshing = true;
+    renderDialog({});
+    const button = screen.getByRole('button', { name: 'Check again (Kiro)' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveTextContent('Checking…');
+  });
+
+  it('asks you to update an unsupported Kiro CLI', () => {
+    kiro.status = { state: 'unsupported', path: '~/.local/bin/kiro-cli', version: '2.37.1' };
+    renderDialog({});
+    expect(screen.getByText('Update needed')).toBeInTheDocument();
+    expect(screen.getByText(/Kiro CLI 2\.37\.1 is not supported/)).toBeInTheDocument();
+    expect(screen.getByText('kiro-cli update')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Kiro/ })).toBeDisabled();
+  });
+
+  it('shows why kiro-cli cannot run', () => {
+    kiro.status = { state: 'error', path: '~/bin/kiro-cli', message: 'spawn EACCES' };
+    renderDialog({});
+    expect(screen.getByText('Cannot run')).toBeInTheDocument();
+    expect(screen.getByText('~/bin/kiro-cli')).toBeInTheDocument();
+    expect(screen.getByText(/spawn EACCES/)).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Kiro/ })).toBeDisabled();
+  });
+
+  it('does not save while Kiro is the default provider and is signed out', () => {
+    kiro.status = { state: 'signed-out', path: '~/.local/bin/kiro-cli', version: '3.5.0' };
+    const { onSave } = renderDialog({ preferredProvider: 'kiro' });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Display' }), { button: 0 });
+    fireEvent.click(screen.getByRole('radio', { name: 'Compact' }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Not saved. Sign in to Kiro, or choose a different default provider.'
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('Not saved');
+    expect(stored().contentDensity).toBe(undefined);
+    expect(stored().preferredProvider).toBe('kiro');
   });
 });
 

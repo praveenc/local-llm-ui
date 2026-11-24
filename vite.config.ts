@@ -7,6 +7,7 @@ import { createAISDKProxy } from './server/aisdk-proxy.ts';
 import { createAnthropicProxy } from './server/anthropic-aisdk-proxy.ts';
 import { handleBedrockAISDKRequest } from './server/bedrock-aisdk-proxy.ts';
 import { handleBedrockRequest } from './server/bedrock-proxy.ts';
+import { createKiroProxy } from './server/kiro-proxy.ts';
 import { createLMStudioAISDKProxy } from './server/lmstudio-aisdk-proxy.ts';
 import { handleLMStudioRequest } from './server/lmstudio-proxy.ts';
 import { handleMantleRequest } from './server/mantle-proxy.ts';
@@ -98,6 +99,13 @@ export default defineConfig({
       name: 'openrouter-aisdk-proxy',
       configureServer(server) {
         server.middlewares.use(createOpenRouterAISDKProxy());
+      },
+    },
+    // Kiro CLI status (installed, version, signed in)
+    {
+      name: 'kiro-proxy',
+      configureServer(server) {
+        server.middlewares.use(createKiroProxy());
       },
     },
     // LMStudio SDK proxy for model management

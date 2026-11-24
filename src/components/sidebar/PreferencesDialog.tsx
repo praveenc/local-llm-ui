@@ -14,7 +14,9 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+import { useKiroStatus } from '../../hooks/useKiroStatus';
 import { useResolvedVisualMode } from '../../hooks/useResolvedVisualMode';
+import { kiroDefaultProviderError } from '../../utils/kiroStatus';
 import {
   PROVIDER_API_KEY_FIELDS,
   isProviderConfigured,
@@ -69,6 +71,11 @@ export function PreferencesDialog({
 
   const [providerError, setProviderError] = useState('');
   const [status, setStatus] = useState<SaveStatus>('idle');
+  const {
+    status: kiroStatus,
+    refresh: refreshKiro,
+    isRefreshing: isRefreshingKiro,
+  } = useKiroStatus();
 
   // Reload on open: other controls (the header theme toggle) also save preferences
   if (open !== wasOpen) {
@@ -95,7 +102,7 @@ export function PreferencesDialog({
     pending.current = null;
   };
 
-  /** Store the preferences, unless the default provider has no API key */
+  /** Store the preferences, unless the default provider has no API key or Kiro is not ready */
   const save = useCallback(
     (next: UserPreferences) => {
       cancelPending();
@@ -107,12 +114,19 @@ export function PreferencesDialog({
         setStatus('not-saved');
         return;
       }
+      const kiroError =
+        next.preferredProvider === 'kiro' ? kiroDefaultProviderError(kiroStatus) : undefined;
+      if (kiroError) {
+        setProviderError(kiroError);
+        setStatus('not-saved');
+        return;
+      }
       savePreferences(next);
       onChange(next);
       setProviderError('');
       setStatus('saved');
     },
-    [onChange]
+    [onChange, kiroStatus]
   );
 
   const savePending = () => {
@@ -176,7 +190,11 @@ export function PreferencesDialog({
 
           <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
             <TabsContent value="providers" className="mt-0">
-              <ProviderSettings preferences={preferences} onUpdate={updatePreference} />
+              <ProviderSettings
+                preferences={preferences}
+                onUpdate={updatePreference}
+                kiro={{ status: kiroStatus, refresh: refreshKiro, isRefreshing: isRefreshingKiro }}
+              />
             </TabsContent>
 
             <TabsContent value="web-search" className="mt-0">
