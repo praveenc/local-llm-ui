@@ -594,12 +594,19 @@ Conversations
   - A new chat ("New conversation") has no stored chat, so its title cannot be edited until the first message.
   - A rename does not change `updatedAt` (D13), so the chat stays in its date group.
 - **Trade-offs:** A click on the title no longer selects its text for a copy. The text in the edit field can still be selected and copied.
+- **Done in PR 9:**
+  - `normalizeTitle` (`src/utils/conversationTitle.ts`) trims the text and makes each run of white space one space. An empty result is not saved. `EditableTitleInput` (`src/components/ui/editable-title-input.tsx`) holds the edit rules for the header and the sidebar: Enter and blur save, Esc cancels, the IME guard, and no write when the title does not change.
+  - `conversationService.rename` writes only the title. `update()` still sets `updatedAt` for its other callers.
+  - The `h1` has the click handler, and the "Rename chat" pencil button is the keyboard and screen reader path. The ESLint config has no a11y rules that reject this. The pencil shows on hover and focus, and always on touch screens (44 px below `md`).
+  - After Enter or Esc, focus goes back to the pencil. After a click outside, focus stays where you clicked.
+  - Tested in Chromium: a chat from 20 days ago keeps its group and its `updatedAt` after a rename in the header and in the sidebar, and the name stays after a reload. A 170-character title does not make the page scroll sideways at 390 px.
 
 ### Found during the planning
 
 - **Stale text in Saved Prompts.** The empty Saved Prompts dialog says "click the bookmark button to save it" (`ViewPromptsModal.tsx:192`, screenshot 2). PR 4 moved that button into the **+** menu as "Save as prompt". PR 6 changes the text to "Type a prompt in the chat input, click +, and then click Save as prompt."
 - **The sidebar shows only 50 chats.** `useConversations` loads the 50 newest chats (`useConversations.ts:20`), and the sidebar uses that default (`ConversationList.tsx:95`). Older chats do not show, and **Search chats** does not find them. PR 7 loads all active chats. A chat row holds no messages, so the list stays small.
 - **Titles cut in the middle of a word** (`conversationService.ts:26`). Plan 2 does not change this. A later item can cut at a space, or ask the model for a short title.
+- **The navigation sheet stays open after you select a chat (PR 9 testing).** Below 1024 px, a click on a chat in the sheet opens the chat but does not close the sheet. This was so before Plan 2. Not in PR 9.
 - **A search that fails on all providers did not say "failed" (PR 8 testing).** With a key that the provider rejects, the work row said "2 searches" and nothing about the failure. The search tool returns the errors as its output (`server/web-search.ts:131`, `error` field) instead of sending `tool-error`, so the step kept the status `success`, and `workSummary.ts:63` counted only steps with the status `error`. Each step already said "Failed" (`tool-call.tsx:40`). Fixed in PR 8: `isToolCallFailed` in `src/utils/toolResults.ts` holds the rule, and the summary and the step both use it.
 - **Reply text from two model calls runs together (PR 8 testing).** When the model writes text, calls a tool, and writes again, the two texts join with no space, for example "…a different query.I couldn't find…". PR 8 does not change how reply text is joined. Not fixed.
 
