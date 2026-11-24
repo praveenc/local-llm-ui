@@ -23,7 +23,7 @@ import {
   X,
 } from 'lucide-react';
 
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -61,7 +61,29 @@ interface KeyValueEditorProps {
   keyPlaceholder?: string;
   valuePlaceholder?: string;
   valueType?: 'text' | 'password';
+  /** Singular noun used in accessible names, e.g. "Header" */
+  label: string;
 }
+
+interface KeyValueRow {
+  id: number;
+  key: string;
+  value: string;
+}
+
+let nextRowId = 0;
+const toRows = (entries: Record<string, string>): KeyValueRow[] =>
+  Object.entries(entries).map(([key, value]) => ({ id: nextRowId++, key, value }));
+
+// Rows with an empty or repeated name are kept on screen but not saved
+const toEntries = (rows: KeyValueRow[]): Record<string, string> => {
+  const entries: Record<string, string> = {};
+  for (const { key, value } of rows) {
+    const name = key.trim();
+    if (name && !(name in entries)) entries[name] = value;
+  }
+  return entries;
+};
 
 function KeyValueEditor({
   entries,
@@ -69,60 +91,107 @@ function KeyValueEditor({
   keyPlaceholder = 'Key',
   valuePlaceholder = 'Value',
   valueType = 'text',
+  label,
 }: KeyValueEditorProps) {
-  const pairs = Object.entries(entries);
+  // Local rows with stable ids, so a row keeps its place and its focus while its name is
+  // typed. Keying rows by the name re-created the row on every keystroke.
+  const [rows, setRows] = useState<KeyValueRow[]>(() => toRows(entries));
+  // The label can contain spaces, which an id used in aria-describedby must not
+  const baseId = useId();
+  const [prevEntries, setPrevEntries] = useState(entries);
+  // New entries that the rows do not already hold came from outside (a reload, a reset):
+  // show those instead (adjusting state during render)
+  if (entries !== prevEntries) {
+    setPrevEntries(entries);
+    if (JSON.stringify(entries) !== JSON.stringify(toEntries(rows))) setRows(toRows(entries));
+  }
 
-  const updateKey = (oldKey: string, newKey: string) => {
-    const updated = { ...entries };
-    const value = updated[oldKey];
-    delete updated[oldKey];
-    if (newKey) updated[newKey] = value;
-    onChange(updated);
+  const lastKeyRef = useRef<HTMLInputElement>(null);
+  const focusNewRow = useRef(false);
+  useEffect(() => {
+    if (!focusNewRow.current) return;
+    focusNewRow.current = false;
+    lastKeyRef.current?.focus();
+  });
+
+  const commit = (next: KeyValueRow[]) => {
+    setRows(next);
+    onChange(toEntries(next));
   };
 
-  const updateValue = (key: string, value: string) => {
-    onChange({ ...entries, [key]: value });
+  const updateRow = (id: number, change: Partial<KeyValueRow>) =>
+    commit(rows.map((row) => (row.id === id ? { ...row, ...change } : row)));
+
+  const addRow = () => {
+    focusNewRow.current = true;
+    commit([...rows, { id: nextRowId++, key: '', value: '' }]);
   };
 
-  const addEntry = () => {
-    const key = `KEY_${pairs.length + 1}`;
-    onChange({ ...entries, [key]: '' });
-  };
+  const removeRow = (id: number) => commit(rows.filter((row) => row.id !== id));
 
-  const removeEntry = (key: string) => {
-    const updated = { ...entries };
-    delete updated[key];
-    onChange(updated);
-  };
+  const nameCounts = new Map<string, number>();
+  for (const row of rows) {
+    const name = row.key.trim();
+    if (name) nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
+  }
 
   return (
     <div className="space-y-2">
-      {pairs.map(([key, value]) => (
-        <div key={key} className="flex items-center gap-2">
-          <Input
-            value={key}
-            onChange={(e) => updateKey(key, e.target.value)}
-            placeholder={keyPlaceholder}
-            className="h-8 text-xs font-mono flex-1"
-          />
-          <Input
-            type={valueType}
-            value={value}
-            onChange={(e) => updateValue(key, e.target.value)}
-            placeholder={valuePlaceholder}
-            className="h-8 text-xs font-mono flex-1"
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => removeEntry(key)}
-            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-          >
-            <X className="h-3 w-3" />
-          </Button>
-        </div>
-      ))}
-      <Button variant="outline" size="sm" onClick={addEntry} className="h-7 text-xs gap-1">
+      {rows.map((row, index) => {
+        const name = row.key.trim();
+        const rowError =
+          name && (nameCounts.get(name) ?? 0) > 1
+            ? 'This name is used twice; only the first one is saved.'
+            : !name && row.value
+              ? 'Add a name, or this row is not saved.'
+              : null;
+        const errorId = `${baseId}-${row.id}-error`;
+        return (
+          <div key={row.id} className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Input
+                ref={index === rows.length - 1 ? lastKeyRef : undefined}
+                aria-label={`${label} name ${index + 1}`}
+                aria-invalid={rowError ? true : undefined}
+                aria-describedby={rowError ? errorId : undefined}
+                value={row.key}
+                onChange={(e) => updateRow(row.id, { key: e.target.value })}
+                placeholder={keyPlaceholder}
+                className="h-8 text-xs font-mono flex-1"
+              />
+              <Input
+                aria-label={`${label} value ${index + 1}`}
+                type={valueType}
+                value={row.value}
+                onChange={(e) => updateRow(row.id, { value: e.target.value })}
+                placeholder={valuePlaceholder}
+                className="h-8 text-xs font-mono flex-1"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => removeRow(row.id)}
+                aria-label={`Remove ${label.toLowerCase()} ${row.key.trim() || index + 1}`}
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+              </Button>
+            </div>
+            {rowError && (
+              <p id={errorId} className="text-xs text-destructive">
+                {rowError}
+              </p>
+            )}
+          </div>
+        );
+      })}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={addRow}
+        aria-label={`Add ${label.toLowerCase()}`}
+        className="h-7 text-xs gap-1"
+      >
         <Plus className="h-3 w-3" />
         Add
       </Button>
@@ -144,7 +213,17 @@ function ArgsEditor({ args, onChange }: ArgsEditorProps) {
     onChange(updated);
   };
 
-  const addArg = () => onChange([...args, '']);
+  const lastArgRef = useRef<HTMLInputElement>(null);
+  const focusNewArg = useRef(false);
+  useEffect(() => {
+    if (!focusNewArg.current) return;
+    focusNewArg.current = false;
+    lastArgRef.current?.focus();
+  });
+  const addArg = () => {
+    focusNewArg.current = true;
+    onChange([...args, '']);
+  };
 
   const removeArg = (index: number) => {
     onChange(args.filter((_, i) => i !== index));
@@ -155,6 +234,8 @@ function ArgsEditor({ args, onChange }: ArgsEditorProps) {
       {args.map((arg, index) => (
         <div key={index} className="flex items-center gap-2">
           <Input
+            ref={index === args.length - 1 ? lastArgRef : undefined}
+            aria-label={`Argument ${index + 1}`}
             value={arg}
             onChange={(e) => updateArg(index, e.target.value)}
             placeholder={`Argument ${index + 1}`}
@@ -164,9 +245,10 @@ function ArgsEditor({ args, onChange }: ArgsEditorProps) {
             variant="ghost"
             size="sm"
             onClick={() => removeArg(index)}
+            aria-label={`Remove argument ${index + 1}`}
             className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
           >
-            <X className="h-3 w-3" />
+            <X className="h-3 w-3" aria-hidden="true" />
           </Button>
         </div>
       ))}
@@ -185,11 +267,42 @@ interface ServerConfigFormProps {
   onChange: (config: MCPServerConfig) => void;
   onDelete: () => void;
   onToggleEnabled: () => void;
+  /** Added in this session: its field errors wait until the user leaves the field */
+  isNew: boolean;
 }
 
-function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: ServerConfigFormProps) {
+function ServerConfigForm({
+  config,
+  onChange,
+  onDelete,
+  onToggleEnabled,
+  isNew,
+}: ServerConfigFormProps) {
   const [expanded, setExpanded] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const validationError = validateMCPServerConfig(config);
+  const id = config.id;
+  const panelId = `${id}-panel`;
+  // Work out which field the message is about so it can be flagged
+  const errorField = !validationError
+    ? null
+    : validationError.startsWith('Server name')
+      ? 'name'
+      : validationError.startsWith('Command')
+        ? 'command'
+        : validationError.includes('URL')
+          ? 'url'
+          : null;
+  // The error shows under its field; on a new server only after the user has left that field
+  const fieldError: FieldErrorFor = (field) => {
+    const message = errorField === field && (!isNew || touched[field]) ? validationError : null;
+    return {
+      message,
+      id: `${id}-${field}-error`,
+      onBlur: () => setTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true })),
+    };
+  };
+  const nameError = fieldError('name');
 
   const updateField = <K extends keyof MCPServerConfig>(key: K, value: MCPServerConfig[K]) => {
     onChange({ ...config, [key]: value } as MCPServerConfig);
@@ -232,9 +345,9 @@ function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: Serve
 
   const transportIcon =
     config.transport === 'stdio' ? (
-      <Terminal className="h-3.5 w-3.5" />
+      <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
     ) : (
-      <Globe className="h-3.5 w-3.5" />
+      <Globe className="h-3.5 w-3.5" aria-hidden="true" />
     );
 
   return (
@@ -242,21 +355,34 @@ function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: Serve
       className={`border rounded-lg ${config.enabled ? 'border-border' : 'border-border/50 opacity-60'}`}
     >
       {/* Header */}
-      <div
-        className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/50 rounded-t-lg"
-        onClick={() => setExpanded(!expanded)}
-      >
-        {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        )}
-        {transportIcon}
-        <span className="text-sm font-medium flex-1 truncate">{config.name || 'Untitled'}</span>
+      <div className="flex items-center gap-2 px-3 py-2 hover:bg-muted/50 rounded-t-lg">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          onClick={() => setExpanded(!expanded)}
+          className="flex flex-1 min-w-0 items-center gap-2 text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {expanded ? (
+            <ChevronDown
+              className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+              aria-hidden="true"
+            />
+          ) : (
+            <ChevronRight
+              className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+              aria-hidden="true"
+            />
+          )}
+          {transportIcon}
+          <span className="text-sm font-medium flex-1 truncate">{config.name || 'Untitled'}</span>
+        </button>
         {validationError && (
-          <span title={validationError}>
-            <AlertCircle className="h-3.5 w-3.5 text-status-warn shrink-0" />
-          </span>
+          <AlertCircle
+            role="img"
+            aria-label={validationError}
+            className="h-3.5 w-3.5 text-status-warn shrink-0"
+          />
         )}
         <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
           {config.transport}
@@ -264,11 +390,9 @@ function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: Serve
         <Button
           variant="ghost"
           size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleEnabled();
-          }}
+          onClick={onToggleEnabled}
           className="h-7 w-7 p-0"
+          aria-label={`${config.enabled ? 'Disable' : 'Enable'} server ${config.name || 'Untitled'}`}
           title={config.enabled ? 'Disable server' : 'Enable server'}
         >
           {config.enabled ? (
@@ -280,11 +404,9 @@ function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: Serve
         <Button
           variant="ghost"
           size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
+          onClick={onDelete}
           className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+          aria-label={`Remove server ${config.name || 'Untitled'}`}
           title="Remove server"
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -293,21 +415,33 @@ function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: Serve
 
       {/* Expanded form */}
       {expanded && (
-        <div className="px-3 pb-3 space-y-3 border-t border-border/50">
+        <div id={panelId} className="px-3 pb-3 space-y-3 border-t border-border/50">
+          {validationError && !errorField && (
+            <p className="pt-3 text-xs text-destructive">{validationError}</p>
+          )}
           <div className="pt-3 grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Name</Label>
+              <Label htmlFor={`${id}-name`} className="text-xs">
+                Name
+              </Label>
               <Input
+                id={`${id}-name`}
+                onBlur={nameError.onBlur}
+                aria-invalid={nameError.message ? true : undefined}
+                aria-describedby={nameError.message ? nameError.id : undefined}
                 value={config.name}
                 onChange={(e) => updateField('name', e.target.value)}
                 placeholder="My MCP Server"
                 className="h-8 text-xs"
               />
+              <FieldErrorText error={nameError} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Transport</Label>
+              <Label htmlFor={`${id}-transport`} className="text-xs">
+                Transport
+              </Label>
               <Select value={config.transport} onValueChange={handleTransportChange}>
-                <SelectTrigger className="h-8 text-xs">
+                <SelectTrigger id={`${id}-transport`} size="sm" className="w-full text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -335,8 +469,11 @@ function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: Serve
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs">Description (optional)</Label>
+            <Label htmlFor={`${id}-description`} className="text-xs">
+              Description (optional)
+            </Label>
             <Input
+              id={`${id}-description`}
               value={config.description || ''}
               onChange={(e) => updateField('description', e.target.value)}
               placeholder="What does this server provide?"
@@ -348,9 +485,17 @@ function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: Serve
 
           {/* Transport-specific fields */}
           {config.transport === 'stdio' ? (
-            <StdioFields config={config as MCPStdioConfig} onChange={onChange} />
+            <StdioFields
+              config={config as MCPStdioConfig}
+              onChange={onChange}
+              fieldError={fieldError}
+            />
           ) : (
-            <RemoteFields config={config as MCPHTTPConfig | MCPSSEConfig} onChange={onChange} />
+            <RemoteFields
+              config={config as MCPHTTPConfig | MCPSSEConfig}
+              onChange={onChange}
+              fieldError={fieldError}
+            />
           )}
         </div>
       )}
@@ -360,36 +505,71 @@ function ServerConfigForm({ config, onChange, onDelete, onToggleEnabled }: Serve
 
 // ─── Stdio-specific fields ────────────────────────────────────────────────────
 
+interface FieldError {
+  message: string | null;
+  id: string;
+  onBlur: () => void;
+}
+type FieldErrorFor = (field: string) => FieldError;
+
+function FieldErrorText({ error }: { error: FieldError }) {
+  if (!error.message) return null;
+  return (
+    <p id={error.id} className="text-xs text-destructive">
+      {error.message}
+    </p>
+  );
+}
+
 function StdioFields({
   config,
   onChange,
+  fieldError,
 }: {
   config: MCPStdioConfig;
   onChange: (config: MCPServerConfig) => void;
+  fieldError: FieldErrorFor;
 }) {
+  const id = config.id;
+  const commandHelpId = `${id}-command-help`;
+  const commandError = fieldError('command');
   return (
     <>
       <div className="space-y-1.5">
-        <Label className="text-xs">Command</Label>
+        <Label htmlFor={`${id}-command`} className="text-xs">
+          Command
+        </Label>
         <Input
+          id={`${id}-command`}
+          onBlur={commandError.onBlur}
+          aria-invalid={commandError.message ? true : undefined}
+          aria-describedby={
+            commandError.message ? `${commandError.id} ${commandHelpId}` : commandHelpId
+          }
           value={config.command}
           onChange={(e) => onChange({ ...config, command: e.target.value })}
           placeholder="node, python, npx, etc."
           className="h-8 text-xs font-mono"
         />
-        <p className="text-[10px] text-muted-foreground">
+        <FieldErrorText error={commandError} />
+        <p id={commandHelpId} className="text-[10px] text-muted-foreground">
           The command to run the MCP server process
         </p>
       </div>
 
-      <div className="space-y-1.5">
-        <Label className="text-xs">Arguments</Label>
+      <div role="group" aria-labelledby={`${id}-args-label`} className="space-y-1.5">
+        <Label id={`${id}-args-label`} className="text-xs">
+          Arguments
+        </Label>
         <ArgsEditor args={config.args} onChange={(args) => onChange({ ...config, args })} />
       </div>
 
-      <div className="space-y-1.5">
-        <Label className="text-xs">Environment Variables</Label>
+      <div role="group" aria-labelledby={`${id}-env-label`} className="space-y-1.5">
+        <Label id={`${id}-env-label`} className="text-xs">
+          Environment Variables
+        </Label>
         <KeyValueEditor
+          label="Environment variable"
           entries={config.env}
           onChange={(env) => onChange({ ...config, env })}
           keyPlaceholder="VARIABLE_NAME"
@@ -405,15 +585,25 @@ function StdioFields({
 function RemoteFields({
   config,
   onChange,
+  fieldError,
 }: {
   config: MCPHTTPConfig | MCPSSEConfig;
   onChange: (config: MCPServerConfig) => void;
+  fieldError: FieldErrorFor;
 }) {
+  const id = config.id;
+  const urlError = fieldError('url');
   return (
     <>
       <div className="space-y-1.5">
-        <Label className="text-xs">URL</Label>
+        <Label htmlFor={`${id}-url`} className="text-xs">
+          URL
+        </Label>
         <Input
+          id={`${id}-url`}
+          onBlur={urlError.onBlur}
+          aria-invalid={urlError.message ? true : undefined}
+          aria-describedby={urlError.message ? urlError.id : undefined}
           value={config.url}
           onChange={(e) => onChange({ ...config, url: e.target.value })}
           placeholder={
@@ -423,11 +613,15 @@ function RemoteFields({
           }
           className="h-8 text-xs font-mono"
         />
+        <FieldErrorText error={urlError} />
       </div>
 
-      <div className="space-y-1.5">
-        <Label className="text-xs">Headers (optional)</Label>
+      <div role="group" aria-labelledby={`${id}-headers-label`} className="space-y-1.5">
+        <Label id={`${id}-headers-label`} className="text-xs">
+          Headers (optional)
+        </Label>
         <KeyValueEditor
+          label="Header"
           entries={config.headers || {}}
           onChange={(headers) => onChange({ ...config, headers })}
           keyPlaceholder="Header-Name"
@@ -451,6 +645,8 @@ interface MCPServerSettingsProps {
 
 export function MCPServerSettings({ servers, onChange }: MCPServerSettingsProps) {
   const serverList = Object.values(servers);
+  // Servers added while this tab is open have not been filled in yet
+  const [addedIds, setAddedIds] = useState<string[]>([]);
   const enabledCount = serverList.filter((s) => s.enabled).length;
 
   const addServer = (transport: MCPTransportType) => {
@@ -466,6 +662,7 @@ export function MCPServerSettings({ servers, onChange }: MCPServerSettingsProps)
         config = createDefaultSSEConfig();
         break;
     }
+    setAddedIds((prev) => [...prev, config.id]);
     onChange({ ...servers, [config.id]: config });
   };
 
@@ -559,6 +756,7 @@ export function MCPServerSettings({ servers, onChange }: MCPServerSettingsProps)
               onChange={(updated) => updateServer(server.id, updated)}
               onDelete={() => deleteServer(server.id)}
               onToggleEnabled={() => toggleServer(server.id)}
+              isNew={addedIds.includes(server.id)}
             />
           ))}
         </div>

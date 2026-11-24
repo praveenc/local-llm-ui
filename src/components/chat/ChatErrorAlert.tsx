@@ -1,4 +1,5 @@
-import { AlertTriangle, Check, ChevronDown, ChevronUp, Copy, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Copy, RotateCcw, X } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { useMemo, useState } from 'react';
 
@@ -91,7 +92,7 @@ function getFriendlyHint(message: string): FriendlyHint | null {
 }
 
 export function ChatErrorAlert({ error, className, onRetry, onChangeModel }: ChatErrorAlertProps) {
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   const parsedError = useMemo(() => parseJsonSafely(error), [error]);
@@ -113,9 +114,18 @@ export function ChatErrorAlert({ error, className, onRetry, onChangeModel }: Cha
     const text = `${message}${hint ? `\n\nHint: ${hint.text}` : ''}${
       showDetails ? `\n\nDetails:\n${rawDetails}` : ''
     }`;
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus('copied');
+      // sonner is announced by the global Toaster live region
+      toast.success('Copied');
+      setTimeout(() => setCopyStatus('idle'), 1500);
+    } catch (err) {
+      console.error('Failed to copy error:', err);
+      setCopyStatus('failed');
+      toast.error('Copy failed');
+      setTimeout(() => setCopyStatus('idle'), 1500);
+    }
   };
 
   return (
@@ -141,8 +151,18 @@ export function ChatErrorAlert({ error, className, onRetry, onChangeModel }: Cha
               </Button>
             )}
             <Button type="button" variant="outline" size="sm" onClick={handleCopy}>
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              {copied ? 'Copied' : 'Copy error'}
+              {copyStatus === 'copied' ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : copyStatus === 'failed' ? (
+                <X className="h-3.5 w-3.5" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+              {copyStatus === 'copied'
+                ? 'Copied'
+                : copyStatus === 'failed'
+                  ? 'Copy failed'
+                  : 'Copy error'}
             </Button>
 
             {showDetails && (

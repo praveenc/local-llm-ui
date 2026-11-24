@@ -224,3 +224,15 @@ describe('PreferencesDialog unsaved changes', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
+
+describe('PreferencesDialog display radio groups', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('names the Appearance and Content density groups', () => {
+    renderDialog({});
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Display/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Display/ }));
+    expect(screen.getByRole('radiogroup', { name: 'Appearance' })).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: 'Content density' })).toBeInTheDocument();
+  });
+});

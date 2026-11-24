@@ -128,8 +128,11 @@ export function PreferencesDialog({
               </div>
 
               <div className="space-y-2">
-                <Label>Appearance</Label>
+                <p id="appearance-label" className="text-sm font-medium leading-none">
+                  Appearance
+                </p>
                 <RadioGroup
+                  aria-labelledby="appearance-label"
                   value={preferences.visualMode}
                   onValueChange={(v) => updatePreference('visualMode', v as VisualMode)}
                   className="flex gap-4"
@@ -150,8 +153,11 @@ export function PreferencesDialog({
               </div>
 
               <div className="space-y-2">
-                <Label>Content density</Label>
+                <p id="density-label" className="text-sm font-medium leading-none">
+                  Content density
+                </p>
                 <RadioGroup
+                  aria-labelledby="density-label"
                   value={preferences.contentDensity}
                   onValueChange={(v) => updatePreference('contentDensity', v as ContentDensity)}
                   className="flex gap-4"

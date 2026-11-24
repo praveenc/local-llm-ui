@@ -19,6 +19,7 @@ import {
   ThumbsUp,
   Trash2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Fragment, useEffect, useRef, useState } from 'react';
 
@@ -285,17 +286,23 @@ const ChatContainer = ({
     }
   };
 
+  // One timer at a time, so an older timer cannot clear a newer error early
+  const fileErrorTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(fileErrorTimerRef.current), []);
   const handleFileError = (err: { code: string; message: string }) => {
     setFileError(err.message);
-    // Clear error after 5 seconds
-    setTimeout(() => setFileError(null), 5000);
+    clearTimeout(fileErrorTimerRef.current);
+    fileErrorTimerRef.current = setTimeout(() => setFileError(null), 5000);
   };
 
   const handleCopy = async (content: string) => {
     try {
       await navigator.clipboard.writeText(content);
+      // The toast is announced by the global Toaster, like the other copy buttons
+      toast.success('Copied');
     } catch (err) {
       console.error('Failed to copy:', err);
+      toast.error('Copy failed');
     }
   };
 

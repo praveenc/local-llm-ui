@@ -1,6 +1,7 @@
 import { Loader2 } from 'lucide-react';
 
-import { useState } from 'react';
+import type { FormEvent } from 'react';
+import { useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -34,10 +35,13 @@ export function SavePromptModal({
   const [category, setCategory] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [nameError, setNameError] = useState('');
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSave = async () => {
+  const handleSave = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     if (!name.trim()) {
       setNameError('Please enter a name for the prompt');
+      nameInputRef.current?.focus();
       return;
     }
 
@@ -68,75 +72,86 @@ export function SavePromptModal({
           <DialogDescription>Save this prompt for later use.</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4 py-2">
-          <div className="space-y-2">
-            <Label htmlFor="prompt-name">Prompt Name</Label>
-            <Input
-              id="prompt-name"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setNameError('');
-              }}
-              placeholder="Enter a name for this prompt"
-              autoFocus
-              className={cn(nameError && 'border-destructive')}
-            />
-            {nameError && <p className="text-sm text-destructive">{nameError}</p>}
-          </div>
+        <form onSubmit={handleSave} noValidate className="grid gap-4">
+          <div className="flex flex-col gap-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="prompt-name">Prompt Name</Label>
+              <Input
+                ref={nameInputRef}
+                id="prompt-name"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setNameError('');
+                }}
+                placeholder="Enter a name for this prompt"
+                autoFocus
+                aria-required="true"
+                aria-invalid={nameError ? true : undefined}
+                aria-describedby={nameError ? 'prompt-name-error' : undefined}
+                className={cn(nameError && 'border-destructive')}
+              />
+              {nameError && (
+                <p id="prompt-name-error" className="text-sm text-destructive">
+                  {nameError}
+                </p>
+              )}
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
-            <p className="text-sm text-muted-foreground">
-              Organize your prompts with a category (optional, defaults to 'default')
-            </p>
-            <Input
-              id="category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder="Enter or select a category"
-            />
-            {existingCategories.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {existingCategories.slice(0, 5).map((cat) => (
-                  <Button
-                    key={cat}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setCategory(cat)}
-                  >
-                    {cat}
-                  </Button>
-                ))}
+            <div className="space-y-2">
+              <Label htmlFor="category">Category</Label>
+              <p id="category-hint" className="text-sm text-muted-foreground">
+                Organize your prompts with a category (optional, defaults to 'default')
+              </p>
+              <Input
+                id="category"
+                aria-describedby="category-hint"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="Enter or select a category"
+              />
+              {existingCategories.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {existingCategories.slice(0, 5).map((cat) => (
+                    <Button
+                      key={cat}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setCategory(cat)}
+                    >
+                      {cat}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Prompt Preview</Label>
+              <div className="rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground max-h-[100px] overflow-auto whitespace-pre-wrap font-mono">
+                {promptContent.length > 300 ? `${promptContent.slice(0, 300)}...` : promptContent}
               </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label>Prompt Preview</Label>
-            <div className="rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground max-h-[100px] overflow-auto whitespace-pre-wrap font-mono">
-              {promptContent.length > 300 ? `${promptContent.slice(0, 300)}...` : promptContent}
             </div>
           </div>
-        </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={handleClose} disabled={isSaving}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Saving...
-              </span>
-            ) : (
-              'Save'
-            )}
-          </Button>
-        </DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={handleClose} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving...
+                </span>
+              ) : (
+                'Save'
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
