@@ -36,7 +36,15 @@ export const ModelSelectorContent = ({
 }: ModelSelectorContentProps) => (
   <DialogContent className={cn('p-0', className)} {...props}>
     <DialogTitle className="sr-only">{title}</DialogTitle>
-    <Command className="**:data-[slot=command-input-wrapper]:h-auto">{children}</Command>
+    <Command
+      className={cn(
+        '**:data-[slot=command-input-wrapper]:h-auto',
+        // Keep search text clear of the absolute close button (top-4 right-4)
+        props.showCloseButton !== false && '**:data-[slot=command-input-wrapper]:pr-12'
+      )}
+    >
+      {children}
+    </Command>
   </DialogContent>
 );
 
