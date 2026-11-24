@@ -16,7 +16,12 @@ import { cn } from '@/lib/utils';
 import type { MCPServerConfig } from '@/types/mcp';
 import { PREFERENCES_CHANGED_EVENT, loadPreferences } from '@/utils/preferences';
 
-import { composerActive, composerChip, composerIconButton } from './composerStyles';
+import {
+  TOOLS_UNSUPPORTED_TEXT,
+  composerActive,
+  composerChip,
+  composerIconButton,
+} from './composerStyles';
 
 interface MCPServerStatus {
   name: string;
@@ -28,6 +33,8 @@ interface MCPServerStatus {
 
 interface MCPToolsIndicatorProps {
   disabled?: boolean;
+  /** False when the selected model cannot use tools: the request sends no MCP servers */
+  toolsSupported?: boolean;
 }
 
 const MCP_STATUS_QUERY_KEY = ['mcp-status'] as const;
@@ -36,7 +43,7 @@ function getEnabledConfigs(): MCPServerConfig[] {
   return Object.values(loadPreferences().mcpServers ?? {}).filter((server) => server.enabled);
 }
 
-export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
+export function MCPToolsIndicator({ disabled, toolsSupported = true }: MCPToolsIndicatorProps) {
   const queryClient = useQueryClient();
   const [enabledConfigs, setEnabledConfigs] = useState<MCPServerConfig[]>(getEnabledConfigs);
   const [configVersion, setConfigVersion] = useState(0);
@@ -112,7 +119,7 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
   const totalTools = servers.reduce((sum, server) => sum + server.tools.length, 0);
   const connectedCount = servers.filter((server) => server.status === 'connected').length;
 
-  if (!hasServers) {
+  if (!hasServers || !toolsSupported) {
     return (
       <TooltipProvider>
         <Tooltip>
@@ -130,7 +137,11 @@ export function MCPToolsIndicator({ disabled }: MCPToolsIndicatorProps) {
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>No MCP servers configured. Add one in Preferences, MCP Servers</p>
+            <p>
+              {toolsSupported
+                ? 'No MCP servers configured. Add one in Preferences, MCP Servers'
+                : TOOLS_UNSUPPORTED_TEXT}
+            </p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

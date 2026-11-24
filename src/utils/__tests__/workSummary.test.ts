@@ -35,6 +35,56 @@ describe('summarizeWork', () => {
     expect(summary.failed).toBe(0);
   });
 
+  it('counts a search that failed on every provider as failed', () => {
+    const failedSearch = call({
+      args: { query: 'q' },
+      result: {
+        query: 'q',
+        results: [],
+        failures: ['Brave Search: HTTP 422 (SUBSCRIPTION_TOKEN_INVALID)'],
+        error: 'Web search failed. Brave Search: HTTP 422 (SUBSCRIPTION_TOKEN_INVALID)',
+      },
+    });
+    const summary = summarizeWork({
+      hasReasoning: false,
+      toolCalls: [failedSearch, failedSearch, search('ok', ['https://a.test/1'])],
+    });
+    expect(summary.parts).toEqual(['3 searches', '1 source']);
+    expect(summary.failed).toBe(2);
+  });
+
+  it('keeps a failed search failed after it is stored', () => {
+    const stored = toStoredToolCall(
+      call({
+        result: {
+          query: 'q',
+          results: [],
+          failures: ['Exa: HTTP 401'],
+          error: 'Web search failed. Exa: HTTP 401',
+        },
+      })
+    );
+    expect(
+      summarizeWork({ hasReasoning: false, toolCalls: [{ type: 'tool-call', ...stored }] }).failed
+    ).toBe(1);
+  });
+
+  it('does not count a search that a fallback provider answered as failed', () => {
+    const summary = summarizeWork({
+      hasReasoning: false,
+      toolCalls: [
+        call({
+          result: {
+            provider: 'exa',
+            failures: ['Brave Search: HTTP 429'],
+            results: [{ title: 't', url: 'https://a.test/1', content: 'x' }],
+          },
+        }),
+      ],
+    });
+    expect(summary.failed).toBe(0);
+  });
+
   it('counts many different tools as tool calls, and failures on their own', () => {
     const summary = summarizeWork({
       hasReasoning: false,

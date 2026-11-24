@@ -56,10 +56,10 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 11 | Preferences save on change | 5 `feat/preferences-autosave` ([#68](https://github.com/praveenc/local-llm-ui/pull/68)) | Done, merged |
 | 12 | Accessibility polish | 5 `feat/preferences-autosave` ([#68](https://github.com/praveenc/local-llm-ui/pull/68)) | Done, merged |
 | 9 | One theme control | None | Dropped (D2) |
-| 15 | A more comfortable chat input | 6 `feat/composer-comfort` ([#70](https://github.com/praveenc/local-llm-ui/pull/70)) | PR open |
-| 16 | Sidebar groups with more structure | 7 `feat/sidebar-groups` ([#71](https://github.com/praveenc/local-llm-ui/pull/71)) | PR open |
-| 17 | Web search on by default | 8 `feat/web-search-default` | Planned, after PR 6 |
-| 18 | Rename a chat from the header | 9 `feat/rename-title` | Planned, after PR 7 |
+| 15 | A more comfortable chat input | 6 `feat/composer-comfort` ([#70](https://github.com/praveenc/local-llm-ui/pull/70)) | Done, merged |
+| 16 | Sidebar groups with more structure | 7 `feat/sidebar-groups` ([#71](https://github.com/praveenc/local-llm-ui/pull/71)) | Done, merged |
+| 17 | Web search on by default | 8 `feat/web-search-default` ([#72](https://github.com/praveenc/local-llm-ui/pull/72)) | PR open |
+| 18 | Rename a chat from the header | 9 `feat/rename-title` ([#73](https://github.com/praveenc/local-llm-ui/pull/73), stacked on #72) | PR open |
 
 ### Found during the work
 
@@ -568,6 +568,13 @@ Conversations
 - **Trade-offs:**
   - The model can search in every chat, so some replies use more tokens and more search quota. The model still decides when to search.
   - Without a key, nothing in the chat input says that web search exists. The Web Search tab in Preferences and the README tell how to add a key.
+- **Done in PR 8:**
+  - `resolveWebSearch(prefs, override, toolsSupported)` in `src/utils/webSearch.ts` gives the state of the open chat: the globe shows when a key is set, it is on from the user's choice for the chat or else the preference, and the request sends search only when the model can use tools. AppShell keeps the choice for the chat (`null` follows the preference). New chat and opening a chat from the sidebar reset it. The first message of a new chat does not.
+  - The state comes from the live preferences, so the first key, a removed key, or a change of the default shows at once.
+  - The Preferences switch "Search the web by default" is at the top of the Web Search tab. It saves on change. Without a key it is off and disabled, with "Add a key to use this."
+  - `supportsTools` comes from the Ollama capabilities, and is not set when Ollama reports no capabilities. A model with `supportsTools: false` gets no search, no key headers, and no MCP servers. The globe and MCP buttons stay focusable, show "This model cannot use tools", and keep the choice for the next model. Ollama does not run on the test host, so this path has unit tests only.
+  - Tested in Chromium with Claude Haiku 5.5 · Global and a fake Brave key: the request has `enableWebSearch: true` and the key headers in a new chat, `false` after the globe turns it off, and `false` after the key is removed. The toolbar stays on one row at 1440 and 1024 px.
+  - A search that fails on every provider counts as failed in the work row: "2 searches · 2 failed" with the rejected key, also after a reload (see [Found during the planning](#found-during-the-planning)).
 
 ### 18. Rename a chat from the header
 
@@ -593,6 +600,8 @@ Conversations
 - **Stale text in Saved Prompts.** The empty Saved Prompts dialog says "click the bookmark button to save it" (`ViewPromptsModal.tsx:192`, screenshot 2). PR 4 moved that button into the **+** menu as "Save as prompt". PR 6 changes the text to "Type a prompt in the chat input, click +, and then click Save as prompt."
 - **The sidebar shows only 50 chats.** `useConversations` loads the 50 newest chats (`useConversations.ts:20`), and the sidebar uses that default (`ConversationList.tsx:95`). Older chats do not show, and **Search chats** does not find them. PR 7 loads all active chats. A chat row holds no messages, so the list stays small.
 - **Titles cut in the middle of a word** (`conversationService.ts:26`). Plan 2 does not change this. A later item can cut at a space, or ask the model for a short title.
+- **A search that fails on all providers did not say "failed" (PR 8 testing).** With a key that the provider rejects, the work row said "2 searches" and nothing about the failure. The search tool returns the errors as its output (`server/web-search.ts:131`, `error` field) instead of sending `tool-error`, so the step kept the status `success`, and `workSummary.ts:63` counted only steps with the status `error`. Each step already said "Failed" (`tool-call.tsx:40`). Fixed in PR 8: `isToolCallFailed` in `src/utils/toolResults.ts` holds the rule, and the summary and the step both use it.
+- **Reply text from two model calls runs together (PR 8 testing).** When the model writes text, calls a tool, and writes again, the two texts join with no space, for example "…a different query.I couldn't find…". PR 8 does not change how reply text is joined. Not fixed.
 
 ### Delivery plan for Plan 2
 
@@ -603,6 +612,6 @@ Conversations
 | 8 | `feat/web-search-default` | 17 | D10, D11, and PR 6 merged (both change the chat input toolbar in `ChatContainer.tsx`) |
 | 9 | `feat/rename-title` | 18 | D12, D13, and PR 7 merged (both change the rename code in `ConversationList.tsx`) |
 
-Merge order: 6, 7, 8, 9. PRs 6 and 7 can start at the same time. Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes: PR 7 for the groups ("Find a chat"), PR 8 for "Web search", and PR 9 for a new "Rename a chat" part.
+Merge order: 6, 7, 8, 9. PRs 6 and 7 can start at the same time. PRs 6 and 7 are merged (#70 and #71). PR 9 is stacked on PR 8: its branch starts from `feat/web-search-default`, and its PR targets that branch until PR 8 merges. Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes: PR 7 for the groups ("Find a chat"), PR 8 for "Web search", and PR 9 for a new "Rename a chat" part.
 
 Each PR is tested as the guidelines say: headless Chromium with a real Bedrock reply, light and dark mode, 1440, 1024, and 390 px, no sideways scroll, and a reload. PR 7 also checks the contrast of the row time on the sidebar in all eight theme variants (muted text on the sidebar is 4.92:1 or more today).

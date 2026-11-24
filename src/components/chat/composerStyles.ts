@@ -45,3 +45,6 @@ export const composerChip =
 /** State of a toggle that is on, for example web search */
 export const composerActive =
   'bg-primary/12 text-primary hover:bg-primary/18 hover:text-primary dark:hover:bg-primary/18';
+
+/** Tooltip of the web search and MCP buttons when the selected model cannot use tools */
+export const TOOLS_UNSUPPORTED_TEXT = 'This model cannot use tools';

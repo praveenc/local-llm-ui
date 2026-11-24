@@ -1,8 +1,8 @@
 /**
  * WebSearchToggle Component
  *
- * Toggle button to enable/disable web search (Brave Search, Exa, or Tavily) for the current
- * conversation.
+ * Turns web search (Brave Search, Exa, or Tavily) on or off for the open chat. The chat input
+ * shows it only when a provider has a key.
  */
 import { Globe } from 'lucide-react';
 
@@ -10,13 +10,19 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
-import { composerActive, composerChip, composerIconButton } from './composerStyles';
+import {
+  TOOLS_UNSUPPORTED_TEXT,
+  composerActive,
+  composerChip,
+  composerIconButton,
+} from './composerStyles';
 
 interface WebSearchToggleProps {
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
   disabled?: boolean;
-  hasApiKey?: boolean;
+  /** False when the selected model cannot use tools: the button shows off and does nothing */
+  toolsSupported?: boolean;
   /** Provider tried first, shown in the tooltip */
   providerLabel?: string;
 }
@@ -25,18 +31,17 @@ export function WebSearchToggle({
   enabled,
   onToggle,
   disabled,
-  hasApiKey = true,
+  toolsSupported = true,
   providerLabel,
 }: WebSearchToggleProps) {
   const via = providerLabel ? ` (${providerLabel})` : '';
-  const tooltipText = !hasApiKey
-    ? 'Add a Brave Search, Exa, or Tavily API key in preferences to enable web search'
-    : enabled
+  // The model cannot search, so the button shows off; the choice for the chat is kept
+  const on = enabled && toolsSupported;
+  const tooltipText = !toolsSupported
+    ? TOOLS_UNSUPPORTED_TEXT
+    : on
       ? `Web search enabled${via}`
       : `Enable web search${via}`;
-
-  // On: a chip that says "Search", so the state is in words, not only in colour
-  const showLabel = enabled && hasApiKey;
 
   return (
     <TooltipProvider>
@@ -47,21 +52,21 @@ export function WebSearchToggle({
             variant="ghost"
             size="sm"
             className={cn(
-              showLabel ? composerChip : composerIconButton,
-              enabled && composerActive,
-              !hasApiKey && 'cursor-default opacity-50 hover:bg-transparent'
+              // On: a chip that says "Search", so the state is in words, not only in colour
+              on ? cn(composerChip, composerActive) : composerIconButton,
+              !toolsSupported && 'cursor-default opacity-50 hover:bg-transparent'
             )}
             disabled={disabled}
-            // Without a key the button stays focusable so the tooltip can say why
-            aria-disabled={!hasApiKey || undefined}
+            // Stays focusable when the model cannot use tools, so the tooltip can say why
+            aria-disabled={!toolsSupported || undefined}
             aria-label="Web search"
-            aria-pressed={enabled}
+            aria-pressed={on}
             onClick={() => {
-              if (hasApiKey) onToggle(!enabled);
+              if (toolsSupported) onToggle(!enabled);
             }}
           >
             <Globe className="h-4 w-4" />
-            {showLabel && <span>Search</span>}
+            {on && <span>Search</span>}
           </Button>
         </TooltipTrigger>
         <TooltipContent>

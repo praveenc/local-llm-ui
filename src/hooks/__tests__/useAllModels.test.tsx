@@ -11,7 +11,11 @@ vi.mock('../../services', () => ({
   bedrockService: { getModels: () => never() },
   lmstudioService: { getModels: () => Promise.reject(new Error('LM Studio is not connected')) },
   ollamaService: {
-    getModels: () => Promise.resolve([{ modelId: 'llama3.2', modelName: 'llama3.2' }]),
+    getModels: () =>
+      Promise.resolve([
+        { modelId: 'llama3.2', modelName: 'llama3.2' },
+        { modelId: 'gemma3', modelName: 'gemma3', supportsTools: false },
+      ]),
   },
   mantleService: { getModels: () => never(), setApiKey: vi.fn(), setRegion: vi.fn() },
 }));
@@ -40,7 +44,10 @@ describe('useAllModels', () => {
       expect(result.current.providers.find((p) => p.provider === 'ollama')?.status).toBe('success')
     );
     const byProvider = Object.fromEntries(result.current.providers.map((p) => [p.provider, p]));
-    expect(byProvider.ollama.models.map((m) => m.id)).toEqual(['llama3.2']);
+    expect(byProvider.ollama.models.map((m) => m.id)).toEqual(['llama3.2', 'gemma3']);
+    // Tool support is copied only when the provider reports it
+    expect(byProvider.ollama.models[0]).not.toHaveProperty('supportsTools');
+    expect(byProvider.ollama.models[1].supportsTools).toBe(false);
     expect(byProvider.lmstudio.status).toBe('error');
     // Bedrock has not answered yet
     expect(byProvider.bedrock.status).toBe('loading');

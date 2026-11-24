@@ -181,6 +181,39 @@ describe('PreferencesDialog web search', () => {
       expect.objectContaining({ tavilyApiKey: 'tvly-1', webSearchFallback: false })
     );
   });
+
+  it('shows Search the web by default off and disabled without a key', () => {
+    renderDialog({});
+    openWebSearchTab();
+    const byDefault = screen.getByRole('switch', { name: /Search the web by default/ });
+    expect(byDefault).toBeDisabled();
+    expect(byDefault).not.toBeChecked();
+    expect(screen.getByText('Add a key to use this.')).toBeInTheDocument();
+  });
+
+  it('turns on Search the web by default with a key, and saves when it changes', () => {
+    const { onSave } = renderDialog({ braveApiKey: 'b' });
+    openWebSearchTab();
+    const byDefault = screen.getByRole('switch', { name: /Search the web by default/ });
+    expect(byDefault).toBeEnabled();
+    expect(byDefault).toBeChecked();
+    expect(screen.getByText(/New chats start with web search on/)).toBeInTheDocument();
+
+    fireEvent.click(byDefault);
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ webSearchByDefault: false }));
+    expect(stored().webSearchByDefault).toBe(false);
+    expect(byDefault).not.toBeChecked();
+  });
+
+  it('puts Search the web by default above the providers', () => {
+    renderDialog({ braveApiKey: 'b' });
+    openWebSearchTab();
+    const byDefault = screen.getByRole('switch', { name: /Search the web by default/ });
+    const providers = screen.getByRole('group', { name: 'Web search providers' });
+    expect(
+      byDefault.compareDocumentPosition(providers) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
 });
 
 describe('PreferencesDialog color theme', () => {

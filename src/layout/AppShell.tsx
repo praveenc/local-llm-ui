@@ -30,6 +30,11 @@ import type { Provider, UserPreferences } from '../utils/preferences';
 import { getDefaultThinkingEffort } from '../utils/thinkingEffort';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
 import { loadMaxToolSteps, saveMaxToolSteps } from '../utils/toolSteps';
+import {
+  WEB_SEARCH_PROVIDER_LABELS,
+  getPrimaryWebSearchProvider,
+  resolveWebSearch,
+} from '../utils/webSearch';
 import { AppLayout } from './AppLayout';
 
 /** Model to select once the model list has loaded */
@@ -81,6 +86,18 @@ export default function AppShell() {
   // Unified model selection
   const [selectedModel, setSelectedModel] = useState<UnifiedModel | null>(null);
   const { providers, isLoading: isLoadingModels } = useAllModels(userPreferences);
+
+  // Web search: the user's choice for the open chat, or null to follow the preference. The state
+  // comes from the live preferences, so a new key or default shows at once. A model that cannot
+  // use tools sends no search, but the choice is kept for the next model.
+  const [webSearchOverride, setWebSearchOverride] = useState<boolean | null>(null);
+  const webSearch = resolveWebSearch(
+    userPreferences,
+    webSearchOverride,
+    selectedModel?.supportsTools
+  );
+  const primaryWebSearch = getPrimaryWebSearchProvider(userPreferences);
+  const handleToggleWebSearch = () => setWebSearchOverride(!webSearch.on);
 
   // Thinking effort: starts at the provider's default from Preferences each time the provider
   // changes, then keeps the user's pick from the chat input
@@ -173,8 +190,11 @@ export default function AppShell() {
     applyContentDensity(window.document.documentElement, userPreferences.contentDensity);
   }, [userPreferences.contentDensity]);
 
+  // A new chat, or a chat opened from the sidebar, starts with the web search preference. The
+  // first message of a new chat (handleConversationChange) keeps the choice made before it.
   const handleNewChat = () => {
     setActiveConversationId(null);
+    setWebSearchOverride(null);
     if (clearHistoryRef.current) {
       clearHistoryRef.current();
     }
@@ -183,6 +203,7 @@ export default function AppShell() {
 
   const handleSelectConversation = (id: string) => {
     setActiveConversationId(id);
+    setWebSearchOverride(null);
     requestModel(async () => {
       const message = await conversationService.getLatestMessage(id);
       const model = toModelRef(message);
@@ -268,6 +289,9 @@ export default function AppShell() {
           setMaxToolSteps={setMaxToolSteps}
           thinkingEffort={thinkingEffort}
           setThinkingEffort={setThinkingEffort}
+          webSearch={webSearch}
+          webSearchProviderLabel={primaryWebSearch && WEB_SEARCH_PROVIDER_LABELS[primaryWebSearch]}
+          onToggleWebSearch={handleToggleWebSearch}
           conversationId={activeConversationId}
           onConversationChange={handleConversationChange}
           onClearHistoryRef={clearHistoryRef}
