@@ -331,6 +331,16 @@ Each chat shows the time of its last message at the right: the time of day for T
 
 Type in **Search chats** at the top of the conversation list. The list shows only the chats whose title contains the text, and opens all the groups that have a match. Push **Esc** to clear the search.
 
+### Rename a chat
+
+The app makes the title of a chat from your first message. To change it:
+
+1. Open the chat.
+2. Click the title in the header. You can also click the pencil button next to it, or use **Rename** in the **...** menu of the chat in the sidebar.
+3. Type the new title and push **Enter**. A click outside the field also saves it. Push **Esc** to keep the old title.
+
+An empty title is not saved. A rename does not move the chat to a different date group. A new chat has no title to rename until you send the first message.
+
 ### Saved prompts
 
 To save a prompt:

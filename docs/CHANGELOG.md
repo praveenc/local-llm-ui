@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A line in the chat shows when the next reply comes from another model
 - Each chat in the conversation list shows the time of its last message, and a closed date group shows how many chats it has
 - The conversation list remembers which date groups are open, also after a reload
+- Rename the open chat from the header: click the title, or the pencil button next to it. Enter or a click outside saves, Esc cancels
 
 #### Changed
 
@@ -71,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Fixed
 
 - The conversation list showed only the 50 newest chats, and Search chats did not find older ones; it now shows all chats
+- A rename moved the chat to Today; it now keeps the date of its last message
 - Icon buttons and the chat input have accessible names, and screen readers announce when a reply starts and ends ([#59])
 - Scrollbar thumbs have 3:1 contrast in every theme and show no light track when macOS shows scroll bars always ([#59])
 - Renaming a conversation with a Japanese, Chinese, or Korean input method no longer saves early when Enter confirms a candidate ([#59])

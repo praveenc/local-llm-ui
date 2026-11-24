@@ -1,10 +1,11 @@
 'use client';
 
-import { Menu, Moon, PanelLeftClose, PanelLeftOpen, SquarePen, Sun } from 'lucide-react';
+import { Menu, Moon, PanelLeftClose, PanelLeftOpen, Pencil, SquarePen, Sun } from 'lucide-react';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { EditableTitleInput, type TitleEditEnd } from '@/components/ui/editable-title-input';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
@@ -19,6 +20,11 @@ interface AppLayoutProps {
   children: React.ReactNode;
   /** Title of the open conversation; the header h1 */
   title?: string;
+  /**
+   * Saves a new title for the open conversation; the header title becomes editable when this
+   * is set. Leave it out when no conversation is stored (a new chat has no title to rename).
+   */
+  onRenameTitle?: (title: string) => Promise<void> | void;
   /** Starts a new chat; the header button shows when this is set */
   onNewChat?: () => void;
   navigationOpen?: boolean;
@@ -37,6 +43,7 @@ export function AppLayout({
   navigation,
   children,
   title = 'New conversation',
+  onRenameTitle,
   onNewChat,
   navigationOpen = true,
   onNavigationChange,
@@ -48,6 +55,25 @@ export function AppLayout({
   onVisualModeChange,
 }: AppLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const renameButtonRef = useRef<HTMLButtonElement>(null);
+  // Set when a key ends the edit, so focus goes back to the pencil. A click elsewhere keeps its focus.
+  const restoreFocusRef = useRef(false);
+
+  // Without a stored conversation there is nothing to rename; drop an edit left open
+  if (renaming && !onRenameTitle) setRenaming(false);
+
+  useEffect(() => {
+    if (!renaming && restoreFocusRef.current) {
+      restoreFocusRef.current = false;
+      renameButtonRef.current?.focus();
+    }
+  }, [renaming]);
+
+  const endRename = (reason: TitleEditEnd) => {
+    restoreFocusRef.current = reason !== 'blur';
+    setRenaming(false);
+  };
 
   // Use the prop directly - this is a controlled component
   const sidebarOpen = navigationOpen;
@@ -94,7 +120,7 @@ export function AppLayout({
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
         <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-4">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             {/* Mobile menu button */}
             <Button
               variant="ghost"
@@ -121,9 +147,40 @@ export function AppLayout({
                 <PanelLeftOpen className="h-5 w-5" />
               )}
             </Button>
-            <h1 className="truncate text-[15px] font-semibold text-foreground" title={title}>
-              {title}
-            </h1>
+            {onRenameTitle && renaming ? (
+              <EditableTitleInput
+                value={title}
+                onSave={onRenameTitle}
+                onEnd={endRename}
+                aria-label="Chat title"
+                className="h-8 flex-1 px-2 text-[15px] font-semibold md:text-[15px]"
+              />
+            ) : onRenameTitle ? (
+              <div className="group/title flex min-w-0 items-center">
+                {/* A click edits the title. The pencil next to it is the keyboard and screen reader path. */}
+                <h1
+                  className="min-w-0 cursor-text truncate text-[15px] font-semibold text-foreground"
+                  title={title}
+                  onClick={() => setRenaming(true)}
+                >
+                  {title}
+                </h1>
+                <Button
+                  ref={renameButtonRef}
+                  variant="ghost"
+                  size="icon"
+                  className="ml-1 size-11 shrink-0 opacity-0 transition-opacity group-hover/title:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 md:size-8 motion-reduce:transition-none"
+                  onClick={() => setRenaming(true)}
+                  aria-label="Rename chat"
+                >
+                  <Pencil className="size-4" />
+                </Button>
+              </div>
+            ) : (
+              <h1 className="truncate text-[15px] font-semibold text-foreground" title={title}>
+                {title}
+              </h1>
+            )}
           </div>
           <div className="flex items-center gap-1">
             {onNewChat && (
