@@ -547,6 +547,8 @@ const tools = await client.tools();
 
 10. **MCP Servers Config Per-Request**: Configs are sent from client in the request body rather than stored server-side. This keeps the server stateless and the client (localStorage preferences) as the single source of truth.
 
+11. **Stdio Must Wait for `server/discover`**: The client first sends `server/discover` (protocol 2026-07-28). On stdio, the AI SDK waits only 1 s for the answer, then sends `initialize`. A 2026-07-28 server (for example, Python MCP SDK 2.x) selects the protocol from the first request and rejects the late `initialize` with "connection is serving the 2026-07-28 protocol; the initialize handshake is not accepted". `uvx` servers can start in more than 1 s, so this failed on some machines but not on others. `mcp-manager.ts` uses a stdio transport with `waitsForProtocolVersionDiscovery = true`, as the SDK does for HTTP. Legacy servers answer `server/discover` with an error, and the client then falls back to `initialize`.
+
 **Architecture**:
 ```
 Client (useBedrockChat.ts)

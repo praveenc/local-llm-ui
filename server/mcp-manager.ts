@@ -248,6 +248,21 @@ function computeConfigHash(config: MCPServerConfig): string {
 }
 
 /**
+ * Stdio transport that waits for the `server/discover` answer.
+ *
+ * The AI SDK waits only 1 s for that answer on stdio. Then it falls back to the
+ * `initialize` handshake. A server that starts in more than 1 s (for example, `uvx`
+ * on a slow machine or on its first run) has already selected the 2026-07-28 protocol
+ * from the first request, so it rejects `initialize`: "connection is serving the
+ * 2026-07-28 protocol; the initialize handshake is not accepted". The SDK waits like
+ * this for Streamable HTTP. Legacy servers answer the unknown method with an error,
+ * and the client then falls back to `initialize`. MCP_CONNECT_TIMEOUT_MS limits the wait.
+ */
+class DiscoveryWaitingStdioTransport extends Experimental_StdioMCPTransport {
+  readonly waitsForProtocolVersionDiscovery = true;
+}
+
+/**
  * SEC-10: Create an MCP client with a connection timeout.
  */
 async function createClientWithTimeout(config: MCPServerConfig): Promise<MCPClient> {
@@ -276,7 +291,7 @@ async function createClient(config: MCPServerConfig): Promise<MCPClient> {
   switch (config.transport) {
     case 'stdio': {
       const stdioConfig = config as MCPStdioConfig;
-      const transport = new Experimental_StdioMCPTransport({
+      const transport = new DiscoveryWaitingStdioTransport({
         command: stdioConfig.command,
         args: stdioConfig.args,
         env: { ...getSafeEnv(), ...stdioConfig.env },
