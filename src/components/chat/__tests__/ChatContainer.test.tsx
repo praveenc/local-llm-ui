@@ -81,6 +81,29 @@ describe('ChatContainer', () => {
     expect(screen.queryByText(/Send a message to start/)).not.toBeInTheDocument();
   });
 
+  it('shows three lines in an empty chat and two lines at the bottom', () => {
+    const model = {
+      id: 'llama3.2',
+      name: 'llama3.2',
+      provider: 'ollama' as const,
+      providerName: 'Ollama',
+    };
+    const { unmount } = renderChat({ selectedModel: model });
+    const empty = screen.getByRole('textbox', { name: 'Message' });
+    expect(empty.className).toContain('min-h-[calc(3lh+1.5rem)]');
+    expect(empty.className).not.toContain('min-h-[calc(2lh+1.5rem)]');
+    expect(empty.className).toContain('max-h-[min(40vh,20rem)]');
+    expect(empty.className).toContain('pt-4');
+    expect(empty.className).toContain('pb-2');
+    unmount();
+
+    chatMessages.current = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }];
+    renderChat({ selectedModel: model });
+    const bottom = screen.getByRole('textbox', { name: 'Message' });
+    expect(bottom.className).toContain('min-h-[calc(2lh+1.5rem)]');
+    expect(bottom.className).not.toContain('min-h-[calc(3lh+1.5rem)]');
+  });
+
   it('has no Clear chat or Save prompt button; Save as prompt is in the + menu', async () => {
     const user = userEvent.setup();
     renderChat({

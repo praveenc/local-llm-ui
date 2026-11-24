@@ -85,7 +85,13 @@ import { SavePromptDialog } from './SavePromptDialog';
 import { StreamStatusAnnouncer } from './StreamStatusAnnouncer';
 import { ThinkingEffortSelector } from './ThinkingEffortSelector';
 import { WebSearchToggle } from './WebSearchToggle';
-import { composerCard, composerIconButton } from './composerStyles';
+import {
+  composerCard,
+  composerIconButton,
+  composerTextarea,
+  composerTextareaBottom,
+  composerTextareaEmpty,
+} from './composerStyles';
 
 // Helper to extract tool calls from message parts
 /** The reply has thinking or tool calls, so it has a work row */
@@ -543,7 +549,7 @@ const ChatContainer = ({
             multiple
             maxFileSize={BEDROCK_DOC_MAX_SIZE}
             maxFiles={20}
-            className="w-full max-w-3xl mx-auto"
+            className="@container w-full max-w-3xl mx-auto"
             inputGroupClassName={composerCard}
           >
             <PromptInputHeader className="px-3 pb-0 pt-3 empty:hidden">
@@ -569,10 +575,13 @@ const ChatContainer = ({
               aria-label="Message"
               aria-keyshortcuts="/"
               title="Message (press / to focus)"
-              className="min-h-14 px-4 pt-4 pb-1 text-base leading-relaxed md:text-[15px] placeholder:text-muted-foreground"
+              className={cn(
+                composerTextarea,
+                isEmpty ? composerTextareaEmpty : composerTextareaBottom
+              )}
             />
-            <PromptInputFooter className="flex-wrap gap-y-1 px-2.5 pb-2.5 pt-1">
-              <PromptInputTools className="min-w-0 flex-wrap gap-0.5">
+            <PromptInputFooter className="flex-wrap gap-y-1 px-3 pb-3 pt-1">
+              <PromptInputTools className="min-w-0 flex-wrap gap-1">
                 <PromptInputActionMenu modal={false}>
                   <PromptInputActionMenuTrigger
                     className={composerIconButton}
@@ -613,7 +622,7 @@ const ChatContainer = ({
                     />
                   )}
               </PromptInputTools>
-              <PromptInputTools className="ml-auto gap-0.5">
+              <PromptInputTools className="ml-auto gap-1">
                 <WebSearchToggle
                   enabled={enableWebSearch}
                   onToggle={setEnableWebSearch}

@@ -50,7 +50,8 @@ export function ThinkingEffortSelector({
           aria-label={`Thinking: ${thinkingEffortLabel(value)}`}
         >
           <Brain className="size-3.5" aria-hidden />
-          <span className="hidden sm:inline">Thinking</span>
+          {/* The word goes when the chat input is narrower than 768 px, so the toolbar keeps one row */}
+          <span className="hidden sm:inline @max-3xl:hidden">Thinking</span>
           <span className="font-medium text-foreground">{thinkingEffortLabel(value)}</span>
           <ChevronDown className="size-3 opacity-60" aria-hidden />
         </Button>
