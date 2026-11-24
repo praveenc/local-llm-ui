@@ -44,8 +44,8 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 4 | Fewer controls | 4 `feat/lean-chrome` ([#67](https://github.com/praveenc/local-llm-ui/pull/67)) | Done, merged |
 | 10 | Conversation search | 4 `feat/lean-chrome` ([#67](https://github.com/praveenc/local-llm-ui/pull/67)) | Done, merged |
 | 13 | Centred composer | 4 `feat/lean-chrome` ([#67](https://github.com/praveenc/local-llm-ui/pull/67)) | Done, merged |
-| 11 | Preferences save on change | 5 `feat/preferences-autosave` | Done, waits on PR |
-| 12 | Accessibility polish | 5 `feat/preferences-autosave` | Done, waits on PR |
+| 11 | Preferences save on change | 5 `feat/preferences-autosave` ([#68](https://github.com/praveenc/local-llm-ui/pull/68)) | Done, merged |
+| 12 | Accessibility polish | 5 `feat/preferences-autosave` ([#68](https://github.com/praveenc/local-llm-ui/pull/68)) | Done, merged |
 | 9 | One theme control | None | Dropped (D2) |
 
 ### Found during the work
