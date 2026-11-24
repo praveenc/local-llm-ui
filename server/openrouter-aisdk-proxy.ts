@@ -18,6 +18,7 @@ import { WEB_SEARCH_HEADER_NAMES } from '../src/utils/webSearch.ts';
 import { getMCPTools } from './mcp-manager.ts';
 import { capMaxTokens, endStreamWithError, readBodyWithLimit, setCORSHeaders } from './security.ts';
 import { noAnswerNotice, toolLoopOptions } from './tool-loop.ts';
+import { usageEvent } from './usage.ts';
 import {
   WEB_SEARCH_KEY_REQUIRED_ERROR,
   createWebSearchTool,
@@ -432,22 +433,9 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
       const notice = await noAnswerNotice(result);
       if (notice) res.write(`data: ${JSON.stringify({ content: notice })}\n\n`);
 
-      // Get usage after the stream completes
-      const usage = await result.usage;
-      const latencyMs = Date.now() - startTime;
-
-      res.write(
-        `data: ${JSON.stringify({
-          metadata: {
-            usage: {
-              inputTokens: usage?.inputTokens || 0,
-              outputTokens: usage?.outputTokens || 0,
-              totalTokens: usage?.totalTokens || 0,
-            },
-            latencyMs,
-          },
-        })}\n\n`
-      );
+      // Usage of each model call and of the reply; none when the stream failed
+      const usage = await usageEvent(result, startTime);
+      if (usage) res.write(usage);
 
       res.write('data: [DONE]\n\n');
       res.end();

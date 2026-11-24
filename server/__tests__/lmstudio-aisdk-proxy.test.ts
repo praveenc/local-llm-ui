@@ -85,9 +85,16 @@ describe('LM Studio AI SDK proxy', () => {
     const content = parts.filter((p) => 'content' in p).map((p) => p.content);
     expect(content.join('')).toBe('Hello');
     const metadata = parts.find((p) => 'metadata' in p)?.metadata as {
-      usage: { inputTokens: number; outputTokens: number; totalTokens: number };
+      usage: Record<string, unknown>;
+      latencyMs: number;
     };
-    expect(metadata.usage).toEqual({ inputTokens: 3, outputTokens: 5, totalTokens: 8 });
+    expect(metadata.usage).toEqual({
+      inputTokens: 3,
+      outputTokens: 5,
+      totalTokens: 8,
+      steps: [{ inputTokens: 3, outputTokens: 5 }],
+    });
+    expect(metadata.latencyMs).toBeGreaterThanOrEqual(0);
     expect(body.trimEnd().endsWith('data: [DONE]')).toBe(true);
   });
 
