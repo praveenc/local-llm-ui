@@ -1,5 +1,6 @@
 import type { KiroLoginEvent, KiroLoginMethod } from '../utils/kiroLogin';
 import { type KiroModel, kiroSupportsThinking } from '../utils/kiroModels';
+import type { KiroPermissionAnswer } from '../utils/kiroPermissions';
 import {
   type KiroSessionOpenResponse,
   type KiroSessionSummary,
@@ -23,6 +24,9 @@ async function responseError(response: Response): Promise<string> {
 
 /** The picker's hint when Kiro is signed out */
 export const KIRO_SIGN_IN_MESSAGE = 'Sign in to Kiro in Preferences → Providers';
+
+/** The error when an answer comes after its question ended */
+export const KIRO_QUESTION_ENDED = 'This question has ended';
 
 /** Thrown when Kiro is signed out (401), so a caller can hide what needs Kiro */
 export class KiroSignedOutError extends Error {
@@ -122,6 +126,20 @@ export class KiroService {
     });
     if (!response.ok) throw new Error(await responseError(response));
     return (await response.json()) as KiroStatus;
+  }
+
+  /**
+   * Sends the user's answer to an open Kiro question. Throws the server's text on an error:
+   * "This question has ended" (404) when the question ended before the answer came.
+   */
+  async answerPermission(answer: KiroPermissionAnswer): Promise<void> {
+    const response = await fetch('/api/kiro/permission', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ requestId: answer.requestId, optionId: answer.optionId }),
+    });
+    if (response.status === 404) throw new Error(KIRO_QUESTION_ENDED);
+    if (!response.ok) throw new Error(await responseError(response));
   }
 
   /**

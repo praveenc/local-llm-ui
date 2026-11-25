@@ -126,7 +126,6 @@ export function createKiroReplayCollector(skipTurns: number): KiroReplayCollecto
         },
         toolName: kiroToolName,
         // The app denies nothing in a replay
-        deniedText: '',
         onOther: meta.onUpdate,
       });
       turn.meta = meta;

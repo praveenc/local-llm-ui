@@ -16,6 +16,7 @@ import type { AcpHarness, GuardContext } from './harness.ts';
 import { answerPermission, denyPermission } from './permissions.ts';
 import type {
   PermissionDecision,
+  PermissionEnd,
   PermissionHandler,
   PromptPermissionHandler,
 } from './permissions.ts';
@@ -122,6 +123,7 @@ interface ActivePrompt<TInfo> {
   gen: Generation<TInfo>;
   onUpdate: (update: SessionUpdate) => void;
   onPermission?: PromptPermissionHandler;
+  onPermissionEnd?: (end: PermissionEnd) => void;
   cancelled: boolean;
   cancelTimedOut: boolean;
   controller: AbortController;
@@ -364,6 +366,8 @@ export class AcpAgent<TInfo extends object> {
       signal?: AbortSignal;
       /** Answers this prompt's permission requests. Default: the agent's permissionHandler. */
       onPermission?: PromptPermissionHandler;
+      /** Called once when a question that `onPermission` got ends (answer, cancel, timeout) */
+      onPermissionEnd?: (end: PermissionEnd) => void;
     }
   ): Promise<StopReason> {
     const { agent } = this.harness.names;
@@ -378,6 +382,7 @@ export class AcpAgent<TInfo extends object> {
       gen,
       onUpdate: input.onUpdate,
       onPermission: input.onPermission,
+      onPermissionEnd: input.onPermissionEnd,
       cancelled: false,
       cancelTimedOut: false,
       controller: new AbortController(),
@@ -928,14 +933,23 @@ export class AcpAgent<TInfo extends object> {
     if (!active || active.gen !== gen || active.cancelled) {
       return { outcome: { outcome: 'cancelled' } };
     }
-    const signal = active.controller.signal;
+    const promptSignal = active.controller.signal;
+    // One signal per question: it aborts when the prompt ends and when this question ends
+    const question = new AbortController();
+    const onPromptEnd = () => question.abort();
+    promptSignal.addEventListener('abort', onPromptEnd, { once: true });
+    const signal = question.signal;
+    const requestId = randomUUID();
+    const toolCallId = String(request.toolCall?.toolCallId ?? '');
+    const onPermission = active.onPermission;
     const ask = async (): Promise<PermissionDecision> => {
-      if (active.onPermission) {
-        return active.onPermission({
-          requestId: randomUUID(),
-          toolCallId: String(request.toolCall?.toolCallId ?? ''),
+      if (onPermission) {
+        return onPermission({
+          requestId,
+          toolCallId,
           title: typeof request.toolCall?.title === 'string' ? request.toolCall.title : undefined,
           options,
+          meta: request._meta,
           signal,
         });
       }
@@ -945,13 +959,36 @@ export class AcpAgent<TInfo extends object> {
         signal,
       });
     };
-    return answerPermission({
-      options,
-      signal,
-      timeoutMs: this.permissionTimeoutMs,
-      cancelled: () => active.cancelled,
-      ask,
-    });
+    let answer: Awaited<ReturnType<typeof answerPermission>>;
+    try {
+      answer = await answerPermission({
+        options,
+        signal,
+        timeoutMs: this.permissionTimeoutMs,
+        cancelled: () => active.cancelled,
+        ask,
+      });
+    } finally {
+      promptSignal.removeEventListener('abort', onPromptEnd);
+      question.abort();
+    }
+    if (onPermission && active.onPermissionEnd) {
+      const selected = answer.outcome.outcome;
+      const optionId = selected.outcome === 'selected' ? selected.optionId : undefined;
+      const kind = options.find((o) => o.optionId === optionId)?.kind;
+      try {
+        active.onPermissionEnd({
+          requestId,
+          toolCallId,
+          end: answer.end,
+          ...(optionId !== undefined && { optionId }),
+          ...(kind !== undefined && { kind }),
+        });
+      } catch {
+        // The chat's callback must not change the agent's answer
+      }
+    }
+    return answer.outcome;
   }
 
   // --- idle ---

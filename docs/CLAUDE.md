@@ -63,9 +63,10 @@ Vite middleware keeps credentials and SDK calls on the server. Each chat proxy u
   - `POST /api/kiro/models` lists the Kiro models (a POST: a load can start Kiro CLI).
   - `POST /api/kiro/sessions` lists the Kiro sessions from `session/list` (id, folder name, title, last change, status; never-used sessions are left out; kept 60 s). A POST: it can start Kiro CLI.
   - `POST /api/kiro/sessions/open` loads one session from Kiro's list with replay and returns it as compact messages (JSON, at most 16 MB). It is read only, and it closes the session after the replay (`server/kiro/sessions.ts`, `server/kiro/replay.ts`).
-  - `POST /api/kiro/chat` streams a Kiro reply through one shared `kiro-cli acp` (`server/acp/agent.ts` with the Kiro harness in `server/kiro/harness.ts`; the route is `server/kiro/chat.ts`). It gets the new message, the earlier messages, and how many of them the Kiro session has seen (`src/utils/kiroChat.ts`).
+  - `POST /api/kiro/chat` streams a Kiro reply through one shared `kiro-cli acp` (`server/acp/agent.ts` with the Kiro harness in `server/kiro/harness.ts`; the route is `server/kiro/chat.ts`). It gets the new message, the earlier messages, and how many of them the Kiro session has seen (`src/utils/kiroChat.ts`). When Kiro asks to run a tool, it sends a `permission` event with a server-made `requestId` and Kiro's options, and a `permissionResult` event when the question ends (`src/utils/kiroPermissions.ts`).
+  - `POST /api/kiro/permission` answers one open Kiro question with `{ requestId, optionId }` (JSON, 1 KB at most; 404 for an unknown or ended question, 400 for an option that the question does not list). The open questions are in `server/acp/permission-registry.ts`. It never starts Kiro CLI.
 
-Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`, `kiroStatus.ts`, `kiroLogin.ts`, `kiroModels.ts`, `kiroChat.ts`, `kiroSessions.ts`). Keep these free of DOM and Node imports.
+Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`, `kiroStatus.ts`, `kiroLogin.ts`, `kiroModels.ts`, `kiroChat.ts`, `kiroPermissions.ts`, `kiroSessions.ts`). Keep these free of DOM and Node imports.
 
 ### Data Persistence (Dexie.js/IndexedDB)
 

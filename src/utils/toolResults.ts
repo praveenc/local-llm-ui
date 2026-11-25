@@ -5,6 +5,7 @@
  */
 import type { Provider } from '../db/types';
 import type { ToolCallPart } from '../types/ai-messages';
+import { approvalOutcome, toStoredApproval } from './kiroPermissions';
 import { WEB_SEARCH_PROVIDER_LABELS, isWebSearchProvider } from './webSearch';
 
 /** One web search result. Older chats saved Tavily results, which have the same fields. */
@@ -124,11 +125,13 @@ export function toolResultText(result: unknown): string {
 /**
  * The tool call failed: the proxy sent an error, or a web search failed on every provider. The
  * search tool returns those errors as its output (an `error` field and no results), not as a
- * tool error, so the model can read them.
+ * tool error, so the model can read them. A tool that the user denied, or whose question was
+ * not answered, did not fail.
  */
 export function isToolCallFailed(
-  part: Pick<ToolCallPart, 'toolName' | 'status' | 'result'>
+  part: Pick<ToolCallPart, 'toolName' | 'status' | 'result' | 'approvals'>
 ): boolean {
+  if (approvalOutcome(part.approvals)) return false;
   if (part.status === 'error') return true;
   if (!isWebSearchTool(part.toolName)) return false;
   return Boolean(parseSearchInfo(part.result).error) && !parseSearchResults(part.result)?.length;
@@ -139,7 +142,8 @@ const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0,
 /**
  * The tool call as it is stored with the reply. Search results keep their title, link and a
  * short snippet; other output keeps its first 8,000 characters. A call that has no result when
- * the reply ends is stored as failed.
+ * the reply ends is stored as failed. Kiro's questions keep only their answer: a question that
+ * is still open is stored as not answered.
  */
 export function toStoredToolCall(part: ToolCallPart): StoredToolCall {
   const status = part.status === 'pending' ? 'error' : part.status;
@@ -168,5 +172,6 @@ export function toStoredToolCall(part: ToolCallPart): StoredToolCall {
     args: part.args,
     status,
     ...(result !== undefined && { result }),
+    ...(part.approvals?.length && { approvals: part.approvals.map(toStoredApproval) }),
   };
 }

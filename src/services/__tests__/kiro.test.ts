@@ -278,6 +278,48 @@ describe('KiroService sign-in', () => {
   });
 });
 
+describe('KiroService.answerPermission', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const answer = { requestId: '0b6f0d2e-5a4c-4c1e-9a55-3f1f3b1f2a10', optionId: 'allow_once' };
+
+  const fetchAnswer = (status: number, body: unknown = { answered: true }) => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      json: () => Promise.resolve(body),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it('posts the request id and the option id as JSON', async () => {
+    const fetchMock = fetchAnswer(200);
+    await expect(new KiroService().answerPermission(answer)).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith('/api/kiro/permission', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(answer),
+    });
+  });
+
+  it('says that the question has ended on 404', async () => {
+    fetchAnswer(404, { error: 'Not found' });
+    await expect(new KiroService().answerPermission(answer)).rejects.toThrow(
+      'This question has ended'
+    );
+  });
+
+  it("throws the server's text on 400", async () => {
+    fetchAnswer(400, { error: 'Kiro did not offer this option' });
+    await expect(new KiroService().answerPermission(answer)).rejects.toThrow(
+      'Kiro did not offer this option'
+    );
+  });
+});
+
 describe('KiroService sessions', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

@@ -2,11 +2,10 @@
 // The messages are small hand-made copies of the shapes that kiro-cli 3.5.0 sends.
 //
 // FAKE_KIRO_MODE: ok | signed-out | auth-required | no-load | hang-new | crash-on-prompt |
-//   ignore-cancel | autopilot-stuck | autopilot-flip | load-error
+//   ignore-cancel | load-error
 // load-error: session/load answers an ACP error, like a damaged session on disk
 // auth-required: initialize succeeds, session/new answers -32000 'Authentication required'
 // FAKE_KIRO_HANG_NEW_AT: with hang-new, the session/new call (1-based) that hangs (default 1)
-// autopilot-flip: a prompt turns Autopilot on (with a config_option_update), then waits for cancel
 // FAKE_KIRO_STATE_DIR: folder for marker files (hang-new hangs on the first process only)
 // FAKE_KIRO_LOG: file; each received message is appended as one JSON line {pid, msg}
 // FAKE_KIRO_SPAWN_GRANDCHILD=1: start a long-lived process in its own process group
@@ -15,14 +14,15 @@
 //   `effortLevel` and a `thinking` option (a model change resets both), session.json on disk under
 //   $HOME/.kiro/sessions, and the title sent twice in a reply
 // FAKE_KIRO_NO_EFFORT=1: with FAKE_KIRO_CHAT, no `effortLevel` option (like kiro-cli 3.4)
-// FAKE_KIRO_SLOW_CONFIG_MS: set_config_option (other than autopilot) answers after this delay
+// FAKE_KIRO_SLOW_CONFIG_MS: set_config_option answers after this delay
 // FAKE_KIRO_SESSIONS=1 (K7): session/list with used, never-used, failed, and old sessions and a
 //   1 MB `customAgents` in each entry; session/load without `noReplay` of a listed session
 //   replays it (updates with `replay: true` before the answer, one without after it); every
 //   reply ends with `_kiro/sessions/changed`
 // lease mode (K7): session/prompt answers Kiro's SessionHeldElsewhereError
 // session/close answers {} and keeps the session's options for the next load, like Kiro
-// Prompt text: TOOL asks for a permission, WAIT waits for session/cancel, SLOW streams slowly,
+// Prompt text: TOOL asks a shell question and waits for the answer, WRITE asks for a file write and
+//   then "Review changes" (like Autopilot off), WAIT waits for session/cancel, SLOW streams slowly,
 //   TOOLOK runs a tool that completes, MCPTOOL runs an MCP tool, MAXTOKENS ends with max_tokens,
 //   CRASH exits during the reply, DISPLAYERR sends a display_error and no text, MCPERR sends an
 //   MCP connection display_error and no text.
@@ -209,6 +209,26 @@ function askAgent(method, params) {
   return new Promise((resolve) => waiters.set(id, resolve));
 }
 
+/**
+ * Like Kiro: a permission question that waits for the answer. On session/cancel the question is
+ * dropped at once and a late answer is ignored: the result is then `undefined`.
+ */
+async function askPermission(sessionId, params) {
+  let answer;
+  const pending = askAgent('session/request_permission', { sessionId, ...params }).then(
+    (msg) => (answer = msg)
+  );
+  while (answer === undefined && !cancelled.has(sessionId)) {
+    await Promise.race([pending, sleep(10)]);
+  }
+  return cancelled.has(sessionId) ? undefined : answer;
+}
+
+const optionKind = (params, answer) =>
+  params.options.find((o) => o.optionId === answer?.result?.outcome?.optionId)?.kind;
+
+const CANCELLED_TOOL = 'The tool call was cancelled before it was approved.';
+
 async function runPrompt(id, { sessionId, prompt }) {
   const text = prompt.map((b) => b.text ?? '').join(' ');
   const s = sessions.get(sessionId);
@@ -235,12 +255,6 @@ async function runPrompt(id, { sessionId, prompt }) {
     content: { type: 'text', text: `thinking about ${sessionId}` },
   });
   notify('_kiro/mcp/status', { sessionId, servers: [] });
-  if (mode === 'autopilot-flip') {
-    s.autopilot = 'on';
-    update(sessionId, { sessionUpdate: 'config_option_update', configOptions: options(s) });
-    while (!cancelled.has(sessionId)) await sleep(10);
-    return send({ id, result: { stopReason: 'cancelled' } });
-  }
   if (text.includes('DISPLAYERR') || text.includes('MCPERR')) {
     const mcp = text.includes('MCPERR');
     const displayError = mcp
@@ -288,6 +302,76 @@ async function runPrompt(id, { sessionId, prompt }) {
             { type: 'content', content: { type: 'text', text: 'line two' } },
           ],
     });
+  } else if (text.includes('WRITE')) {
+    const toolCallId = 'toolu_fake_write';
+    update(sessionId, {
+      sessionUpdate: 'tool_call',
+      toolCallId,
+      title: 'Write File',
+      kind: 'edit',
+      status: 'pending',
+      rawInput: { path: 'notes.txt' },
+    });
+    const write = {
+      toolCall: { toolCallId, status: 'pending', title: 'Write File' },
+      options: [
+        { optionId: 'w1', name: 'Allow', kind: 'allow_once' },
+        { optionId: 'w2', name: 'Always allow', kind: 'allow_always' },
+        { optionId: 'w3', name: 'Deny', kind: 'reject_once' },
+        { optionId: 'w4', name: 'Always deny', kind: 'reject_always' },
+      ],
+      _meta: {
+        kiro: {
+          toolId: 'fs_write',
+          askKind: 'tool_call_approval',
+          consent: { capability: 'fs_write', resource: 'notes.txt' },
+        },
+      },
+    };
+    const first = await askPermission(sessionId, write);
+    if (!first) {
+      update(sessionId, {
+        sessionUpdate: 'tool_call_update',
+        toolCallId,
+        status: 'failed',
+        rawOutput: { message: CANCELLED_TOOL },
+      });
+      return send({ id, result: { stopReason: 'cancelled' } });
+    }
+    let ok = optionKind(write, first)?.startsWith('allow') === true;
+    if (ok) {
+      const review = {
+        toolCall: { toolCallId: `turn_approval_${randomUUID()}`, title: 'Review changes' },
+        options: [
+          { optionId: 'r1', name: 'Accept changes', kind: 'allow_once' },
+          { optionId: 'r2', name: 'Reject changes', kind: 'reject_once' },
+        ],
+        _meta: {
+          kiro: {
+            type: 'turn_approval',
+            askKind: 'turn_approval',
+            files: [{ path: 'notes.txt', toolCallId }],
+          },
+        },
+      };
+      const second = await askPermission(sessionId, review);
+      if (!second) {
+        update(sessionId, {
+          sessionUpdate: 'tool_call_update',
+          toolCallId,
+          status: 'failed',
+          rawOutput: { message: CANCELLED_TOOL },
+        });
+        return send({ id, result: { stopReason: 'cancelled' } });
+      }
+      ok = optionKind(review, second) === 'allow_once';
+    }
+    update(sessionId, {
+      sessionUpdate: 'tool_call_update',
+      toolCallId,
+      status: ok ? 'completed' : 'failed',
+      rawOutput: { message: ok ? 'wrote notes.txt' : 'The user rejected this tool call.' },
+    });
   } else if (text.includes('TOOL')) {
     const toolCallId = `run_command_${randomUUID()}`;
     update(sessionId, {
@@ -298,8 +382,7 @@ async function runPrompt(id, { sessionId, prompt }) {
       status: 'pending',
       rawInput: { command: 'echo hi > hello.txt' },
     });
-    const answer = await askAgent('session/request_permission', {
-      sessionId,
+    const question = {
       toolCall: { toolCallId, status: 'pending', title: 'echo hi > hello.txt' },
       // The ids do not say the kind: a client must choose by kind
       options: [
@@ -308,10 +391,26 @@ async function runPrompt(id, { sessionId, prompt }) {
         { optionId: 'o3', name: 'Allow', kind: 'allow_once' },
         { optionId: 'o4', name: 'Always deny', kind: 'reject_always' },
       ],
-      _meta: { kiro: { toolId: 'run_command' } },
-    });
-    const allowed =
-      answer?.result?.outcome?.optionId === 'o1' || answer?.result?.outcome?.optionId === 'o3';
+      _meta: {
+        kiro: {
+          toolId: 'run_command',
+          command: 'echo hi > hello.txt',
+          askKind: 'tool_call_approval',
+          consent: { capability: 'shell', resource: 'echo hi > hello.txt' },
+        },
+      },
+    };
+    const answer = await askPermission(sessionId, question);
+    if (!answer) {
+      update(sessionId, {
+        sessionUpdate: 'tool_call_update',
+        toolCallId,
+        status: 'failed',
+        rawOutput: { message: CANCELLED_TOOL },
+      });
+      return send({ id, result: { stopReason: 'cancelled' } });
+    }
+    const allowed = optionKind(question, answer)?.startsWith('allow') === true;
     update(sessionId, {
       sessionUpdate: 'tool_call_update',
       toolCallId,
@@ -548,13 +647,11 @@ const handlers = {
     };
   },
   async 'session/set_config_option'({ sessionId, configId, value }) {
-    if (slowConfigMs > 0 && configId !== 'autopilot') await sleep(slowConfigMs);
+    if (slowConfigMs > 0) await sleep(slowConfigMs);
     const s = sessions.get(sessionId);
     if (!s) throw { code: -32602, message: 'Session not found' };
     // Like Kiro: no validation
-    if (configId === 'autopilot' && mode === 'autopilot-stuck') {
-      // stays on
-    } else if (value !== 'stuck-model') {
+    if (value !== 'stuck-model') {
       s[configId] = value;
       if (chat && configId === 'model') {
         // Like Kiro: a model change resets the effort to the model's default

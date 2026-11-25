@@ -12,6 +12,8 @@
  *   servers) and makes and deletes a session: no GET under /api/kiro may change state (SEC-13),
  *   and the guard's JSON check applies only to a request with a body
  * - POST /api/kiro/chat: one Kiro reply as SSE (server/kiro/chat.ts)
+ * - POST /api/kiro/permission: the answer `{ requestId, optionId }` to an open Kiro question
+ *   (server/kiro/permission-route.ts); it never starts Kiro CLI
  * - POST /api/kiro/sessions, POST /api/kiro/sessions/open: Kiro's session list and one session's
  *   replay as JSON (server/kiro/sessions.ts). POSTs: both can start `kiro-cli acp`
  *
@@ -32,6 +34,7 @@ import type { Connect } from 'vite';
 import { parseKiroLoginMethod } from '../src/utils/kiroLogin.ts';
 import type { KiroLoginEvent } from '../src/utils/kiroLogin.ts';
 import type { KiroStatus } from '../src/utils/kiroStatus.ts';
+import { createPermissionRegistry } from './acp/permission-registry.ts';
 import { getKiroAgent, shutdownKiroAgent } from './kiro/agent.ts';
 import type { KiroEnvironment } from './kiro/binary.ts';
 import { createKiroChatHandler } from './kiro/chat.ts';
@@ -45,6 +48,7 @@ import {
 import type { KiroLogin } from './kiro/login.ts';
 import { createKiroModelList } from './kiro/models.ts';
 import type { KiroModelList } from './kiro/models.ts';
+import { createKiroPermissionHandler } from './kiro/permission-route.ts';
 import { createKiroSessionsHandler } from './kiro/sessions.ts';
 import type { KiroSessionsAgent } from './kiro/sessions.ts';
 import { createKiroStatusReader } from './kiro/status.ts';
@@ -72,6 +76,8 @@ export interface KiroProxyOptions {
   modelsTtlMs?: number;
   /** How long a chat request waits for a running reply in its session. Default: cancelWait. */
   chatBusyWaitMs?: number;
+  /** How often a chat with an open question sends a `: ping` comment. Tests make it short. */
+  chatPingMs?: number;
 }
 
 const LOGIN_BODY_LIMIT = 16 * 1024;
@@ -100,6 +106,9 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
   let login: KiroLogin | undefined;
   let models: KiroModelList | undefined;
   let chat: ReturnType<typeof createKiroChatHandler> | undefined;
+  // The open Kiro questions of all chats: the chat route asks, the permission route answers
+  const permissions = createPermissionRegistry();
+  const answerPermission = createKiroPermissionHandler(permissions);
   let sessions: ReturnType<typeof createKiroSessionsHandler> | undefined;
   let usedSharedAgent = false;
   const getAgent = () => {
@@ -129,6 +138,8 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
       models: getModels(),
       environment: options.environment,
       busyWaitMs: options.chatBusyWaitMs,
+      permissions,
+      pingMs: options.chatPingMs,
     }));
 
   const getSessions = () =>
@@ -260,6 +271,15 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
           return;
         }
         await getChat()(req, res);
+        return;
+      }
+
+      if (pathname === '/api/kiro/permission') {
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { error: 'Method not allowed' }, { Allow: 'POST' });
+          return;
+        }
+        await answerPermission(req, res);
         return;
       }
 

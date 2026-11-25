@@ -5,6 +5,7 @@
  */
 import type { Provider } from '../db/types';
 import type { ToolCallPart } from '../types/ai-messages';
+import { approvalOutcome, openQuestion, questionLine } from './kiroPermissions';
 import { argsSummary } from './toolCallSummary';
 import { isToolCallFailed, isWebSearchTool, parseSearchResults, toolLabel } from './toolResults';
 
@@ -13,6 +14,10 @@ export interface WorkSummary {
   parts: string[];
   /** Tool calls that failed; shown as "1 failed" */
   failed: number;
+  /** Kiro tool calls that the user denied; shown as "1 denied" (not an error) */
+  denied: number;
+  /** Kiro tool calls whose question ended without an answer; shown as "1 not answered" */
+  notAnswered: number;
 }
 
 /** The most distinct tool names listed one by one; more are counted as "N tool calls" */
@@ -64,14 +69,21 @@ export function summarizeWork({
     for (const [name, count] of byName) parts.push(`${plural(count, `${name} call`)}`);
   }
 
-  return { parts, failed: toolCalls.filter(isToolCallFailed).length };
+  const outcomes = toolCalls.map((t) => approvalOutcome(t.approvals));
+  return {
+    parts,
+    failed: toolCalls.filter(isToolCallFailed).length,
+    denied: outcomes.filter((o) => o === 'denied').length,
+    notAnswered: outcomes.filter((o) => o === 'not-answered').length,
+  };
 }
 
 const shorten = (text: string, max = 60) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
 /**
- * The step that runs now, while the reply streams: the tool that waits for its result, else
- * "Thinking…" before any answer text. Undefined once the answer text streams.
+ * The step that runs now, while the reply streams: Kiro's open question, else the tool that waits
+ * for its result, else "Thinking…" before any answer text. Undefined once the answer text streams
+ * and no question is open.
  */
 export function currentStep({
   hasReasoning,
@@ -84,6 +96,10 @@ export function currentStep({
   toolCalls: ToolCallPart[];
   provider?: Provider;
 }): string | undefined {
+  for (const t of toolCalls) {
+    const open = openQuestion(t.approvals);
+    if (open) return questionLine(open);
+  }
   const pending = [...toolCalls].reverse().find((t) => t.status === 'pending');
   if (pending) {
     const target = argsSummary(pending.args);
