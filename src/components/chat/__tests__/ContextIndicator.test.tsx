@@ -1,9 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatUsage } from '../../../utils/chatUsage';
+import type { KiroUsage } from '../../../utils/kiroUsage';
 import { ContextIndicator } from '../ContextIndicator';
+
+const kiroUsage = vi.hoisted(() => ({ value: undefined as KiroUsage | null | undefined }));
+vi.mock('../../../hooks/useKiroUsage', () => ({ useKiroUsage: () => kiroUsage.value }));
 
 const usage = (overrides: Partial<ChatUsage> = {}): ChatUsage => ({
   contextTokens: 1200,
@@ -100,5 +104,43 @@ describe('ContextIndicator', () => {
       <ContextIndicator usage={usage({ contextTokens: 0 })} maxTokens={10000} />
     );
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('ContextIndicator for Kiro', () => {
+  beforeEach(() => {
+    kiroUsage.value = undefined;
+  });
+
+  const kiroChat = () => usage({ credits: 0.25, kiroReplies: 2, contextPercent: 30 });
+
+  it('shows the credits of the chat and the plan and credits of the account', async () => {
+    const user = userEvent.setup();
+    kiroUsage.value = {
+      planName: 'KIRO POWER',
+      resetDate: '2026-12-01',
+      credits: { used: 1250, limit: 10000, percentage: 12, overages: 0, hasLimit: true },
+      overagesEnabled: false,
+    };
+    render(<ContextIndicator usage={kiroChat()} maxTokens={100} kiro />);
+    await user.click(screen.getByRole('button', { name: /Context used: 30%/ }));
+    expect(await screen.findByText('Credits in this chat')).toBeInTheDocument();
+    expect(screen.getByText('0.25 credits')).toBeInTheDocument();
+    expect(screen.getByText('Kiro account')).toBeInTheDocument();
+    expect(
+      screen.getByText('Kiro Power · 1,250 of 10,000 credits used · resets 1 Dec')
+    ).toBeInTheDocument();
+  });
+
+  it('shows no account line while it loads or when Kiro cannot tell', async () => {
+    const user = userEvent.setup();
+    for (const value of [undefined, null]) {
+      kiroUsage.value = value;
+      const { unmount } = render(<ContextIndicator usage={kiroChat()} maxTokens={100} kiro />);
+      await user.click(screen.getByRole('button', { name: /Context used: 30%/ }));
+      expect(await screen.findByText('Credits in this chat')).toBeInTheDocument();
+      expect(screen.queryByText('Kiro account')).not.toBeInTheDocument();
+      unmount();
+    }
   });
 });

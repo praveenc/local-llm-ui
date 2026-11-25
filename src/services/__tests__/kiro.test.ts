@@ -138,6 +138,49 @@ const sseResponse = (chunks: string[]) => {
   };
 };
 
+describe('KiroService.getUsage', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const usage = {
+    planName: 'KIRO POWER',
+    resetDate: '2026-12-01',
+    credits: { used: 1250, limit: 10000, percentage: 12, overages: 0, hasLimit: true },
+    overagesEnabled: false,
+  };
+
+  const fetchUsage = (status: number, body: unknown) => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      json: () => Promise.resolve(body),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it('posts JSON to /api/kiro/usage and returns the usage', async () => {
+    const fetchMock = fetchUsage(200, { usage });
+    await expect(new KiroService().getUsage()).resolves.toEqual(usage);
+    expect(fetchMock).toHaveBeenCalledWith('/api/kiro/usage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+  });
+
+  it('returns null when Kiro cannot tell', async () => {
+    fetchUsage(200, { usage: null });
+    await expect(new KiroService().getUsage()).resolves.toBeNull();
+  });
+
+  it('throws when the server answers with an error', async () => {
+    fetchUsage(500, {});
+    await expect(new KiroService().getUsage()).rejects.toThrow('HTTP error! status: 500');
+  });
+});
+
 describe('KiroService sign-in', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
