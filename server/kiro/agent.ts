@@ -4,7 +4,8 @@
  * The generic ACP agent (`../acp/agent.ts`) with the Kiro harness (`harness.ts`): it starts on
  * the first use and stops after 10 idle minutes. One process holds many sessions. After a crash,
  * a stop, or an idle stop, a session is not live: `ensureSession` opens it again with
- * `session/load`. Every session gets Autopilot off (D7), read back from Kiro (`autopilot.ts`).
+ * `session/load`. Sessions keep Kiro's own defaults (Autopilot as in the terminal); Kiro asks
+ * its permission questions in the chat (`approvals.ts`, D16, D17).
  *
  * Logs lifecycle lines only. Never log prompt text, tool input, or the account.
  */
@@ -17,6 +18,7 @@ export { AcpError, AcpTimeoutError } from '../acp/client.ts';
 export { denyPermission, optionIdForKind } from '../acp/permissions.ts';
 export type {
   PermissionDecision,
+  PermissionEnd,
   PermissionHandler,
   PermissionQuestion,
   PromptPermissionHandler,

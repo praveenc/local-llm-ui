@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Conversation, Message } from '../../db/types';
-import { KIRO_DENIED_TOOL } from '../../utils/kiroChat';
+import type { ToolCallPart } from '../../types/ai-messages';
 import type { ChatModel } from '../useBedrockChat';
 import { useBedrockChat } from '../useBedrockChat';
 
@@ -321,11 +321,11 @@ describe('useBedrockChat with Kiro', () => {
     });
   });
 
-  it('stores a denied tool call as failed, with the reason', async () => {
+  it('stores a tool error with no question as failed, with the reason', async () => {
     mockKiroFetch([
       { session: { id: SESSION, created: true } },
       { toolCall: { id: 't1', name: 'run_command', args: { command: 'ls' } } },
-      { toolResult: { id: 't1', name: 'run_command', error: KIRO_DENIED_TOOL } },
+      { toolResult: { id: 't1', name: 'run_command', error: 'Command failed' } },
       { content: 'I could not run it.' },
       '[DONE]',
     ]);
@@ -340,9 +340,10 @@ describe('useBedrockChat with Kiro', () => {
         toolCallId: 't1',
         toolName: 'run_command',
         status: 'error',
-        result: KIRO_DENIED_TOOL,
+        result: 'Command failed',
       }),
     ]);
+    expect((reply?.toolCalls as unknown[] | undefined)?.[0]).not.toHaveProperty('approvals');
   });
 
   it('sends only a thinking effort that the model offers', async () => {
@@ -487,5 +488,242 @@ describe('useBedrockChat with Kiro', () => {
     expect(body.messages).toEqual([expect.objectContaining({ role: 'user', content: 'question' })]);
     expect(mutations.addMessage.mock.calls.filter(([m]) => m.role === 'user')).toHaveLength(1);
     expect(result.current.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+  });
+});
+
+describe('useBedrockChat with Kiro questions', () => {
+  const R1 = '00000000-0000-4000-8000-00000000000a';
+  const R2 = '00000000-0000-4000-8000-00000000000b';
+  const shellOptions = [
+    { optionId: 'allow_once', name: 'Allow', kind: 'allow_once' },
+    { optionId: 'allow_always', name: 'Always allow', kind: 'allow_always' },
+    { optionId: 'reject_once', name: 'Deny', kind: 'reject_once' },
+    { optionId: 'reject_always', name: 'Always deny', kind: 'reject_always' },
+  ];
+  const shellCall = { toolCall: { id: 't1', name: 'shell', args: { command: 'echo hi' } } };
+  const shellQuestion = {
+    permission: {
+      requestId: R1,
+      toolCallId: 't1',
+      title: 'echo hi',
+      command: 'echo hi',
+      options: shellOptions,
+    },
+  };
+
+  const toolParts = (messages: { parts: unknown[] }[]) =>
+    (messages.at(-1)?.parts ?? []).filter(
+      (p): p is ToolCallPart => (p as ToolCallPart).type === 'tool-call'
+    );
+  const storedReply = () =>
+    mutations.addMessage.mock.calls.find(([m]) => m.role === 'assistant')?.[0] as
+      { toolCalls?: unknown[] } | undefined;
+
+  it('puts the question on its tool call, open, until its result ends it', async () => {
+    const { reader, release } = mockKiroFetch(
+      [
+        { session: { id: SESSION, created: true } },
+        shellCall,
+        shellQuestion,
+        {
+          permissionResult: {
+            requestId: R1,
+            optionId: 'reject_once',
+            kind: 'reject_once',
+            outcome: 'answered',
+          },
+        },
+        { toolResult: { id: 't1', name: 'shell', error: 'The user rejected it' } },
+        { content: 'Not run.' },
+        '[DONE]',
+      ],
+      { before: 3 }
+    );
+    const { result } = renderHook(() => useBedrockChat(options()));
+    let sending: Promise<void>;
+    act(() => {
+      sending = result.current.sendMessage('run it');
+    });
+    await waitFor(() => expect(reader.read).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(toolParts(result.current.messages)[0]?.approvals).toBeDefined());
+    expect(toolParts(result.current.messages)[0].approvals).toEqual([
+      { requestId: R1, state: 'open', title: 'echo hi', command: 'echo hi', options: shellOptions },
+    ]);
+
+    release();
+    await act(async () => {
+      await sending;
+    });
+    expect(toolParts(result.current.messages)[0].approvals).toEqual([
+      { requestId: R1, state: 'answered', kind: 'reject_once' },
+    ]);
+    expect(storedReply()?.toolCalls).toEqual([
+      expect.objectContaining({
+        toolCallId: 't1',
+        status: 'error',
+        approvals: [{ requestId: R1, state: 'answered', kind: 'reject_once' }],
+      }),
+    ]);
+  });
+
+  it('puts "Review changes" on the write, and keeps a question that comes before its tool call', async () => {
+    mockKiroFetch([
+      { session: { id: SESSION, created: true } },
+      {
+        permission: {
+          requestId: R1,
+          toolCallId: 'w1',
+          title: 'Write File',
+          resource: 'notes.txt',
+          options: shellOptions,
+        },
+      },
+      { toolCall: { id: 'w1', name: 'write', args: { path: 'notes.txt' } } },
+      {
+        permissionResult: {
+          requestId: R1,
+          optionId: 'allow_once',
+          kind: 'allow_once',
+          outcome: 'answered',
+        },
+      },
+      {
+        permission: {
+          requestId: R2,
+          toolCallId: 'turn_approval_1',
+          title: 'Review changes',
+          review: true,
+          relatedToolCallIds: ['w1'],
+          options: [
+            { optionId: 'accept', name: 'Accept changes', kind: 'allow_once' },
+            { optionId: 'reject', name: 'Reject changes', kind: 'reject_once' },
+          ],
+        },
+      },
+      {
+        permissionResult: {
+          requestId: R2,
+          optionId: 'accept',
+          kind: 'allow_once',
+          outcome: 'answered',
+        },
+      },
+      { toolResult: { id: 'w1', name: 'write', result: 'ok' } },
+      '[DONE]',
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options()));
+    await act(async () => {
+      await result.current.sendMessage('write it');
+    });
+
+    const parts = toolParts(result.current.messages);
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toMatchObject({ toolCallId: 'w1', toolName: 'write', status: 'complete' });
+    expect(parts[0].approvals).toEqual([
+      { requestId: R1, state: 'answered', kind: 'allow_once' },
+      { requestId: R2, state: 'answered', kind: 'allow_once', review: true },
+    ]);
+  });
+
+  it('gives a question with no known tool call a line of its own', async () => {
+    mockKiroFetch([
+      { session: { id: SESSION, created: true } },
+      {
+        permission: {
+          requestId: R1,
+          toolCallId: 'turn_approval_9',
+          title: 'Review changes',
+          review: true,
+          relatedToolCallIds: ['gone'],
+          options: shellOptions,
+        },
+      },
+      { permissionResult: { requestId: R1, outcome: 'timeout' } },
+      '[DONE]',
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options()));
+    await act(async () => {
+      await result.current.sendMessage('x');
+    });
+    const parts = toolParts(result.current.messages);
+    expect(parts).toEqual([
+      expect.objectContaining({
+        toolCallId: 'turn_approval_9',
+        toolName: 'Review changes',
+        approvals: [{ requestId: R1, state: 'not-answered', review: true }],
+      }),
+    ]);
+  });
+
+  it('ends an open question as not answered when the stream ends without its result', async () => {
+    mockKiroFetch([
+      { session: { id: SESSION, created: true } },
+      shellCall,
+      shellQuestion,
+      '[DONE]',
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options()));
+    await act(async () => {
+      await result.current.sendMessage('run it');
+    });
+    expect(toolParts(result.current.messages)[0].approvals).toEqual([
+      { requestId: R1, state: 'not-answered' },
+    ]);
+    expect(storedReply()?.toolCalls).toEqual([
+      expect.objectContaining({ approvals: [{ requestId: R1, state: 'not-answered' }] }),
+    ]);
+  });
+
+  it('ends an open question as not answered after Stop', async () => {
+    const { reader } = mockKiroFetch(
+      [{ session: { id: SESSION, created: true } }, shellCall, shellQuestion],
+      { before: 3 }
+    );
+    const { result } = renderHook(() => useBedrockChat(options()));
+    let sending: Promise<void>;
+    act(() => {
+      sending = result.current.sendMessage('run it');
+    });
+    await waitFor(() => expect(reader.read).toHaveBeenCalledTimes(4));
+    act(() => result.current.stopGeneration());
+    await act(async () => {
+      await sending;
+    });
+    expect(result.current.status).toBe('idle');
+    expect(toolParts(result.current.messages)[0].approvals).toEqual([
+      { requestId: R1, state: 'not-answered' },
+    ]);
+  });
+
+  it('ends an open question as not answered after a stream error', async () => {
+    mockKiroFetch([
+      { session: { id: SESSION, created: true } },
+      shellCall,
+      shellQuestion,
+      { error: 'Kiro stopped' },
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options()));
+    await act(async () => {
+      await result.current.sendMessage('run it');
+    });
+    expect(result.current.error).toBe('Kiro stopped');
+    expect(toolParts(result.current.messages)[0].approvals).toEqual([
+      { requestId: R1, state: 'not-answered' },
+    ]);
+  });
+
+  it('skips a question that is not valid', async () => {
+    mockKiroFetch([
+      { session: { id: SESSION, created: true } },
+      shellCall,
+      { permission: { requestId: R1, toolCallId: 't1', options: [] } },
+      { toolResult: { id: 't1', name: 'shell', result: 'hi' } },
+      '[DONE]',
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options()));
+    await act(async () => {
+      await result.current.sendMessage('run it');
+    });
+    expect(toolParts(result.current.messages)[0]).not.toHaveProperty('approvals');
   });
 });

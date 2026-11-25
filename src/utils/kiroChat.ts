@@ -7,6 +7,7 @@
  * It sends the new message, the earlier messages, and how many of those Kiro has seen. The server
  * puts the ones that Kiro has not seen in front of the new message, once.
  */
+import type { KiroPermissionEvent } from './kiroPermissions.ts';
 import { type ThinkingEffort, isThinkingEffort } from './thinkingEffort.ts';
 
 /** A Kiro session id: sess_ and a UUID */
@@ -49,10 +50,9 @@ export type KiroChatEvent =
   /** Progress before the first output, for example "Starting Kiro…" */
   | { status: string }
   /** Kiro's short title for the chat */
-  | { title: string };
-
-/** Shown on a tool call that the app denied, until the approval UI (K6) */
-export const KIRO_DENIED_TOOL = 'Denied: approvals come in a later version';
+  | { title: string }
+  /** Kiro asks a permission question, and the question ended (`kiroPermissions.ts`) */
+  | KiroPermissionEvent;
 
 /** Notices for a reply that ended for a reason other than end_turn or cancelled */
 export const KIRO_STOP_NOTICES: Readonly<Record<string, string>> = {
