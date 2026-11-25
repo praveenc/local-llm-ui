@@ -57,7 +57,7 @@ Vite middleware keeps credentials and SDK calls on the server. Each chat proxy u
 - `/api/lmstudio`, `/api/ollama` → plain HTTP proxies
 - `/api/kiro` → Kiro CLI (`server/kiro-proxy.ts`, `server/kiro/`). `GET /api/kiro/status` runs `kiro-cli --version` and `kiro-cli whoami -f json` with `execFile` (no shell) and keeps the result 30 s. `POST /api/kiro/login` runs `kiro-cli login --use-device-flow` and streams the code and the sign-in URL as SSE; `POST /api/kiro/login/cancel` and `POST /api/kiro/logout`
 
-Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`, `kiroStatus.ts`). Keep these free of DOM and Node imports.
+Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`, `kiroStatus.ts`, `kiroLogin.ts`). Keep these free of DOM and Node imports.
 
 ### Data Persistence (Dexie.js/IndexedDB)
 

@@ -152,7 +152,9 @@ Support for Kiro comes in steps. In this version, you can sign in to Kiro from t
 4. The sign-in page opens in a new browser tab. Make sure that the page shows the same code as the Kiro row, then approve the sign-in.
 5. The Kiro row shows **Signed in**, with the account, the sign-in method, and the Kiro CLI version.
 
-The sign-in stops when you click **Cancel**, or after 10 minutes. You can also sign in in a terminal with `kiro-cli login`, then click **Check again**. If you select Kiro as the default provider while you are signed out, the app starts the sign-in first.
+The sign-in stops when you click **Cancel**, when you close or reload the page, or after 10 minutes. You can also sign in in a terminal with `kiro-cli login`, then click **Check again**.
+
+If you select Kiro as the default provider while you are signed out, the app opens the sign-in form. Kiro becomes the default provider when that sign-in is complete.
 
 To sign out, click **Sign out** in the Kiro row. This also signs out Kiro CLI in your terminals and in other apps on the same computer.
 
