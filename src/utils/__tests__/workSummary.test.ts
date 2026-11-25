@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ToolCallPart } from '../../types/ai-messages';
-import { shortToolName, toStoredToolCall, toolResultText } from '../toolResults';
+import { shortToolName, toStoredToolCall, toolLabel, toolResultText } from '../toolResults';
 import { currentStep, summarizeWork, thoughtLabel } from '../workSummary';
 
 const call = (overrides: Partial<ToolCallPart>): ToolCallPart => ({
@@ -151,6 +151,53 @@ describe('tool results', () => {
   it('shortens MCP tool names', () => {
     expect(shortToolName('fetchv2__fetch')).toBe('fetch');
     expect(shortToolName('webSearch')).toBe('webSearch');
+    // Kiro's MCP tools: @server/tool
+    expect(shortToolName('@fetch/fetch_url')).toBe('fetch_url');
+  });
+
+  it('reads Kiro tool names as words', () => {
+    expect(toolLabel('run_command', 'kiro')).toBe('run command');
+    expect(toolLabel('@github/list_issues', 'kiro')).toBe('list issues');
+    expect(toolLabel('read', 'kiro')).toBe('read');
+  });
+
+  it('keeps the MCP tool names of other providers', () => {
+    expect(toolLabel('fetchv2__fetch_url', 'bedrock')).toBe('fetch_url');
+    expect(toolLabel('fetch_url')).toBe('fetch_url');
+    expect(
+      summarizeWork({
+        hasReasoning: false,
+        provider: 'bedrock',
+        toolCalls: [call({ toolName: 'fetchv2__fetch_url' })],
+      }).parts
+    ).toEqual(['1 fetch_url call']);
+  });
+});
+
+describe('Kiro tool calls in the work row', () => {
+  it('names Kiro tools in words and counts a denied tool as failed', () => {
+    const summary = summarizeWork({
+      hasReasoning: false,
+      provider: 'kiro',
+      toolCalls: [
+        call({
+          toolName: 'run_command',
+          args: { command: 'ls' },
+          status: 'error',
+          result: 'Denied: approvals come in a later version',
+        }),
+      ],
+    });
+    expect(summary.parts).toEqual(['1 run command call']);
+    expect(summary.failed).toBe(1);
+    expect(
+      currentStep({
+        hasReasoning: false,
+        hasText: false,
+        provider: 'kiro',
+        toolCalls: [call({ toolName: 'read_file', args: { path: 'a.ts' }, status: 'pending' })],
+      })
+    ).toBe('Running read file · a.ts');
   });
 
   it('reads the text of an MCP result', () => {

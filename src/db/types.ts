@@ -66,6 +66,21 @@ export interface Conversation {
   totalOutputTokens: number;
   providers: Provider[];
   models: string[];
+  /**
+   * The Kiro session of this chat and how many of its messages the session has seen (D12).
+   * Not indexed, so no schema version change.
+   */
+  kiro?: KiroConversationSession;
+  /** The user renamed the chat, so Kiro's title does not replace it */
+  titleEdited?: boolean;
+  /** The title is Kiro's short title, so a later Kiro title may replace it */
+  titleFromKiro?: boolean;
+}
+
+export interface KiroConversationSession {
+  sessionId: string;
+  /** How many of the chat's messages (with text, from the start) the session has seen */
+  seenMessages: number;
 }
 
 // Input types for creating new records (id is auto-generated)

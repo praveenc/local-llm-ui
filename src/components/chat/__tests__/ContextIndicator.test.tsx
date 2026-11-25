@@ -19,6 +19,8 @@ const usage = (overrides: Partial<ChatUsage> = {}): ChatUsage => ({
   unpricedReplies: 0,
   allLocal: false,
   replyCosts: new Map(),
+  credits: 0,
+  kiroReplies: 0,
   ...overrides,
 });
 

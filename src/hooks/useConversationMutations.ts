@@ -3,7 +3,13 @@
  */
 import { useCallback } from 'react';
 
-import type { Conversation, CreateMessageInput, Message, MessageFeedback } from '../db';
+import type {
+  Conversation,
+  CreateMessageInput,
+  KiroConversationSession,
+  Message,
+  MessageFeedback,
+} from '../db';
 import { conversationService } from '../services';
 
 interface UseConversationMutationsResult {
@@ -17,6 +23,12 @@ interface UseConversationMutationsResult {
   clearAllConversations: () => Promise<void>;
   forkConversation: (sourceId: string, messageCount: number) => Promise<Conversation>;
   setMessageFeedback: (messageId: string, feedback: MessageFeedback | null) => Promise<void>;
+  /** The conversation as stored now, for values that the chat reads at send time */
+  getConversation: (id: string) => Promise<Conversation | undefined>;
+  /** The stored messages of a conversation, in order */
+  getMessages: (conversationId: string) => Promise<Message[]>;
+  setKiroSession: (id: string, kiro: KiroConversationSession | undefined) => Promise<void>;
+  setTitleFromKiro: (id: string, title: string) => Promise<void>;
 }
 
 export function useConversationMutations(): UseConversationMutationsResult {
@@ -66,6 +78,24 @@ export function useConversationMutations(): UseConversationMutationsResult {
     []
   );
 
+  const getConversation = useCallback(async (id: string) => conversationService.get(id), []);
+
+  const getMessages = useCallback(
+    async (conversationId: string) => conversationService.getMessages(conversationId),
+    []
+  );
+
+  const setKiroSession = useCallback(
+    async (id: string, kiro: KiroConversationSession | undefined) =>
+      conversationService.setKiroSession(id, kiro),
+    []
+  );
+
+  const setTitleFromKiro = useCallback(
+    async (id: string, title: string) => conversationService.setTitleFromKiro(id, title),
+    []
+  );
+
   return {
     createConversation,
     archiveConversation,
@@ -77,5 +107,9 @@ export function useConversationMutations(): UseConversationMutationsResult {
     clearAllConversations,
     forkConversation,
     setMessageFeedback,
+    getConversation,
+    getMessages,
+    setKiroSession,
+    setTitleFromKiro,
   };
 }

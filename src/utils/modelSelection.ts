@@ -9,6 +9,35 @@ export interface ModelRef {
   provider: Provider;
 }
 
+/** Model to select once the model list has loaded */
+export type PendingModel =
+  | { kind: 'conversation'; conversationId: string; model: ModelRef }
+  | {
+      kind: 'default';
+      provider: Provider;
+      last?: ModelRef;
+      preferred?: ModelRef;
+      any?: ModelRef;
+    };
+
+/**
+ * The app waits for Kiro's model list only when the model to restore, or the selected model,
+ * can be a Kiro model. Kiro takes seconds to start, so other users must not wait for it.
+ */
+export const needsKiroModels = (
+  providers: ProviderModels[],
+  pending: PendingModel | null,
+  selected?: { provider: Provider } | null
+): boolean => {
+  if (selected?.provider === 'kiro') return true;
+  if (!pending) return false;
+  if (pending.kind === 'conversation') return pending.model.provider === 'kiro';
+  if (pending.provider === 'kiro' || pending.last?.provider === 'kiro') return true;
+  // The last model of any provider counts only when the preferred provider has no models
+  const preferredModels = providers.find((p) => p.provider === pending.provider)?.models ?? [];
+  return preferredModels.length === 0 && pending.any?.provider === 'kiro';
+};
+
 /**
  * The loaded model that matches a reference, or null when that model is not available
  */

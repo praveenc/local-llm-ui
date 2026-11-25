@@ -1,4 +1,5 @@
 import type { KiroLoginEvent, KiroLoginMethod } from '../utils/kiroLogin';
+import { type KiroModel, kiroSupportsThinking } from '../utils/kiroModels';
 import type { KiroStatus } from '../utils/kiroStatus';
 import type { ModelInfo } from './types';
 
@@ -12,6 +13,9 @@ async function responseError(response: Response): Promise<string> {
   }
   return `HTTP error! status: ${response.status}`;
 }
+
+/** The picker's hint when Kiro is signed out */
+export const KIRO_SIGN_IN_MESSAGE = 'Sign in to Kiro in Preferences → Providers';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -105,9 +109,31 @@ export class KiroService {
     return (await response.json()) as KiroStatus;
   }
 
-  // Kiro lists no models until the chat works
-  async getModels(): Promise<ModelInfo[]> {
-    return [];
+  /**
+   * Kiro's models, in Kiro's order. [] when kiro-cli is not installed or too old, so the picker
+   * shows no Kiro group. Throws a message for the picker when Kiro is signed out (401) or the
+   * server cannot ask Kiro (503). `refresh` skips the server cache.
+   */
+  async getModels(refresh = false): Promise<ModelInfo[]> {
+    // A POST: listing the models can start kiro-cli, so it goes through the JSON check
+    const response = await fetch('/api/kiro/models', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify(refresh ? { refresh: true } : {}),
+    });
+    if (response.status === 401) throw new Error(KIRO_SIGN_IN_MESSAGE);
+    if (!response.ok) throw new Error(await responseError(response));
+    const body = (await response.json()) as { models?: unknown };
+    const models = Array.isArray(body.models) ? (body.models as KiroModel[]) : [];
+    return models
+      .filter((m) => m && typeof m.id === 'string' && typeof m.name === 'string')
+      .map(({ id, name, ...kiro }) => ({
+        modelId: id,
+        modelName: name,
+        provider: 'kiro',
+        supportsThinking: kiroSupportsThinking(kiro),
+        kiro,
+      }));
   }
 }
 

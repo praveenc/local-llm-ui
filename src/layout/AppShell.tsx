@@ -19,8 +19,13 @@ import {
   systemVisualMode,
   toggledVisualMode,
 } from '../utils/colorThemes';
-import { findModel, pickDefaultModel, pickLocalModel } from '../utils/modelSelection';
-import type { ModelRef } from '../utils/modelSelection';
+import {
+  findModel,
+  needsKiroModels,
+  pickDefaultModel,
+  pickLocalModel,
+} from '../utils/modelSelection';
+import type { ModelRef, PendingModel } from '../utils/modelSelection';
 import {
   clearLastSelectedModel,
   loadLastSelectedModel,
@@ -29,7 +34,7 @@ import {
   savePreferences,
 } from '../utils/preferences';
 import type { Provider, UserPreferences } from '../utils/preferences';
-import { getDefaultThinkingEffort } from '../utils/thinkingEffort';
+import { effortForModel, getDefaultThinkingEffort } from '../utils/thinkingEffort';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
 import { loadMaxToolSteps, saveMaxToolSteps } from '../utils/toolSteps';
 import {
@@ -38,17 +43,6 @@ import {
   resolveWebSearch,
 } from '../utils/webSearch';
 import { AppLayout } from './AppLayout';
-
-/** Model to select once the model list has loaded */
-type PendingModel =
-  | { kind: 'conversation'; conversationId: string; model: ModelRef }
-  | {
-      kind: 'default';
-      provider: Provider;
-      last?: ModelRef;
-      preferred?: ModelRef;
-      any?: ModelRef;
-    };
 
 const toModelRef = (message?: { modelId: string; provider: Provider }): ModelRef | undefined =>
   message ? { id: message.modelId, provider: message.provider } : undefined;
@@ -90,7 +84,11 @@ export default function AppShell() {
 
   // Unified model selection
   const [selectedModel, setSelectedModel] = useState<UnifiedModel | null>(null);
-  const { providers, isLoading: isLoadingModels } = useAllModels(userPreferences);
+  const {
+    providers,
+    isLoading: isLoadingOtherModels,
+    isKiroLoading,
+  } = useAllModels(userPreferences);
 
   // Web search: the user's choice for the open chat, or null to follow the preference. The state
   // comes from the live preferences, so a new key or default shows at once. A model that cannot
@@ -105,8 +103,13 @@ export default function AppShell() {
   const handleToggleWebSearch = () => setWebSearchOverride(!webSearch.on);
 
   // Thinking effort: starts at the provider's default from Preferences each time the provider
-  // changes, then keeps the user's pick from the chat input
+  // changes, then keeps the user's pick from the chat input. The state keeps the pick as made;
+  // the menu and the request use the nearest level that the selected model offers, so Off stays
+  // Off after a model without Off, and Max comes back on a Kiro model with Max.
   const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>('default');
+  const effectiveThinkingEffort = selectedModel
+    ? effortForModel(thinkingEffort, selectedModel)
+    : thinkingEffort;
   const applyModel = (model: UnifiedModel) => {
     if (model.provider !== selectedModel?.provider) {
       setThinkingEffort(
@@ -126,6 +129,10 @@ export default function AppShell() {
   // Model to select once the model list has loaded: the default for a new chat, or the opened
   // conversation's model
   const [pendingModel, setPendingModel] = useState<PendingModel | null>(null);
+  // Kiro's list holds up the restore (and the chip) only when a Kiro model is in play
+  const isLoadingModels =
+    isLoadingOtherModels ||
+    (isKiroLoading && needsKiroModels(providers, pendingModel, selectedModel));
   if (pendingModel && !isLoadingModels) {
     setPendingModel(null);
     if (pendingModel.kind === 'conversation') {
@@ -297,7 +304,7 @@ export default function AppShell() {
           setMaxTokens={setMaxTokens}
           maxToolSteps={maxToolSteps}
           setMaxToolSteps={setMaxToolSteps}
-          thinkingEffort={thinkingEffort}
+          thinkingEffort={effectiveThinkingEffort}
           setThinkingEffort={setThinkingEffort}
           webSearch={webSearch}
           webSearchProviderLabel={primaryWebSearch && WEB_SEARCH_PROVIDER_LABELS[primaryWebSearch]}

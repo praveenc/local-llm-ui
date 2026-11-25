@@ -34,9 +34,86 @@ describe('KiroService', () => {
     mockFetch({ ok: false, status: 500 });
     await expect(new KiroService().getStatus()).rejects.toThrow('HTTP error! status: 500');
   });
+});
 
-  it('lists no models', async () => {
+describe('KiroService.getModels', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const fetchModels = (status: number, body: unknown) => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      json: () => Promise.resolve(body),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it("lists Kiro's models in Kiro's order, with their metadata", async () => {
+    const fetchMock = fetchModels(200, {
+      models: [
+        {
+          id: 'claude-opus-5.5',
+          name: 'Claude Opus 5.5',
+          description: 'Claude Opus 5.5 model with 1M context window',
+          rateMultiplier: 2,
+          effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+          defaultEffortLevel: 'high',
+        },
+        { id: 'auto', name: 'Auto', rateMultiplier: 1 },
+      ],
+    });
+
+    const models = await new KiroService().getModels();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/kiro/models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    expect(models.map((m) => m.modelId)).toEqual(['claude-opus-5.5', 'auto']);
+    expect(models[0]).toEqual({
+      modelId: 'claude-opus-5.5',
+      modelName: 'Claude Opus 5.5',
+      provider: 'kiro',
+      supportsThinking: true,
+      kiro: {
+        description: 'Claude Opus 5.5 model with 1M context window',
+        rateMultiplier: 2,
+        effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+        defaultEffortLevel: 'high',
+      },
+    });
+    expect(models[1]).toMatchObject({ supportsThinking: false, kiro: { rateMultiplier: 1 } });
+  });
+
+  it('sends refresh: true to skip the server cache', async () => {
+    const fetchMock = fetchModels(200, { models: [] });
+    await new KiroService().getModels(true);
+    expect(fetchMock).toHaveBeenCalledWith('/api/kiro/models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh: true }),
+    });
+  });
+
+  it('returns no models when Kiro CLI is missing', async () => {
+    fetchModels(200, { models: [] });
     await expect(new KiroService().getModels()).resolves.toEqual([]);
+  });
+
+  it('asks to sign in when Kiro is signed out', async () => {
+    fetchModels(401, { error: 'Not signed in', code: 'signed-out' });
+    await expect(new KiroService().getModels()).rejects.toThrow(
+      'Sign in to Kiro in Preferences → Providers'
+    );
+  });
+
+  it("throws the server's error otherwise", async () => {
+    fetchModels(503, { error: 'Kiro did not start' });
+    await expect(new KiroService().getModels()).rejects.toThrow('Kiro did not start');
   });
 });
 

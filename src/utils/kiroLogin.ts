@@ -2,7 +2,7 @@
  * Kiro CLI sign-in: the methods, the events that POST /api/kiro/login streams, and the checks
  * for what the browser and the server accept. Shared by both, so no DOM or Node imports.
  */
-import type { KiroStatus } from './kiroStatus';
+import type { KiroStatus } from './kiroStatus.ts';
 
 export type KiroLoginMethod =
   { method: 'builder-id' } | { method: 'identity-center'; startUrl: string; region: string };

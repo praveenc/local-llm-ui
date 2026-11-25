@@ -2,7 +2,8 @@
 // The messages are small hand-made copies of the shapes that kiro-cli 3.5.0 sends.
 //
 // FAKE_KIRO_MODE: ok | signed-out | auth-required | no-load | hang-new | crash-on-prompt |
-//   ignore-cancel | autopilot-stuck | autopilot-flip
+//   ignore-cancel | autopilot-stuck | autopilot-flip | load-error
+// load-error: session/load answers an ACP error, like a damaged session on disk
 // auth-required: initialize succeeds, session/new answers -32000 'Authentication required'
 // FAKE_KIRO_HANG_NEW_AT: with hang-new, the session/new call (1-based) that hangs (default 1)
 // autopilot-flip: a prompt turns Autopilot on (with a config_option_update), then waits for cancel
@@ -10,13 +11,22 @@
 // FAKE_KIRO_LOG: file; each received message is appended as one JSON line {pid, msg}
 // FAKE_KIRO_SPAWN_GRANDCHILD=1: start a long-lived process in its own process group
 // FAKE_KIRO_PIDS: file that gets {pid, grandchild}
-// Prompt text: TOOL asks for a permission, WAIT waits for session/cancel, SLOW streams slowly.
+// FAKE_KIRO_CHAT=1: like kiro-cli 3.5.0 for the chat route: models with effort metadata, an
+//   `effortLevel` and a `thinking` option (a model change resets both), session.json on disk under
+//   $HOME/.kiro/sessions, and the title sent twice in a reply
+// FAKE_KIRO_NO_EFFORT=1: with FAKE_KIRO_CHAT, no `effortLevel` option (like kiro-cli 3.4)
+// FAKE_KIRO_SLOW_CONFIG_MS: set_config_option (other than autopilot) answers after this delay
+// Prompt text: TOOL asks for a permission, WAIT waits for session/cancel, SLOW streams slowly,
+//   TOOLOK runs a tool that completes, MCPTOOL runs an MCP tool, MAXTOKENS ends with max_tokens,
+//   CRASH exits during the reply, DISPLAYERR sends a display_error and no text, MCPERR sends an
+//   MCP connection display_error and no text.
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const mode = process.env.FAKE_KIRO_MODE ?? 'ok';
+const chat = process.env.FAKE_KIRO_CHAT === '1';
 const stateDir = process.env.FAKE_KIRO_STATE_DIR;
 const logFile = process.env.FAKE_KIRO_LOG;
 
@@ -50,6 +60,73 @@ const log = (msg) =>
 // Like the OpenSSL warning that kiro-cli prints, but on stdout
 process.stdout.write('this line is not JSON\n');
 
+const CHAT_MODELS = [
+  {
+    value: 'auto',
+    name: 'auto',
+    _meta: { kiro: { rateMultiplier: 1, hasEffort: false, thinkingToggleable: false } },
+  },
+  {
+    value: 'claude-fake-1',
+    name: 'claude-fake-1',
+    description: 'Claude Fake 1 model',
+    _meta: {
+      kiro: {
+        rateMultiplier: 1.3,
+        hasEffort: true,
+        effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+        defaultEffortLevel: 'medium',
+        thinkingToggleable: false,
+      },
+    },
+  },
+  {
+    value: 'think-fake',
+    name: 'think-fake',
+    _meta: { kiro: { rateMultiplier: 0.5, hasEffort: false, thinkingToggleable: true } },
+  },
+];
+const DEFAULT_EFFORT = { 'claude-fake-1': 'medium' };
+
+const noEffort = process.env.FAKE_KIRO_NO_EFFORT === '1';
+const slowConfigMs = Number(process.env.FAKE_KIRO_SLOW_CONFIG_MS ?? '0');
+
+const chatOptions = (s) => [
+  {
+    type: 'select',
+    id: 'model',
+    name: 'Model',
+    category: 'model',
+    currentValue: s.model,
+    options: CHAT_MODELS,
+  },
+  ...(noEffort
+    ? []
+    : [
+        {
+          type: 'select',
+          id: 'effortLevel',
+          name: 'Effort',
+          category: 'thought_level',
+          currentValue: s.effortLevel,
+          options: ['low', 'medium', 'high', 'xhigh', 'max'].map((value) => ({
+            value,
+            name: value,
+          })),
+        },
+      ]),
+  {
+    type: 'select',
+    id: 'thinking',
+    name: 'Thinking',
+    currentValue: s.thinking,
+    options: [
+      { value: 'on', name: 'On' },
+      { value: 'off', name: 'Off' },
+    ],
+  },
+];
+
 const options = (s) => [
   {
     type: 'select',
@@ -59,18 +136,26 @@ const options = (s) => [
     currentValue: s.mode,
     options: [{ value: 'vibe', name: 'Default', description: 'General coding assistance' }],
   },
-  {
-    type: 'select',
-    id: 'model',
-    name: 'Model',
-    category: 'model',
-    currentValue: s.model,
-    options: [
-      { value: 'auto', name: 'auto', _meta: { kiro: { rateMultiplier: 1 } } },
-      { value: 'claude-fake-1', name: 'claude-fake-1', _meta: { kiro: { rateMultiplier: 1.3 } } },
-      { value: 'stuck-model', name: 'stuck-model' },
-    ],
-  },
+  ...(chat
+    ? chatOptions(s)
+    : [
+        {
+          type: 'select',
+          id: 'model',
+          name: 'Model',
+          category: 'model',
+          currentValue: s.model,
+          options: [
+            { value: 'auto', name: 'auto', _meta: { kiro: { rateMultiplier: 1 } } },
+            {
+              value: 'claude-fake-1',
+              name: 'claude-fake-1',
+              _meta: { kiro: { rateMultiplier: 1.3 } },
+            },
+            { value: 'stuck-model', name: 'stuck-model' },
+          ],
+        },
+      ]),
   {
     type: 'select',
     id: 'autopilot',
@@ -94,7 +179,7 @@ const waiters = new Map(); // agent request id -> resolve
 let agentRequestId = 1000;
 
 function open(sessionId) {
-  const s = { mode: 'vibe', model: 'auto', autopilot: 'on' };
+  const s = { mode: 'vibe', model: 'auto', autopilot: 'on', effortLevel: 'high', thinking: 'on' };
   sessions.set(sessionId, s);
   notify('_kiro/mcp/status', { sessionId, servers: [{ name: 'fake', status: 'connecting' }] });
   update(sessionId, { sessionUpdate: 'config_option_update', configOptions: options(s) });
@@ -129,7 +214,18 @@ async function runPrompt(id, { sessionId, prompt }) {
     while (!cancelled.has(sessionId)) await sleep(10);
     return send({ id, result: { stopReason: 'cancelled' } });
   }
-  if (mode === 'crash-on-prompt') {
+  if (text.includes('DISPLAYERR') || text.includes('MCPERR')) {
+    const mcp = text.includes('MCPERR');
+    const displayError = mcp
+      ? {
+          message: 'MCP server "fake" failed to connect: Connection closed',
+          errorType: 'mcp_connection_error',
+        }
+      : { message: 'You have used all your credits.', errorType: 'quota_error' };
+    update(sessionId, meta('display_error', { displayError, ...displayError }));
+    return send({ id, result: { stopReason: 'end_turn' } });
+  }
+  if (mode === 'crash-on-prompt' || text.includes('CRASH')) {
     update(sessionId, {
       sessionUpdate: 'agent_message_chunk',
       content: { type: 'text', text: 'part' },
@@ -141,7 +237,31 @@ async function runPrompt(id, { sessionId, prompt }) {
     while (!cancelled.has(sessionId)) await sleep(10);
     return send({ id, result: { stopReason: 'cancelled' } });
   }
-  if (text.includes('TOOL')) {
+  if (text.includes('TOOLOK') || text.includes('MCPTOOL')) {
+    const mcp = text.includes('MCPTOOL');
+    const toolCallId = mcp ? 'search_abc123' : 'read_file_toolu_bdrk_01FAKE';
+    update(sessionId, {
+      sessionUpdate: 'tool_call',
+      toolCallId,
+      title: mcp ? '@fake/search' : 'Read notes.txt',
+      kind: 'read',
+      status: 'pending',
+      rawInput: mcp ? { query: 'zeros' } : 'not an object',
+    });
+    update(sessionId, { sessionUpdate: 'tool_call_update', toolCallId, status: 'in_progress' });
+    update(sessionId, {
+      sessionUpdate: 'tool_call_update',
+      toolCallId,
+      status: 'completed',
+      rawOutput: { items: 2 },
+      content: mcp
+        ? undefined
+        : [
+            { type: 'content', content: { type: 'text', text: 'line one' } },
+            { type: 'content', content: { type: 'text', text: 'line two' } },
+          ],
+    });
+  } else if (text.includes('TOOL')) {
     const toolCallId = `run_command_${randomUUID()}`;
     update(sessionId, {
       sessionUpdate: 'tool_call',
@@ -181,11 +301,13 @@ async function runPrompt(id, { sessionId, prompt }) {
     });
     await sleep(text.includes('SLOW') ? 40 : 5);
   }
-  update(sessionId, {
-    sessionUpdate: 'session_info_update',
-    title: 'Fake title',
-    _meta: { kiro: { kind: 'focus_update', title: 'Fake title' } },
-  });
+  for (let i = 0; i < (chat ? 2 : 1); i++) {
+    update(sessionId, {
+      sessionUpdate: 'session_info_update',
+      title: 'Fake title',
+      _meta: { kiro: { kind: 'focus_update', title: 'Fake title' } },
+    });
+  }
   update(
     sessionId,
     meta('context_usage', { usagePercentage: 4.2, contextUsage: { usagePercentage: 4.2 } })
@@ -202,7 +324,7 @@ async function runPrompt(id, { sessionId, prompt }) {
     sessionId,
     meta('session_usage', { credits: [{ usage: 0.05, unit: 'credit', unitPlural: 'credits' }] })
   );
-  send({ id, result: { stopReason: 'end_turn' } });
+  send({ id, result: { stopReason: text.includes('MAXTOKENS') ? 'max_tokens' : 'end_turn' } });
 }
 
 const handlers = {
@@ -248,6 +370,16 @@ const handlers = {
     }
     const sessionId = `sess_${randomUUID()}`;
     const s = open(sessionId);
+    if (chat && process.env.HOME) {
+      // Like Kiro: the session's folder on disk, in the bucket of its folder path
+      const bucket = createHash('sha256').update(params.cwd).digest('hex').slice(0, 16);
+      const dir = path.join(process.env.HOME, '.kiro', 'sessions', bucket, sessionId);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, 'session.json'),
+        JSON.stringify({ id: sessionId, title: 'New Session', workspacePaths: [params.cwd] })
+      );
+    }
     // Like Kiro: context usage arrives outside a prompt, after session/new
     setTimeout(
       () =>
@@ -265,6 +397,8 @@ const handlers = {
     };
   },
   'session/load'({ sessionId }) {
+    if (mode === 'load-error')
+      throw { code: -32603, message: 'Internal error: session file is damaged' };
     const s = open(sessionId);
     return {
       modes: {},
@@ -272,7 +406,8 @@ const handlers = {
       _meta: { id: sessionId, title: 'Fake title', contextUsage: { usagePercentage: 3.5 } },
     };
   },
-  'session/set_config_option'({ sessionId, configId, value }) {
+  async 'session/set_config_option'({ sessionId, configId, value }) {
+    if (slowConfigMs > 0 && configId !== 'autopilot') await sleep(slowConfigMs);
     const s = sessions.get(sessionId);
     if (!s) throw { code: -32602, message: 'Session not found' };
     // Like Kiro: no validation
@@ -280,6 +415,11 @@ const handlers = {
       // stays on
     } else if (value !== 'stuck-model') {
       s[configId] = value;
+      if (chat && configId === 'model') {
+        // Like Kiro: a model change resets the effort to the model's default
+        s.effortLevel = DEFAULT_EFFORT[value] ?? 'high';
+        s.thinking = 'on';
+      }
     }
     return { configOptions: options(s) };
   },

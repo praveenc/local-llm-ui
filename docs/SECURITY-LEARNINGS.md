@@ -280,6 +280,18 @@ preview: { cors: false, /* ... */ },
 - **Limits.** One JSON-RPC line may be at most 64 MB. `initialize` and `session/new` time out after 30 s, `session/load` after 120 s, and a reply that ignores `session/cancel` for 30 s stops the process.
 - **Logs.** Only lifecycle lines (started, stopped, exited). No prompt text, tool input, or account data.
 
+### SEC-16: The Kiro Chat Route
+
+`POST /api/kiro/chat` (`server/kiro/chat.ts`) and `POST /api/kiro/models` (`server/kiro/models.ts`). The rules:
+
+- **No folder from the browser.** A new session runs in `~/.local-llm-ui/kiro`. An existing session runs in the folder of its own `session.json` (`server/kiro/session-files.ts`): the session id must match `sess_<uuid>`, the bucket folder must be 16 hex characters, the `id` in the file must match, and the SHA-256 of the folder must give the bucket name. So the request cannot name a folder or reach a path outside `~/.kiro/sessions`.
+- **Only three options.** The route sets only `model`, `effortLevel`, and `thinking`, and only to a value that the session lists. `autopilot` and `mode` are locked (SEC-15).
+- **Tools.** Each permission question gets `reject_once` until K6 (SEC-15).
+- **Sizes.** The body is at most 10 MB, the message at most 200,000 characters, the history at most 2,000 messages, and the context block that the server puts before the message at most 400,000 characters (older messages are left out, and a long message is cut).
+- **Changes state, so a POST.** A model-list load can start Kiro CLI and make and delete a session, so the route is a `POST` with JSON, not a `GET` (SEC-13).
+- **Errors.** The browser gets plain text. Unknown errors say "Kiro failed. See the terminal that runs npm run dev.", and the detail goes to the terminal. No folder path goes to the browser.
+- **Logs.** One line per reply: the stop reason and the time. No message text, history, tool input or output, or title.
+
 ---
 
 ## Client-Side Security

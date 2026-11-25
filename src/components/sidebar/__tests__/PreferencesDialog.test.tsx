@@ -219,8 +219,30 @@ describe('PreferencesDialog Kiro', () => {
     fireEvent.click(radio);
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ preferredProvider: 'kiro' }));
     expect(stored().preferredProvider).toBe('kiro');
-    // Kiro has no thinking effort row
-    expect(screen.queryByText('Default thinking')).not.toBeInTheDocument();
+    // Kiro's Default thinking row offers Max, and no Minimal (Kiro has no such level)
+    const trigger = screen.getByLabelText('Default thinking (Kiro)');
+    act(() => trigger.focus());
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Default',
+      'Off',
+      'Low',
+      'Medium',
+      'High',
+      'XHigh',
+      'Max',
+    ]);
+    fireEvent.click(screen.getByRole('option', { name: 'Max' }));
+    expect(stored().thinkingEffortByProvider).toEqual({ kiro: 'max' });
+  });
+
+  it('offers no Max on the Default thinking row of other providers', () => {
+    renderDialog({ preferredProvider: 'bedrock' });
+    const trigger = screen.getByLabelText('Default thinking (Amazon Bedrock)');
+    act(() => trigger.focus());
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    expect(screen.queryByRole('option', { name: 'Max' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Minimal' })).toBeInTheDocument();
   });
 
   it('leaves out the email when the account has none', () => {

@@ -33,7 +33,11 @@ describe('conversationService.rename', () => {
   it('changes only the title, so updatedAt keeps the date of the last message', async () => {
     await conversationService.rename('c1', 'New name');
     expect(db.conversations.update).toHaveBeenCalledTimes(1);
-    expect(db.conversations.update).toHaveBeenCalledWith('c1', { title: 'New name' });
+    expect(db.conversations.update).toHaveBeenCalledWith('c1', {
+      title: 'New name',
+      titleEdited: true,
+      titleFromKiro: false,
+    });
     const changes = vi.mocked(db.conversations.update).mock.calls[0][1];
     expect(changes).not.toHaveProperty('updatedAt');
   });

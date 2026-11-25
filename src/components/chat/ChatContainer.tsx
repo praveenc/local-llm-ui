@@ -32,6 +32,7 @@ import type { ToolCallPart, UIMessage } from '../../types/ai-messages';
 import { getReasoningContent, getTextContent, hasReasoning } from '../../types/ai-messages';
 import { summarizeChatUsage } from '../../utils/chatUsage';
 import { normalizeMediaType } from '../../utils/fileUtils';
+import { formatCredits } from '../../utils/kiroModels';
 import { lookupFormat } from '../../utils/mediaTypes';
 import { getModelContextLimits } from '../../utils/modelContext';
 import { modelLabel } from '../../utils/modelLabel';
@@ -136,6 +137,9 @@ const getToolCalls = (message: { parts: Array<{ type: string }> }): ToolCallPart
   return message.parts.filter((p): p is ToolCallPart => p.type === 'tool-call');
 };
 
+/** Shown when files are added to a Kiro chat */
+const KIRO_NO_FILES = 'Kiro does not take files yet. Send the text without them.';
+
 // Bedrock file size limits
 const BEDROCK_DOC_MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for documents
 
@@ -210,12 +214,15 @@ const ChatContainer = ({
 
   // False when the provider reports that the model cannot use tools (Ollama); unknown counts as yes
   const toolsSupported = selectedModel?.supportsTools !== false;
+  // Kiro brings its own tools and takes no files, web search, MCP servers, or inference settings
+  const isKiro = selectedModel?.provider === 'kiro';
 
   const {
     messages,
     status,
     error,
     wasInterrupted,
+    streamStatus,
     sendMessage,
     regenerate,
     retryLast,
@@ -229,7 +236,7 @@ const ChatContainer = ({
     maxTokens,
     maxToolSteps,
     thinkingEffort,
-    enableWebSearch: webSearch?.send ?? false,
+    enableWebSearch: !isKiro && (webSearch?.send ?? false),
     onConversationChange,
   });
 
@@ -253,10 +260,14 @@ const ChatContainer = ({
   }, [isEmpty]);
   const [savePromptOpen, setSavePromptOpen] = useState(false);
 
-  // Get context limits for current model
-  const contextLimits = selectedModel
-    ? getModelContextLimits(selectedModel.id, selectedModel.provider)
-    : null;
+  // Get context limits for current model. Kiro reports a percentage instead.
+  const contextLimits =
+    selectedModel && !isKiro
+      ? getModelContextLimits(selectedModel.id, selectedModel.provider)
+      : null;
+  const showContext = isKiro
+    ? chatUsage.contextPercent !== undefined
+    : contextLimits !== null && chatUsage.contextTokens > 0;
 
   // "/" moves focus to the message box, unless the user is typing in another field
   const composerDisabled = isLoading || !selectedModel;
@@ -303,8 +314,16 @@ const ChatContainer = ({
     if (!message.text.trim() && message.files.length === 0) return;
     if (isLoading) return;
 
+    // Kiro takes no files: send the text alone, and say that the files were left out
+    const droppedKiroFiles = isKiro && message.files.length > 0;
+    if (droppedKiroFiles) {
+      handleFileError({ code: 'accept', message: KIRO_NO_FILES });
+      if (!message.text.trim()) return;
+      message = { ...message, files: [] };
+    }
+
     setInputValue('');
-    setFileError(null);
+    if (!droppedKiroFiles) setFileError(null);
 
     if (message.files.length > 0) {
       const filesWithData = await Promise.all(
@@ -345,7 +364,7 @@ const ChatContainer = ({
   const fileErrorTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(fileErrorTimerRef.current), []);
   const handleFileError = (err: { code: string; message: string }) => {
-    setFileError(err.message);
+    setFileError(isKiro && err.code === 'max_files' ? KIRO_NO_FILES : err.message);
     clearTimeout(fileErrorTimerRef.current);
     fileErrorTimerRef.current = setTimeout(() => setFileError(null), 5000);
   };
@@ -429,6 +448,7 @@ const ChatContainer = ({
                               toolCalls={toolCalls}
                               isRunning={isLastMessage && isLoading}
                               hasText={getTextContent(message).trim().length > 0}
+                              provider={message.model?.provider}
                             />
                           )}
                           <MessageResponse className="reply-text">
@@ -477,20 +497,29 @@ const ChatContainer = ({
                               >
                                 <Copy className="size-4" />
                               </MessageAction>
-                              <MessageAction
-                                tooltip="Regenerate"
-                                onClick={() => regenerate(index)}
-                                disabled={isLoading}
-                              >
-                                <RefreshCw className="size-4" />
-                              </MessageAction>
-                              {message.usage && (
-                                <ReplyUsage
-                                  usage={message.usage}
-                                  cost={chatUsage.replyCosts.get(message.id)}
-                                  model={replyModelLabel(message)}
-                                />
+                              {/* Kiro keeps its own history, so a Kiro reply cannot be redone (D12) */}
+                              {message.model?.provider !== 'kiro' && (
+                                <MessageAction
+                                  tooltip="Regenerate"
+                                  onClick={() => regenerate(index)}
+                                  disabled={isLoading}
+                                >
+                                  <RefreshCw className="size-4" />
+                                </MessageAction>
                               )}
+                              {message.usage &&
+                                (message.model?.provider === 'kiro' ? (
+                                  <KiroReplyUsage
+                                    usage={message.usage}
+                                    model={replyModelLabel(message)}
+                                  />
+                                ) : (
+                                  <ReplyUsage
+                                    usage={message.usage}
+                                    cost={chatUsage.replyCosts.get(message.id)}
+                                    model={replyModelLabel(message)}
+                                  />
+                                ))}
                             </MessageActions>
                           )}
                           {message.role === 'assistant' &&
@@ -501,7 +530,7 @@ const ChatContainer = ({
                     })}
                     {/* The work row shows its own live step */}
                     {isLoading && !hasWork(messages[messages.length - 1]) && (
-                      <GeneratingIndicator />
+                      <GeneratingIndicator status={streamStatus} />
                     )}
                   </ConversationContent>
                   <ConversationScrollButton className="bottom-0 size-8 translate-y-[calc(100%+0.5rem)]" />
@@ -554,7 +583,8 @@ const ChatContainer = ({
             accept="image/*,.pdf,.txt,.html,.md,.csv,.doc,.docx,.xls,.xlsx"
             multiple
             maxFileSize={BEDROCK_DOC_MAX_SIZE}
-            maxFiles={20}
+            // Kiro takes no files: a drop or a paste shows KIRO_NO_FILES
+            maxFiles={isKiro ? 0 : 20}
             className="@container w-full max-w-3xl mx-auto"
             inputGroupClassName={composerCard}
           >
@@ -591,10 +621,11 @@ const ChatContainer = ({
                 <PromptInputActionMenu modal={false}>
                   <PromptInputActionMenuTrigger
                     className={composerIconButton}
-                    aria-label="Add photos or files"
+                    // Kiro has no files: the menu holds only Save as prompt
+                    aria-label={isKiro ? 'More actions' : 'Add photos or files'}
                   />
                   <PromptInputActionMenuContent>
-                    <PromptInputActionAddAttachments label="Add photos or files" />
+                    {!isKiro && <PromptInputActionAddAttachments label="Add photos or files" />}
                     <PromptInputActionMenuItem
                       disabled={isLoading || !inputValue.trim()}
                       onSelect={() => setSavePromptOpen(true)}
@@ -624,12 +655,16 @@ const ChatContainer = ({
                       value={thinkingEffort}
                       onChange={setThinkingEffort}
                       disabled={isLoading}
-                      options={thinkingEffortOptions(selectedModel.provider, selectedModel.id)}
+                      options={thinkingEffortOptions(
+                        selectedModel.provider,
+                        selectedModel.id,
+                        selectedModel.kiro
+                      )}
                     />
                   )}
               </PromptInputTools>
               <PromptInputTools className="ml-auto gap-1">
-                {webSearch?.available && (
+                {webSearch?.available && !isKiro && (
                   <WebSearchToggle
                     enabled={webSearch.on}
                     onToggle={() => onToggleWebSearch?.()}
@@ -638,19 +673,25 @@ const ChatContainer = ({
                     providerLabel={webSearchProviderLabel}
                   />
                 )}
-                <MCPToolsIndicator disabled={isLoading} toolsSupported={toolsSupported} />
-                <InferenceSettings
-                  maxTokens={maxTokens}
-                  setMaxTokens={setMaxTokens}
-                  maxToolSteps={maxToolSteps}
-                  setMaxToolSteps={setMaxToolSteps}
-                  disabled={isLoading}
-                />
-                {contextLimits && chatUsage.contextTokens > 0 && (
-                  <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+                {!isKiro && (
+                  <>
+                    <MCPToolsIndicator disabled={isLoading} toolsSupported={toolsSupported} />
+                    <InferenceSettings
+                      maxTokens={maxTokens}
+                      setMaxTokens={setMaxTokens}
+                      maxToolSteps={maxToolSteps}
+                      setMaxToolSteps={setMaxToolSteps}
+                      disabled={isLoading}
+                    />
+                  </>
                 )}
-                {contextLimits && (
-                  <ContextIndicator usage={chatUsage} maxTokens={contextLimits.contextWindow} />
+                {showContext && !isKiro && <span aria-hidden className="mx-1 h-5 w-px bg-border" />}
+                {(contextLimits || isKiro) && (
+                  <ContextIndicator
+                    usage={chatUsage}
+                    maxTokens={contextLimits?.contextWindow ?? 100}
+                    kiro={isKiro}
+                  />
                 )}
                 <PromptInputSubmitWithAttachments
                   inputValue={inputValue}
@@ -749,6 +790,25 @@ const ReplyUsage = ({
   );
 };
 
+/** Credits and time of one Kiro reply. Kiro reports credits, not tokens or a price. */
+const KiroReplyUsage = ({ usage, model }: { usage: MessageUsage; model?: string }) => {
+  const details = [
+    model ?? '',
+    usage.credits !== undefined ? `Credits: ${Number(usage.credits.toFixed(4))}` : 'No credit data',
+    usage.contextPercent !== undefined ? `Context: ${usage.contextPercent}%` : '',
+  ].filter(Boolean);
+  const parts = [
+    usage.credits !== undefined ? formatCredits(usage.credits) : undefined,
+    usage.latencyMs !== undefined ? formatLatency(usage.latencyMs) : undefined,
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  return (
+    <p className="ml-2 text-xs tabular-nums text-muted-foreground" title={details.join(' · ')}>
+      {parts.join(' · ')}
+    </p>
+  );
+};
+
 // Submit button that checks both text input and attachments
 const PromptInputSubmitWithAttachments = ({
   inputValue,
@@ -784,12 +844,13 @@ const PromptInputSubmitWithAttachments = ({
   );
 };
 
-// Loading indicator shown during AI response generation
-const GeneratingIndicator = () => (
+// Loading indicator shown during AI response generation, with the provider's progress text
+// (for example "Starting Kiro…") when it sends one
+const GeneratingIndicator = ({ status }: { status?: string | null }) => (
   <div className="flex items-center gap-2 py-2">
     <div className="flex items-center gap-2 text-muted-foreground">
       <Loader2 className="h-4 w-4 animate-spin" />
-      <span className="text-sm">Generating response...</span>
+      <span className="text-sm">{status || 'Generating response...'}</span>
     </div>
   </div>
 );

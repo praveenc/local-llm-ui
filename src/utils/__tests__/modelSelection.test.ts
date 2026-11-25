@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
-import { findModel, pickDefaultModel, pickLocalModel } from '../modelSelection';
+import { findModel, needsKiroModels, pickDefaultModel, pickLocalModel } from '../modelSelection';
 import type { Provider } from '../preferences';
 
 const model = (provider: Provider, id: string): UnifiedModel => ({
@@ -90,5 +90,39 @@ describe('pickLocalModel', () => {
   it('never picks a paid provider', () => {
     expect(pickLocalModel(providers)).toBeNull();
     expect(pickLocalModel([group('openrouter', 'x'), group('ollama')])).toBeNull();
+  });
+});
+
+describe('needsKiroModels', () => {
+  const loaded = [group('bedrock', 'haiku')];
+  const kiroRef = { id: 'claude-opus-5.5', provider: 'kiro' as const };
+  const haikuRef = { id: 'haiku', provider: 'bedrock' as const };
+
+  it('does not wait for Kiro to restore a Bedrock model', () => {
+    const pending = { kind: 'default' as const, provider: 'bedrock' as const, last: haikuRef };
+    expect(needsKiroModels(loaded, pending, null)).toBe(false);
+    // With the Kiro list still loading, the Bedrock model is the one restored
+    expect(pickDefaultModel(loaded, 'bedrock', pending)?.id).toBe('haiku');
+    expect(
+      needsKiroModels(loaded, { kind: 'conversation', conversationId: 'c1', model: haikuRef }, null)
+    ).toBe(false);
+    expect(needsKiroModels(loaded, null, model('bedrock', 'haiku'))).toBe(false);
+  });
+
+  it('waits for Kiro when the model to restore or the selected model is a Kiro model', () => {
+    expect(
+      needsKiroModels(loaded, { kind: 'default', provider: 'bedrock', last: kiroRef }, null)
+    ).toBe(true);
+    expect(needsKiroModels(loaded, { kind: 'default', provider: 'kiro' }, null)).toBe(true);
+    expect(
+      needsKiroModels(loaded, { kind: 'conversation', conversationId: 'c1', model: kiroRef }, null)
+    ).toBe(true);
+    expect(needsKiroModels(loaded, null, model('kiro', 'auto'))).toBe(true);
+  });
+
+  it('counts the last model of any provider only when the preferred provider has none', () => {
+    const pending = { kind: 'default' as const, provider: 'bedrock' as const, any: kiroRef };
+    expect(needsKiroModels(loaded, pending, null)).toBe(false);
+    expect(needsKiroModels([], pending, null)).toBe(true);
   });
 });

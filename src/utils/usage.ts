@@ -30,6 +30,10 @@ export interface MessageUsage {
   /** Each model call in the reply, in order. Replies stored before this field have none. */
   steps?: StepUsage[];
   latencyMs?: number;
+  /** Kiro: the credits of this reply. Kiro reports credits, not tokens. */
+  credits?: number;
+  /** Kiro: how full the context window is after this reply, 0 to 100 */
+  contextPercent?: number;
 }
 
 /** Token totals over the replies of a chat */
@@ -49,6 +53,18 @@ const MAX_STEPS = 100;
 function count(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? Math.round(value)
+    : undefined;
+}
+
+/** A finite amount of zero or more, not rounded (credits), else undefined */
+function amount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/** A percentage from 0 to 100, else undefined */
+function percent(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
+    ? value
     : undefined;
 }
 
@@ -79,8 +95,9 @@ export function parseMessageUsage(value: unknown): MessageUsage | undefined {
         .map(parseStep)
         .filter((s): s is StepUsage => s !== undefined)
     : undefined;
+  const kiro = compact({ credits: amount(v.credits), contextPercent: percent(v.contextPercent) });
   if (steps && steps.length > 0) {
-    return { ...sumSteps(steps), ...compact({ latencyMs: count(v.latencyMs) }) };
+    return { ...sumSteps(steps), ...compact({ latencyMs: count(v.latencyMs) }), ...kiro };
   }
   const usage = compact({
     inputTokens: count(v.inputTokens),
@@ -90,8 +107,14 @@ export function parseMessageUsage(value: unknown): MessageUsage | undefined {
     cacheWriteTokens: count(v.cacheWriteTokens) || undefined,
     reasoningTokens: count(v.reasoningTokens) || undefined,
     latencyMs: count(v.latencyMs),
+    ...kiro,
   });
-  return usage.inputTokens === undefined && usage.outputTokens === undefined ? undefined : usage;
+  return usage.inputTokens === undefined &&
+    usage.outputTokens === undefined &&
+    usage.credits === undefined &&
+    usage.contextPercent === undefined
+    ? undefined
+    : usage;
 }
 
 /** The usage of a reply from the usage of its model calls */

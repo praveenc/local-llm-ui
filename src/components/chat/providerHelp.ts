@@ -3,6 +3,7 @@
  * Used by the first-run checklist and the model picker.
  */
 import type { ProviderModels } from '../../hooks/useAllModels';
+import { KIRO_SIGN_IN_MESSAGE } from '../../services/kiro';
 import { isProviderConfigured } from '../../utils/preferences';
 import type { Provider, UserPreferences } from '../../utils/preferences';
 import { API_KEY_PROVIDERS } from '../sidebar/providerOptions';
@@ -47,6 +48,19 @@ export function getProviderHelp(provider: ProviderModels): ProviderHelp {
         hint: error,
         action: { kind: 'link', label: 'Set up AWS credentials', href: AWS_CREDENTIALS_DOCS },
       };
+    case 'kiro':
+      return provider.error === KIRO_SIGN_IN_MESSAGE
+        ? {
+            status: 'Not signed in',
+            hint: 'Sign in to Kiro in Preferences → Providers, then reopen this list.',
+            action: { kind: 'preferences', label: 'Sign in to Kiro' },
+          }
+        : {
+            status: 'Not available',
+            // The server's own words, for example that Kiro did not start
+            hint: error,
+            action: OPEN_PREFERENCES,
+          };
     default:
       return { status: 'Error', hint: error, action: OPEN_PREFERENCES };
   }

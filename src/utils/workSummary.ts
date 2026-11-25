@@ -3,14 +3,10 @@
  *
  * Keep this file free of DOM and Node imports.
  */
+import type { Provider } from '../db/types';
 import type { ToolCallPart } from '../types/ai-messages';
 import { argsSummary } from './toolCallSummary';
-import {
-  isToolCallFailed,
-  isWebSearchTool,
-  parseSearchResults,
-  shortToolName,
-} from './toolResults';
+import { isToolCallFailed, isWebSearchTool, parseSearchResults, toolLabel } from './toolResults';
 
 export interface WorkSummary {
   /** Parts of the summary line, for example ["Thought 4 s", "3 searches", "18 sources"] */
@@ -36,10 +32,13 @@ export function summarizeWork({
   hasReasoning,
   reasoningMs,
   toolCalls,
+  provider,
 }: {
   hasReasoning: boolean;
   reasoningMs?: number;
   toolCalls: ToolCallPart[];
+  /** The provider of the reply; Kiro's tool names read as words */
+  provider?: Provider;
 }): WorkSummary {
   const parts: string[] = [];
   if (hasReasoning) parts.push(thoughtLabel(reasoningMs));
@@ -56,7 +55,7 @@ export function summarizeWork({
   const others = toolCalls.filter((t) => !isWebSearchTool(t.toolName));
   const byName = new Map<string, number>();
   for (const t of others) {
-    const name = shortToolName(t.toolName);
+    const name = toolLabel(t.toolName, provider);
     byName.set(name, (byName.get(name) ?? 0) + 1);
   }
   if (byName.size > MAX_NAMED_TOOLS) {
@@ -78,10 +77,12 @@ export function currentStep({
   hasReasoning,
   hasText,
   toolCalls,
+  provider,
 }: {
   hasReasoning: boolean;
   hasText: boolean;
   toolCalls: ToolCallPart[];
+  provider?: Provider;
 }): string | undefined {
   const pending = [...toolCalls].reverse().find((t) => t.status === 'pending');
   if (pending) {
@@ -89,7 +90,7 @@ export function currentStep({
     if (isWebSearchTool(pending.toolName)) {
       return target ? `Searching “${shorten(target)}”` : 'Searching';
     }
-    const name = shortToolName(pending.toolName);
+    const name = toolLabel(pending.toolName, provider);
     return target ? `Running ${name} · ${shorten(target)}` : `Running ${name}`;
   }
   if (hasText) return undefined;

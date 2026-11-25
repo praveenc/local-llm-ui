@@ -18,8 +18,10 @@
  * "Default" sends nothing, so the model uses its own default.
  */
 import type { Provider } from '../db/types.ts';
+import { type KiroModel, kiroThinkingEfforts } from './kiroModels.ts';
 
-export type ThinkingEffort = 'default' | 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type ThinkingEffort =
+  'default' | 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /** The AI SDK `reasoning` call option values that we send */
 export type ReasoningLevel = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
@@ -34,6 +36,22 @@ export const THINKING_EFFORT_OPTIONS: ReadonlyArray<{ value: ThinkingEffort; lab
   { value: 'xhigh', label: 'XHigh' },
 ];
 
+/**
+ * Max: only Kiro models offer it, and only when the model lists it (`thinkingEffortOptions`).
+ * Other providers get XHigh for it (`withoutMax`), for example after a model change.
+ */
+export const MAX_THINKING_EFFORT_OPTION = { value: 'max', label: 'Max' } as const;
+
+const ALL_THINKING_EFFORTS: ReadonlyArray<{ value: ThinkingEffort; label: string }> = [
+  ...THINKING_EFFORT_OPTIONS,
+  MAX_THINKING_EFFORT_OPTION,
+];
+
+/** Max is a Kiro level. Every other provider uses XHigh, its highest level, instead. */
+export function withoutMax<T extends ThinkingEffort>(effort: T): Exclude<T, 'max'> | 'xhigh' {
+  return effort === 'max' ? 'xhigh' : (effort as Exclude<T, 'max'>);
+}
+
 /** Providers whose proxy sends the thinking effort */
 export const THINKING_EFFORT_PROVIDERS: readonly Provider[] = [
   'bedrock',
@@ -42,13 +60,23 @@ export const THINKING_EFFORT_PROVIDERS: readonly Provider[] = [
   'openrouter',
   'groq',
   'ollama',
+  'kiro',
 ];
 
+/** The Default thinking choices in Preferences: Max only for Kiro */
+export function defaultThinkingEffortOptions(
+  provider: Provider
+): ReadonlyArray<{ value: ThinkingEffort; label: string }> {
+  return provider === 'kiro'
+    ? [...THINKING_EFFORT_OPTIONS.filter((o) => o.value !== 'minimal'), MAX_THINKING_EFFORT_OPTION]
+    : THINKING_EFFORT_OPTIONS;
+}
+
 export const isThinkingEffort = (value: unknown): value is ThinkingEffort =>
-  THINKING_EFFORT_OPTIONS.some((option) => option.value === value);
+  ALL_THINKING_EFFORTS.some((option) => option.value === value);
 
 export const thinkingEffortLabel = (effort: ThinkingEffort): string =>
-  THINKING_EFFORT_OPTIONS.find((option) => option.value === effort)?.label ?? effort;
+  ALL_THINKING_EFFORTS.find((option) => option.value === effort)?.label ?? effort;
 
 /**
  * Get the Claude major/minor version from a model ID in the new naming style
@@ -128,6 +156,7 @@ export function supportsThinkingEffort(
     case 'bedrock-mantle':
       return mantleThinkingStyle(modelId) !== undefined;
     case 'ollama':
+    case 'kiro':
       return reported === true;
     case 'openrouter':
       return isClaudeThinkingModel(modelId) || isOpenAIReasoningModel(modelId);
@@ -151,21 +180,95 @@ export function buildReasoningParams(
 ): { reasoning?: ReasoningLevel } {
   if (!isThinkingEffort(effort) || effort === 'default') return {};
   if (!supportsThinkingEffort(provider, modelId)) return {};
-  return { reasoning: effort === 'off' ? 'none' : effort };
+  const level = withoutMax(effort);
+  return { reasoning: level === 'off' ? 'none' : level };
 }
 
 /**
  * The efforts that the chat offers for a model. Most models get the full list. Grok on Bedrock
  * always reasons and takes only low, medium, high, and xhigh, so Off and Minimal are left out.
+ * A Kiro model offers Default, Off, and its own levels (`kiro`, from the model list); without
+ * them, none.
  */
 export function thinkingEffortOptions(
   provider: Provider,
-  modelId: string
+  modelId: string,
+  kiro?: Pick<KiroModel, 'effortLevels' | 'thinkingToggleable'>
 ): ReadonlyArray<{ value: ThinkingEffort; label: string }> {
+  // Kiro: Default, Off, and the model's own levels, Max included when the model has it
+  if (provider === 'kiro') {
+    return kiro
+      ? kiroThinkingEfforts(kiro).map((value) => ({ value, label: thinkingEffortLabel(value) }))
+      : [];
+  }
   if (provider === 'bedrock' && isGrokModel(modelId)) {
     return THINKING_EFFORT_OPTIONS.filter((o) => o.value !== 'off' && o.value !== 'minimal');
   }
   return THINKING_EFFORT_OPTIONS;
+}
+
+const EFFORT_RANK: Record<Exclude<ThinkingEffort, 'default'>, number> = {
+  off: 0,
+  minimal: 0.5,
+  low: 1,
+  medium: 2,
+  high: 3,
+  xhigh: 4,
+  max: 5,
+};
+
+/**
+ * The effort to keep when the model changes: the same one when the new model offers it, else
+ * the nearest one that it offers.
+ * - Kiro: a level that the model lacks becomes Default (the model's own default level).
+ * - Other providers: Max becomes XHigh (`withoutMax`). A level that the model still lacks (Off
+ *   on Grok) becomes the nearest offered level; on a tie, the lower one.
+ * A model with no options (no thinking) keeps the effort: the chat does not send it.
+ */
+export function nearestThinkingEffort(
+  effort: ThinkingEffort,
+  provider: Provider,
+  options: ReadonlyArray<{ value: ThinkingEffort }>
+): ThinkingEffort {
+  if (options.length === 0) return effort;
+  const offered = options.map((o) => o.value);
+  if (offered.includes(effort)) return effort;
+  if (provider === 'kiro') return 'default';
+  const level = withoutMax(effort);
+  if (offered.includes(level)) return level;
+  if (level === 'default') return 'default';
+  let best: ThinkingEffort = 'default';
+  let bestDistance = Infinity;
+  for (const value of offered) {
+    if (value === 'default') continue;
+    const distance = Math.abs(EFFORT_RANK[value] - EFFORT_RANK[level]);
+    if (distance < bestDistance) {
+      best = value;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/**
+ * The effort that the menu shows and the request sends for this model: the user's pick when
+ * the model offers it, else the nearest level that it offers (a Kiro model without Max gets
+ * Default; Off on Grok gets Low). Work it out at render and send time; do not store it, so the
+ * pick comes back on a model that offers it.
+ */
+export function effortForModel(
+  effort: ThinkingEffort,
+  model: {
+    provider: Provider;
+    id: string;
+    kiro?: Pick<KiroModel, 'effortLevels' | 'thinkingToggleable'>;
+  }
+): ThinkingEffort {
+  return nearestThinkingEffort(
+    effort,
+    model.provider,
+    thinkingEffortOptions(model.provider, model.id, model.kiro)
+  );
 }
 
 /**
@@ -204,14 +307,14 @@ export function mantleReasoningEffort(
   const style = mantleThinkingStyle(modelId);
   if (!style) return undefined;
   if (style === 'toggle') return effort === 'off' ? 'none' : 'high';
-  switch (effort) {
+  switch (withoutMax(effort)) {
     case 'off':
     case 'minimal':
       return 'low';
     case 'xhigh':
       return 'high';
     default:
-      return effort;
+      return withoutMax(effort) as 'low' | 'medium' | 'high';
   }
 }
 
@@ -243,8 +346,9 @@ export function ollamaThinkValue(
   );
   if (levels.length === 0) return effort !== 'off';
 
+  const level = withoutMax(effort);
   const wanted =
-    effort === 'off' || effort === 'minimal' ? 'low' : effort === 'xhigh' ? 'high' : effort;
+    level === 'off' || level === 'minimal' ? 'low' : level === 'xhigh' ? 'high' : level;
   if (levels.includes(wanted)) return wanted;
   // Nearest listed level: lower first, then higher
   const order = ['low', 'medium', 'high'] as const;

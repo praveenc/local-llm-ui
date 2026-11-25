@@ -9,6 +9,7 @@ import type {
   Conversation,
   ConversationStatus,
   CreateMessageInput,
+  KiroConversationSession,
   Message,
   MessageFeedback,
   Provider,
@@ -25,6 +26,9 @@ const generateTitle = (content: string, maxLength = 50): string => {
   if (cleaned.length <= maxLength) return cleaned;
   return cleaned.substring(0, maxLength - 3) + '...';
 };
+
+/** The longest title that Kiro may set */
+const KIRO_TITLE_MAX = 120;
 
 export const conversationService = {
   /**
@@ -92,7 +96,37 @@ export const conversationService = {
    * chat keeps its place in the sidebar's date groups.
    */
   async rename(id: string, title: string): Promise<void> {
-    await db.conversations.update(id, { title });
+    await db.conversations.update(id, { title, titleEdited: true, titleFromKiro: false });
+  },
+
+  /**
+   * Store or clear the chat's Kiro session. Does not change updatedAt, like rename.
+   */
+  async setKiroSession(id: string, kiro: KiroConversationSession | undefined): Promise<void> {
+    await db.conversations.update(id, { kiro });
+  },
+
+  /**
+   * Kiro's short title replaces the automatic one, never a title that the user set. A title
+   * counts as automatic when it is not marked as edited and still equals the title made from the
+   * first user message (a chat renamed before `titleEdited` existed has no flag), or when it is
+   * Kiro's own title from earlier (`titleFromKiro`). Does not change updatedAt, like rename.
+   */
+  async setTitleFromKiro(id: string, title: string): Promise<void> {
+    const cleaned = title.trim().replace(/\s+/g, ' ').slice(0, KIRO_TITLE_MAX);
+    if (!cleaned) return;
+    await db.transaction('rw', [db.conversations, db.messages], async () => {
+      const conversation = await db.conversations.get(id);
+      if (!conversation || conversation.titleEdited === true) return;
+      const messages = await db.messages
+        .where('[conversationId+sequence]')
+        .between([id, Dexie.minKey], [id, Dexie.maxKey])
+        .toArray();
+      const firstUser = messages.find((m) => m.role === 'user');
+      const automatic = !!firstUser && conversation.title === generateTitle(firstUser.content);
+      if (!automatic && conversation.titleFromKiro !== true) return;
+      await db.conversations.update(id, { title: cleaned, titleFromKiro: true });
+    });
   },
 
   /**
@@ -292,6 +326,8 @@ export const conversationService = {
         totalOutputTokens: sourceMessages.reduce((n, m) => n + (m.usage?.outputTokens || 0), 0),
         providers: [...new Set(sourceMessages.map((m) => m.provider))],
         models: [...new Set(sourceMessages.map((m) => m.modelId))],
+        // No `kiro`: two chats must not share one Kiro session. The fork's first Kiro prompt
+        // opens a new session and sends the copied messages as context (D12).
       };
 
       await db.conversations.add(conversation);
