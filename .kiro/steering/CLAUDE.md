@@ -61,9 +61,10 @@ Vite middleware keeps credentials and SDK calls on the server. Each chat proxy u
   - `POST /api/kiro/login/cancel` stops the sign-in.
   - `POST /api/kiro/logout` signs out.
   - `POST /api/kiro/models` lists the Kiro models (a POST: a load can start Kiro CLI).
-  - `POST /api/kiro/chat` streams a Kiro reply through one shared `kiro-cli acp` (`server/acp/agent.ts` with the Kiro harness in `server/kiro/harness.ts`; the route is `server/kiro/chat.ts`). It gets the new message, the earlier messages, and how many of them the Kiro session has seen (`src/utils/kiroChat.ts`).
+  - `POST /api/kiro/chat` streams a Kiro reply through one shared `kiro-cli acp` (`server/acp/agent.ts` with the Kiro harness in `server/kiro/harness.ts`; the route is `server/kiro/chat.ts`). It gets the new message, the earlier messages, and how many of them the Kiro session has seen (`src/utils/kiroChat.ts`). When Kiro asks to run a tool, it sends a `permission` event with a server-made `requestId` and Kiro's options, and a `permissionResult` event when the question ends (`src/utils/kiroPermissions.ts`).
+  - `POST /api/kiro/permission` answers one open Kiro question with `{ requestId, optionId }` (JSON, 1 KB at most; 404 for an unknown or ended question, 400 for an option that the question does not list). The open questions are in `server/acp/permission-registry.ts`. It never starts Kiro CLI.
 
-Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`, `kiroStatus.ts`, `kiroLogin.ts`, `kiroModels.ts`, `kiroChat.ts`). Keep these free of DOM and Node imports.
+Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`, `kiroStatus.ts`, `kiroLogin.ts`, `kiroModels.ts`, `kiroChat.ts`, `kiroPermissions.ts`). Keep these free of DOM and Node imports.
 
 ### Data Persistence (Dexie.js/IndexedDB)
 

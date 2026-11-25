@@ -8,7 +8,7 @@ import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { KIRO_DENIED_TOOL, KIRO_STOP_NOTICES } from '../../src/utils/kiroChat.ts';
+import { KIRO_STOP_NOTICES } from '../../src/utils/kiroChat.ts';
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
 import { createKiroProxy } from '../kiro-proxy.ts';
 import type { KiroProxy } from '../kiro-proxy.ts';
@@ -74,7 +74,7 @@ interface Setup {
 }
 
 async function setup(
-  opts: { env?: Record<string, string>; busyWaitMs?: number } = {}
+  opts: { env?: Record<string, string>; busyWaitMs?: number; pingMs?: number } = {}
 ): Promise<Setup> {
   counter += 1;
   const dir = path.join(root, `case-${counter}`);
@@ -104,6 +104,7 @@ async function setup(
     environment,
     agent,
     chatBusyWaitMs: opts.busyWaitMs,
+    chatPingMs: opts.pingMs,
   });
   const server: Server = createServer((req, res) => {
     void proxy(req, res, () => {
@@ -171,7 +172,6 @@ async function configCalls(c: Setup) {
   return (await c.log())
     .filter((m) => m.method === 'session/set_config_option')
     .map((m) => m.params as { configId: string; value: string })
-    .filter((p) => p.configId !== 'autopilot')
     .map((p) => `${p.configId}=${p.value}`);
 }
 
@@ -302,24 +302,6 @@ describe('POST /api/kiro/chat', () => {
     expect(ofKind(mcp.events, 'toolResult')).toEqual([
       { id: 'search_abc123', name: '@fake/search', result: '{"items":2}' },
     ]);
-  });
-
-  it('denies a permission request with reject_once and says so on the tool', async () => {
-    const c = await setup();
-    const { events } = await chat(c, { ...base, prompt: 'TOOL' });
-    const [call] = ofKind(events, 'toolCall') as { id: string; name: string; args: unknown }[];
-    expect(call).toEqual({
-      id: expect.stringMatching(/^run_command_/) as string,
-      name: 'execute',
-      args: { command: 'echo hi > hello.txt' },
-    });
-    expect(ofKind(events, 'toolResult')).toEqual([
-      { id: call.id, name: 'execute', error: KIRO_DENIED_TOOL },
-    ]);
-    const answer = (await c.log()).find(
-      (m) => m.method === undefined && (m.result as { outcome?: unknown })?.outcome
-    );
-    expect(answer?.result).toEqual({ outcome: { outcome: 'selected', optionId: 'o2' } });
   });
 
   it('adds a notice for a max_tokens stop', async () => {
@@ -556,6 +538,237 @@ describe('POST /api/kiro/chat', () => {
     c.status.current = { state: 'not-installed' };
     expect((await chat(c, { ...base, prompt: 'x' })).status).toBe(503);
     // Nothing started Kiro
+    expect(c.agent.state().running).toBe(false);
+  });
+});
+
+interface LiveChat {
+  events: Event[];
+  /** Everything that the stream sent, also comments */
+  raw(): string;
+  /** The next event of this kind after `from` events */
+  next(key: string, from?: number): Promise<Record<string, unknown>>;
+  done: Promise<void>;
+  close(): void;
+}
+
+/** A chat whose events the test reads while the stream is open */
+function liveChat(c: Setup, body: unknown): LiveChat {
+  const events: Event[] = [];
+  let text = '';
+  const controller = new AbortController();
+  const done = (async () => {
+    const res = await fetch(`${c.url}/api/kiro/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let parsed = 0;
+    for (;;) {
+      const { value, done: end } = await reader.read();
+      if (end) break;
+      text += decoder.decode(value, { stream: true });
+      const blocks = text.split('\n\n');
+      const complete = blocks.slice(0, -1).join('\n\n');
+      const all = parseEvents(complete);
+      events.push(...all.slice(parsed));
+      parsed = all.length;
+    }
+  })().catch((error: unknown) => {
+    if (!controller.signal.aborted) throw error;
+  });
+  return {
+    events,
+    raw: () => text,
+    async next(key, from = 0) {
+      let found: Record<string, unknown> | undefined;
+      await vi.waitFor(
+        () => {
+          found = events
+            .slice(from)
+            .find((e): e is Record<string, unknown> => e !== '[DONE]' && key in e);
+          expect(found).toBeDefined();
+        },
+        { timeout: 5000, interval: 10 }
+      );
+      return found![key] as Record<string, unknown>;
+    },
+    done,
+    close: () => controller.abort(),
+  };
+}
+
+const answer = (c: Setup, body: unknown) =>
+  fetch(`${c.url}/api/kiro/permission`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  });
+
+const kiroAnswers = async (c: Setup) =>
+  (await c.log())
+    .filter((m) => m.method === undefined && (m.result as { outcome?: unknown })?.outcome)
+    .map((m) => m.result);
+
+describe('Kiro permission questions (K6)', () => {
+  it('sends the question, takes the answer, and the tool completes', async () => {
+    const c = await setup();
+    const live = liveChat(c, { ...base, prompt: 'TOOL' });
+    const call = await live.next('toolCall');
+    const question = await live.next('permission');
+    expect(question).toEqual({
+      requestId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-/) as string,
+      toolCallId: call.id,
+      title: 'echo hi > hello.txt',
+      // Kiro's options in Kiro's order
+      options: [
+        { optionId: 'o1', name: 'Always allow', kind: 'allow_always' },
+        { optionId: 'o2', name: 'Deny', kind: 'reject_once' },
+        { optionId: 'o3', name: 'Allow', kind: 'allow_once' },
+        { optionId: 'o4', name: 'Always deny', kind: 'reject_always' },
+      ],
+      command: 'echo hi > hello.txt',
+      resource: 'echo hi > hello.txt',
+    });
+    const { requestId } = question as { requestId: string };
+    const res = await answer(c, { requestId, optionId: 'o3' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ answered: true });
+    await live.done;
+    expect(ofKind(live.events, 'permissionResult')).toEqual([
+      { requestId, optionId: 'o3', kind: 'allow_once', outcome: 'answered' },
+    ]);
+    expect(ofKind(live.events, 'toolResult')).toEqual([
+      { id: call.id, name: 'execute', result: '{"message":"hi"}' },
+    ]);
+    expect(await kiroAnswers(c)).toEqual([{ outcome: { outcome: 'selected', optionId: 'o3' } }]);
+    expect(live.events.at(-1)).toBe('[DONE]');
+    // Answered once: a second answer finds no question
+    expect((await answer(c, { requestId, optionId: 'o3' })).status).toBe(404);
+  });
+
+  it("denies with the user's option: the tool fails with Kiro's text and the turn goes on", async () => {
+    const c = await setup();
+    const live = liveChat(c, { ...base, prompt: 'TOOL' });
+    const { requestId } = (await live.next('permission')) as { requestId: string };
+    expect((await answer(c, { requestId, optionId: 'o2' })).status).toBe(200);
+    await live.done;
+    expect(ofKind(live.events, 'permissionResult')).toEqual([
+      { requestId, optionId: 'o2', kind: 'reject_once', outcome: 'answered' },
+    ]);
+    const [result] = ofKind(live.events, 'toolResult') as { error?: string }[];
+    expect(result.error).toContain('The user rejected this tool call.');
+    expect(contentOf(live.events)).toContain('echo: TOOL');
+    expect(live.events.at(-1)).toBe('[DONE]');
+  });
+
+  it('refuses an option that the question does not list, and the question stays open', async () => {
+    const c = await setup();
+    const live = liveChat(c, { ...base, prompt: 'TOOL' });
+    const { requestId } = (await live.next('permission')) as { requestId: string };
+    const wrong = await answer(c, { requestId, optionId: 'w1' });
+    expect(wrong.status).toBe(400);
+    expect(await wrong.json()).toEqual({ error: 'Kiro did not offer this option' });
+    expect((await answer(c, { requestId, optionId: 'o2' })).status).toBe(200);
+    await live.done;
+    expect(await kiroAnswers(c)).toEqual([{ outcome: { outcome: 'selected', optionId: 'o2' } }]);
+  });
+
+  it('cancels the open question when the stream closes', async () => {
+    const c = await setup();
+    const live = liveChat(c, { ...base, prompt: 'TOOL' });
+    const { requestId } = (await live.next('permission')) as { requestId: string };
+    live.close();
+    await vi.waitFor(
+      () =>
+        expect(console.log).toHaveBeenCalledWith(
+          expect.stringMatching(/chat reply ended: cancelled/)
+        ),
+      { timeout: 3000 }
+    );
+    expect(await kiroAnswers(c)).toEqual([{ outcome: { outcome: 'cancelled' } }]);
+    expect((await answer(c, { requestId, optionId: 'o3' })).status).toBe(404);
+    // The session works again
+    const next = await chat(c, { ...base, prompt: 'hello' });
+    expect(contentOf(next.events)).toBe('echo: hello');
+  });
+
+  it('asks for a write, then "Review changes" with the write as its related tool call', async () => {
+    const c = await setup();
+    const live = liveChat(c, { ...base, prompt: 'WRITE' });
+    const write = (await live.next('permission')) as { requestId: string };
+    expect(write).toMatchObject({
+      toolCallId: 'toolu_fake_write',
+      title: 'Write File',
+      resource: 'notes.txt',
+    });
+    expect(write).not.toHaveProperty('review');
+    expect((await answer(c, { requestId: write.requestId, optionId: 'w1' })).status).toBe(200);
+    const first = live.events.length;
+    const review = (await live.next('permission', first)) as { requestId: string };
+    expect(review).toEqual({
+      requestId: expect.any(String) as string,
+      toolCallId: expect.stringMatching(/^turn_approval_/) as string,
+      title: 'Review changes',
+      options: [
+        { optionId: 'r1', name: 'Accept changes', kind: 'allow_once' },
+        { optionId: 'r2', name: 'Reject changes', kind: 'reject_once' },
+      ],
+      relatedToolCallIds: ['toolu_fake_write'],
+      review: true,
+    });
+    expect(review.requestId).not.toBe(write.requestId);
+    expect((await answer(c, { requestId: review.requestId, optionId: 'r2' })).status).toBe(200);
+    await live.done;
+    expect(ofKind(live.events, 'permissionResult')).toEqual([
+      { requestId: write.requestId, optionId: 'w1', kind: 'allow_once', outcome: 'answered' },
+      { requestId: review.requestId, optionId: 'r2', kind: 'reject_once', outcome: 'answered' },
+    ]);
+    const [result] = ofKind(live.events, 'toolResult') as { id: string; error?: string }[];
+    expect(result.id).toBe('toolu_fake_write');
+    expect(result.error).toContain('rejected');
+  });
+
+  it('sends a ping comment while a question is open, and none after it', async () => {
+    const c = await setup({ pingMs: 30 });
+    // SLOW: the reply streams for about 160 ms after the question
+    const live = liveChat(c, { ...base, prompt: 'TOOL SLOW' });
+    const { requestId } = (await live.next('permission')) as { requestId: string };
+    await vi.waitFor(() => expect(live.raw()).toContain(': ping\n\n'), { timeout: 3000 });
+    await answer(c, { requestId, optionId: 'o3' });
+    await live.done;
+    const after = live.raw().slice(live.raw().indexOf('"permissionResult"'));
+    expect(after).toContain('echo');
+    expect(after).not.toContain(': ping');
+  });
+});
+
+describe('POST /api/kiro/permission', () => {
+  it('answers 404 for an unknown id, 400 for a bad body, 413 for a big one, 405 for GET', async () => {
+    const c = await setup();
+    const unknown = await answer(c, {
+      requestId: '11111111-2222-4333-8444-555555555555',
+      optionId: 'o1',
+    });
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toEqual({ error: 'This question has ended' });
+    expect((await answer(c, '{nope')).status).toBe(400);
+    expect((await answer(c, { requestId: 'not-a-uuid', optionId: 'o1' })).status).toBe(400);
+    expect((await answer(c, { requestId: '11111111-2222-4333-8444-555555555555' })).status).toBe(
+      400
+    );
+    const big = await answer(c, {
+      requestId: '11111111-2222-4333-8444-555555555555',
+      optionId: 'x'.repeat(2000),
+    });
+    expect(big.status).toBe(413);
+    const get = await fetch(`${c.url}/api/kiro/permission`);
+    expect(get.status).toBe(405);
+    expect(get.headers.get('allow')).toBe('POST');
+    // The route never starts Kiro CLI
     expect(c.agent.state().running).toBe(false);
   });
 });

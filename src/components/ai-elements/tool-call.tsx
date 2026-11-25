@@ -1,6 +1,7 @@
 /**
  * One tool call in the work row: a line with the tool, its main argument and its outcome.
- * Click the line to see the results (web search) or the output (other tools).
+ * Click the line to see the results (web search) or the output (other tools). Kiro's open
+ * question shows under the line; after it, the line says the answer in words.
  */
 import { ChevronRight, ExternalLink, Globe, Loader2, Wrench } from 'lucide-react';
 
@@ -9,6 +10,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
 import type { ToolCallPart } from '../../types/ai-messages';
+import { approvalOutcome, approvalWords, openQuestion } from '../../utils/kiroPermissions';
 import { argsSummary } from '../../utils/toolCallSummary';
 import {
   type SearchResult,
@@ -20,6 +22,7 @@ import {
   shortToolName,
   toolResultText,
 } from '../../utils/toolResults';
+import { PermissionQuestion } from './permission-question';
 
 interface ToolCallProps {
   toolCall: ToolCallPart;
@@ -33,7 +36,13 @@ export function ToolCall({ toolCall, className }: ToolCallProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const isWebSearch = isWebSearchTool(toolCall.toolName);
-  const isPending = toolCall.status === 'pending';
+  const question = openQuestion(toolCall.approvals);
+  // A question that ended without an answer, or a denied tool, ends a tool that is still pending
+  const isPending = toolCall.status === 'pending' && !approvalOutcome(toolCall.approvals);
+  const answers = (toolCall.approvals ?? [])
+    .filter((a) => a.state !== 'open')
+    .map(approvalWords)
+    .join(' · ');
   const isError = toolCall.status === 'error';
 
   const searchResults = isWebSearch ? parseSearchResults(toolCall.result) : null;
@@ -78,10 +87,24 @@ export function ToolCall({ toolCall, className }: ToolCallProps) {
             {isWebSearch ? `“${summary}”` : summary}
           </span>
         )}
-        {isPending && (
-          <span className="ml-auto shrink-0">{isWebSearch ? 'Searching…' : 'Running…'}</span>
+        {question ? (
+          <span className="ml-auto shrink-0">Waiting for your answer</span>
+        ) : (
+          isPending && (
+            <span className="ml-auto shrink-0">{isWebSearch ? 'Searching…' : 'Running…'}</span>
+          )
         )}
-        {showError && <span className="ml-auto shrink-0 text-destructive">Failed</span>}
+        {!question && (answers || showError) && (
+          <span className="ml-auto shrink-0">
+            {answers}
+            {showError && (
+              <>
+                {answers && ' · '}
+                <span className="text-destructive">Failed</span>
+              </>
+            )}
+          </span>
+        )}
         {searchResults && searchResults.length > 0 && (
           <span className="ml-auto shrink-0 tabular-nums">
             {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
@@ -89,6 +112,8 @@ export function ToolCall({ toolCall, className }: ToolCallProps) {
           </span>
         )}
       </button>
+
+      {question && <PermissionQuestion key={question.requestId} approval={question} />}
 
       {/* The sites a search found, without a second click */}
       {domains.length > 0 && !isExpanded && (

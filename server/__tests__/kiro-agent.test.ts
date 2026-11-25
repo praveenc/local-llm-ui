@@ -21,7 +21,7 @@ import {
   optionIdForKind,
   shutdownKiroAgent,
 } from '../kiro/agent.ts';
-import type { KiroAgentOptions, PermissionQuestion } from '../kiro/agent.ts';
+import type { KiroAgentOptions, PermissionEnd, PermissionQuestion } from '../kiro/agent.ts';
 
 const FAKE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -189,25 +189,14 @@ describe('KiroAgent start', () => {
 });
 
 describe('KiroAgent sessions', () => {
-  it('turns Autopilot off and reads it back', async () => {
+  it("keeps Kiro's own defaults in a new session: no option is set (D17)", async () => {
     const c = await setup();
     const { sessionId, configOptions } = await c.agent.newSession();
-    expect(configOptions.find((o) => o.id === 'autopilot')?.currentValue).toBe('off');
+    expect(configOptions.find((o) => o.id === 'autopilot')?.currentValue).toBe('on');
     expect(c.agent.configOptions(sessionId)?.find((o) => o.id === 'autopilot')?.currentValue).toBe(
-      'off'
+      'on'
     );
-    const set = (await c.log()).find((l) => l.msg.method === 'session/set_config_option');
-    expect(set?.msg.params).toEqual({ sessionId, configId: 'autopilot', value: 'off' });
-  });
-
-  it('deletes the session when Autopilot stays on', async () => {
-    const c = await setup({ FAKE_KIRO_MODE: 'autopilot-stuck' });
-    await expect(c.agent.newSession()).rejects.toThrow(
-      new KiroSessionError('Kiro did not turn off Autopilot')
-    );
-    const log = await c.log();
-    expect(methods(log)).toContain('session/delete');
-    expect(c.agent.state().liveSessions).toBe(0);
+    expect(methods(await c.log())).not.toContain('session/set_config_option');
   });
 
   it('sets only listed options and values, and checks the value read back', async () => {
@@ -223,9 +212,8 @@ describe('KiroAgent sessions', () => {
     const options = await c.agent.setOption(sessionId, 'model', 'claude-fake-1');
     expect(options.find((o) => o.id === 'model')?.currentValue).toBe('claude-fake-1');
     const sets = (await c.log()).filter((l) => l.msg.method === 'session/set_config_option');
-    // autopilot, stuck-model, claude-fake-1: the invalid ones were never sent
+    // stuck-model, claude-fake-1: the invalid ones were never sent
     expect(sets.map((s) => (s.msg.params as { value: string }).value)).toEqual([
-      'off',
       'stuck-model',
       'claude-fake-1',
     ]);
@@ -416,9 +404,6 @@ describe('KiroAgent failures and stop', () => {
     expect(c.agent.configOptions(sessionId)?.find((o) => o.id === 'model')?.currentValue).toBe(
       'claude-fake-1'
     );
-    expect(c.agent.configOptions(sessionId)?.find((o) => o.id === 'autopilot')?.currentValue).toBe(
-      'off'
-    );
   });
 
   it('stops when idle and starts a new process on the next use', async () => {
@@ -472,19 +457,6 @@ const configSets = async (c: Case) =>
     .map((l) => l.msg.params as { configId: string; value: string });
 
 describe('KiroAgent review fixes', () => {
-  // B1
-  it('never deletes a loaded session that fails the Autopilot check', async () => {
-    const c = await setup({ FAKE_KIRO_MODE: 'autopilot-stuck' });
-    await expect(c.agent.ensureSession('sess_existing', c.dir)).rejects.toThrow(
-      new KiroSessionError('Kiro did not turn off Autopilot')
-    );
-    const log = methods(await c.log());
-    expect(log).toContain('session/load');
-    expect(log).not.toContain('session/delete');
-    expect(c.agent.isLive('sess_existing')).toBe(false);
-    expect(c.agent.state().liveSessions).toBe(0);
-  });
-
   // M1
   it('stops the recorded process groups after a crash', async () => {
     const c = await setup({ FAKE_KIRO_MODE: 'crash-on-prompt', FAKE_KIRO_SPAWN_GRANDCHILD: '1' });
@@ -498,35 +470,12 @@ describe('KiroAgent review fixes', () => {
     await waitGone(grandchild!);
   });
 
-  // M2
-  it('cancels the reply and turns Autopilot off again when Kiro reports it on', async () => {
-    const c = await setup({ FAKE_KIRO_MODE: 'autopilot-flip' });
-    const { sessionId } = await c.agent.newSession();
-    const pid = c.agent.state().pid;
-    expect(await c.agent.prompt(sessionId, text('hi'), collect())).toBe('cancelled');
-    expect(methods(await c.log())).toContain('session/cancel');
-    await vi.waitFor(() => expect(c.agent.isLive(sessionId)).toBe(true));
-    expect(autopilot(c, sessionId)).toBe('off');
-    const offs = (await configSets(c)).filter((p) => p.configId === 'autopilot');
-    expect(offs).toEqual([
-      { sessionId, configId: 'autopilot', value: 'off' },
-      { sessionId, configId: 'autopilot', value: 'off' },
-    ]);
-    expect(c.agent.state().pid).toBe(pid);
-  });
-
-  it('rejects changes to autopilot and mode', async () => {
+  it('has no option lock: Kiro owns Autopilot and the agent mode (D17)', async () => {
     const c = await setup();
     const { sessionId } = await c.agent.newSession();
-    for (const [id, value] of [
-      ['autopilot', 'on'],
-      ['mode', 'vibe'],
-    ]) {
-      await expect(c.agent.setOption(sessionId, id, value)).rejects.toThrow(
-        new KiroOptionError('This option cannot be changed from the app')
-      );
-    }
-    expect((await configSets(c)).map((p) => p.value)).toEqual(['off']);
+    const options = await c.agent.setOption(sessionId, 'autopilot', 'off');
+    expect(options.find((o) => o.id === 'autopilot')?.currentValue).toBe('off');
+    expect((await configSets(c)).map((p) => [p.configId, p.value])).toEqual([['autopilot', 'off']]);
   });
 
   // M3
@@ -749,12 +698,19 @@ describe('KiroAgent API for K5 and K6', () => {
     const c = await setup();
     const { sessionId } = await c.agent.newSession();
     const questions: PermissionQuestion[] = [];
+    const ends: PermissionEnd[] = [];
     const u = collect();
     const result = await c.agent.prompt(sessionId, text('TOOL'), {
       onUpdate: u.onUpdate,
       onPermission: (q) => {
         questions.push(q);
+        expect(q.signal.aborted).toBe(false);
         return { optionId: q.options.find((o) => o.kind === 'allow_once')!.optionId };
+      },
+      onPermissionEnd: (end) => {
+        // The question has ended before its end is reported
+        expect(questions[0].signal.aborted).toBe(true);
+        ends.push(end);
       },
     });
     expect(result).toBe('end_turn');
@@ -763,8 +719,18 @@ describe('KiroAgent API for K5 and K6', () => {
       requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       toolCallId: expect.stringMatching(/^run_command_/),
       title: 'echo hi > hello.txt',
+      meta: { kiro: { toolId: 'run_command', command: 'echo hi > hello.txt' } },
       signal: expect.any(AbortSignal),
     });
+    expect(ends).toEqual([
+      {
+        requestId: questions[0].requestId,
+        toolCallId: questions[0].toolCallId,
+        end: 'answered',
+        optionId: 'o3',
+        kind: 'allow_once',
+      },
+    ]);
     expect(questions[0].options.map((o) => o.kind)).toEqual([
       'allow_always',
       'reject_once',
@@ -772,6 +738,33 @@ describe('KiroAgent API for K5 and K6', () => {
       'reject_always',
     ]);
     expect(u.updates.find((x) => x.sessionUpdate === 'tool_call_update')?.status).toBe('completed');
+  });
+
+  it('reports a timeout and a cancel as the end of a question', async () => {
+    const c = await setup({}, { permissionTimeoutMs: 200 });
+    const { sessionId } = await c.agent.newSession();
+    const ends: PermissionEnd[] = [];
+    const never = { onPermission: () => new Promise<never>(() => undefined) };
+    const onPermissionEnd = (end: PermissionEnd) => void ends.push(end);
+    const u = collect();
+    expect(await c.agent.prompt(sessionId, text('TOOL'), { ...u, ...never, onPermissionEnd })).toBe(
+      'end_turn'
+    );
+    expect(ends).toEqual([expect.objectContaining({ end: 'timeout', kind: 'reject_once' })]);
+    expect(u.updates.find((x) => x.sessionUpdate === 'tool_call_update')?.status).toBe('failed');
+
+    const reply = c.agent.prompt(sessionId, text('TOOL'), {
+      ...collect(),
+      onPermission: () => {
+        void c.agent.cancel(sessionId);
+        return new Promise<never>(() => undefined);
+      },
+      onPermissionEnd,
+    });
+    expect(await reply).toBe('cancelled');
+    expect(ends.at(-1)).toEqual(expect.objectContaining({ end: 'cancelled' }));
+    expect(ends.at(-1)).not.toHaveProperty('kind');
+    expect(ends).toHaveLength(2);
   });
 
   it('extension() calls only the allowed Kiro methods', async () => {
@@ -791,9 +784,9 @@ describe('KiroAgent API for K5 and K6', () => {
     expect(c.agent.configOptions('sess_opts')?.find((o) => o.id === 'model')?.currentValue).toBe(
       'claude-fake-1'
     );
-    expect(autopilot(c, 'sess_opts')).toBe('off');
+    // autopilot and mode already have these values: only the model is set
+    expect(autopilot(c, 'sess_opts')).toBe('on');
     expect((await configSets(c)).map((p) => [p.configId, p.value])).toEqual([
-      ['autopilot', 'off'],
       ['model', 'claude-fake-1'],
     ]);
   });
