@@ -1,5 +1,5 @@
 /**
- * JSON-RPC 2.0 over newline-delimited JSON, as `kiro-cli acp` speaks it on stdio.
+ * JSON-RPC 2.0 over newline-delimited JSON, as an ACP agent speaks it on stdio.
  * One line is one message. Lines that are not JSON are counted and ignored.
  */
 import type { ChildProcess } from 'child_process';
@@ -28,8 +28,9 @@ export class AcpTimeoutError extends Error {
 }
 
 export class AcpClosedError extends Error {
-  constructor(reason: string) {
-    super(`The Kiro connection closed: ${reason}`);
+  /** `name` is the agent's name in the text: "The <name> connection closed: …" */
+  constructor(reason: string, name = 'agent') {
+    super(`The ${name} connection closed: ${reason}`);
     this.name = 'AcpClosedError';
   }
 }
@@ -69,6 +70,10 @@ export interface AcpConnectionOptions {
   /** When set, its exit closes the connection and gives the exit code */
   child?: ChildProcess;
   maxLineBytes?: number;
+  /** The agent's name in AcpClosedError texts. Default 'agent'. */
+  name?: string;
+  /** The tag of the log lines: "[tag] …". Default 'acp'. */
+  logTag?: string;
 }
 
 export class AcpConnection {
@@ -78,6 +83,8 @@ export class AcpConnection {
   private readonly output: Writable;
   private readonly child: ChildProcess | undefined;
   private readonly maxLineBytes: number;
+  private readonly name: string;
+  private readonly logTag: string;
   private readonly pending = new Map<number, Pending>();
   private readonly notificationHandlers: NotificationHandler[] = [];
   private readonly closeHandlers: CloseHandler[] = [];
@@ -91,6 +98,8 @@ export class AcpConnection {
     this.output = output;
     this.child = options.child;
     this.maxLineBytes = options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
+    this.name = options.name ?? 'agent';
+    this.logTag = options.logTag ?? 'acp';
     input.on('data', (chunk: Buffer | string) => this.onData(chunk));
     input.on('end', () => this.close('stream end'));
     input.on('close', () => this.close('stream end'));
@@ -110,7 +119,8 @@ export class AcpConnection {
   }
 
   request<T>(method: string, params: unknown, options: { timeoutMs?: number } = {}): Promise<T> {
-    if (this.closedInfo) return Promise.reject(new AcpClosedError(this.closedInfo.reason));
+    if (this.closedInfo)
+      return Promise.reject(new AcpClosedError(this.closedInfo.reason, this.name));
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       const entry: Pending = { method, resolve: resolve as (v: unknown) => void, reject };
@@ -136,7 +146,7 @@ export class AcpConnection {
     this.notificationHandlers.push(handler);
   }
 
-  /** The handler returns undefined for a method that it does not know: Kiro then gets -32601 */
+  /** The handler returns undefined for a method that it does not know: the agent then gets -32601 */
   onRequest(handler: RequestHandler): void {
     this.requestHandler = handler;
   }
@@ -161,7 +171,7 @@ export class AcpConnection {
     for (const [id, entry] of this.pending) {
       if (entry.timer) clearTimeout(entry.timer);
       this.pending.delete(id);
-      entry.reject(new AcpClosedError(reason));
+      entry.reject(new AcpClosedError(reason, this.name));
     }
     for (const handler of this.closeHandlers.splice(0)) handler(this.closedInfo);
   }
@@ -242,7 +252,7 @@ export class AcpConnection {
       try {
         handler(method, params);
       } catch (error) {
-        console.warn(`[kiro] notification handler failed: ${(error as Error).message}`);
+        console.warn(`[${this.logTag}] notification handler failed: ${(error as Error).message}`);
       }
     }
   }

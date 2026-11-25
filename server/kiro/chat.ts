@@ -26,10 +26,10 @@ import {
   unseenMessages,
 } from '../../src/utils/kiroChat.ts';
 import type { KiroChatEvent, KiroChatRequest } from '../../src/utils/kiroChat.ts';
-import { kiroEffortSetting, parseKiroModels } from '../../src/utils/kiroModels.ts';
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
+import { createUpdateMapper } from '../acp/updates.ts';
+import type { AcpStreamEvent } from '../acp/updates.ts';
 import { endStreamWithError, readBodyWithLimit } from '../security.ts';
-import type { ConfigOption, SessionUpdate, ToolCallUpdate } from './acp-types.ts';
 import {
   AcpError,
   KiroBusyError,
@@ -39,38 +39,15 @@ import {
   KiroOptionError,
   KiroSessionError,
   KiroSignedOutError,
-  optionIdForKind,
 } from './agent.ts';
-import type { KiroAgent, PromptPermissionHandler } from './agent.ts';
+import type { KiroAgent } from './agent.ts';
+import { denyAllApprovals } from './approvals.ts';
 import { defaultKiroEnvironment } from './binary.ts';
 import type { KiroEnvironment } from './binary.ts';
+import { applyOptions } from './chat-options.ts';
 import type { KiroModelList } from './models.ts';
+import { createKiroReplyMeta, kiroToolName } from './reply-meta.ts';
 import { findKiroSessionCwd } from './session-files.ts';
-
-const MAX_TOOL_OUTPUT = 20_000;
-/** Lower case, single spaces, no punctuation at the end: to compare a title with the prompt */
-const comparable = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[\s.!?:;,…]+$/u, '');
-
-/**
- * Kiro's first focus_update title is the start of the prompt itself, before Kiro makes a short
- * title. That one is not sent: the app's own title from the first message is the same text.
- */
-export function isPromptEcho(title: string, prompt: string): boolean {
-  const t = comparable(title);
-  return t.length > 0 && comparable(prompt).startsWith(t);
-}
-
-/** An MCP tool's title is `@server/tool` */
-const MCP_TITLE = /^@\S/;
-/** The tool id at the start of Kiro's toolCallId: `run_command_toolu_bdrk_01…` */
-const TOOL_ID = /^([a-z][a-z0-9_]*?)_tool(?:u|use)_/;
-/** A display_error notice is cut to this size */
-const MAX_DISPLAY_ERROR = 300;
 
 const BUSY_TEXT = 'Kiro is still answering in this chat. Wait for the reply, or click Stop.';
 /** The text for an error that the route does not know: the detail goes to the terminal only */
@@ -107,10 +84,7 @@ export interface KiroChatHandlerOptions {
 
 type ChatEvent =
   | KiroChatEvent
-  | { content: string }
-  | { reasoning: string }
-  | { toolCall: { id: string; name: string; args: Record<string, unknown> } }
-  | { toolResult: { id: string; name: string; result?: string; error?: string } }
+  | AcpStreamEvent
   | {
       metadata: {
         usage: { credits?: number; contextPercent?: number };
@@ -119,45 +93,11 @@ type ChatEvent =
     }
   | { error: string };
 
-const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-
-const asNumber = (value: unknown) =>
-  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store');
   res.end(JSON.stringify(body));
-}
-
-/** The name that the work row shows for a Kiro tool call */
-export function kiroToolName(update: Pick<ToolCallUpdate, 'toolCallId' | 'title' | 'kind'>) {
-  if (typeof update.title === 'string' && MCP_TITLE.test(update.title)) return update.title;
-  const id = typeof update.toolCallId === 'string' ? TOOL_ID.exec(update.toolCallId)?.[1] : '';
-  if (id) return id;
-  if (typeof update.kind === 'string' && update.kind) return update.kind;
-  return 'tool';
-}
-
-/** The text of a tool's output: the text items of `content`, else rawOutput */
-export function kiroToolOutput(update: Pick<ToolCallUpdate, 'content' | 'rawOutput'>): string {
-  const texts: string[] = [];
-  for (const item of Array.isArray(update.content) ? update.content : []) {
-    const inner = asRecord(asRecord(item)?.content);
-    if (asRecord(item)?.type === 'content' && inner?.type === 'text') {
-      if (typeof inner.text === 'string') texts.push(inner.text);
-    }
-  }
-  let text: string;
-  if (texts.length > 0) text = texts.join('\n\n');
-  else if (typeof update.rawOutput === 'string') text = update.rawOutput;
-  else if (update.rawOutput === undefined) text = '';
-  else text = JSON.stringify(update.rawOutput) ?? '';
-  return text.slice(0, MAX_TOOL_OUTPUT);
 }
 
 /** The clear text for an error after the stream started */
@@ -186,9 +126,6 @@ const aborted = (signal: AbortSignal) =>
     else signal.addEventListener('abort', () => resolve(false), { once: true });
   });
 
-const listsValue = (option: ConfigOption | undefined, value: string) =>
-  option?.options?.some((o) => o.value === value) === true;
-
 export function createKiroChatHandler(options: KiroChatHandlerOptions) {
   const { agent, statusReader, models } = options;
 
@@ -210,38 +147,6 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
     }
     const { sessionId } = await agent.newSession();
     return { id: sessionId, created: true };
-  }
-
-  /**
-   * Sets the model and the Thinking level when they differ from the session. Returns an error
-   * text for the browser, or undefined.
-   */
-  async function applyOptions(id: string, request: KiroChatRequest): Promise<string | undefined> {
-    let current = agent.configOptions(id) ?? [];
-    const modelOption = current.find((o) => o.id === 'model');
-    if (!listsValue(modelOption, request.model)) {
-      return `Kiro does not offer the model ${request.model} any more. Select a different model.`;
-    }
-    if (modelOption?.currentValue !== request.model) {
-      // A model change resets Kiro's effort: read the options again
-      current = await agent.setOption(id, 'model', request.model);
-    }
-
-    const meta = parseKiroModels(current).find((m) => m.id === request.model);
-    const setting = meta && kiroEffortSetting(request.thinkingEffort ?? 'default', meta);
-    if (!setting) return undefined;
-    const wanted: [string, string | undefined][] = [
-      ['effortLevel', setting.effortLevel],
-      ['thinking', setting.thinking],
-    ];
-    for (const [configId, value] of wanted) {
-      if (!value) continue;
-      const option = current.find((o) => o.id === configId);
-      // kiro-cli 3.4 has no effortLevel: skip an option that the session does not have
-      if (!listsValue(option, value) || option?.currentValue === value) continue;
-      current = await agent.setOption(id, configId, value);
-    }
-    return undefined;
   }
 
   return async function handleKiroChat(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -331,7 +236,7 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
         return;
       }
 
-      const optionError = await applyOptions(id, request);
+      const optionError = await applyOptions(agent, id, request);
       if (optionError) {
         stopReason = 'option-error';
         endStreamWithError(res, optionError);
@@ -345,140 +250,35 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
       unused = undefined;
       send({ session });
 
-      // The reply's tool calls, by id, and the ones that the app denied
-      const tools = new Map<string, { name: string; done: boolean }>();
-      const denied = new Set<string>();
-      let title = agent.sessionInfo(id)?.title;
-      let credits: number | undefined;
-      let contextPercent: number | undefined;
-      let elapsedMs: number | undefined;
-      let hasText = false;
-      /** The last display_error that is not an MCP connection error */
-      let displayError: string | undefined;
-
-      const announce = (update: ToolCallUpdate) => {
-        let tool = tools.get(update.toolCallId);
-        if (!tool) {
-          tool = { name: kiroToolName(update), done: false };
-          tools.set(update.toolCallId, tool);
-          const args = asRecord(update.rawInput) ?? {};
-          send({ toolCall: { id: update.toolCallId, name: tool.name, args } });
-        }
-        return tool;
-      };
-
-      const onUpdate = (update: SessionUpdate) => {
-        switch (update.sessionUpdate) {
-          case 'agent_message_chunk':
-          case 'agent_thought_chunk': {
-            const content = asRecord(update.content);
-            if (content?.type !== 'text' || typeof content.text !== 'string') return;
-            if (update.sessionUpdate === 'agent_message_chunk') {
-              if (content.text) hasText = true;
-              send({ content: content.text });
-            } else send({ reasoning: content.text });
-            return;
-          }
-          case 'tool_call':
-          case 'tool_call_update': {
-            const tool = update as ToolCallUpdate;
-            if (typeof tool.toolCallId !== 'string' || !tool.toolCallId) return;
-            const known = tools.get(tool.toolCallId);
-            if (update.sessionUpdate === 'tool_call') {
-              announce(tool);
-              if (tool.status !== 'completed' && tool.status !== 'failed') return;
-            } else if (tool.status !== 'completed' && tool.status !== 'failed') {
-              return;
-            }
-            const entry = known ?? announce(tool);
-            if (entry.done) return;
-            entry.done = true;
-            if (tool.status === 'completed') {
-              send({
-                toolResult: { id: tool.toolCallId, name: entry.name, result: kiroToolOutput(tool) },
-              });
-            } else {
-              const error = denied.has(tool.toolCallId) ? KIRO_DENIED_TOOL : kiroToolOutput(tool);
-              send({ toolResult: { id: tool.toolCallId, name: entry.name, error } });
-            }
-            return;
-          }
-          case 'session_info_update': {
-            const kiro = asRecord(asRecord(update._meta)?.kiro);
-            if (!kiro) return;
-            if (kiro.kind === 'focus_update') {
-              const next = typeof kiro.title === 'string' ? kiro.title : update.title;
-              if (typeof next === 'string' && next && next !== title) {
-                title = next;
-                if (!isPromptEcho(next, request.prompt)) send({ title: next });
-              }
-            } else if (
-              kiro.kind === 'context_usage' ||
-              (kiro.kind === undefined && kiro.contextUsage)
-            ) {
-              contextPercent =
-                asNumber(kiro.usagePercentage) ??
-                asNumber(asRecord(kiro.contextUsage)?.usagePercentage) ??
-                contextPercent;
-            } else if (kiro.kind === 'display_error') {
-              // MCP connection errors come on many normal replies
-              const detail = asRecord(kiro.displayError);
-              const type = kiro.errorType ?? detail?.errorType;
-              const message = kiro.message ?? detail?.message;
-              if (
-                type !== 'mcp_connection_error' &&
-                typeof message === 'string' &&
-                message.trim()
-              ) {
-                displayError = message.replace(/\s+/g, ' ').trim().slice(0, MAX_DISPLAY_ERROR);
-              }
-            } else if (kiro.kind === 'turn_completion') {
-              for (const summary of Array.isArray(kiro.promptTurnSummaries)
-                ? kiro.promptTurnSummaries
-                : []) {
-                const usage = asNumber(asRecord(summary)?.usage);
-                if (asRecord(summary)?.unit === 'credit' && usage !== undefined) {
-                  credits = (credits ?? 0) + usage;
-                }
-              }
-              elapsedMs = asNumber(kiro.elapsedTime) ?? elapsedMs;
-            }
-            return;
-          }
-          default:
-            // available_commands_update, config_option_update, _kiro/*
-            return;
-        }
-      };
-
-      const onPermission: PromptPermissionHandler = (question) => {
-        denied.add(question.toolCallId);
-        const optionId = optionIdForKind(
-          {
-            sessionId: id,
-            toolCall: { toolCallId: question.toolCallId },
-            options: question.options,
-          },
-          'reject_once'
-        );
-        return optionId ? { optionId } : 'cancelled';
-      };
+      const meta = createKiroReplyMeta({
+        prompt: request.prompt,
+        title: agent.sessionInfo(id)?.title,
+        send,
+      });
+      const mapper = createUpdateMapper({
+        send,
+        toolName: kiroToolName,
+        deniedText: KIRO_DENIED_TOOL,
+        onOther: meta.onUpdate,
+      });
+      const onPermission = denyAllApprovals(id, mapper.markDenied);
 
       stopReason = await agent.prompt(
         id,
         [{ type: 'text', text: buildKiroPrompt(unseen, request.prompt) }],
-        { onUpdate, signal: controller.signal, onPermission }
+        { onUpdate: mapper.onUpdate, signal: controller.signal, onPermission }
       );
 
       // A reply with no text that Kiro ended with an error (for example, no credits left)
-      if (!hasText && displayError && stopReason !== 'cancelled') {
-        send({ content: `\n\n_${displayError}_` });
+      if (!mapper.hasText && meta.displayError && stopReason !== 'cancelled') {
+        send({ content: `\n\n_${meta.displayError}_` });
       }
       if (stopReason !== 'end_turn' && stopReason !== 'cancelled') {
         const notice = KIRO_STOP_NOTICES[stopReason] ?? 'Kiro stopped the reply.';
         send({ content: `\n\n_${notice}_` });
       }
-      contextPercent ??= agent.sessionInfo(id)?.contextPercent;
+      const { credits, elapsedMs } = meta;
+      const contextPercent = meta.contextPercent ?? agent.sessionInfo(id)?.contextPercent;
       send({
         metadata: {
           usage: {

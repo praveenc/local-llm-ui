@@ -6,7 +6,7 @@ import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { SessionUpdate } from '../kiro/acp-types.ts';
+import type { SessionUpdate } from '../acp/types.ts';
 import {
   KiroAgent,
   KiroBusyError,

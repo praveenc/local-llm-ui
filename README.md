@@ -529,7 +529,7 @@ local-llm-ui/
 │   ├── layout/            # App shell and layout
 │   ├── services/          # Provider model lists, conversations, saved prompts
 │   └── utils/             # Helper functions; some are shared with server/
-├── server/                # Provider proxies, Kiro CLI, MCP manager, web search, security
+├── server/                # Provider proxies, the ACP harness layer (acp/) and Kiro (kiro/), MCP manager, web search, security
 ├── docs/                  # Design and security notes
 └── vite.config.ts         # Vite configuration and proxy middleware
 ```

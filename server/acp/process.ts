@@ -1,21 +1,19 @@
 /**
- * Starts `kiro-cli acp` in its own process group and stops it with all its process groups.
+ * Starts an ACP agent in its own process group and stops it with all its process groups.
  *
- * One `kiro-cli acp` starts 20 to 26 processes (the user's MCP servers). The v3 engine runs in a
- * process group of its own, and a wrapper script adds one more. A stop must end all of them.
+ * One agent can start many processes (for example the user's MCP servers), some of them in
+ * process groups of their own. A stop must end all of them.
  */
 import { execFile, execFileSync, spawn } from 'child_process';
 import type { ChildProcess } from 'child_process';
 
 import { onProcessEnd } from './process-end.ts';
 
-export const KIRO_ACP_ARGS = ['acp', '--agent-engine', 'v3', '--auth-method', 'cli'];
-
 const STDERR_RING_BYTES = 64 * 1024;
 const PS_ARGS = ['-A', '-o', 'pid=,ppid=,pgid='];
 const PS_MAX_BUFFER = 64 * 1024 * 1024;
 
-export interface KiroChild {
+export interface AgentChild {
   child: ChildProcess;
   pid: number;
   /** The last 64 KB of stderr, for diagnostics. Never logged as a whole. */
@@ -24,7 +22,7 @@ export interface KiroChild {
 }
 
 /**
- * Kiro children and the process groups recorded for them while they were alive. An entry stays
+ * Agent children and the process groups recorded for them while they were alive. An entry stays
  * until its groups are stopped, so the sync kill at the end of the app also reaches the groups of
  * a child that crashed.
  */
@@ -68,11 +66,13 @@ function untrack(child: ChildProcess): void {
   tracked.delete(child);
 }
 
-export function spawnKiroAcp(
-  binaryPath: string,
+/** Spawns `command` with `args`, with no shell, in a process group of its own */
+export function spawnAgentProcess(
+  command: string,
+  args: readonly string[],
   options: { cwd: string; env: NodeJS.ProcessEnv }
-): KiroChild {
-  const child = spawn(binaryPath, KIRO_ACP_ARGS, {
+): AgentChild {
+  const child = spawn(command, [...args], {
     cwd: options.cwd,
     env: options.env,
     stdio: ['pipe', 'pipe', 'pipe'],

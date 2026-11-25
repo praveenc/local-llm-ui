@@ -5,8 +5,8 @@ import { PassThrough } from 'stream';
 import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
-import { AcpClosedError, AcpConnection, AcpError, AcpTimeoutError } from '../kiro/acp-client.ts';
-import { stopProcessTree } from '../kiro/process.ts';
+import { AcpClosedError, AcpConnection, AcpError, AcpTimeoutError } from '../acp/client.ts';
+import { stopProcessTree } from '../acp/process.ts';
 
 const FAKE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),

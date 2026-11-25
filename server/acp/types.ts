@@ -1,6 +1,6 @@
 /**
- * The Agent Client Protocol messages that the app uses with kiro-cli 3.
- * Kiro sends many more fields than these: every type allows unknown fields.
+ * The Agent Client Protocol messages that the app uses.
+ * Agents send many more fields than these: every type allows unknown fields.
  */
 
 export interface Loose {
@@ -63,7 +63,7 @@ export interface NewSessionParams {
 
 export interface LoadSessionParams extends NewSessionParams {
   sessionId: string;
-  _meta?: { kiro: { noReplay: boolean } };
+  _meta?: Loose;
 }
 
 export interface NewSessionResult extends Loose, Meta {
@@ -138,7 +138,7 @@ export interface ToolCallUpdate extends Loose, Meta {
   content?: unknown[];
 }
 
-/** Kiro puts the details in `_meta.kiro`, with `kind` (focus_update, context_usage, turn_completion…) */
+/** The agent puts its own details in `_meta` */
 export interface SessionInfoUpdate extends Loose, Meta {
   sessionUpdate: 'session_info_update';
   title?: string;
@@ -154,7 +154,7 @@ export interface AvailableCommandsUpdate extends Loose, Meta {
   availableCommands: unknown[];
 }
 
-/** Any other kind that Kiro sends */
+/** Any other kind that the agent sends */
 export interface OtherUpdate extends Loose {
   sessionUpdate: string;
 }

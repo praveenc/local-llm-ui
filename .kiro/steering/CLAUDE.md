@@ -55,7 +55,13 @@ Vite middleware keeps credentials and SDK calls on the server. Each chat proxy u
 - `/api/ollama-aisdk`, `/api/lmstudio-aisdk` → local servers through the AI SDK (Ollama provider, OpenAI-compatible provider)
 - `/api/lmstudio-sdk` → LM Studio SDK (model list)
 - `/api/lmstudio`, `/api/ollama` → plain HTTP proxies
-- `/api/kiro` → Kiro CLI (`server/kiro-proxy.ts`, `server/kiro/`). `GET /api/kiro/status` runs `kiro-cli --version` and `kiro-cli whoami -f json` with `execFile` (no shell) and keeps the result 30 s. `POST /api/kiro/login` runs `kiro-cli login --use-device-flow` and streams the code and the sign-in URL as SSE; `POST /api/kiro/login/cancel` and `POST /api/kiro/logout`. `POST /api/kiro/chat` streams a Kiro reply through one shared `kiro-cli acp` (`server/kiro/agent.ts`, `chat.ts`); it gets the new message, the earlier messages, and how many of them the Kiro session has seen (`src/utils/kiroChat.ts`)
+- `/api/kiro` → Kiro CLI (`server/kiro-proxy.ts`). Two layers sit behind it: `server/acp/` is the generic ACP harness layer (agent process, process groups, permissions, update mapping; it has no harness names, and a test checks this), and `server/kiro/` is the Kiro harness adapter. A new harness adds its own adapter folder next to `server/kiro/`.
+  - `GET /api/kiro/status` runs `kiro-cli --version` and `kiro-cli whoami -f json` with `execFile` (no shell) and keeps the result 30 s.
+  - `POST /api/kiro/login` runs `kiro-cli login --use-device-flow` and streams the code and the sign-in URL as SSE.
+  - `POST /api/kiro/login/cancel` stops the sign-in.
+  - `POST /api/kiro/logout` signs out.
+  - `POST /api/kiro/models` lists the Kiro models (a POST: a load can start Kiro CLI).
+  - `POST /api/kiro/chat` streams a Kiro reply through one shared `kiro-cli acp` (`server/acp/agent.ts` with the Kiro harness in `server/kiro/harness.ts`; the route is `server/kiro/chat.ts`). It gets the new message, the earlier messages, and how many of them the Kiro session has seen (`src/utils/kiroChat.ts`).
 
 Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`, `kiroStatus.ts`, `kiroLogin.ts`, `kiroModels.ts`, `kiroChat.ts`). Keep these free of DOM and Node imports.
 
