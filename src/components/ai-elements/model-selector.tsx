@@ -149,16 +149,26 @@ export type ModelSelectorLogoProps = Omit<ComponentProps<'img'>, 'src' | 'alt'> 
     | (string & {});
 };
 
-export const ModelSelectorLogo = ({ provider, className, ...props }: ModelSelectorLogoProps) => (
-  <img
-    {...props}
-    alt={`${provider} logo`}
-    className={cn('size-3 dark:invert', className)}
-    height={12}
-    src={`https://models.dev/logos/${provider}.svg`}
-    width={12}
-  />
-);
+/**
+ * A provider logo. A path that starts with "/" is a logo file of this app (in colour, so it is
+ * not inverted in dark mode); anything else is a models.dev logo id.
+ */
+export const ModelSelectorLogo = ({ provider, className, ...props }: ModelSelectorLogoProps) => {
+  const local = provider.startsWith('/');
+  const name = local
+    ? (/([^/]+?)(?:[-_](?:color|icon))?\.svg$/i.exec(provider)?.[1] ?? '')
+    : provider;
+  return (
+    <img
+      {...props}
+      alt={`${name} logo`}
+      className={cn('size-3', !local && 'dark:invert', className)}
+      height={12}
+      src={local ? provider : `https://models.dev/logos/${provider}.svg`}
+      width={12}
+    />
+  );
+};
 
 export type ModelSelectorLogoGroupProps = ComponentProps<'div'>;
 

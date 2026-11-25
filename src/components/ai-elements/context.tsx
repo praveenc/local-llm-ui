@@ -149,10 +149,17 @@ export const ContextContent = ({ className, ...props }: ContextContentProps) => 
   />
 );
 
-export type ContextContentHeaderProps = ComponentProps<'div'>;
+export type ContextContentHeaderProps = ComponentProps<'div'> & {
+  /** Show the tokens used of the window. Off when only a percentage is known (Kiro). */
+  showTokens?: boolean;
+};
 
 /** Percentage, tokens used of the window, a bar, and the level in words */
-export const ContextContentHeader = ({ className, ...props }: ContextContentHeaderProps) => {
+export const ContextContentHeader = ({
+  className,
+  showTokens = true,
+  ...props
+}: ContextContentHeaderProps) => {
   const { usedTokens, maxTokens, fraction, level } = useContextValue();
   const label = levelLabel(level);
 
@@ -160,9 +167,11 @@ export const ContextContentHeader = ({ className, ...props }: ContextContentHead
     <div className={cn('w-full space-y-2 p-3 text-xs tabular-nums', className)} {...props}>
       <div className="flex items-center justify-between gap-3">
         <p className="font-medium">{formatPercent(fraction)} of the context window</p>
-        <p className="text-muted-foreground">
-          {formatTokens(usedTokens)} / {formatTokens(maxTokens)}
-        </p>
+        {showTokens && (
+          <p className="text-muted-foreground">
+            {formatTokens(usedTokens)} / {formatTokens(maxTokens)}
+          </p>
+        )}
       </div>
       <Progress
         className={cn('bg-muted', LEVEL_BAR[level])}

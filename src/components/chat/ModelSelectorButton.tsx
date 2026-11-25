@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { formatCreditRate } from '@/utils/kiroModels';
 import { modelLabel } from '@/utils/modelLabel';
 import { isModelPickerShortcut, modelPickerShortcutLabel } from '@/utils/shortcuts';
 
@@ -227,7 +228,18 @@ const groupHeading = (provider: ProviderModels): string =>
  * think. shortcut: no context window or tool support here, because the model objects do not
  * carry them; add them when the services return them.
  */
-const modelDetail = (model: UnifiedModel): string =>
-  [model.family, model.supportsThinking ? 'Thinking' : undefined].filter(Boolean).join(' · ');
+const modelDetail = (model: UnifiedModel): string => {
+  // Kiro: its description and the credit rate, for example
+  // "Claude Opus 5.5 model with 1M context window · 2× credits"
+  if (model.provider === 'kiro') {
+    const rate = model.kiro?.rateMultiplier;
+    return [model.kiro?.description, rate !== undefined ? formatCreditRate(rate) : undefined]
+      .filter(Boolean)
+      .join(' · ');
+  }
+  return [model.family, model.supportsThinking ? 'Thinking' : undefined]
+    .filter(Boolean)
+    .join(' · ');
+};
 
 export default ModelSelectorButton;

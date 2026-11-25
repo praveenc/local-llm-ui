@@ -1,4 +1,5 @@
 import type { Provider } from '../db/types';
+import type { KiroModel } from '../utils/kiroModels';
 
 export interface ModelInfo {
   modelId: string;
@@ -9,4 +10,8 @@ export interface ModelInfo {
   ownedBy?: string; // For Mantle: model owner
   supportsThinking?: boolean; // For Ollama: the model lists the "thinking" capability
   supportsTools?: boolean; // For Ollama: the model lists the "tools" capability; unset = unknown
+  kiro?: KiroModelMeta; // For Kiro: description, credit rate, and effort levels
 }
+
+/** What Kiro reports about a model, besides its id and name */
+export type KiroModelMeta = Omit<KiroModel, 'id' | 'name'>;

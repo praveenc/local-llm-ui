@@ -54,6 +54,83 @@ describe('ModelSelectorButton', () => {
     expect(screen.getByRole('link', { name: 'How to start' })).toBeInTheDocument();
   });
 
+  it("lists Kiro's models in Kiro's order with the description, credit rate, and local logo", () => {
+    const kiro = (id: string, name: string, description?: string, rate?: number) => ({
+      id,
+      name,
+      provider: 'kiro' as const,
+      providerName: 'Kiro',
+      kiro: { description, rateMultiplier: rate },
+    });
+    const onOpenPreferences = vi.fn();
+    render(
+      <ModelSelectorButton
+        providers={[
+          {
+            provider: 'kiro',
+            providerName: 'Kiro',
+            status: 'success',
+            models: [
+              kiro('auto', 'Auto', 'Models chosen by task for optimal usage', 1),
+              kiro(
+                'claude-opus-5.5',
+                'Claude Opus 5.5',
+                'Claude Opus 5.5 model with 1M context window',
+                2
+              ),
+              kiro('agi-nova-beta-1m', 'AGI Nova Beta 1M'),
+            ],
+          },
+        ]}
+        selectedModel={kiro('claude-opus-5.5', 'Claude Opus 5.5')}
+        onSelectModel={vi.fn()}
+        onOpenPreferences={onOpenPreferences}
+      />
+    );
+    // The chip in the chat input uses the app's own Kiro logo
+    expect(screen.getByRole('img', { name: 'kiro logo' })).toHaveAttribute(
+      'src',
+      '/kiro-color.svg'
+    );
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    expect(screen.getByText('Kiro · 3 models')).toBeInTheDocument();
+    const names = screen
+      .getAllByRole('option')
+      .map((option) => option.querySelector('span')?.textContent);
+    expect(names).toEqual(['Auto', 'Claude Opus 5.5', 'AGI Nova Beta 1M']);
+    expect(
+      screen.getByText('Claude Opus 5.5 model with 1M context window · 2× credits')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Models chosen by task for optimal usage · 1× credits')
+    ).toBeInTheDocument();
+  });
+
+  it('asks to sign in to Kiro from the picker', () => {
+    const onOpenPreferences = vi.fn();
+    render(
+      <ModelSelectorButton
+        providers={[
+          {
+            provider: 'kiro',
+            providerName: 'Kiro',
+            status: 'error',
+            models: [],
+            error: 'Sign in to Kiro in Preferences → Providers',
+          },
+        ]}
+        selectedModel={null}
+        onSelectModel={vi.fn()}
+        onOpenPreferences={onOpenPreferences}
+      />
+    );
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    expect(screen.getByText('Kiro · Not signed in')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in to Kiro' }));
+    expect(onOpenPreferences).toHaveBeenCalledTimes(1);
+  });
+
   it('shows a short label with the profile, and finds a model by a name with a dot', async () => {
     const haiku = {
       id: 'global.anthropic.claude-haiku-5-5',

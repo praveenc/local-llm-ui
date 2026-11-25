@@ -237,5 +237,35 @@ describe('summarizeChatUsage', () => {
     const summary = summarizeChatUsage([user, reply('a', undefined, undefined)]);
     expect(summary.contextTokens).toBe(0);
     expect(summary.totals.replies).toBe(0);
+    expect(summary.credits).toBe(0);
+    expect(summary.contextPercent).toBeUndefined();
+  });
+
+  it('adds up Kiro credits and takes the context percent of the last Kiro reply', () => {
+    const kiro = { provider: 'kiro' as const, id: 'claude-opus-5.5' };
+    const summary = summarizeChatUsage([
+      user,
+      reply('a', kiro, { credits: 0.05, contextPercent: 3, latencyMs: 2900 }),
+      user,
+      reply('b', kiro, { credits: 0.12, contextPercent: 7.5 }),
+    ]);
+    expect(summary.credits).toBeCloseTo(0.17);
+    expect(summary.kiroReplies).toBe(2);
+    expect(summary.contextPercent).toBe(7.5);
+    // Kiro replies are neither unpriced nor local, and have no dollar cost
+    expect(summary.unpricedReplies).toBe(0);
+    expect(summary.allLocal).toBe(false);
+    expect(summary.cost).toBeUndefined();
+    expect(summary.replyCosts.size).toBe(0);
+  });
+
+  it('has no Kiro context percent when the last reply came from another model', () => {
+    const summary = summarizeChatUsage([
+      reply('a', { provider: 'kiro', id: 'auto' }, { credits: 1, contextPercent: 40 }),
+      reply('b', { provider: 'ollama', id: 'qwen3:8b' }, { inputTokens: 10, outputTokens: 5 }),
+    ]);
+    expect(summary.contextPercent).toBeUndefined();
+    expect(summary.credits).toBe(1);
+    expect(summary.contextTokens).toBe(15);
   });
 });

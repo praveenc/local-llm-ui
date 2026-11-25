@@ -10,6 +10,7 @@ export type {
   CreateConversationInput,
   CreateMessageInput,
   CreateSavedPromptInput,
+  KiroConversationSession,
   Message,
   MessageAttachment,
   MessageFeedback,

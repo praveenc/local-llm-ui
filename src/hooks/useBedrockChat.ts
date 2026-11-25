@@ -9,15 +9,17 @@ import { toast } from 'sonner';
 
 import { useCallback, useRef, useState } from 'react';
 
-import type { MessageFeedback, Provider } from '../db/types';
+import type { KiroConversationSession, MessageFeedback, Provider } from '../db/types';
 import { mantleService } from '../services';
+import type { KiroModelMeta } from '../services/types';
 import type { MessagePart, ToolCallPart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
 import { extractErrorMessage } from '../utils/errorMessage';
 import { normalizeMediaType } from '../utils/fileUtils';
+import type { KiroChatRequest, KiroHistoryMessage } from '../utils/kiroChat';
 import { getMediaTypeFromFormat, lookupFormat } from '../utils/mediaTypes';
 import { loadPreferences } from '../utils/preferences';
-import { supportsThinkingEffort } from '../utils/thinkingEffort';
+import { supportsThinkingEffort, thinkingEffortOptions, withoutMax } from '../utils/thinkingEffort';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
 import { toStoredToolCall } from '../utils/toolResults';
 import { type MessageUsage, parseMessageUsage } from '../utils/usage';
@@ -35,6 +37,8 @@ export interface ChatModel {
   supportsThinking?: boolean;
   /** False when the provider reports that the model cannot use tools (Ollama) */
   supportsTools?: boolean;
+  /** Kiro: the model's effort levels, for the Thinking choices */
+  kiro?: KiroModelMeta;
 }
 
 interface UseBedrockChatOptions {
@@ -53,6 +57,11 @@ interface UseBedrockChatReturn {
   status: ChatStatus;
   error: string | null;
   wasInterrupted: boolean;
+  /**
+   * Progress of the streaming reply before its first output, for example "Starting Kiro…".
+   * Not stored with the reply.
+   */
+  streamStatus: string | null;
   sendMessage: (
     content: string,
     files?: Array<{ name: string; format: string; bytes: string }>
@@ -81,6 +90,7 @@ export function useBedrockChat({
   const [error, setError] = useState<string | null>(null);
   const [internalConversationId, setInternalConversationId] = useState<string | null>(null);
   const [wasInterrupted, setWasInterrupted] = useState(false);
+  const [streamStatus, setStreamStatus] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -95,6 +105,10 @@ export function useBedrockChat({
     deleteMessagesFromSequence,
     forkConversation,
     setMessageFeedback,
+    getConversation,
+    getMessages,
+    setKiroSession,
+    setTitleFromKiro,
   } = useConversationMutations();
 
   // Sync DB messages to local state when conversation loads (adjusting state during render)
@@ -139,6 +153,7 @@ export function useBedrockChat({
       setWasInterrupted(false);
 
       const { provider, id: modelId, name: modelName } = selectedModel;
+      const isKiro = provider === 'kiro';
       // A model that cannot use tools gets no web search and no MCP tools (Ollama rejects them)
       const useTools = selectedModel.supportsTools !== false;
 
@@ -151,17 +166,52 @@ export function useBedrockChat({
         onConversationChange?.(currentConversationId);
       }
 
-      // Send (and record) the thinking effort only when the user chose one the model accepts
+      // Send (and record) the thinking effort only when the user chose one the model offers.
+      // Max is a Kiro level; other providers get XHigh for it.
+      const wantedEffort = isKiro ? thinkingEffort : withoutMax(thinkingEffort);
+      const offeredEfforts = thinkingEffortOptions(provider, modelId, selectedModel.kiro).map(
+        (option) => option.value
+      );
       const effort =
-        thinkingEffort !== 'default' &&
-        supportsThinkingEffort(provider, modelId, selectedModel.supportsThinking)
-          ? thinkingEffort
+        wantedEffort !== 'default' &&
+        supportsThinkingEffort(provider, modelId, selectedModel.supportsThinking) &&
+        offeredEfforts.includes(wantedEffort)
+          ? wantedEffort
           : undefined;
-      const parameters = { maxTokens, ...(effort && { thinkingEffort: effort }) };
+      // Kiro takes no max tokens
+      const parameters = {
+        ...(!isKiro && { maxTokens }),
+        ...(effort && { thinkingEffort: effort }),
+      };
+
+      // Kiro keeps its own history. Read what the session has seen, and the chat's earlier
+      // messages, from the database now: the chat may be new, or a fork (D12).
+      let kiroRequest: KiroChatRequest | undefined;
+      if (isKiro) {
+        const [stored, storedMessages] = await Promise.all([
+          getConversation(currentConversationId),
+          getMessages(currentConversationId),
+        ]);
+        const history: KiroHistoryMessage[] = toUIMessages(storedMessages)
+          .filter((m): m is UIMessage & { role: 'user' | 'assistant' } => m.role !== 'system')
+          .map((m) => ({ role: m.role, content: getTextContent(m) }))
+          .filter((m) => m.content.trim().length > 0);
+        kiroRequest = {
+          ...(stored?.kiro?.sessionId && { sessionId: stored.kiro.sessionId }),
+          seenMessages: stored?.kiro?.seenMessages ?? 0,
+          history,
+          prompt: content,
+          model: modelId,
+          ...(effort && { thinkingEffort: effort }),
+        };
+      }
+      // The session of this reply, from its first event
+      let kiroSession: KiroConversationSession | undefined;
 
       // Create user message
       const userMessage = createUIMessage('user', content);
-      if (files && files.length > 0) {
+      // Kiro takes no files in this version
+      if (!isKiro && files && files.length > 0) {
         for (const file of files) {
           userMessage.parts.push({
             type: 'file',
@@ -175,6 +225,7 @@ export function useBedrockChat({
       setMessages((prev) => [...prev, userMessage]);
       setStatus('streaming');
       setError(null);
+      setStreamStatus(null);
 
       // Persist user message to DB
       const userSequence = await getNextSequence(currentConversationId);
@@ -206,97 +257,107 @@ export function useBedrockChat({
       let flushOnAbort: (() => void) | null = null;
 
       try {
-        // Build request - filter out messages with empty content
-        const chatMessages = [...(target?.history ?? messages), userMessage]
-          .filter((m) => {
-            const textContent = getTextContent(m);
-            return textContent.trim().length > 0;
-          })
-          .map((m) => ({
-            role: m.role,
-            content: getTextContent(m),
-            files: m.parts
-              .filter((p): p is MessagePart & { type: 'file' } => p.type === 'file')
-              .map((p) => ({
-                name: (p as { filename?: string }).filename || 'file',
-                format: getFormatFromMediaType((p as { mediaType?: string }).mediaType || ''),
-                bytes: (p as { data?: string }).data || '',
-              })),
-          }));
-
-        const requestBody = {
-          model: modelId,
-          messages: chatMessages,
-          max_tokens: maxTokens,
-          maxToolSteps,
-          enableWebSearch: useTools && enableWebSearch,
-          ...(effort && { thinkingEffort: effort }),
-        };
-
         // Route to appropriate endpoint based on provider
         let endpoint: string;
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
         };
-        const prefs = loadPreferences();
+        let requestBody: Record<string, unknown>;
 
-        // Add web search API keys and the provider order if web search is enabled
-        if (useTools && enableWebSearch) {
-          Object.assign(headers, buildWebSearchHeaders(prefs));
-        }
-
-        // Add enabled MCP server configs
-        const enabledMCPServers =
-          useTools && prefs.mcpServers
-            ? Object.values(prefs.mcpServers).filter((s) => s.enabled)
-            : [];
-        if (enabledMCPServers.length > 0) {
-          (requestBody as Record<string, unknown>).mcpServers = enabledMCPServers;
-        }
-
-        // Build provider-specific request
-        if (provider === 'bedrock-mantle') {
-          endpoint = '/api/mantle/chat';
-          const apiKey = mantleService.getApiKey();
-          if (!apiKey) {
-            throw new Error(
-              'Bedrock Mantle API key is required. Please configure it in preferences.'
-            );
-          }
-          headers['X-Mantle-Api-Key'] = apiKey;
-          headers['X-Mantle-Region'] = mantleService.getRegion();
-        } else if (provider === 'groq' || provider === 'cerebras') {
-          endpoint = '/api/aisdk/chat';
-          const apiKey = provider === 'groq' ? prefs.groqApiKey : prefs.cerebrasApiKey;
-          if (!apiKey) {
-            throw new Error(
-              `${provider === 'groq' ? 'Groq' : 'Cerebras'} API key is required. Please configure it in preferences.`
-            );
-          }
-          headers['X-Api-Key'] = apiKey;
-          // Add provider to request body for AI SDK proxy
-          (requestBody as Record<string, unknown>).provider = provider;
-        } else if (provider === 'anthropic') {
-          endpoint = '/api/anthropic/chat';
-          if (!prefs.anthropicApiKey) {
-            throw new Error('Anthropic API key is required. Please configure it in preferences.');
-          }
-          headers['X-Api-Key'] = prefs.anthropicApiKey;
-        } else if (provider === 'openrouter') {
-          endpoint = '/api/openrouter/chat';
-          if (!prefs.openrouterApiKey) {
-            throw new Error('OpenRouter API key is required. Please configure it in preferences.');
-          }
-          headers['X-Api-Key'] = prefs.openrouterApiKey;
-        } else if (provider === 'lmstudio') {
-          endpoint = '/api/lmstudio-aisdk/chat';
-          // No API key needed for local LM Studio
-        } else if (provider === 'ollama') {
-          endpoint = '/api/ollama-aisdk/chat';
-          // No API key needed for local Ollama
+        if (kiroRequest) {
+          // Kiro: no files, web search, MCP tools, max tokens, or tool steps
+          endpoint = '/api/kiro/chat';
+          requestBody = { ...kiroRequest };
         } else {
-          // Default to Bedrock
-          endpoint = '/api/bedrock-aisdk/chat';
+          // Build request - filter out messages with empty content
+          const chatMessages = [...(target?.history ?? messages), userMessage]
+            .filter((m) => {
+              const textContent = getTextContent(m);
+              return textContent.trim().length > 0;
+            })
+            .map((m) => ({
+              role: m.role,
+              content: getTextContent(m),
+              files: m.parts
+                .filter((p): p is MessagePart & { type: 'file' } => p.type === 'file')
+                .map((p) => ({
+                  name: (p as { filename?: string }).filename || 'file',
+                  format: getFormatFromMediaType((p as { mediaType?: string }).mediaType || ''),
+                  bytes: (p as { data?: string }).data || '',
+                })),
+            }));
+
+          requestBody = {
+            model: modelId,
+            messages: chatMessages,
+            max_tokens: maxTokens,
+            maxToolSteps,
+            enableWebSearch: useTools && enableWebSearch,
+            ...(effort && { thinkingEffort: effort }),
+          };
+
+          const prefs = loadPreferences();
+
+          // Add web search API keys and the provider order if web search is enabled
+          if (useTools && enableWebSearch) {
+            Object.assign(headers, buildWebSearchHeaders(prefs));
+          }
+
+          // Add enabled MCP server configs
+          const enabledMCPServers =
+            useTools && prefs.mcpServers
+              ? Object.values(prefs.mcpServers).filter((s) => s.enabled)
+              : [];
+          if (enabledMCPServers.length > 0) {
+            requestBody.mcpServers = enabledMCPServers;
+          }
+
+          // Build provider-specific request
+          if (provider === 'bedrock-mantle') {
+            endpoint = '/api/mantle/chat';
+            const apiKey = mantleService.getApiKey();
+            if (!apiKey) {
+              throw new Error(
+                'Bedrock Mantle API key is required. Please configure it in preferences.'
+              );
+            }
+            headers['X-Mantle-Api-Key'] = apiKey;
+            headers['X-Mantle-Region'] = mantleService.getRegion();
+          } else if (provider === 'groq' || provider === 'cerebras') {
+            endpoint = '/api/aisdk/chat';
+            const apiKey = provider === 'groq' ? prefs.groqApiKey : prefs.cerebrasApiKey;
+            if (!apiKey) {
+              throw new Error(
+                `${provider === 'groq' ? 'Groq' : 'Cerebras'} API key is required. Please configure it in preferences.`
+              );
+            }
+            headers['X-Api-Key'] = apiKey;
+            // Add provider to request body for AI SDK proxy
+            requestBody.provider = provider;
+          } else if (provider === 'anthropic') {
+            endpoint = '/api/anthropic/chat';
+            if (!prefs.anthropicApiKey) {
+              throw new Error('Anthropic API key is required. Please configure it in preferences.');
+            }
+            headers['X-Api-Key'] = prefs.anthropicApiKey;
+          } else if (provider === 'openrouter') {
+            endpoint = '/api/openrouter/chat';
+            if (!prefs.openrouterApiKey) {
+              throw new Error(
+                'OpenRouter API key is required. Please configure it in preferences.'
+              );
+            }
+            headers['X-Api-Key'] = prefs.openrouterApiKey;
+          } else if (provider === 'lmstudio') {
+            endpoint = '/api/lmstudio-aisdk/chat';
+            // No API key needed for local LM Studio
+          } else if (provider === 'ollama') {
+            endpoint = '/api/ollama-aisdk/chat';
+            // No API key needed for local Ollama
+          } else {
+            // Default to Bedrock
+            endpoint = '/api/bedrock-aisdk/chat';
+          }
         }
 
         // The model thinks before its first chunk arrives, so thinking time counts from here
@@ -427,6 +488,34 @@ export function useBedrockChat({
               if (parsed.reasoning) reasoningMs += now - lastEventAt;
               lastEventAt = now;
 
+              // Kiro: the session of this reply. A new session has seen none of the chat.
+              if (kiroRequest && isKiroSessionEvent(parsed.session)) {
+                kiroSession = {
+                  sessionId: parsed.session.id,
+                  seenMessages: parsed.session.created ? 0 : kiroRequest.seenMessages,
+                };
+                await setKiroSession(currentConversationId, kiroSession);
+                // The server sends it right before Kiro gets the message: "Starting Kiro…" is over
+                setStreamStatus(null);
+              }
+              // Kiro: its short title replaces the automatic one
+              if (kiroRequest && typeof parsed.title === 'string' && parsed.title.trim()) {
+                await setTitleFromKiro(currentConversationId, parsed.title).catch((err: unknown) =>
+                  console.error('Failed to save the Kiro title:', err)
+                );
+              }
+              // Progress before the first output; the first output clears it
+              if (typeof parsed.status === 'string') {
+                setStreamStatus(parsed.status || null);
+              } else if (
+                parsed.content ||
+                parsed.reasoning ||
+                parsed.toolCall ||
+                parsed.toolResult
+              ) {
+                setStreamStatus(null);
+              }
+
               // Handle explicit error payloads in stream
               if (parsed.error) {
                 const streamError =
@@ -540,6 +629,15 @@ export function useBedrockChat({
           prev.map((m) => (m.id === assistantMessage.id ? { ...m, id: saved.id } : m))
         );
 
+        // Kiro has seen the chat, the new message, and its reply. The next history leaves out
+        // a reply with no text (tools or thinking only), so count it only when it has text.
+        if (kiroRequest && kiroSession) {
+          await setKiroSession(currentConversationId, {
+            ...kiroSession,
+            seenMessages: kiroRequest.history.length + 1 + (fullContent.trim() ? 1 : 0),
+          });
+        }
+
         setStatus('idle');
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
@@ -547,6 +645,17 @@ export function useBedrockChat({
           // Keep the text received before the abort
           flushOnAbort?.();
           setStatus('idle');
+          // The server sends the session event right before Kiro gets the message, so with it
+          // Kiro got the new message (the app does not store the partial reply). Without it,
+          // Kiro never got the message and the chat's Kiro record stays as it was.
+          if (kiroRequest && kiroSession) {
+            await setKiroSession(currentConversationId, {
+              ...kiroSession,
+              seenMessages: kiroRequest.history.length + 1,
+            }).catch((saveErr: unknown) =>
+              console.error('Failed to save the Kiro session:', saveErr)
+            );
+          }
           return;
         }
 
@@ -557,6 +666,7 @@ export function useBedrockChat({
         setStatus('error');
       } finally {
         abortControllerRef.current = null;
+        setStreamStatus(null);
       }
     },
     [
@@ -571,6 +681,10 @@ export function useBedrockChat({
       createConversation,
       addMessage,
       getNextSequence,
+      getConversation,
+      getMessages,
+      setKiroSession,
+      setTitleFromKiro,
       onConversationChange,
     ]
   );
@@ -578,7 +692,7 @@ export function useBedrockChat({
   // Regenerate response
   const regenerate = useCallback(
     async (assistantMessageIndex: number) => {
-      if (status === 'streaming' || !selectedModel) return;
+      if (status === 'streaming' || !selectedModel || !activeConversationId) return;
 
       // Find the user message that preceded this assistant message
       let userMessageIndex = -1;
@@ -594,22 +708,16 @@ export function useBedrockChat({
         return;
       }
 
-      const userMessage = messages[userMessageIndex];
-      const userContent = getTextContent(userMessage);
+      const userContent = getTextContent(messages[userMessageIndex]);
+      const history = messages.slice(0, userMessageIndex);
 
-      // Remove messages from assistant onwards
-      const newMessages = messages.slice(0, userMessageIndex + 1);
-
-      // Delete from DB
-      if (activeConversationId) {
-        const fromSequence = assistantMessageIndex + 1;
-        await deleteMessagesFromSequence(activeConversationId, fromSequence);
-      }
-
-      setMessages(newMessages);
+      // Drop the user message and everything after it (DB sequences are 1-based): sendMessage
+      // adds the user message again, so the chat holds it once and sends it once
+      await deleteMessagesFromSequence(activeConversationId, userMessageIndex + 1);
+      setMessages(history);
 
       // Re-send the user message (without files for regeneration)
-      await sendMessage(userContent);
+      await sendMessage(userContent, undefined, { conversationId: activeConversationId, history });
     },
     [status, selectedModel, messages, activeConversationId, deleteMessagesFromSequence, sendMessage]
   );
@@ -692,6 +800,7 @@ export function useBedrockChat({
     status,
     error,
     wasInterrupted,
+    streamStatus,
     sendMessage,
     regenerate,
     retryLast,
@@ -700,6 +809,13 @@ export function useBedrockChat({
     stopGeneration,
     clearMessages,
   };
+}
+
+/** The `session` event of the Kiro route */
+function isKiroSessionEvent(value: unknown): value is { id: string; created: boolean } {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.id === 'string' && v.id.length > 0 && typeof v.created === 'boolean';
 }
 
 /** The format that the chat sends with a file. Text-like types map to txt; unknown types to bin. */

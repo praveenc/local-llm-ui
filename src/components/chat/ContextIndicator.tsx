@@ -3,8 +3,12 @@
  *
  * The context ring in the chat input. The ring shows how full the context window was after the
  * last reply. The popover adds the token totals and the cost of the chat.
+ *
+ * Kiro reports a percentage and credits, not tokens: for a Kiro model the ring shows Kiro's
+ * percentage after its last reply, and the popover the credits of the chat.
  */
 import type { ChatUsage } from '@/utils/chatUsage';
+import { formatCredits } from '@/utils/kiroModels';
 import { formatCost, formatTokens } from '@/utils/usage';
 
 import {
@@ -21,6 +25,8 @@ interface ContextIndicatorProps {
   usage: ChatUsage;
   /** Context window of the selected model */
   maxTokens: number;
+  /** The selected model is a Kiro model */
+  kiro?: boolean;
 }
 
 function Row({ label, tokens, detail }: { label: string; tokens: number; detail?: string }) {
@@ -48,7 +54,8 @@ function costText(usage: ChatUsage): { value: string; note?: string } {
   };
 }
 
-export function ContextIndicator({ usage, maxTokens }: ContextIndicatorProps) {
+export function ContextIndicator({ usage, maxTokens, kiro }: ContextIndicatorProps) {
+  if (kiro) return <KiroContextIndicator usage={usage} />;
   if (usage.contextTokens === 0) return null;
 
   const { totals } = usage;
@@ -84,6 +91,23 @@ export function ContextIndicator({ usage, maxTokens }: ContextIndicatorProps) {
             {cost.value}
             {cost.note && <span className="block text-muted-foreground">{cost.note}</span>}
           </span>
+        </ContextContentFooter>
+      </ContextContent>
+    </Context>
+  );
+}
+
+/** Kiro: its percentage of the context window, and the credits of the chat */
+function KiroContextIndicator({ usage }: { usage: ChatUsage }) {
+  if (usage.contextPercent === undefined) return null;
+  return (
+    <Context usedTokens={usage.contextPercent} maxTokens={100}>
+      <ContextTrigger className={`${composerChip} gap-1 px-2 tabular-nums has-[>svg]:px-2`} />
+      <ContextContent side="top" align="end" className="z-[1100]">
+        <ContextContentHeader showTokens={false} />
+        <ContextContentFooter>
+          <span className="text-muted-foreground">Credits in this chat</span>
+          <span className="text-right tabular-nums">{formatCredits(usage.credits)}</span>
         </ContextContentFooter>
       </ContextContent>
     </Context>

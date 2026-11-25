@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
+import type { KiroEffortLevel } from '../kiroModels';
 import {
+  THINKING_EFFORT_PROVIDERS,
   buildReasoningParams,
+  defaultThinkingEffortOptions,
+  effortForModel,
   fallbackReasoningLevel,
   getClaudeVersion,
   getDefaultThinkingEffort,
   grokReasoningEffort,
   mantleReasoningEffort,
+  nearestThinkingEffort,
   ollamaThinkValue,
   supportsThinkingEffort,
   thinkingEffortOptions,
@@ -95,6 +100,88 @@ describe('thinkingEffortOptions', () => {
     const values = thinkingEffortOptions('bedrock', 'global.anthropic.claude-opus-5-5');
     expect(values.map((o) => o.value)).toContain('off');
     expect(values.map((o) => o.value)).toContain('minimal');
+    expect(values.map((o) => o.value)).not.toContain('max');
+  });
+
+  it("offers a Kiro model's own levels, with Max only when the model has it", () => {
+    const opus = thinkingEffortOptions('kiro', 'claude-opus-5.5', {
+      effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    });
+    expect(opus).toEqual([
+      { value: 'default', label: 'Default' },
+      { value: 'off', label: 'Off' },
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+      { value: 'xhigh', label: 'XHigh' },
+      { value: 'max', label: 'Max' },
+    ]);
+    const sonnet = thinkingEffortOptions('kiro', 'claude-sonnet-5', {
+      effortLevels: ['none', 'low', 'medium', 'high'],
+    });
+    expect(sonnet.map((o) => o.value)).toEqual(['default', 'off', 'low', 'medium', 'high']);
+  });
+
+  it('offers nothing for a Kiro model without thinking', () => {
+    expect(thinkingEffortOptions('kiro', 'auto', {})).toEqual([]);
+    expect(thinkingEffortOptions('kiro', 'auto')).toEqual([]);
+  });
+});
+
+describe('Kiro thinking effort', () => {
+  it('uses what Kiro reports for the model', () => {
+    expect(supportsThinkingEffort('kiro', 'claude-opus-5.5', true)).toBe(true);
+    expect(supportsThinkingEffort('kiro', 'auto', false)).toBe(false);
+    expect(supportsThinkingEffort('kiro', 'claude-opus-5.5')).toBe(false);
+  });
+
+  it('has a Default thinking row with Max for Kiro only', () => {
+    expect(THINKING_EFFORT_PROVIDERS).toContain('kiro');
+    expect(defaultThinkingEffortOptions('kiro').map((o) => o.value)).toEqual([
+      'default',
+      'off',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
+    expect(defaultThinkingEffortOptions('bedrock').map((o) => o.value)).not.toContain('max');
+  });
+});
+
+describe('nearestThinkingEffort', () => {
+  const kiroOptions = (levels: ('none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max')[]) =>
+    thinkingEffortOptions('kiro', 'm', { effortLevels: levels });
+
+  it('keeps an effort that the model offers', () => {
+    expect(nearestThinkingEffort('max', 'kiro', kiroOptions(['low', 'high', 'max']))).toBe('max');
+    expect(
+      nearestThinkingEffort('high', 'bedrock', thinkingEffortOptions('bedrock', 'claude-opus-5'))
+    ).toBe('high');
+  });
+
+  it('uses Default for a level that a Kiro model lacks', () => {
+    expect(nearestThinkingEffort('max', 'kiro', kiroOptions(['low', 'medium', 'high']))).toBe(
+      'default'
+    );
+    expect(nearestThinkingEffort('minimal', 'kiro', kiroOptions(['low', 'high']))).toBe('default');
+  });
+
+  it('turns Max into XHigh on other providers', () => {
+    expect(
+      nearestThinkingEffort('max', 'bedrock', thinkingEffortOptions('bedrock', 'claude-opus-5'))
+    ).toBe('xhigh');
+  });
+
+  it('uses the nearest level that the model offers', () => {
+    const grok = thinkingEffortOptions('bedrock', 'global.xai.grok-4.7');
+    expect(nearestThinkingEffort('off', 'bedrock', grok)).toBe('low');
+    expect(nearestThinkingEffort('minimal', 'bedrock', grok)).toBe('low');
+  });
+
+  it('keeps the effort for a model without thinking choices', () => {
+    expect(nearestThinkingEffort('max', 'kiro', [])).toBe('max');
   });
 });
 
@@ -217,5 +304,33 @@ describe('ollamaThinkValue', () => {
   it('sends nothing for Default', () => {
     expect(ollamaThinkValue('default', gptOss)).toBeUndefined();
     expect(ollamaThinkValue(undefined, qwen3)).toBeUndefined();
+  });
+});
+
+describe('effortForModel', () => {
+  const grok = { provider: 'bedrock' as const, id: 'us.xai.grok-4-6' };
+  const claude = { provider: 'bedrock' as const, id: 'global.anthropic.claude-haiku-5-5' };
+  const kiroMax = {
+    provider: 'kiro' as const,
+    id: 'claude-opus-5.5',
+    kiro: { effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'] as KiroEffortLevel[] },
+  };
+  const kiroNoMax = {
+    provider: 'kiro' as const,
+    id: 'auto',
+    kiro: { effortLevels: ['low', 'medium', 'high'] as KiroEffortLevel[] },
+  };
+
+  it('keeps the pick as made: Off on Grok sends Low, and Off again on Claude', () => {
+    const pick = 'off' as const;
+    expect(effortForModel(pick, grok)).toBe('low');
+    expect(effortForModel(pick, claude)).toBe('off');
+  });
+
+  it('brings Max back on a Kiro model that has it', () => {
+    const pick = 'max' as const;
+    expect(effortForModel(pick, kiroNoMax)).toBe('default');
+    expect(effortForModel(pick, kiroMax)).toBe('max');
+    expect(effortForModel(pick, claude)).toBe('xhigh');
   });
 });

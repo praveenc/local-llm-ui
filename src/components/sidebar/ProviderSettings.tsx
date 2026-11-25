@@ -28,8 +28,8 @@ import { PROVIDER_API_KEY_FIELDS, isProviderConfigured } from '../../utils/prefe
 import type { KiroSignInPreference } from '../../utils/preferences';
 import type { ApiKeyField, Provider, UserPreferences } from '../../utils/preferences';
 import {
-  THINKING_EFFORT_OPTIONS,
   THINKING_EFFORT_PROVIDERS,
+  defaultThinkingEffortOptions,
   getDefaultThinkingEffort,
   isThinkingEffort,
 } from '../../utils/thinkingEffort';
@@ -124,6 +124,7 @@ export function ProviderSettings({ preferences, onUpdate, kiro }: ProviderSettin
                   saved={preferences.kiroSignIn}
                   isDefault={preferences.preferredProvider === 'kiro'}
                   onRemember={(pref) => onUpdate('kiroSignIn', pref)}
+                  thinking={thinkingRow(KIRO_PROVIDER)}
                 />
               )}
             </Fragment>
@@ -240,6 +241,8 @@ type KiroRowProps = NonNullable<ProviderSettingsProps['kiro']> & {
   saved?: KiroSignInPreference;
   isDefault: boolean;
   onRemember: (preference: KiroSignInPreference) => void;
+  /** The Default thinking row, when Kiro is the default provider */
+  thinking?: ReactNode;
 };
 
 /** The Kiro row: shows whether kiro-cli is installed, up to date, and signed in */
@@ -254,6 +257,7 @@ function KiroRow({
   saved,
   isDefault,
   onRemember,
+  thinking,
 }: KiroRowProps) {
   if (!status || status.state === 'not-installed') return null;
   const signedIn = status.state === 'signed-in';
@@ -337,6 +341,7 @@ function KiroRow({
         onRemember={onRemember}
         onDismiss={() => setMakeDefault(false)}
       />
+      {thinking}
     </ProviderRow>
   );
 }
@@ -478,7 +483,7 @@ function DefaultThinkingRow({ option, value, onChange }: DefaultThinkingRowProps
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {THINKING_EFFORT_OPTIONS.map((effort) => (
+          {defaultThinkingEffortOptions(option.value).map((effort) => (
             <SelectItem key={effort.value} value={effort.value}>
               {effort.label}
             </SelectItem>

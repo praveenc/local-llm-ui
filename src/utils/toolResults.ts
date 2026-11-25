@@ -3,6 +3,7 @@
  *
  * Keep this file free of DOM and Node imports.
  */
+import type { Provider } from '../db/types';
 import type { ToolCallPart } from '../types/ai-messages';
 import { WEB_SEARCH_PROVIDER_LABELS, isWebSearchProvider } from './webSearch';
 
@@ -39,10 +40,24 @@ export function isWebSearchTool(toolName: string): boolean {
   return toolName === 'webSearch' || toolName === 'tavily_search';
 }
 
-/** The tool name without the MCP server prefix: `fetchv2__fetch` is `fetch` */
+/**
+ * The tool name without the MCP server prefix: `fetchv2__fetch` is `fetch`, and Kiro's
+ * `@fetch/fetch_url` is `fetch_url`
+ */
 export function shortToolName(toolName: string): string {
-  const name = toolName.includes('__') ? toolName.slice(toolName.lastIndexOf('__') + 2) : toolName;
+  let name = toolName.includes('__') ? toolName.slice(toolName.lastIndexOf('__') + 2) : toolName;
+  if (name.startsWith('@') && name.includes('/')) name = name.slice(name.lastIndexOf('/') + 1);
   return name || toolName;
+}
+
+/**
+ * The tool name for a sentence. Kiro's tools read as words (`run_command` is "run command");
+ * the MCP tools of other providers keep their name (`fetch_url`).
+ */
+export function toolLabel(toolName: string, provider?: Provider): string {
+  const name = shortToolName(toolName);
+  if (provider !== 'kiro') return name;
+  return name.replace(/_+/g, ' ').trim() || toolName;
 }
 
 export function hostnameOf(url: string): string {

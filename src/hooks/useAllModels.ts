@@ -4,7 +4,7 @@
  * Aggregates models from all available providers for the unified ModelSelector.
  * Fetches models from connected providers and groups them by provider.
  */
-import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
@@ -22,8 +22,11 @@ import {
   syncApiKeysFromPreferences,
 } from '../services/aisdk';
 import { openrouterService } from '../services/openrouter';
+import type { KiroModelMeta } from '../services/types';
+import type { KiroStatus } from '../utils/kiroStatus';
 import { loadPreferences } from '../utils/preferences';
 import type { Provider, UserPreferences } from '../utils/preferences';
+import { KIRO_STATUS_QUERY_KEY } from './useKiroStatus';
 
 export interface UnifiedModel {
   id: string;
@@ -35,6 +38,8 @@ export interface UnifiedModel {
   supportsThinking?: boolean;
   /** False when the provider reports that the model cannot use tools (Ollama); unset = unknown */
   supportsTools?: boolean;
+  /** Kiro: description, credit rate, and effort levels */
+  kiro?: KiroModelMeta;
 }
 
 export interface ProviderModels {
@@ -48,7 +53,13 @@ export interface ProviderModels {
 interface UseAllModelsResult {
   providers: ProviderModels[];
   allModels: UnifiedModel[];
+  /**
+   * A provider other than Kiro is fetching its models. Kiro can take seconds to start, so it
+   * does not hold up the app: wait for `isKiroLoading` too only for a Kiro model.
+   */
   isLoading: boolean;
+  /** Kiro is fetching its models; the picker shows its group as "Checking…" meanwhile */
+  isKiroLoading: boolean;
   refetch: () => void;
 }
 
@@ -65,6 +76,11 @@ const PROVIDER_NAMES: Record<Provider, string> = {
 };
 
 const ALL_MODELS_QUERY_KEY = ['all-models'] as const;
+/** The query of Kiro's models; invalidate it to ask Kiro again */
+export const KIRO_MODELS_QUERY_KEY = [...ALL_MODELS_QUERY_KEY, 'kiro'] as const;
+
+/** Set when the Kiro status changed, so the next model fetch skips the server cache */
+let kiroRefreshPending = false;
 
 function hasConfiguredValue(value?: string): boolean {
   return !!value?.trim();
@@ -75,6 +91,7 @@ const PROVIDERS_WITH_OWN_ERRORS: ReadonlySet<Provider> = new Set([
   'lmstudio',
   'bedrock',
   'bedrock-mantle',
+  'kiro',
 ]);
 
 function getProviderErrorMessage(provider: Provider, err: unknown): string {
@@ -97,6 +114,8 @@ function shouldLogProviderError(provider: Provider, err: unknown): boolean {
   if (provider === 'bedrock') {
     return !(message.includes('aws credentials') || message.includes('access denied'));
   }
+
+  if (provider === 'kiro') return !message.includes('sign in to kiro');
 
   return true;
 }
@@ -127,7 +146,8 @@ function getProvidersToFetch(
     providersToFetch.push('openrouter');
   }
 
-  providersToFetch.push('lmstudio', 'ollama');
+  // Kiro answers with no models when Kiro CLI is missing, so its group stays hidden
+  providersToFetch.push('lmstudio', 'ollama', 'kiro');
 
   return providersToFetch;
 }
@@ -166,7 +186,12 @@ async function fetchProviderModels(
 ): Promise<ProviderModels> {
   configureServices(preferences);
   try {
-    const rawModels = await servicesByProvider()[provider].getModels();
+    const refresh = provider === 'kiro' && kiroRefreshPending;
+    if (refresh) kiroRefreshPending = false;
+    const rawModels =
+      provider === 'kiro'
+        ? await servicesByProvider().kiro.getModels(refresh)
+        : await servicesByProvider()[provider].getModels();
     const models: UnifiedModel[] = rawModels.map((model) => ({
       id: model.modelId,
       name: model.modelName,
@@ -177,6 +202,7 @@ async function fetchProviderModels(
         supportsThinking: model.supportsThinking,
       }),
       ...(model.supportsTools !== undefined && { supportsTools: model.supportsTools }),
+      ...(model.kiro && { kiro: model.kiro }),
     }));
     return { provider, providerName: PROVIDER_NAMES[provider], models, status: 'success' };
   } catch (err) {
@@ -227,6 +253,23 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
   });
 
   const queryClient = useQueryClient();
+
+  // Ask Kiro for its models again when it becomes signed in or stops being signed in (sign-in,
+  // sign-out, or a status check). This only reads the status that useKiroStatus fetches.
+  const { data: kiroStatus } = useQuery<KiroStatus>({
+    queryKey: KIRO_STATUS_QUERY_KEY,
+    enabled: false,
+  });
+  const kiroSignedIn = kiroStatus ? kiroStatus.state === 'signed-in' : undefined;
+  const previousKiroSignedInRef = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    const previous = previousKiroSignedInRef.current;
+    previousKiroSignedInRef.current = kiroSignedIn;
+    if (previous === undefined || kiroSignedIn === undefined || previous === kiroSignedIn) return;
+    kiroRefreshPending = true;
+    void queryClient.invalidateQueries({ queryKey: KIRO_MODELS_QUERY_KEY });
+  }, [kiroSignedIn, queryClient]);
+
   const refetch = useCallback(
     () => queryClient.refetchQueries({ queryKey: ALL_MODELS_QUERY_KEY, type: 'active' }),
     [queryClient]
@@ -265,12 +308,18 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
     // A provider that answered with no models has nothing to show
     .filter((provider) => provider.status !== 'success' || provider.models.length > 0);
   const allModels = providers.flatMap((provider) => provider.models);
-  const isLoading = queries.some((query) => query.isFetching);
+  const isLoading = queries.some(
+    (query, index) => query.isFetching && providersToFetch[index] !== 'kiro'
+  );
+  const isKiroLoading = queries.some(
+    (query, index) => query.isFetching && providersToFetch[index] === 'kiro'
+  );
 
   return {
     providers,
     allModels,
     isLoading,
+    isKiroLoading,
     refetch: () => {
       void refetch();
     },

@@ -14,6 +14,7 @@ import { memo, useState } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 
+import type { Provider } from '../../db/types';
 import type { ToolCallPart } from '../../types/ai-messages';
 import { currentStep, summarizeWork, thoughtLabel } from '../../utils/workSummary';
 import { replyRehypePlugins } from './reply-plugins';
@@ -29,17 +30,29 @@ export interface WorkRowProps {
   isRunning: boolean;
   /** The answer text has started */
   hasText: boolean;
+  /** The provider of the reply; Kiro's tool names read as words */
+  provider?: Provider;
   className?: string;
 }
 
 export const WorkRow = memo(
-  ({ reasoning, reasoningMs, toolCalls, isRunning, hasText, className }: WorkRowProps) => {
+  ({
+    reasoning,
+    reasoningMs,
+    toolCalls,
+    isRunning,
+    hasText,
+    provider,
+    className,
+  }: WorkRowProps) => {
     const [open, setOpen] = useState(false);
     const codeProps = useStreamdownCode();
     const hasReasoning = Boolean(reasoning);
 
-    const step = isRunning ? currentStep({ hasReasoning, hasText, toolCalls }) : undefined;
-    const summary = summarizeWork({ hasReasoning, reasoningMs, toolCalls });
+    const step = isRunning
+      ? currentStep({ hasReasoning, hasText, toolCalls, provider })
+      : undefined;
+    const summary = summarizeWork({ hasReasoning, reasoningMs, toolCalls, provider });
 
     return (
       <Collapsible open={open} onOpenChange={setOpen} className={cn('w-full', className)}>
