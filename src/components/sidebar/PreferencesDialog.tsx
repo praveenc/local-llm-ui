@@ -14,9 +14,11 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+import { useKiroSignIn } from '../../hooks/useKiroSignIn';
 import { useKiroStatus } from '../../hooks/useKiroStatus';
 import { useResolvedVisualMode } from '../../hooks/useResolvedVisualMode';
 import { kiroDefaultProviderError } from '../../utils/kiroStatus';
+import type { KiroStatus } from '../../utils/kiroStatus';
 import {
   PROVIDER_API_KEY_FIELDS,
   isProviderConfigured,
@@ -76,6 +78,17 @@ export function PreferencesDialog({
     refresh: refreshKiro,
     isRefreshing: isRefreshingKiro,
   } = useKiroStatus();
+  // Set when you pick Kiro while signed out: it becomes the default when the sign-in that the app
+  // started works. A sign-in in a terminal (then Check again) never changes the default.
+  const makeKiroDefault = useRef(false);
+  const applyKiroDefault = useRef<(status: KiroStatus) => void>(() => {});
+  // Here, not in the Providers tab: a sign-in goes on when you switch tabs or close the dialog
+  const kiroSignIn = useKiroSignIn({
+    onSignedIn: (signedIn) => applyKiroDefault.current(signedIn),
+    onError: () => {
+      makeKiroDefault.current = false;
+    },
+  });
 
   // Reload on open: other controls (the header theme toggle) also save preferences
   if (open !== wasOpen) {
@@ -96,15 +109,19 @@ export function PreferencesDialog({
     latest.current = preferences;
   });
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const kiroPhase = kiroSignIn.phase;
 
   const cancelPending = () => {
     if (pending.current) clearTimeout(pending.current);
     pending.current = null;
   };
 
-  /** Store the preferences, unless the default provider has no API key or Kiro is not ready */
+  /**
+   * Store the preferences, unless the default provider has no API key or Kiro is not ready.
+   * `currentKiroStatus` is for a save that runs before the render with the new status.
+   */
   const save = useCallback(
-    (next: UserPreferences) => {
+    (next: UserPreferences, currentKiroStatus: KiroStatus | undefined = kiroStatus) => {
       cancelPending();
       if (JSON.stringify(next) === JSON.stringify(loadPreferences())) return;
       if (!isProviderConfigured(next, next.preferredProvider)) {
@@ -115,7 +132,7 @@ export function PreferencesDialog({
         return;
       }
       const kiroError =
-        next.preferredProvider === 'kiro' ? kiroDefaultProviderError(kiroStatus) : undefined;
+        next.preferredProvider === 'kiro' ? kiroDefaultProviderError(currentKiroStatus) : undefined;
       if (kiroError) {
         setProviderError(kiroError);
         setStatus('not-saved');
@@ -155,8 +172,29 @@ export function PreferencesDialog({
     }
   };
 
+  // Called by the hook when a sign-in that the app started ends signed in
+  useLayoutEffect(() => {
+    applyKiroDefault.current = (signedIn) => {
+      if (!makeKiroDefault.current) return;
+      makeKiroDefault.current = false;
+      // A closed dialog has an old snapshot: the header can have changed the theme since then
+      const next: UserPreferences = {
+        ...(open ? latest.current : loadPreferences()),
+        preferredProvider: 'kiro',
+      };
+      latest.current = next;
+      setPreferences(next);
+      // The hook passes the new status: the cached one still says signed out
+      save(next, signedIn);
+    };
+  });
+
   const handleOpenChange = (next: boolean) => {
-    if (!next) savePending();
+    if (!next) {
+      savePending();
+      // A sign-in that runs keeps its wish; an open form or an error does not
+      if (kiroPhase !== 'starting' && kiroPhase !== 'waiting') makeKiroDefault.current = false;
+    }
     onOpenChange(next);
   };
 
@@ -193,7 +231,15 @@ export function PreferencesDialog({
               <ProviderSettings
                 preferences={preferences}
                 onUpdate={updatePreference}
-                kiro={{ status: kiroStatus, refresh: refreshKiro, isRefreshing: isRefreshingKiro }}
+                kiro={{
+                  status: kiroStatus,
+                  refresh: refreshKiro,
+                  isRefreshing: isRefreshingKiro,
+                  signIn: kiroSignIn,
+                  setMakeDefault: (value) => {
+                    makeKiroDefault.current = value;
+                  },
+                }}
               />
             </TabsContent>
 

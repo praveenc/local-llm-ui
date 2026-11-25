@@ -144,16 +144,19 @@ If the Bedrock console asks you to request model access, do that for the models 
 
 [Kiro CLI](https://kiro.dev/docs/cli/) 3 gives access to Kiro's agents and models from your computer. The app uses the `kiro-cli` that you use in the terminal. Kiro CLI 2 is not supported.
 
-Support for Kiro comes in steps. In this version, the app checks Kiro CLI and shows its state. Chat with Kiro models comes in a later version.
+Support for Kiro comes in steps. In this version, you can sign in to Kiro from the app and see its state. Chat with Kiro models comes in a later version.
 
 1. Install Kiro CLI 3. See [the Kiro CLI documentation](https://kiro.dev/docs/cli/).
-2. In a terminal, sign in:
+2. Open **Preferences → Providers**. The **Kiro** row shows **Not signed in**.
+3. Click **Sign in**. Select **AWS Builder ID** or **IAM Identity Center**, and click **Continue**. For IAM Identity Center, also type your start URL and the Region.
+4. The sign-in page opens in a new browser tab. Make sure that the page shows the same code as the Kiro row, then approve the sign-in.
+5. The Kiro row shows **Signed in**, with the account, the sign-in method, and the Kiro CLI version.
 
-   ```bash
-   kiro-cli login
-   ```
+The sign-in stops when you click **Cancel**, when you close or reload the page, or after 10 minutes. You can also sign in in a terminal with `kiro-cli login`, then click **Check again**.
 
-3. Open **Preferences → Providers**. The **Kiro** row shows the account, its sign-in method, and the Kiro CLI version. If you sign in after the app started, click **Check again**.
+If you select Kiro as the default provider while you are signed out, the app opens the sign-in form. Kiro becomes the default provider when that sign-in is complete.
+
+To sign out, click **Sign out** in the Kiro row. This also signs out Kiro CLI in your terminals and in other apps on the same computer.
 
 The app shows the Kiro row only when it finds `kiro-cli`. It looks in these places, in this order:
 
@@ -161,7 +164,7 @@ The app shows the Kiro row only when it finds `kiro-cli`. It looks in these plac
 2. `~/.local/bin/kiro-cli`, the usual install folder.
 3. Each folder in `PATH`.
 
-The app runs Kiro CLI on the computer that runs `npm run dev`, as it does with AWS credentials. Sign in on that computer, also when you open the app through a tunnel.
+The app runs Kiro CLI on the computer that runs `npm run dev`, as it does with AWS credentials. When you open the app through a tunnel, the sign-in page opens on your desktop, and Kiro CLI on the host gets the sign-in.
 
 ### Providers with an API key
 

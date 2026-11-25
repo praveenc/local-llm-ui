@@ -21,9 +21,11 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
-import { isKiroReady, kiroAccountLabel } from '../../utils/kiroStatus';
+import type { KiroSignIn } from '../../hooks/useKiroSignIn';
+import { kiroAccountLabel } from '../../utils/kiroStatus';
 import type { KiroStatus } from '../../utils/kiroStatus';
 import { PROVIDER_API_KEY_FIELDS, isProviderConfigured } from '../../utils/preferences';
+import type { KiroSignInPreference } from '../../utils/preferences';
 import type { ApiKeyField, Provider, UserPreferences } from '../../utils/preferences';
 import {
   THINKING_EFFORT_OPTIONS,
@@ -32,6 +34,8 @@ import {
   isThinkingEffort,
 } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
+import { KIRO_PANEL_ID, KiroSignInPanel } from './KiroSignInPanel';
+import type { KiroPanelMode } from './KiroSignInPanel';
 import {
   API_KEY_PROVIDERS,
   KIRO_PROVIDER,
@@ -48,11 +52,27 @@ interface ProviderSettingsProps {
     status: KiroStatus | undefined;
     refresh: () => void | Promise<void>;
     isRefreshing: boolean;
+    signIn: KiroSignIn;
+    /** Say whether Kiro becomes the default provider when the sign-in ends */
+    setMakeDefault: (value: boolean) => void;
   };
 }
 
 export function ProviderSettings({ preferences, onUpdate, kiro }: ProviderSettingsProps) {
   const [editing, setEditing] = useState<Provider | null>(null);
+  const [kiroPanel, setKiroPanel] = useState<KiroPanelMode>('closed');
+
+  const handleProviderChange = (value: string) => {
+    // Kiro cannot be the default until you sign in: open the sign-in and keep the choice
+    if (value === 'kiro' && kiro?.status?.state === 'signed-out') {
+      kiro.setMakeDefault(true);
+      if (kiro.signIn.phase === 'idle') setKiroPanel('form');
+      return;
+    }
+    // The last pick wins: a sign-in that ends later does not make Kiro the default
+    kiro?.setMakeDefault(false);
+    onUpdate('preferredProvider', value as Provider);
+  };
 
   // Default thinking effort, shown on the selected provider's row
   const thinkingRow = (option: ProviderOption) =>
@@ -83,7 +103,7 @@ export function ProviderSettings({ preferences, onUpdate, kiro }: ProviderSettin
       <RadioGroup
         aria-label="Default provider"
         value={preferences.preferredProvider}
-        onValueChange={(v) => onUpdate('preferredProvider', v as Provider)}
+        onValueChange={handleProviderChange}
         className="gap-4"
       >
         <ProviderGroup title="AWS and local">
@@ -96,7 +116,16 @@ export function ProviderSettings({ preferences, onUpdate, kiro }: ProviderSettin
                 {thinkingRow(option)}
               </ProviderRow>
               {/* Alphabetical: Kiro comes after Amazon Bedrock */}
-              {option.value === 'bedrock' && kiro && <KiroRow {...kiro} />}
+              {option.value === 'bedrock' && kiro && (
+                <KiroRow
+                  {...kiro}
+                  panel={kiroPanel}
+                  onPanelChange={setKiroPanel}
+                  saved={preferences.kiroSignIn}
+                  isDefault={preferences.preferredProvider === 'kiro'}
+                  onRemember={(pref) => onUpdate('kiroSignIn', pref)}
+                />
+              )}
             </Fragment>
           ))}
         </ProviderGroup>
@@ -205,17 +234,82 @@ function ProviderGroup({ title, children }: { title: string; children: ReactNode
   );
 }
 
-type KiroRowProps = NonNullable<ProviderSettingsProps['kiro']>;
+type KiroRowProps = NonNullable<ProviderSettingsProps['kiro']> & {
+  panel: KiroPanelMode;
+  onPanelChange: (mode: KiroPanelMode) => void;
+  saved?: KiroSignInPreference;
+  isDefault: boolean;
+  onRemember: (preference: KiroSignInPreference) => void;
+};
 
 /** The Kiro row: shows whether kiro-cli is installed, up to date, and signed in */
-function KiroRow({ status, refresh, isRefreshing }: KiroRowProps) {
+function KiroRow({
+  status,
+  refresh,
+  isRefreshing,
+  signIn,
+  setMakeDefault,
+  panel,
+  onPanelChange,
+  saved,
+  isDefault,
+  onRemember,
+}: KiroRowProps) {
   if (!status || status.state === 'not-installed') return null;
   const signedIn = status.state === 'signed-in';
+  const signedOut = status.state === 'signed-out';
+
+  let action: ReactNode = (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-7"
+      disabled={isRefreshing}
+      aria-label="Check again (Kiro)"
+      onClick={() => void refresh()}
+    >
+      {isRefreshing ? 'Checking…' : 'Check again'}
+    </Button>
+  );
+  if (signedIn) {
+    action = (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7"
+        aria-expanded={panel === 'sign-out'}
+        aria-controls={KIRO_PANEL_ID}
+        aria-label="Sign out (Kiro)"
+        onClick={() => onPanelChange(panel === 'sign-out' ? 'closed' : 'sign-out')}
+      >
+        Sign out
+      </Button>
+    );
+  } else if (signedOut) {
+    action = (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7"
+        disabled={signIn.phase !== 'idle'}
+        aria-expanded={panel === 'form' || signIn.phase !== 'idle'}
+        aria-controls={KIRO_PANEL_ID}
+        aria-label="Sign in (Kiro)"
+        onClick={() => onPanelChange('form')}
+      >
+        Sign in
+      </Button>
+    );
+  }
 
   return (
     <ProviderRow
       option={KIRO_PROVIDER}
-      disabled={!isKiroReady(status)}
+      // Signed out: you can pick Kiro, and the app asks you to sign in
+      disabled={!signedIn && !signedOut}
       status={
         <span
           aria-live="polite"
@@ -228,25 +322,21 @@ function KiroRow({ status, refresh, isRefreshing }: KiroRowProps) {
           {KIRO_STATUS_TEXT[status.state]}
         </span>
       }
-      action={
-        !signedIn && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7"
-            disabled={isRefreshing}
-            aria-label="Check again (Kiro)"
-            onClick={() => void refresh()}
-          >
-            {isRefreshing ? 'Checking…' : 'Check again'}
-          </Button>
-        )
-      }
+      action={action}
     >
       <div className="break-words border-t bg-muted/40 py-2 pl-10 pr-3 text-xs text-muted-foreground">
-        <KiroDetail status={status} />
+        <KiroDetail status={status} refresh={refresh} isRefreshing={isRefreshing} />
       </div>
+      <KiroSignInPanel
+        signedIn={signedIn}
+        signIn={signIn}
+        mode={panel}
+        onModeChange={onPanelChange}
+        saved={saved}
+        isDefault={isDefault}
+        onRemember={onRemember}
+        onDismiss={() => setMakeDefault(false)}
+      />
     </ProviderRow>
   );
 }
@@ -258,7 +348,15 @@ const KIRO_STATUS_TEXT: Record<Exclude<KiroStatus['state'], 'not-installed'>, st
   error: 'Cannot run',
 };
 
-function KiroDetail({ status }: { status: KiroStatus }) {
+function KiroDetail({
+  status,
+  refresh,
+  isRefreshing,
+}: {
+  status: KiroStatus;
+  refresh: KiroRowProps['refresh'];
+  isRefreshing: boolean;
+}) {
   switch (status.state) {
     case 'signed-in':
       return (
@@ -275,8 +373,19 @@ function KiroDetail({ status }: { status: KiroStatus }) {
     case 'signed-out':
       return (
         <>
-          Run <code className="font-mono">kiro-cli login</code> in a terminal, then click Check
-          again.
+          Sign in with AWS Builder ID or IAM Identity Center. You can also run{' '}
+          <code className="font-mono">kiro-cli login</code> in a terminal, then click{' '}
+          <Button
+            type="button"
+            variant="link"
+            className="h-auto p-0 text-xs"
+            disabled={isRefreshing}
+            aria-label="Check again (Kiro)"
+            onClick={() => void refresh()}
+          >
+            {isRefreshing ? 'Checking…' : 'Check again'}
+          </Button>
+          .
         </>
       );
     case 'unsupported':

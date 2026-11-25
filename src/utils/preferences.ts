@@ -34,6 +34,15 @@ export interface UserPreferences extends WebSearchPreferences {
   mcpServers?: MCPServersMap;
   // Default thinking effort for each provider
   thinkingEffortByProvider?: Partial<Record<Provider, ThinkingEffort>>;
+  /** The Kiro sign-in method that you used last. The Kiro row starts with it. */
+  kiroSignIn?: KiroSignInPreference;
+}
+
+export interface KiroSignInPreference {
+  method: 'builder-id' | 'identity-center';
+  /** Start URL and Region of the IAM Identity Center, kept for the next sign-in */
+  startUrl?: string;
+  region?: string;
 }
 
 const STORAGE_KEY = 'local-llm-ui-preferences';
