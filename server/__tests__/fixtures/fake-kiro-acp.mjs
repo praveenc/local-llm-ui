@@ -16,6 +16,12 @@
 //   $HOME/.kiro/sessions, and the title sent twice in a reply
 // FAKE_KIRO_NO_EFFORT=1: with FAKE_KIRO_CHAT, no `effortLevel` option (like kiro-cli 3.4)
 // FAKE_KIRO_SLOW_CONFIG_MS: set_config_option (other than autopilot) answers after this delay
+// FAKE_KIRO_SESSIONS=1 (K7): session/list with used, never-used, failed, and old sessions and a
+//   1 MB `customAgents` in each entry; session/load without `noReplay` of a listed session
+//   replays it (updates with `replay: true` before the answer, one without after it); every
+//   reply ends with `_kiro/sessions/changed`
+// lease mode (K7): session/prompt answers Kiro's SessionHeldElsewhereError
+// session/close answers {} and keeps the session's options for the next load, like Kiro
 // Prompt text: TOOL asks for a permission, WAIT waits for session/cancel, SLOW streams slowly,
 //   TOOLOK runs a tool that completes, MCPTOOL runs an MCP tool, MAXTOKENS ends with max_tokens,
 //   CRASH exits during the reply, DISPLAYERR sends a display_error and no text, MCPERR sends an
@@ -172,14 +178,24 @@ const options = (s) => [
   },
 ];
 
+const withSessions = process.env.FAKE_KIRO_SESSIONS === '1';
 const sessions = new Map();
+/** Sessions that session/close released: their options come back at the next load */
+const closedSessions = new Map();
 let newCalls = 0;
 const cancelled = new Set();
 const waiters = new Map(); // agent request id -> resolve
 let agentRequestId = 1000;
 
 function open(sessionId) {
-  const s = { mode: 'vibe', model: 'auto', autopilot: 'on', effortLevel: 'high', thinking: 'on' };
+  const s = closedSessions.get(sessionId) ?? {
+    mode: 'vibe',
+    model: 'auto',
+    autopilot: 'on',
+    effortLevel: 'high',
+    thinking: 'on',
+  };
+  closedSessions.delete(sessionId);
   sessions.set(sessionId, s);
   notify('_kiro/mcp/status', { sessionId, servers: [{ name: 'fake', status: 'connecting' }] });
   update(sessionId, { sessionUpdate: 'config_option_update', configOptions: options(s) });
@@ -197,6 +213,17 @@ async function runPrompt(id, { sessionId, prompt }) {
   const text = prompt.map((b) => b.text ?? '').join(' ');
   const s = sessions.get(sessionId);
   if (!s) return send({ id, error: { code: -32602, message: 'Session not found' } });
+  if (mode === 'lease') {
+    return send({
+      id,
+      error: {
+        code: -32000,
+        message:
+          'This session is loaded in another program, Fake Terminal (pid 4242), which owns its execution.  Close the session there to drive it from here.',
+        data: { errorType: 'SessionHeldElsewhereError', retryErrorType: 'CLIENT_ERROR' },
+      },
+    });
+  }
   cancelled.delete(sessionId);
   const meta = (kind, extra) => ({
     sessionUpdate: 'session_info_update',
@@ -325,6 +352,103 @@ async function runPrompt(id, { sessionId, prompt }) {
     meta('session_usage', { credits: [{ usage: 0.05, unit: 'credit', unitPlural: 'credits' }] })
   );
   send({ id, result: { stopReason: text.includes('MAXTOKENS') ? 'max_tokens' : 'end_turn' } });
+  if (withSessions) {
+    notify('_kiro/sessions/changed', { upserted: [{ sessionId, status: 'idle' }], deleted: [] });
+  }
+}
+
+// --- K7: session/list and the replay of session/load ---
+
+const hoursAgo = (h) => new Date(Date.now() - h * 3_600_000).toISOString();
+const LISTED = {
+  used: 'sess_11111111-1111-4111-8111-111111111111',
+  never: 'sess_22222222-2222-4222-8222-222222222222',
+  failed: 'sess_33333333-3333-4333-8333-333333333333',
+  older: 'sess_44444444-4444-4444-8444-444444444444',
+  oldest: 'sess_55555555-5555-4555-8555-555555555555',
+};
+const customAgents = [{ id: 'big-agent', prompt: 'x'.repeat(1024 * 1024) }];
+const listEntry = (sessionId, cwd, title, hours, status = 'idle') => ({
+  sessionId,
+  cwd,
+  title,
+  updatedAt: hoursAgo(hours),
+  _meta: { kiro: { status, source: 'local', executionTarget: { kind: 'local' }, customAgents } },
+});
+
+function listSessions() {
+  return {
+    sessions: [
+      listEntry(LISTED.older, '/work/older-project', 'Ten days ago', 240),
+      listEntry(LISTED.used, '/work/fake-project/', 'Fix the fake test', 1),
+      listEntry(LISTED.never, '/work/fake-project', 'New Session', 0.5),
+      listEntry(LISTED.failed, '/work/other', 'It failed', 2, 'failed'),
+      listEntry(LISTED.oldest, '/work/oldest', 'Forty days ago', 960),
+      listEntry('not-a-session-id', '/work/bad', 'Bad id', 1),
+    ],
+  };
+}
+
+/** Two turns, like Kiro 3.6 replays them (text replaced) */
+function replay(sessionId) {
+  const r = (u) => update(sessionId, { ...u, _meta: { kiro: { ...u._meta?.kiro, replay: true } } });
+  const info = (kind, extra) =>
+    r({ sessionUpdate: 'session_info_update', _meta: { kiro: { kind, ...extra } } });
+  const user = (messageId, content) =>
+    r({ sessionUpdate: 'user_message_chunk', content, _meta: { kiro: { messageId } } });
+  const toolCallId = 'run_command_toolu_bdrk_01REPLAY';
+  // Turn 1: a prompt from the app with its context block, a tool call, and an image
+  user('m1', {
+    type: 'text',
+    text: '<conversation_context>\n<message role="user">\nolder\n</message>\n</conversation_context>\n\n',
+  });
+  user('m1', { type: 'text', text: 'Run the command' });
+  user('m1', { type: 'image', data: 'AAAA', mimeType: 'image/png' });
+  info('turn_start', { turnId: 't1' });
+  r({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'I will run it' } });
+  r({
+    sessionUpdate: 'tool_call',
+    toolCallId,
+    title: 'Run echo',
+    kind: 'execute',
+    status: 'pending',
+    rawInput: { command: 'echo k7', note: 'n'.repeat(3000) },
+  });
+  info('pending_interaction', { toolCallId, interactionType: 'tool_approval' });
+  info('interaction_resolved', { toolCallId, outcome: 'selected' });
+  r({
+    sessionUpdate: 'tool_call_update',
+    toolCallId,
+    status: 'completed',
+    rawOutput: 'o'.repeat(9000),
+    content: [{ type: 'content', content: { type: 'text', text: 'o'.repeat(9000) } }],
+  });
+  r({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Done: ' } });
+  r({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'k7' } });
+  info('context_usage', { usagePercentage: 5.5, contextUsage: { usagePercentage: 5.5 } });
+  info('turn_completion', {
+    promptTurnSummaries: [{ unit: 'credit', unitPlural: 'credits', usage: 0.12 }],
+    elapsedTime: 4500,
+    status: 'success',
+  });
+  info('turn_end', { stopReason: 'end_turn' });
+  // Turn 2: a plain reply, and a tool call that never got a result
+  user('m2', { type: 'text', text: 'Say hi' });
+  info('turn_start', { turnId: 't2' });
+  r({
+    sessionUpdate: 'tool_call',
+    toolCallId: 'read_toolu_bdrk_01LOST',
+    title: 'Read',
+    kind: 'read',
+  });
+  r({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } });
+  info('context_usage', { usagePercentage: 6.25 });
+  info('turn_completion', {
+    promptTurnSummaries: [{ unit: 'credit', unitPlural: 'credits', usage: 0.03 }],
+    elapsedTime: 900,
+  });
+  info('turn_end', { stopReason: 'end_turn' });
+  info('session_usage', { credits: [{ usage: 0.15, unit: 'credit', unitPlural: 'credits' }] });
 }
 
 const handlers = {
@@ -396,9 +520,26 @@ const handlers = {
       _meta: { workspacePaths: [params.cwd] },
     };
   },
-  'session/load'({ sessionId }) {
+  'session/load'({ sessionId, _meta }) {
     if (mode === 'load-error')
       throw { code: -32603, message: 'Internal error: session file is damaged' };
+    if (withSessions && !_meta?.kiro?.noReplay && Object.values(LISTED).includes(sessionId)) {
+      replay(sessionId);
+      // Like Kiro: an update after the answer, without `replay: true`
+      setTimeout(
+        () =>
+          update(sessionId, {
+            sessionUpdate: 'session_info_update',
+            _meta: { kiro: { kind: 'context_usage', usagePercentage: 99 } },
+          }),
+        0
+      );
+      return {
+        modes: {},
+        configOptions: options({ mode: 'vibe', model: 'claude-fake-1', autopilot: 'on' }),
+        _meta: { id: sessionId, title: 'Replayed title', contextUsage: { usagePercentage: 6.25 } },
+      };
+    }
     const s = open(sessionId);
     return {
       modes: {},
@@ -425,6 +566,16 @@ const handlers = {
   },
   '_kiro/account/getUsage'() {
     return { success: true, data: { planName: 'FAKE', usageBreakdowns: [] } };
+  },
+  'session/list'() {
+    if (!withSessions) throw { code: -32601, message: 'Method not found' };
+    return listSessions();
+  },
+  'session/close'({ sessionId }) {
+    const s = sessions.get(sessionId);
+    if (s) closedSessions.set(sessionId, s);
+    sessions.delete(sessionId);
+    return {};
   },
   'session/delete'({ sessionId }) {
     sessions.delete(sessionId);

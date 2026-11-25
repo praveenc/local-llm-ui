@@ -12,6 +12,8 @@
  *   servers) and makes and deletes a session: no GET under /api/kiro may change state (SEC-13),
  *   and the guard's JSON check applies only to a request with a body
  * - POST /api/kiro/chat: one Kiro reply as SSE (server/kiro/chat.ts)
+ * - POST /api/kiro/sessions, POST /api/kiro/sessions/open: Kiro's session list and one session's
+ *   replay as JSON (server/kiro/sessions.ts). POSTs: both can start `kiro-cli acp`
  *
  * The routes run kiro-cli with fixed arguments and no shell. The login route builds its arguments
  * from input that the shared checks in src/utils/kiroLogin.ts have validated, sends the code and
@@ -43,6 +45,8 @@ import {
 import type { KiroLogin } from './kiro/login.ts';
 import { createKiroModelList } from './kiro/models.ts';
 import type { KiroModelList } from './kiro/models.ts';
+import { createKiroSessionsHandler } from './kiro/sessions.ts';
+import type { KiroSessionsAgent } from './kiro/sessions.ts';
 import { createKiroStatusReader } from './kiro/status.ts';
 import { readBodyWithLimit } from './security.ts';
 
@@ -63,7 +67,7 @@ export interface KiroProxyOptions {
   /** How often the login stream sends a `: ping` comment. Tests make it short. */
   loginHeartbeatMs?: number;
   /** The Kiro agent for models and chat. Default: the app's one shared agent. */
-  agent?: KiroChatAgent & Parameters<typeof createKiroModelList>[0]['agent'];
+  agent?: KiroChatAgent & Parameters<typeof createKiroModelList>[0]['agent'] & KiroSessionsAgent;
   /** How long the model list stays fresh. Default one hour. */
   modelsTtlMs?: number;
   /** How long a chat request waits for a running reply in its session. Default: cancelWait. */
@@ -96,6 +100,7 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
   let login: KiroLogin | undefined;
   let models: KiroModelList | undefined;
   let chat: ReturnType<typeof createKiroChatHandler> | undefined;
+  let sessions: ReturnType<typeof createKiroSessionsHandler> | undefined;
   let usedSharedAgent = false;
   const getAgent = () => {
     if (options.agent) return options.agent;
@@ -125,6 +130,9 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
       environment: options.environment,
       busyWaitMs: options.chatBusyWaitMs,
     }));
+
+  const getSessions = () =>
+    (sessions ??= createKiroSessionsHandler({ agent: getAgent(), statusReader: getReader() }));
 
   async function handleLogin(req: Parameters<Connect.NextHandleFunction>[0], res: Res) {
     const body = await readBodyWithLimit(req, res, LOGIN_BODY_LIMIT);
@@ -252,6 +260,17 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
           return;
         }
         await getChat()(req, res);
+        return;
+      }
+
+      if (pathname === '/api/kiro/sessions' || pathname === '/api/kiro/sessions/open') {
+        // POSTs: both can start kiro-cli (SEC-13)
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { error: 'Method not allowed' }, { Allow: 'POST' });
+          return;
+        }
+        const handler = getSessions();
+        await (pathname === '/api/kiro/sessions' ? handler.list(req, res) : handler.open(req, res));
         return;
       }
 
