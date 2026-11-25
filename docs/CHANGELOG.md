@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sign in to Kiro from **Preferences → Providers** with AWS Builder ID or IAM Identity Center. The app opens the sign-in page in a new tab and shows the code to compare. **Sign out** is in the same row ([#78])
 - Kiro row in **Preferences → Providers**: when Kiro CLI 3 is installed, it shows the account, the sign-in method, and the version, or what to do when Kiro CLI is signed out or too old. **Check again** reads the state again ([#77])
 
+#### Changed
+
+- The Kiro code is split into a generic ACP layer (`server/acp/`) and a Kiro harness (`server/kiro/`), so another ACP harness can use the same layer later. Nothing changes in behaviour ([#81])
+
 #### Fixed
 
 - A web page on a different site could send requests to the `/api` routes: a form post could start a chat with your AWS credentials or API keys, or start an MCP server command. The routes now accept requests only from the app's own pages, and a request with a body must be JSON ([#76])
@@ -233,6 +237,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#81]: https://github.com/praveenc/local-llm-ui/pull/81
 [#80]: https://github.com/praveenc/local-llm-ui/pull/80
 [#79]: https://github.com/praveenc/local-llm-ui/pull/79
 [#78]: https://github.com/praveenc/local-llm-ui/pull/78

@@ -1,10 +1,12 @@
 # Kiro provider
 
-Status: approved, in progress. All decisions take the recommended option (2026-11-24). See [Progress](#progress) for the state of each PR. Last updated 2026-11-24.
+Status: approved, in progress. All decisions take the recommended option (2026-11-24). On 2026-11-25 the direction became: Kiro is the provider and kiro-cli is the harness (D15 to D20). See [Progress](#progress) for the state of each PR. Last updated 2026-11-25.
 
 This document plans Kiro as a provider. Kiro is not an HTTP API. It is a local agent (`kiro-cli`) that the app starts as a child process and talks to with the Agent Client Protocol (ACP): JSON-RPC, one message per line, on stdin and stdout. Kiro keeps its own login, model list, sessions on disk, tools, and credits. The app must fit these into its existing patterns: one model picker, one chat view, one work row, one SSE format.
 
 The plan supports kiro-cli 3 only. kiro-cli 2 gets a clear message and no Kiro features.
+
+The direction since 2026-11-25: the app signs in with Kiro and then gives the work to kiro-cli over ACP. It does not rebuild what kiro-cli has: its session management, its permissions, and its resume. It reads these values from Kiro and shows them in the UI. The ACP layer is generic, so another harness (for example Pi or Claude) can plug in later. Kiro is the first harness.
 
 ## Contents
 
@@ -27,14 +29,20 @@ The plan supports kiro-cli 3 only. kiro-cli 2 gets a clear message and no Kiro f
 | D4 | Which sign-in choices show? | Approved: (a). AWS Builder ID and IAM Identity Center (start URL and Region). | K3 |
 | D5 | One Kiro process or one per chat? | Approved: (a). One shared `kiro-cli acp` process for all Kiro chats. It starts on the first Kiro request and stops after 10 idle minutes. One process holds many sessions (checked: `session/new` and `session/load` on one connection). A crash stops all live Kiro replies, and the next message reloads each session. | K4 |
 | D6 | Which folder does a new Kiro chat use? | Approved: (a). One app folder, `~/.local-llm-ui/kiro`, with a Preferences field to change it. A folder chip per chat can come later. Imported sessions always use their own folder. | K5 |
-| D7 | Does Kiro ask before it runs a tool? | Approved: (a). Ask by default. The work row shows the request with Allow, Always allow, and Deny. Preferences can change it to Autopilot. Until K6 merges, K5 denies every request, so no tool runs without a question. | K5, K6 |
+| D7 | Does Kiro ask before it runs a tool? | Approved: (a). Ask by default. The work row shows the request with Allow, Always allow, and Deny. Preferences can change it to Autopilot. Until K6 merges, K5 denies every request, so no tool runs without a question. Changed by D16 and D17. | K5, K6 |
 | D8 | How does the Thinking menu map to Kiro? | Approved: (a). Add **Max** to the menu, shown only for models that have it. Other levels map to the nearest level of the model, as today. **Off** turns thinking off, or sends `none`, or the lowest level. | K5 |
-| D9 | Which Kiro agent do chats use? | Approved: (a). Kiro's default agent. A **Default agent** select in Preferences is a later item. | K5 |
-| D10 | Where do Kiro chats show in the sidebar? | Approved: (a). **Conversations** holds every chat that you used in this app, also Kiro chats. A **Kiro sessions** section lists the sessions on disk that you have not opened here yet. When you open one, the app imports it and it moves to **Conversations**. Every chat has one place, and the Kiro section works as an import list. | K7 |
+| D9 | Which Kiro agent do chats use? | Approved: (a). Kiro's default agent. A **Default agent** select in Preferences is a later item. D17 removes the lock on `mode`, and D20 adds an agent picker. | K5 |
+| D10 | Where do Kiro chats show in the sidebar? | Approved: (a). **Conversations** holds every chat that you used in this app, also Kiro chats. A **Kiro sessions** section lists the sessions on disk that you have not opened here yet. When you open one, the app imports it and it moves to **Conversations**. Every chat has one place, and the Kiro section works as an import list. D18 changes how the list and the import work, not what they show. | K7 |
 | D11 | When does the app ask about the sessions on disk? | Approved: (a). After sign-in, the Kiro row in Preferences asks "Show your Kiro sessions in the sidebar?" with **Show** and **Not now**. A switch below keeps the choice. | K7 |
 | D12 | How do mixed chats, fork, and regenerate work? | Approved: (a). Before each Kiro prompt, the app sends the earlier messages that Kiro has not seen, once, as context. This covers a switch to Kiro in the middle of a chat, **Send to Fork**, and a switch back after another model. **Regenerate** and edit are hidden on Kiro replies. | K5 |
 | D13 | What does **Delete** do on a Kiro chat? | Approved: (a). It removes the chat from the app only. Kiro's files stay. | K5, K7 |
 | D14 | Own ACP client or the ACP SDK? | Approved: (a). A small own client, about 150 lines, with the message types copied from KiroBoo. | K4 |
+| D15 | Who does what: the app or kiro-cli? | Approved: (a). Kiro is the provider and kiro-cli is the harness. The app signs in, then gives the work to kiro-cli over ACP and shows what Kiro reports. The ACP code is generic (`server/acp/`, no Kiro names). The Kiro parts are a harness adapter (`server/kiro/`). Another ACP harness can use the same layer later, for example Pi or Claude. | H1 |
+| D16 | How do tool approvals work? | Approved: (a). The work row shows Kiro's own questions, options, and labels: Allow, Always allow, Deny, Always deny, and for "Review changes" Accept changes and Reject changes. Kiro keeps the "always" rules itself. The app has no approval rules and no approval setting of its own. Changes D7: the Autopilot choice moves to the session options of K9. | K6 |
+| D17 | Does the app lock `autopilot` and `mode`? | Approved: (a). No. New sessions use Kiro's defaults, as in the terminal: Autopilot is on, reads run without a question, and shell commands and file writes still ask. Changes D7, D9, and SEC-15. | K6 |
+| D18 | Where do Kiro sessions come from? | Approved: (a). From Kiro: `session/list` for the list, `session/load` with replay to import a session, `session/close` after each reply so the terminal can resume it, and Kiro's lease error ("loaded in another program") as the chat error. The app does not read `~/.kiro/sessions` for the list or the transcript. Changes how D10 works, not what it shows. | K7 |
+| D19 | Which sessions does the list show? | Approved: (a). The list hides sessions that were never used: their title is "New Session", Kiro's name before the first prompt. | K7 |
+| D20 | Which session options does the chat input show? | Approved: (a). The options that Kiro lists. `mode` shows as an agent picker. The options without an ACP category (for example Autopilot) show in one menu, with Kiro's names and descriptions. The app picks a control by the ACP category (`mode`, `model`, `thought_level`), so it works for any harness. | K9 |
 
 ## Progress
 
@@ -44,10 +52,12 @@ The plan supports kiro-cli 3 only. kiro-cli 2 gets a clear message and no Kiro f
 | K2 | `feat/kiro-detect` | 2 | Done, merged ([#77](https://github.com/praveenc/local-llm-ui/pull/77)) |
 | K3 | `feat/kiro-sign-in` | 3 | Done, merged ([#78](https://github.com/praveenc/local-llm-ui/pull/78)) |
 | K4 | `feat/kiro-acp-client` | 4 | Done, merged ([#79](https://github.com/praveenc/local-llm-ui/pull/79)) |
-| K5 | `feat/kiro-chat` | 5 | In review ([#80](https://github.com/praveenc/local-llm-ui/pull/80)) |
+| K5 | `feat/kiro-chat` | 5 | Done, merged ([#80](https://github.com/praveenc/local-llm-ui/pull/80)) |
+| H1 | `refactor/acp-harness` | D15 | In review ([#81](https://github.com/praveenc/local-llm-ui/pull/81)) |
 | K6 | `feat/kiro-approvals` | 6 | Planned |
 | K7 | `feat/kiro-sessions` | 7 | Planned |
 | K8 | `feat/kiro-credits` | 8 | Planned |
+| K9 | `feat/kiro-session-options` | 9 | Planned |
 
 ### Found during the work
 
@@ -59,11 +69,11 @@ The plan supports kiro-cli 3 only. kiro-cli 2 gets a clear message and no Kiro f
 - **Device-flow output (K3).** `kiro-cli login --use-device-flow` prints `Code: XXXX-XXXX` and `Open this URL: https://view.awsapps.com/start/#/device?user_code=…` on stdout, also through a wrapper script, then waits. A bad start URL prints `error: InvalidRequestException` and exits 1; the app says "The start URL or the Region is not correct". `kiro-cli logout` exits 0 also when you are signed out already.
 - **The new tab opens on the click (K3).** Browsers block a tab that a page opens after a `fetch`. The app opens an empty tab when you click **Continue**, and sends it to the sign-in page when the code comes. If the browser blocks the tab, the row shows an **Open sign-in page** link.
 - **Kiro as the default before sign-in (K3).** The Kiro radio button is on while Kiro CLI is signed out. A click opens the sign-in form and does not save the default. Kiro becomes the default only when a sign-in that the app started is complete. A sign-in in a terminal followed by **Check again**, a failed sign-in, a closed dialog without a running sign-in, and a click on a different provider all cancel the wish.
-- **Ctrl+C did not stop Kiro processes (K3, K4 review).** Node does not run its `exit` listeners when `SIGINT` or `SIGHUP` ends it, and Vite handles only `SIGTERM`. The Kiro processes run in their own process groups, so they do not get the terminal's signal. `server/kiro/process-end.ts` (in K3 and K4, the same file) runs the cleanups on these signals too, then sends the signal again.
+- **Ctrl+C did not stop Kiro processes (K3, K4 review).** Node does not run its `exit` listeners when `SIGINT` or `SIGHUP` ends it, and Vite handles only `SIGTERM`. The Kiro processes run in their own process groups, so they do not get the terminal's signal. `server/acp/process-end.ts` (moved from `server/kiro/` in H1) runs the cleanups on these signals too, then sends the signal again.
 - **Tunnels close idle connections (K3 review).** The sign-in stream sends `: ping` every 15 s while it waits for the approval.
 - **Sign-out signs out everywhere (K3).** `kiro-cli logout` signs out every Kiro CLI on the computer, also in terminals. The app asks before it signs out.
 - **The engine has its own process groups (K4).** The v3 engine runs in a process group of its own, and a wrapper script adds one more. One `kiro-cli acp` starts 20 to 26 processes, the user's MCP servers, which is another reason for one shared process (D5). A stop reads all descendant groups with `ps` before it closes stdin, then sends `SIGTERM` and `SIGKILL` to each group. With kiro-cli 3.6.0, nothing was left 1.5 s after a stop. Exit code 143 after `SIGTERM` is normal.
-- **Autopilot stays off (K4 review).** The app checks Autopilot after every option change and every `config_option_update`. If Kiro turns it on, the app cancels the reply of that session, turns Autopilot off again, and uses the session only after it reads `off` back. The app does not change `mode` (the agent) or `autopilot` itself: an agent can have its own allow rules that run tools without a question (KiroBoo found this), so D9 keeps Kiro's default agent.
+- **Autopilot stays off (K4 review).** The app checks Autopilot after every option change and every `config_option_update`. If Kiro turns it on, the app cancels the reply of that session, turns Autopilot off again, and uses the session only after it reads `off` back. The app does not change `mode` (the agent) or `autopilot` itself: an agent can have its own allow rules that run tools without a question (KiroBoo found this), so D9 keeps Kiro's default agent. D17 changes this in K6.
 - **A failed load must not delete (K4 review).** When a session from disk fails the Autopilot check, the app stops using it but keeps it on disk. Only a session that the app made in that call is deleted.
 - **After a crash, stop the recorded groups (K4 review).** Once `kiro-cli acp` is dead, `ps` cannot find its children. The app records the process groups while the process runs and stops them after a crash.
 - **No engine check (K4).** The `initialize` result has no field that names the engine. The app starts `--agent-engine v3`, and K2 already refuses Kiro CLI 2, so K4 does not check it again.
@@ -76,6 +86,18 @@ The plan supports kiro-cli 3 only. kiro-cli 2 gets a clear message and no Kiro f
 - **Titles that the user changed (K5).** A conversation gets `titleEdited` when you rename it. Kiro's title replaces only a title that is still the automatic title of the first message, so chats renamed before this version keep their names.
 - **Errors without paths (K5 review).** The browser gets plain error text. Details, for example a folder path, go to the terminal that runs `npm run dev`.
 - **Kiro asks for some tools only (K5).** Kiro's default agent runs some tools, for example reads, without a question. The app denies every question that Kiro asks until K6.
+- **Autopilot on does not remove tool questions (probe, 2026-11-25).** Shell commands and file writes still ask. Autopilot removes only the "Review changes" step. Reads do not ask.
+- **A file write asks twice (probe, 2026-11-25).** First the write, then "Review changes" with its own made-up tool call id and two options. `_meta.kiro.files[].toolCallId` names the write.
+- **"Always" holds for the session only (probe, 2026-11-25).** "Always allow" and "Always deny" live in Kiro's memory and match the start of the command (`echo hi` covers `echo hi > other.txt`). Kiro writes no file for them. A new session asks again.
+- **Cancel drops an open question (probe, 2026-11-25).** On `session/cancel` Kiro ends the turn in about 160 ms and drops the open question. A later answer is ignored. A `cancelled` answer counts as one Deny.
+- **One question at a time (probe, 2026-11-25).** Kiro asks one permission question at a time in a session.
+- **`session/list` returns everything (probe, 2026-11-25).** About 2,300 sessions in about 2.4 s, each with id, folder, title, last change, and status. It filters only by `cwd` and has no paging. 13 MB of the 14 MB result are agent prompts in `_meta.kiro.customAgents`. Most sessions were never used.
+- **`_kiro/sessions/changed` is local (probe, 2026-11-25).** It reports new, changed, and deleted sessions, but only for sessions in the same `kiro-cli acp` process. It does not report a session that you change in a terminal.
+- **`session/load` replays the session (probe, 2026-11-25).** Without `noReplay`, Kiro sends the session as `session/update` messages with `replay: true`, before the load answer: user text, thinking, tool calls with status and output, credits, and context %. The title is in the load answer. A 22 MB session replays in 2.3 s, and no file on disk changes.
+- **Kiro has a session lease (probe, 2026-11-25).** A second program can load a session, but a prompt fails with "This session is loaded in another program". `session/close` releases the lease and keeps the files. This replaces the "no session lock" that KiroBoo found in 3.1.0.
+- **Usage needs no session (probe, 2026-11-25).** `_kiro/account/getUsage` answers in about 300 ms. The reset date is a `YYYY-MM-DD` string. The percentage can go above 100.
+- **No agent version (probe, 2026-11-25).** In 3.6.0 the `initialize` answer has no agent version.
+- **The ACP layer runs without Kiro (H1).** It runs with a small non-Kiro test agent. A test fails if a file in `server/acp/` names Kiro or imports from outside the folder.
 - **Rules for the Kiro routes.** No `GET` under `/api/kiro` may change state, because older browsers send a cross-site `GET` without the headers that the guard checks. `GET /api/kiro/status` only reads. Sign-in, chat, approvals, and sign-out are `POST` with JSON. A WebSocket route would need its own `Origin` check, so the plan uses SSE only.
 
 ## What kiro-cli 3 does
@@ -118,12 +140,14 @@ Kiro also sends many `_kiro/*` notifications (MCP status, memory sync, agent err
 
 **Sessions on disk**
 
+These are facts about Kiro's files. The app does not read them (D18).
+
 - `~/.kiro/sessions/<bucket>/sess_<uuid>/` holds `session.json` and `messages.jsonl`. The bucket is the first 16 hex characters of the SHA-256 of the session folder path.
 - `session.json` has `title`, `workspacePaths`, `createdAt`, `lastModifiedAt`, `modelId`, `agentMode`, `status`.
 - `messages.jsonl` has one row per line: `user`, `assistant`, `tool_call`, `tool_result`, `turn_end`, and rows that the app does not need.
 - On the test computer: 2,138 sessions. 750 changed in the last 7 days, and only 65 of them have messages. The other 685 are empty "New Session" folders. A scan of the 7 days takes 181 ms. The largest transcript in the window is 9.6 MB.
-- `session/list` returns 2,134 sessions in 3.3 s and needs a running Kiro process. Reading the disk is faster.
-- v3 has no session lock. Two processes can write the same session (KiroBoo).
+- `session/list` returns every session in a few seconds and needs a running Kiro process. Since D18 the app uses it and does not read these files.
+- KiroBoo found no session lock in 3.1.0. kiro-cli 3.6.0 has a lease (see [Found during the work](#found-during-the-work)).
 - `kiro-cli --resume-picker` groups by date ("Last month", "Older"), shows ID, name, workspace, messages, last used, and status, and starts with "current workspace only".
 
 **Account**
@@ -134,18 +158,40 @@ Kiro also sends many `_kiro/*` notifications (MCP status, memory sync, agent err
 
 ### Server
 
-New code in `server/kiro/`, registered in `vite.config.ts` like the other proxies.
+The ACP code is in `server/acp/`. It is generic and has no Kiro names (D15). A test fails when a file in this folder names Kiro or imports from outside the folder. The Kiro parts are in `server/kiro/`. Both are registered in `vite.config.ts` through `server/kiro-proxy.ts`, like the other proxies. A new harness adds its own adapter folder next to `server/kiro/`.
+
+`server/acp/`:
 
 | File | Job |
 |---|---|
-| `binary.ts` | Find `kiro-cli` (D1), read the version, check for 3.x (D2) |
-| `auth.ts` | `whoami`, the device-flow sign-in, sign-out |
-| `acp-client.ts` | JSON-RPC over a child process: requests with timeouts, notifications, answers to Kiro's requests, stop with a kill of the process group |
-| `agent.ts` | The shared Kiro process (D5): start on demand, stop when idle or when Vite stops, restart after a crash, live sessions, open approvals, cancel |
-| `updates.ts` | Map Kiro updates to the app's SSE events. Pure functions, tested with recorded probe messages |
-| `models.ts` | The model list: one short session, read `configOptions`, delete the session, keep the list 10 minutes |
-| `sessions.ts` | The index of sessions on disk and the transcript reader |
-| `../kiro-proxy.ts` | The routes |
+| `client.ts` | JSON-RPC over a child process: requests with timeouts, notifications, answers to the agent's requests |
+| `types.ts` | The standard ACP message types that the app uses |
+| `process.ts` | Start the agent in its own process group, record the groups, stop the whole tree |
+| `process-end.ts` | Run the cleanups when the dev server ends, also on Ctrl+C and a closed terminal |
+| `harness.ts` | The adapter interface (types only): how to start the agent, its names, its errors, its `_meta` fields |
+| `agent.ts` | The shared agent process (D5): start on demand, stop when idle or when Vite stops, restart after a crash, live sessions, open approvals, cancel |
+| `permissions.ts` | Permission types, the choice of an option by kind, the default denial, the answer logic |
+| `updates.ts` | Map `session/update` messages to the app's SSE events. Pure functions, tested with recorded probe messages |
+| `config-options.ts` | Helpers for the config options of a session |
+
+`server/kiro/`:
+
+| File | Job |
+|---|---|
+| `binary.ts` | Find `kiro-cli` (D1), check the file |
+| `run.ts` | Run `kiro-cli` with fixed arguments and a time limit, no shell |
+| `status.ts` | `--version` and `whoami`, check for 3.x (D2) |
+| `login.ts` | The device-flow sign-in and sign-out |
+| `models.ts` | The model list: one short session, read `configOptions`, delete the session, keep the list 1 hour |
+| `session-files.ts` | The folder of an existing session, read from its `session.json` (replaced by `session/list` in K7) |
+| `harness.ts` | The Kiro adapter: `kiro-cli acp` arguments, environment, own folder, signed-out rules, names, `_meta.kiro` hooks |
+| `errors.ts` | The Kiro error classes |
+| `autopilot.ts` | The lock on `autopilot` and `mode` (SEC-15). K6 deletes this file (D17) |
+| `agent.ts` | The Kiro agent: the generic agent with the Kiro harness, the singleton, the extension methods that are allowed |
+| `chat.ts` | The `/api/kiro/chat` route |
+| `reply-meta.ts` | The `_meta.kiro` fields of a reply: title, context, credits, display error |
+| `chat-options.ts` | Set the model and the Thinking level on a session |
+| `approvals.ts` | The answers to permission requests. Denies all until K6 |
 
 Routes:
 
@@ -157,9 +203,9 @@ Routes:
 | `POST /api/kiro/models` | Model list with levels and credit rate. A `POST`, because a load can start Kiro CLI and make a session | K5 |
 | `POST /api/kiro/chat` | One reply, as SSE | K5 |
 | `POST /api/kiro/permission` | The answer to an approval | K6 |
-| `GET /api/kiro/sessions?days=7` | Sessions on disk | K7 |
-| `GET /api/kiro/sessions/:id/transcript?after=` | Messages of one session, or the rows after a row id | K7 |
-| `GET /api/kiro/usage` | Account credits | K8 |
+| `POST /api/kiro/sessions` | The list of Kiro sessions. A `POST`, because the list can start Kiro CLI | K7 |
+| `POST /api/kiro/sessions/open` | Import a session with replay | K7 |
+| `POST /api/kiro/usage` | Account credits. A `POST`, because it can start Kiro CLI | K8 |
 
 ### SSE events
 
@@ -185,7 +231,7 @@ The chat route sends the existing events, and four new ones. `useBedrockChat.ts`
 
 ### Data
 
-- `Conversation` gets `kiro?: { sessionId, cwd, seenSequence, lastRowId? }`. `seenSequence` is the last message that Kiro has seen (D12). `lastRowId` is the last disk row that the app imported (K7).
+- `Conversation.kiro` is `{ sessionId, seenMessages }` today. `seenMessages` is how many messages Kiro has seen (D12). K7 adds `updatedAt`, the Kiro last change of the last import.
 - Dexie version 3 adds an index on `kiro.sessionId`, so K7 can find a session that is already imported. The other tables do not change.
 - `MessageUsage` gets `credits` and `contextPercent`.
 
@@ -266,32 +312,49 @@ Kiro runs its own tools and its own MCP servers. For a Kiro model, the chat inpu
 ### 6. Tool approvals
 
 - **Change:**
-  - A request shows in the work row, open, with the tool title and its command or path: "Kiro wants to run `echo hi > hello.txt`". Under it are Kiro's options: **Allow**, **Always allow**, **Deny**, **Always deny**.
-  - A click sends `POST /api/kiro/permission`. The step then shows "Allowed" or "Denied".
-  - When the reply stream closes or the user clicks **Stop**, the server answers `cancelled`, so Kiro does not wait.
-  - Kiro can ask twice for a file write: for the tool, and then to review the changes. Both use the same row.
-  - **Preferences → Providers → Kiro** gets **Tool approvals**: Ask (default) or Autopilot (D7).
-- **Tests:** The fake process asks for approval. Allow, deny, and a closed stream. A real shell command with kiro-cli.
+  - A request shows in the work row, open, with the tool title and its command or path: "Kiro wants to run `echo hi > hello.txt`". Under it are Kiro's own options with Kiro's labels: **Allow**, **Always allow**, **Deny**, **Always deny** (D16).
+  - A click sends `POST /api/kiro/permission` with the request id and the option id. The step then shows the label that you chose.
+  - Kiro asks twice for a file write: for the write, and then "Review changes" with **Accept changes** and **Reject changes**. The app links the second question to the write with `_meta.kiro.files[].toolCallId`, and both show in the same row.
+  - Kiro asks one question at a time in a session, so the row shows one open question.
+  - Kiro keeps the "always" rules in its own memory for the session. The app stores no rule and has no approval setting of its own.
+  - When the reply stream closes or the user clicks **Stop**, the server answers `cancelled`, so Kiro does not wait. Kiro counts this as one Deny.
+  - The app no longer locks `autopilot` and `mode` (D17). New sessions use Kiro's defaults, as in the terminal. K6 deletes `server/kiro/autopilot.ts` and removes the guard line in `server/kiro/harness.ts`.
+- **Tests:** The fake process asks for approval. Allow, always allow, deny, a "Review changes" question, a closed stream, and Stop. A real shell command and a real file write with kiro-cli.
 
 ### 7. Kiro sessions in the sidebar
 
 - **Change:**
   - After sign-in, the Kiro row asks the question from D11. The switch **Show Kiro sessions in the sidebar** keeps the answer.
-  - `GET /api/kiro/sessions?days=7` scans the disk. It skips empty sessions, workflow steps, cloud sessions, and unknown formats. A blank or "New Session" title uses the start of the first prompt.
+  - `POST /api/kiro/sessions` calls `session/list` on the shared Kiro process (D18). The server removes the agent prompts in `_meta.kiro.customAgents` and hides sessions that were never used (D19). Each session keeps its id, folder, title, last change, and status.
   - The **Kiro sessions** section shows under **Conversations** (D10). It uses the date groups and row style of PR 7 (Today, Yesterday, Previous 7 days), with the folder name of the session on each row. A menu in the header changes the window: Last 7 days (default), Last 30 days, All. **Search chats** filters both sections.
-  - A click on a session reads its transcript, makes a conversation with the messages and the tool calls (in the compact form of `toolResults.ts`), and opens it. The next prompt continues the Kiro session in its own folder.
-  - Each later open reads the rows after `lastRowId`, so turns that you made in the terminal show too.
-  - Kiro has no session lock. When a session shows "in progress" and changed in the last 2 minutes, the chat input says "This session is open in another Kiro window" and does not send.
-  - The list refreshes when the window gets focus, and each 60 s.
-- **Tests:** A fixture folder with sessions of each kind. The largest real transcript (9.6 MB): import time and the size in IndexedDB. A session continued in the terminal, then opened again.
+  - The list refreshes when the section opens and when the window gets focus, at most once a minute. The app does not use `_kiro/sessions/changed`, because it reports only sessions of the same process.
+  - A click on a session calls `POST /api/kiro/sessions/open`. The server loads the session with replay, maps the replayed messages with the same code as a live reply, and sends them as SSE: user text, thinking, tool calls with status and output (in the compact form of `toolResults.ts`), credits, and context %. The title comes from the load answer. The app makes a conversation with these messages and opens it. The next prompt continues the Kiro session in its own folder.
+  - A later open replays the session again, so turns that you made in the terminal show too. The conversation keeps the Kiro last change of the import in `kiro.updatedAt`.
+  - After each reply, the server calls `session/close`, so the terminal can resume the session.
+  - When another program has loaded the session, Kiro answers the prompt with "This session is loaded in another program". The chat shows this text as the error.
+  - The app does not read `~/.kiro/sessions` for the list or the transcript.
+- **Tests:** A fake process that answers `session/list` and replays a session. A session with no use is hidden. A real list with kiro-cli, and a real import of the largest session (22 MB): import time and the size in IndexedDB. A session continued in the terminal, then opened again. A session that a terminal has loaded.
 
 ### 8. Kiro credits
 
 - **Change:**
-  - The Kiro row in Preferences shows the plan and the credits of the account: "Kiro Power · 1,250 of 10,000 credits used · resets 1 Dec".
+  - `POST /api/kiro/usage` calls `_kiro/account/getUsage`, which needs no session and answers in about 300 ms. The route is a `POST`, because it can start Kiro CLI. The app keeps the result 5 minutes.
+  - The Kiro row in Preferences shows the plan and the credits of the account: "Kiro Power · 1,250 of 10,000 credits used · resets 1 Dec". The reset date is a `YYYY-MM-DD` string.
+  - The percentage can go above 100. The app shows the number that Kiro reports and does not cap it.
   - The context popover of a Kiro chat shows the credits of this chat and of the account.
-  - The values come from `_kiro/account/getUsage`, and the app keeps them 5 minutes.
-- **Tests:** Unit tests for the formatting, a real call.
+- **Tests:** Unit tests for the formatting, with a percentage above 100. A real call.
+
+### 9. Session options
+
+- **Change:**
+  - The chat input shows the session options that Kiro lists, with Kiro's names and descriptions (D20).
+  - The option with the category `mode` shows as an agent picker.
+  - The options with no ACP category, for example Autopilot, show in one menu.
+  - The model and the Thinking level keep their own controls. The app picks each control by the ACP category (`mode`, `model`, `thought_level`), not by a Kiro id, so a different harness works the same way.
+  - The chat request gets an `options` field. The server sets only options that the session lists, to values that the option lists, and reads each one back (SEC-16).
+  - An imported session shows its current values.
+  - K9 waits on K6, because `mode` is locked until K6 merges.
+- **Tests:** Unit tests for the choice of controls by category. The fake process lists a `mode` option and an option with no category. A real chat with an agent change and with Autopilot off, in headless Chromium at 1440, 1024, and 390 px.
 
 ## Found during the planning
 
@@ -310,22 +373,26 @@ Kiro runs its own tools and its own MCP servers. For a Kiro model, the chat inpu
 | K3 | `feat/kiro-sign-in` | 3 | K2 |
 | K4 | `feat/kiro-acp-client` | 4 | K2 |
 | K5 | `feat/kiro-chat` | 5 | K3, K4 |
-| K6 | `feat/kiro-approvals` | 6 | K5 |
-| K7 | `feat/kiro-sessions` | 7 | K5 |
-| K8 | `feat/kiro-credits` | 8 | K5 |
+| H1 | `refactor/acp-harness` | D15 | Nothing (first) |
+| K6 | `feat/kiro-approvals` | 6 | H1 |
+| K7 | `feat/kiro-sessions` | 7 | H1 |
+| K8 | `feat/kiro-credits` | 8 | H1 |
+| K9 | `feat/kiro-session-options` | 9 | K6 |
 
-Merge order: K1, K2, K3, K4, K5, K6, K7, K8. Plan 2 (PRs 6 to 9) is merged in v1.2.0, so no PR waits on it. K3 and K4 can be built at the same time after K2. K6, K7, and K8 can be built at the same time after K5.
+Merge order: K1 to K5 (merged), then H1, K6, K7, K8, K9. Plan 2 (PRs 6 to 9) is merged in v1.2.0, so no PR waits on it. K6, K7, and K8 are built at the same time after H1. H1 splits `server/kiro/` so that the three PRs edit different files. K9 starts when K6 is merged.
 
 Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes:
 
+- H1: the `server/` line in the project structure, and a "Changed" line in the changelog. No behaviour changes.
 - K2: Kiro in the provider table and a "Kiro" part under "Connect a provider".
 - K3: the sign-in steps.
 - K5: chat with Kiro, what the chat input hides, credits under each reply, and `/api/kiro` in the route table.
 - K6: tool approvals.
 - K7: "Kiro sessions" under "Find a chat".
 - K8: account credits.
+- K9: session options in the chat input.
 
-K2 also updates `.kiro/steering/CLAUDE.md` (provider and proxy tables) and `docs/SECURITY.md` (how the app starts Kiro and what it sends).
+K2 also updates `.kiro/steering/CLAUDE.md` (provider and proxy tables) and `docs/SECURITY.md` (how the app starts Kiro and what it sends). H1 updates both `CLAUDE.md` files and `docs/SECURITY-LEARNINGS.md` (paths only).
 
 Each PR is tested as the UI guidelines say. Before each push, the app runs in the background with `hc` and a tunnel, so you can test it from your desktop.
 

@@ -253,7 +253,7 @@ preview: { cors: false, /* ... */ },
 
 ### SEC-14: Running Kiro CLI
 
-`server/kiro/` runs `kiro-cli` on the host. The rules:
+`server/kiro/` runs `kiro-cli` on the host (`run.ts`, `status.ts`, `login.ts`, `binary.ts`). The generic ACP code in `server/acp/` starts no program by itself: the Kiro harness (`server/kiro/harness.ts`) gives it the command. The rules:
 
 - **No shell.** `execFile` with fixed arguments (`--version`, `whoami -f json`). No value from a request goes into the arguments.
 - **Known binary.** `LOCAL_LLM_UI_KIRO_CLI`, else `~/.local/bin/kiro-cli`, else `PATH`. The file must be a regular, executable file. A bad `LOCAL_LLM_UI_KIRO_CLI` is an error, not a silent fallback to another binary.
@@ -262,31 +262,31 @@ preview: { cors: false, /* ... */ },
 - **Account data.** `GET /api/kiro/status` returns the account email. Only the app's own pages can read it (SEC-13). The server does not log it.
 - **Sign-in arguments.** `POST /api/kiro/login` builds the arguments of `kiro-cli login --use-device-flow` only from a validated method: the start URL must be `https` on `*.awsapps.com`, `*.awsapps.cn`, or `*.app.aws`, with no user name, password, port, white space, control characters, or format characters (such as a right-to-left override), and the Region must match the Region pattern. Kiro CLI gets the normalized URL (`new URL(value).href`), the value that the app checked. The same checks run in the browser and on the server (`src/utils/kiroLogin.ts`).
 - **Sign-in page.** The server sends the sign-in URL to the browser only when it is `https` on `*.awsapps.com` or `*.awsapps.cn`, on the host of the given start URL, or on `device.sso.<Region>.amazonaws.com` for the given Region. Any other URL stops the sign-in. The browser checks the URL again before it opens the tab, and it cuts `window.opener`. The code and the URL are never logged.
-- **Sign-in process.** The login runs as its own process group, because `~/.local/bin/kiro-cli` can be a wrapper. Cancel, a closed browser tab (the response closes), a 10-minute time limit, and the end of the dev server stop the whole group. The end of the dev server includes Ctrl+C and a closed terminal: Node does not run its `exit` listeners for `SIGINT` and `SIGHUP`, so `server/kiro/process-end.ts` adds listeners for them that kill the groups and then send the signal again. The group also gets `SIGKILL` after `kiro-cli login` ends, so that no process of a wrapper stays. Only one sign-in or sign-out runs at a time, and **Cancel** names the run (`runId`) that it stops.
+- **Sign-in process.** The login runs as its own process group, because `~/.local/bin/kiro-cli` can be a wrapper. Cancel, a closed browser tab (the response closes), a 10-minute time limit, and the end of the dev server stop the whole group. The end of the dev server includes Ctrl+C and a closed terminal: Node does not run its `exit` listeners for `SIGINT` and `SIGHUP`, so `server/acp/process-end.ts` adds listeners for them that kill the groups and then send the signal again. The group also gets `SIGKILL` after `kiro-cli login` ends, so that no process of a wrapper stays. Only one sign-in or sign-out runs at a time, and **Cancel** names the run (`runId`) that it stops.
 - **Idle connections.** The sign-in stream sends a comment line (`: ping`) every 15 s, so a tunnel or a proxy does not close the connection while you approve the sign-in. A closed connection cancels the sign-in.
 - **Read only.** The status route is a `GET` and must not change state (SEC-13). Sign-in and sign-out are `POST` with JSON.
 
 ### SEC-15: The Kiro Agent Process
 
-`server/kiro/agent.ts` runs one long-lived `kiro-cli acp` for all Kiro chats. Kiro is a coding agent: its tools can read and change files and run shell commands in the session folder. The rules:
+`server/acp/agent.ts` runs one long-lived `kiro-cli acp` for all Kiro chats, with the Kiro harness in `server/kiro/harness.ts`. Kiro is a coding agent: its tools can read and change files and run shell commands in the session folder. The rules:
 
 - **Tools ask.** Each new or loaded session gets `autopilot` set to `off`, and the app reads the value back. The app checks the value again after every option change and every `config_option_update` from Kiro. If Autopilot is on, the app cancels the reply of that session, turns Autopilot off again, and uses the session only after it reads `off` back. A session that the app made in that call and that fails the check is deleted. A session from disk is never deleted: the app stops using it. Until the approval UI lands, the default answer to `session/request_permission` is **Deny** (`reject_once`). Options are chosen by `kind`, never by id. A cancelled reply answers `cancelled` at once, and a question with no answer for 10 minutes gets **Deny**.
-- **No agent change.** The app cannot set `autopilot` or `mode` (the agent) through `setOption`. An agent can have its own allow rules that run tools without a question, so the app keeps Kiro's default agent.
+- **No agent change.** The app cannot set `autopilot` or `mode` (the agent) through `setOption`. An agent can have its own allow rules that run tools without a question, so the app keeps Kiro's default agent. The lock is in `server/kiro/autopilot.ts`, and `server/acp/agent.ts` enforces it. The generic agent has no lock of its own: the Kiro harness passes it (until K6).
 - **Nothing else from the agent.** Every other request from Kiro to the app gets JSON-RPC error `-32601` at once, so the app gives Kiro no file system or terminal access of its own (`clientCapabilities` `fs` and `terminal` are `false`).
 - **Own folder.** New sessions run in `~/.local-llm-ui/kiro` (mode `0700`), not in the app's repository.
 - **No shell.** `spawn` with fixed arguments: `acp --agent-engine v3 --auth-method cli`.
-- **Stop the whole tree.** The engine runs in process groups of its own. The app records these groups while the process runs (after start, each session open, and each reply start), and a stop also reads them with `ps` before it closes stdin. Then it sends `SIGTERM` and `SIGKILL` to each group, never to the app's own group or groups 0 and 1. After a crash, the app stops the recorded groups, because `ps` cannot find the children of a dead process. The same runs when the app exits, also on Ctrl+C and a closed terminal (`server/kiro/process-end.ts`). The process also stops after 10 idle minutes. Accepted risk: between the record and the signal, a group number can belong to a new group of the same user. The time is short, and the number must belong to a new group leader.
+- **Stop the whole tree.** The engine runs in process groups of its own. The app records these groups while the process runs (after start, each session open, and each reply start), and a stop also reads them with `ps` before it closes stdin. Then it sends `SIGTERM` and `SIGKILL` to each group, never to the app's own group or groups 0 and 1. After a crash, the app stops the recorded groups, because `ps` cannot find the children of a dead process. The same runs when the app exits, also on Ctrl+C and a closed terminal (`server/acp/process-end.ts`). The process also stops after 10 idle minutes. Accepted risk: between the record and the signal, a group number can belong to a new group of the same user. The time is short, and the number must belong to a new group leader.
 - **Environment.** `kiro-cli acp` gets the environment of the dev server, as in a terminal, so that Kiro finds its credentials, `PATH`, and the user's MCP servers. Kiro's shell tools see the same variables, also API keys that you exported in the shell that runs `npm run dev`. Tools ask before they run (see above).
 - **Limits.** One JSON-RPC line may be at most 64 MB. `initialize` and `session/new` time out after 30 s, `session/load` after 120 s, and a reply that ignores `session/cancel` for 30 s stops the process.
 - **Logs.** Only lifecycle lines (started, stopped, exited). No prompt text, tool input, or account data.
 
 ### SEC-16: The Kiro Chat Route
 
-`POST /api/kiro/chat` (`server/kiro/chat.ts`) and `POST /api/kiro/models` (`server/kiro/models.ts`). The rules:
+`POST /api/kiro/chat` (`server/kiro/chat.ts`, with `chat-options.ts` and `approvals.ts`) and `POST /api/kiro/models` (`server/kiro/models.ts`). The rules:
 
 - **No folder from the browser.** A new session runs in `~/.local-llm-ui/kiro`. An existing session runs in the folder of its own `session.json` (`server/kiro/session-files.ts`): the session id must match `sess_<uuid>`, the bucket folder must be 16 hex characters, the `id` in the file must match, and the SHA-256 of the folder must give the bucket name. So the request cannot name a folder or reach a path outside `~/.kiro/sessions`.
-- **Only three options.** The route sets only `model`, `effortLevel`, and `thinking`, and only to a value that the session lists. `autopilot` and `mode` are locked (SEC-15).
-- **Tools.** Each permission question gets `reject_once` until K6 (SEC-15).
+- **Only three options.** `server/kiro/chat-options.ts` sets only `model`, `effortLevel`, and `thinking`, and only to a value that the session lists. `autopilot` and `mode` are locked (SEC-15).
+- **Tools.** `server/kiro/approvals.ts` gives each permission question `reject_once` until K6 (SEC-15).
 - **Sizes.** The body is at most 10 MB, the message at most 200,000 characters, the history at most 2,000 messages, and the context block that the server puts before the message at most 400,000 characters (older messages are left out, and a long message is cut).
 - **Changes state, so a POST.** A model-list load can start Kiro CLI and make and delete a session, so the route is a `POST` with JSON, not a `GET` (SEC-13).
 - **Errors.** The browser gets plain text. Unknown errors say "Kiro failed. See the terminal that runs npm run dev.", and the detail goes to the terminal. No folder path goes to the browser.
@@ -469,6 +469,9 @@ Items identified but not yet implemented (long-term):
 server/
 ├── security.ts             # Shared: same-origin guard, CORS, body limits, token cap
 ├── mcp-manager.ts          # MCP: command allowlist, env allowlist, SSRF, timeout, validation
+├── kiro-proxy.ts           # Kiro routes (uses security.ts)
+├── acp/                    # Generic ACP layer: agent process, process groups, permissions (no harness names)
+├── kiro/                   # Kiro harness: kiro-cli commands, sign-in, chat route, approvals
 ├── aisdk-proxy.ts          # Groq/Cerebras (uses security.ts)
 ├── anthropic-aisdk-proxy.ts # Anthropic (uses security.ts)
 ├── bedrock-aisdk-proxy.ts  # Bedrock AI SDK (uses security.ts)
