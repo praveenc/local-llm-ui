@@ -13,6 +13,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { kiroService } from '../services';
 import { isAllowedSignInUrl } from '../utils/kiroLogin';
 import type { KiroLoginEvent, KiroLoginMethod } from '../utils/kiroLogin';
+import type { KiroStatus } from '../utils/kiroStatus';
 import { KIRO_STATUS_QUERY_KEY } from './useKiroStatus';
 
 export type KiroSignInPhase = 'idle' | 'starting' | 'waiting' | 'error';
@@ -62,22 +63,36 @@ function closeBlankPopup(popup: Window | null): void {
   }
 }
 
-export function useKiroSignIn(options: { onSignedIn?: () => void } = {}): KiroSignIn {
+export interface KiroSignInOptions {
+  /**
+   * A sign-in that start() began ended signed in. Runs after the status query has `status`.
+   * A sign-in from a terminal never calls it.
+   */
+  onSignedIn?: (status: KiroStatus) => void;
+  /** A sign-in that start() began ended with an error */
+  onError?: (message: string) => void;
+}
+
+export function useKiroSignIn(options: KiroSignInOptions = {}): KiroSignIn {
   const queryClient = useQueryClient();
   const [state, setState] = useState<KiroSignInState>(IDLE);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | undefined>();
   const controller = useRef<AbortController | null>(null);
   const popup = useRef<Window | null>(null);
+  /** The run id from the `started` event of the sign-in that runs */
+  const runId = useRef<string | undefined>(undefined);
 
-  const onSignedIn = useRef(options.onSignedIn);
+  const callbacks = useRef(options);
   useLayoutEffect(() => {
-    onSignedIn.current = options.onSignedIn;
+    callbacks.current = options;
   });
 
   useEffect(
     () => () => {
       controller.current?.abort();
+      closeBlankPopup(popup.current);
+      popup.current = null;
     },
     []
   );
@@ -89,21 +104,27 @@ export function useKiroSignIn(options: { onSignedIn?: () => void } = {}): KiroSi
       popup.current = window.open('about:blank', '_blank');
       const abort = new AbortController();
       controller.current = abort;
+      runId.current = undefined;
       setState({ phase: 'starting' });
 
       const fail = (message: string) => {
         closeBlankPopup(popup.current);
         popup.current = null;
         setState({ phase: 'error', message });
+        callbacks.current.onError?.(message);
       };
       const startUrl = method.method === 'identity-center' ? method.startUrl : undefined;
+      const region = method.method === 'identity-center' ? method.region : undefined;
       let ended = false;
 
       const onEvent = (event: KiroLoginEvent) => {
         if (abort.signal.aborted || ended) return;
         switch (event.state) {
+          case 'started':
+            runId.current = event.runId;
+            return;
           case 'code':
-            if (!isAllowedSignInUrl(event.url, startUrl)) {
+            if (!isAllowedSignInUrl(event.url, startUrl, region)) {
               ended = true;
               abort.abort();
               fail('The sign-in page is not one that the app trusts');
@@ -117,7 +138,7 @@ export function useKiroSignIn(options: { onSignedIn?: () => void } = {}): KiroSi
             popup.current = null;
             queryClient.setQueryData(KIRO_STATUS_QUERY_KEY, event.status);
             setState(IDLE);
-            onSignedIn.current?.();
+            callbacks.current.onSignedIn?.(event.status);
             return;
           case 'error':
             ended = true;
@@ -152,8 +173,11 @@ export function useKiroSignIn(options: { onSignedIn?: () => void } = {}): KiroSi
     closeBlankPopup(popup.current);
     popup.current = null;
     setState(IDLE);
-    // The server stops the sign-in when the request ends. This makes sure of it.
-    void kiroService.cancelLogin().catch(() => {});
+    // The server stops the sign-in when the request ends. This makes sure of it, for this run
+    // only: a late cancel must not stop a newer sign-in.
+    const id = runId.current;
+    runId.current = undefined;
+    if (id) void kiroService.cancelLogin(id).catch(() => {});
   }, []);
 
   const reset = useCallback(() => setState(IDLE), []);

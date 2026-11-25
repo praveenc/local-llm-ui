@@ -93,7 +93,7 @@ describe('useKiroSignIn', () => {
     );
     expect(result.current.phase).toBe('starting');
 
-    await login.send({ state: 'started' });
+    await login.send({ state: 'started', runId: 'r1' });
     await login.send({ state: 'code', code: 'ABCD-EFGH', url: URL_OK });
     expect(result.current).toMatchObject({ phase: 'waiting', code: 'ABCD-EFGH', url: URL_OK });
     expect(popup.opener).toBeNull();
@@ -103,6 +103,7 @@ describe('useKiroSignIn', () => {
     expect(result.current.phase).toBe('idle');
     expect(queryClient.getQueryData(KIRO_STATUS_QUERY_KEY)).toEqual(SIGNED_IN);
     expect(onSignedIn).toHaveBeenCalledTimes(1);
+    expect(onSignedIn).toHaveBeenCalledWith(SIGNED_IN);
     expect(popup.close).not.toHaveBeenCalled();
     await login.end();
   });
@@ -132,10 +133,14 @@ describe('useKiroSignIn', () => {
     const popup = fakePopup();
     open.mockReturnValue(popup);
     const login = controlledLogin();
-    const { result } = renderHook(() => useKiroSignIn(), { wrapper });
+    const onError = vi.fn();
+    const onSignedIn = vi.fn();
+    const { result } = renderHook(() => useKiroSignIn({ onError, onSignedIn }), { wrapper });
     act(() => result.current.start({ method: 'builder-id' }));
     await login.send({ state: 'error', message: 'Already signed in' });
     expect(result.current).toMatchObject({ phase: 'error', message: 'Already signed in' });
+    expect(onError).toHaveBeenCalledWith('Already signed in');
+    expect(onSignedIn).not.toHaveBeenCalled();
     expect(popup.close).toHaveBeenCalledTimes(1);
     await login.end();
     expect(result.current.phase).toBe('error');
@@ -178,22 +183,54 @@ describe('useKiroSignIn', () => {
     await waitFor(() => expect(result.current.phase).toBe('error'));
   });
 
-  it('cancels: aborts the request, asks the server, and closes the blank tab', async () => {
+  it('cancels: aborts the request, asks the server for this run, and closes the blank tab', async () => {
     const popup = fakePopup();
     open.mockReturnValue(popup);
+    const login = controlledLogin();
+    const { result } = renderHook(() => useKiroSignIn(), { wrapper });
+    act(() => result.current.start({ method: 'builder-id' }));
+    await login.send({ state: 'started', runId: 'run-7' });
+    const signal = (service.startLogin.mock.calls[0][1] as { signal: AbortSignal }).signal;
+    act(() => result.current.cancel());
+    expect(signal.aborted).toBe(true);
+    expect(service.cancelLogin).toHaveBeenCalledTimes(1);
+    expect(service.cancelLogin).toHaveBeenCalledWith('run-7');
+    expect(result.current.phase).toBe('idle');
+    expect(popup.close).toHaveBeenCalled();
+  });
+
+  it('cancels before the started event with the abort alone', () => {
+    open.mockReturnValue(null);
     controlledLogin();
     const { result } = renderHook(() => useKiroSignIn(), { wrapper });
     act(() => result.current.start({ method: 'builder-id' }));
     const signal = (service.startLogin.mock.calls[0][1] as { signal: AbortSignal }).signal;
     act(() => result.current.cancel());
     expect(signal.aborted).toBe(true);
-    expect(service.cancelLogin).toHaveBeenCalledTimes(1);
-    expect(result.current.phase).toBe('idle');
-    expect(popup.close).toHaveBeenCalled();
+    expect(service.cancelLogin).not.toHaveBeenCalled();
+  });
+
+  it('opens the device page of the Region for an Identity Center sign-in', async () => {
+    const popup = fakePopup();
+    open.mockReturnValue(popup);
+    const login = controlledLogin();
+    const { result } = renderHook(() => useKiroSignIn(), { wrapper });
+    act(() =>
+      result.current.start({
+        method: 'identity-center',
+        startUrl: 'https://x.awsapps.com/start',
+        region: 'eu-west-1',
+      })
+    );
+    const url = 'https://device.sso.eu-west-1.amazonaws.com/?user_code=ABCD-EFGH';
+    await login.send({ state: 'code', code: 'ABCD-EFGH', url });
+    expect(result.current.phase).toBe('waiting');
+    expect(popup.location.replace).toHaveBeenCalledWith(url);
   });
 
   it('runs one sign-in at a time, and aborts when the component goes away', () => {
-    open.mockReturnValue(null);
+    const popup = fakePopup();
+    open.mockReturnValue(popup);
     controlledLogin();
     const { result, unmount } = renderHook(() => useKiroSignIn(), { wrapper });
     act(() => result.current.start({ method: 'builder-id' }));
@@ -202,6 +239,8 @@ describe('useKiroSignIn', () => {
     const signal = (service.startLogin.mock.calls[0][1] as { signal: AbortSignal }).signal;
     unmount();
     expect(signal.aborted).toBe(true);
+    // The blank tab does not stay behind
+    expect(popup.close).toHaveBeenCalledTimes(1);
   });
 
   it('signs out and stores the new status, or keeps the error', async () => {

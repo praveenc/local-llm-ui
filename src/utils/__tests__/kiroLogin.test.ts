@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isAllowedSignInUrl,
   isValidRegion,
+  normalizeStartUrl,
   parseKiroLoginMethod,
   parseLoginLine,
   validateStartUrl,
@@ -33,6 +34,12 @@ describe('validateStartUrl', () => {
     'https://evilawsapps.com/start',
     'https://evil.example/start',
     'https://app.aws/start',
+    'https://x.awsapps.com/st\nart',
+    'https://x.awsapps.com/st\tart',
+    'https://x.awsapps.com/start foo',
+    'https://x.awsapps.com/\u202Estart',
+    'https://x.awsapps.com/\u200Bstart',
+    'https://x.awsapps.com/start\u0000',
   ])('rejects %j', (value) => {
     expect(validateStartUrl(value)).toBe(
       'Enter the start URL of your IAM Identity Center, for example https://my-company.awsapps.com/start'
@@ -40,15 +47,48 @@ describe('validateStartUrl', () => {
   });
 });
 
+describe('normalizeStartUrl', () => {
+  it('returns the normalized form that goes to kiro-cli', () => {
+    expect(normalizeStartUrl(' https://X.AWSAPPS.com/start ')).toBe('https://x.awsapps.com/start');
+    expect(normalizeStartUrl('https://ssoins-1.portal.us-east-1.app.aws')).toBe(
+      'https://ssoins-1.portal.us-east-1.app.aws/'
+    );
+  });
+
+  it('turns fullwidth dots into the host that is checked', () => {
+    expect(normalizeStartUrl('https://x\uFF0Eawsapps\uFF0Ecom/start')).toBe(
+      'https://x.awsapps.com/start'
+    );
+  });
+
+  it('rejects hidden characters before it parses', () => {
+    expect(normalizeStartUrl('https://x.awsapps.com/st\nart')).toBeUndefined();
+    expect(normalizeStartUrl('https://x.awsapps.com/\u202Estart')).toBeUndefined();
+    expect(normalizeStartUrl('https://evil.example')).toBeUndefined();
+  });
+});
+
 describe('isValidRegion', () => {
-  it.each(['us-east-1', 'eu-central-2', 'us-gov-west-1', 'cn-north-1', 'us-iso-east-1'])(
-    'accepts %s',
-    (value) => expect(isValidRegion(value)).toBe(true)
-  );
-  it.each(['', 'us-east', 'US-EAST-1', 'us-east-1 ', '--region', 'us_east_1', 'us-east-123'])(
-    'rejects %j',
-    (value) => expect(isValidRegion(value)).toBe(false)
-  );
+  it.each([
+    'us-east-1',
+    'eu-central-2',
+    'us-gov-west-1',
+    'cn-north-1',
+    'us-iso-east-1',
+    'us-isob-east-1',
+    'eusc-de-east-1',
+  ])('accepts %s', (value) => expect(isValidRegion(value)).toBe(true));
+  it.each([
+    '',
+    'us-east',
+    'US-EAST-1',
+    'us-east-1 ',
+    '--region',
+    'us_east_1',
+    'us-east-123',
+    'abcde-east-1',
+    'u-east-1',
+  ])('rejects %j', (value) => expect(isValidRegion(value)).toBe(false));
 });
 
 describe('parseLoginLine', () => {
@@ -107,6 +147,32 @@ describe('isAllowedSignInUrl', () => {
     expect(isAllowedSignInUrl(url, 'https://my-company.awsapps.com/start')).toBe(false);
   });
 
+  it('allows the SSO OIDC device page of the Region, and only that host', () => {
+    const start = 'https://my-company.awsapps.com/start';
+    const url = 'https://device.sso.us-east-1.amazonaws.com/?user_code=ABCD-EFGH';
+    expect(isAllowedSignInUrl(url)).toBe(false);
+    expect(isAllowedSignInUrl(url, start)).toBe(false);
+    expect(isAllowedSignInUrl(url, start, 'us-east-1')).toBe(true);
+    expect(isAllowedSignInUrl(url, start, 'us-west-2')).toBe(false);
+    expect(isAllowedSignInUrl(url, undefined, 'us-east-1')).toBe(false);
+    expect(isAllowedSignInUrl(url, start, 'us-east-1.evil')).toBe(false);
+    expect(
+      isAllowedSignInUrl('https://device.sso.cn-north-1.amazonaws.com.cn/', start, 'cn-north-1')
+    ).toBe(true);
+    expect(
+      isAllowedSignInUrl('https://device.sso.cn-north-1.amazonaws.com/', start, 'cn-north-1')
+    ).toBe(false);
+    for (const bad of [
+      'https://x.device.sso.us-east-1.amazonaws.com/',
+      'https://device.sso.us-east-1.amazonaws.com.evil.example/',
+      'https://sso.us-east-1.amazonaws.com/',
+      'http://device.sso.us-east-1.amazonaws.com/',
+      'https://device.sso.us-east-1.amazonaws.com:444/',
+    ]) {
+      expect(isAllowedSignInUrl(bad, start, 'us-east-1')).toBe(false);
+    }
+  });
+
   it('ignores a start URL that is not valid', () => {
     expect(isAllowedSignInUrl('https://evil.example/x', 'https://evil.example/start')).toBe(false);
     expect(isAllowedSignInUrl('http://x.app.aws/x', 'http://x.app.aws')).toBe(false);
@@ -135,6 +201,37 @@ describe('parseKiroLoginMethod', () => {
         startUrl: 'https://x.awsapps.com/start',
         region: 'us-east-1',
       },
+    });
+  });
+
+  it('sends the normalized start URL', () => {
+    expect(
+      parseKiroLoginMethod({
+        method: 'identity-center',
+        startUrl: 'https://x\uFF0Eawsapps\uFF0Ecom/start',
+        region: 'eusc-de-east-1',
+      })
+    ).toEqual({
+      ok: true,
+      value: {
+        method: 'identity-center',
+        startUrl: 'https://x.awsapps.com/start',
+        region: 'eusc-de-east-1',
+      },
+    });
+  });
+
+  it.each([
+    'https://x.awsapps.com/st\nart',
+    'https://x.awsapps.com/start foo',
+    'https://x.awsapps.com/\u202Estart',
+  ])('rejects the start URL %j', (startUrl) => {
+    expect(
+      parseKiroLoginMethod({ method: 'identity-center', startUrl, region: 'us-east-1' })
+    ).toEqual({
+      ok: false,
+      error:
+        'Enter the start URL of your IAM Identity Center, for example https://my-company.awsapps.com/start',
     });
   });
 

@@ -1,7 +1,7 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { KiroSignInPhase } from '../../../hooks/useKiroSignIn';
+import type { KiroSignInOptions, KiroSignInPhase } from '../../../hooks/useKiroSignIn';
 import type { KiroStatus } from '../../../utils/kiroStatus';
 import { PreferencesDialog } from '../PreferencesDialog';
 
@@ -25,9 +25,14 @@ const signIn = vi.hoisted(() => ({
   signOut: vi.fn(),
   isSigningOut: false,
   signOutError: undefined as string | undefined,
+  /** The callbacks that the dialog gave the hook in its last render */
+  options: {} as KiroSignInOptions,
 }));
 vi.mock('../../../hooks/useKiroSignIn', () => ({
-  useKiroSignIn: () => signIn,
+  useKiroSignIn: (options: KiroSignInOptions = {}) => {
+    signIn.options = options;
+    return signIn;
+  },
 }));
 
 const STORAGE_KEY = 'local-llm-ui-preferences';
@@ -155,7 +160,7 @@ describe('PreferencesDialog providers', () => {
     });
     const trigger = screen.getByLabelText('Default thinking (Amazon Bedrock)');
     // jsdom lacks the pointer APIs that Radix Select uses, so open it with the keyboard
-    trigger.focus();
+    act(() => trigger.focus());
     fireEvent.keyDown(trigger, { key: 'Enter' });
     fireEvent.click(screen.getByRole('option', { name: 'High' }));
     expect(onSave).toHaveBeenCalledWith(
@@ -313,7 +318,7 @@ describe('PreferencesDialog Kiro sign-in', () => {
   const chooseIdentityCenter = () => {
     const trigger = screen.getByLabelText('Sign-in method');
     // jsdom lacks the pointer APIs that Radix Select uses, so open it with the keyboard
-    trigger.focus();
+    act(() => trigger.focus());
     fireEvent.keyDown(trigger, { key: 'Enter' });
     fireEvent.click(screen.getByRole('option', { name: 'IAM Identity Center' }));
   };
@@ -368,6 +373,35 @@ describe('PreferencesDialog Kiro sign-in', () => {
       startUrl: 'https://my-company.awsapps.com/start',
       region: 'us-east-1',
     });
+  });
+
+  it('sends and keeps the start URL in its normalized form', () => {
+    renderDialog({});
+    openForm();
+    chooseIdentityCenter();
+    fireEvent.change(screen.getByLabelText('Start URL'), {
+      target: { value: 'https://My-Company.AWSAPPS.com' },
+    });
+    fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'eu-west-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(signIn.start).toHaveBeenCalledWith({
+      method: 'identity-center',
+      startUrl: 'https://my-company.awsapps.com/',
+      region: 'eu-west-1',
+    });
+    expect(stored().kiroSignIn.startUrl).toBe('https://my-company.awsapps.com/');
+  });
+
+  it('refuses a start URL with a hidden character', () => {
+    renderDialog({});
+    openForm();
+    chooseIdentityCenter();
+    fireEvent.change(screen.getByLabelText('Start URL'), {
+      target: { value: 'https://my-company.awsapps.com/\u202Estart' },
+    });
+    fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'eu-west-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(signIn.start).not.toHaveBeenCalled();
   });
 
   it('starts the form with the method that you used last', () => {
@@ -462,27 +496,139 @@ describe('PreferencesDialog Kiro sign-in', () => {
     expect(screen.getByRole('radio', { name: /Amazon Bedrock/ })).toBeChecked();
   });
 
+  /** The hook ends a sign-in that the app started. The cached status still says signed out. */
+  const finishSignIn = () => act(() => signIn.options.onSignedIn?.(SIGNED_IN));
+
   it('makes Kiro the default when the sign-in ends', () => {
-    const { onSave, rerender } = renderDialog({ preferredProvider: 'bedrock' });
+    const { onSave } = renderDialog({ preferredProvider: 'bedrock' });
     fireEvent.click(screen.getByRole('radio', { name: /Kiro/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(signIn.start).toHaveBeenCalledWith({ method: 'builder-id' });
     expect(stored().preferredProvider).toBe('bedrock');
 
-    kiro.status = SIGNED_IN;
-    rerender();
+    finishSignIn();
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ preferredProvider: 'kiro' }));
     expect(stored().preferredProvider).toBe('kiro');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('keeps the default when you cancel the sign-in that the pick started', () => {
+  it('does not change the default when only the status turns signed in', () => {
     const { onSave, rerender } = renderDialog({ preferredProvider: 'bedrock' });
     fireEvent.click(screen.getByRole('radio', { name: /Kiro/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    // A sign-in in a terminal, then Check again
+    kiro.status = SIGNED_IN;
+    rerender();
+    expect(onSave).not.toHaveBeenCalled();
+    expect(stored().preferredProvider).toBe('bedrock');
+  });
+
+  it('keeps the provider that you picked after Kiro', () => {
+    renderDialog({ preferredProvider: 'ollama' });
+    fireEvent.click(screen.getByRole('radio', { name: /Kiro/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('radio', { name: /Amazon Bedrock/ }));
+    expect(stored().preferredProvider).toBe('bedrock');
+
+    finishSignIn();
+    expect(stored().preferredProvider).toBe('bedrock');
+  });
+
+  it('forgets the wish when the sign-in fails, also when you then check again', () => {
+    const { onSave, rerender } = renderDialog({ preferredProvider: 'bedrock' });
+    fireEvent.click(screen.getByRole('radio', { name: /Kiro/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    act(() => signIn.options.onError?.('Sign-in timed out'));
 
     kiro.status = SIGNED_IN;
     rerender();
+    finishSignIn();
+    expect(onSave).not.toHaveBeenCalledWith(expect.objectContaining({ preferredProvider: 'kiro' }));
+    expect(stored().preferredProvider).toBe('bedrock');
+  });
+
+  it('makes Kiro the default after the dialog closed, and keeps a theme change from the header', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ preferredProvider: 'bedrock' }));
+    const onSave = vi.fn();
+    const ui = (open: boolean) => (
+      <PreferencesDialog open={open} onOpenChange={() => {}} onChange={onSave} />
+    );
+    const { rerender } = render(ui(true));
+    fireEvent.click(screen.getByRole('radio', { name: /Kiro/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    signIn.phase = 'waiting';
+    rerender(ui(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    rerender(ui(false));
+
+    // The header toggle saves on top of the stored preferences
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...stored(), visualMode: 'dark' }));
+    signIn.phase = 'idle';
+    finishSignIn();
+    expect(stored()).toMatchObject({ preferredProvider: 'kiro', visualMode: 'dark' });
+  });
+
+  it('forgets the wish when the dialog closes with only the form open', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ preferredProvider: 'bedrock' }));
+    const ui = (open: boolean) => (
+      <PreferencesDialog open={open} onOpenChange={() => {}} onChange={() => {}} />
+    );
+    const { rerender } = render(ui(true));
+    fireEvent.click(screen.getByRole('radio', { name: /Kiro/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    rerender(ui(false));
+    finishSignIn();
+    expect(stored().preferredProvider).toBe('bedrock');
+  });
+
+  it('moves focus into each new view of the panel', () => {
+    signIn.reset.mockImplementation(() => {
+      signIn.phase = 'idle';
+    });
+    const { rerender } = renderDialog({});
+    openForm();
+    expect(screen.getByLabelText('Sign-in method')).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    signIn.phase = 'starting';
+    rerender();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+
+    signIn.phase = 'waiting';
+    signIn.code = 'FVVW-JCBH';
+    signIn.url = 'https://view.awsapps.com/start/#/device?user_code=FVVW-JCBH';
+    rerender();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+
+    signIn.phase = 'error';
+    signIn.message = 'Sign-in timed out';
+    rerender();
+    // The alert announces the message once: no live region around it
+    expect(screen.getByRole('alert').closest('[aria-live]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByLabelText('Sign-in method')).toHaveFocus();
+  });
+
+  it('does not take the focus when the dialog opens while a sign-in waits', () => {
+    signIn.phase = 'waiting';
+    signIn.code = 'FVVW-JCBH';
+    signIn.url = 'https://view.awsapps.com/start/#/device?user_code=FVVW-JCBH';
+    renderDialog({});
+    expect(screen.getByRole('button', { name: 'Cancel' })).not.toHaveFocus();
+  });
+
+  it('focuses Cancel in the sign-out confirmation', () => {
+    kiro.status = SIGNED_IN;
+    renderDialog({});
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out (Kiro)' }));
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+  });
+
+  it('keeps the default when you cancel the sign-in that the pick started', () => {
+    const { onSave } = renderDialog({ preferredProvider: 'bedrock' });
+    fireEvent.click(screen.getByRole('radio', { name: /Kiro/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    finishSignIn();
     expect(onSave).not.toHaveBeenCalled();
     expect(stored().preferredProvider).toBe('bedrock');
   });

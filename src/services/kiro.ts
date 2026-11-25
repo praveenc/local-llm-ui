@@ -46,7 +46,7 @@ export class KiroService {
 
     const decoder = new TextDecoder();
     let buffer = '';
-    // Returns true at [DONE]
+    // Returns true at [DONE]. Lines that are not `data:` (the `: ping` comments) are skipped.
     const handle = (block: string): boolean => {
       for (const line of block.split('\n')) {
         if (!line.startsWith('data:')) continue;
@@ -80,12 +80,15 @@ export class KiroService {
     if (buffer.trim()) handle(buffer);
   }
 
-  /** Stops the sign-in that runs. Resolves with false when none runs. */
-  async cancelLogin(): Promise<boolean> {
+  /**
+   * Stops the sign-in with this run id (from its `started` event). Resolves with false when it
+   * does not run any more.
+   */
+  async cancelLogin(runId: string): Promise<boolean> {
     const response = await fetch('/api/kiro/login/cancel', {
       method: 'POST',
       headers: JSON_HEADERS,
-      body: '{}',
+      body: JSON.stringify({ runId }),
     });
     if (!response.ok) throw new Error(await responseError(response));
     return ((await response.json()) as { cancelled?: boolean }).cancelled === true;

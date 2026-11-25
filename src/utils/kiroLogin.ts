@@ -9,7 +9,8 @@ export type KiroLoginMethod =
 
 /** One event of the sign-in stream. `done` and `error` end it. */
 export type KiroLoginEvent =
-  | { state: 'started' }
+  /** `runId` names this sign-in, for POST /api/kiro/login/cancel */
+  | { state: 'started'; runId: string }
   | { state: 'code'; code: string; url: string }
   | { state: 'done'; status: KiroStatus }
   | { state: 'error'; message: string };
@@ -37,16 +38,35 @@ function parseHttpsUrl(value: string): URL | undefined {
 const hasSuffix = (host: string, suffixes: string[]) =>
   suffixes.some((suffix) => host.endsWith(suffix));
 
-/** An error message when the value is not the start URL of an IAM Identity Center, else undefined */
-export function validateStartUrl(value: string): string | undefined {
-  const url = parseHttpsUrl(value.trim());
-  if (!url || !hasSuffix(url.hostname, START_URL_SUFFIXES)) return START_URL_ERROR;
-  return undefined;
+/**
+ * Whitespace, control, and format characters (such as the right-to-left override). URL parsing
+ * removes or encodes them, so the string that kiro-cli gets would not be the one that was checked.
+ */
+const HIDDEN_CHARACTERS = /[\s\p{Cc}\p{Cf}]/u;
+
+/**
+ * The start URL in its normalized form (`new URL(value).href`), the form that goes to kiro-cli
+ * and to the saved preference. Undefined when it is not the start URL of an IAM Identity Center.
+ */
+export function normalizeStartUrl(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (HIDDEN_CHARACTERS.test(trimmed)) return undefined;
+  const url = parseHttpsUrl(trimmed);
+  if (!url || !hasSuffix(url.hostname, START_URL_SUFFIXES)) return undefined;
+  return url.href;
 }
 
-/** True for an AWS Region name such as us-east-1, us-gov-west-1, or cn-north-1 */
+/** An error message when the value is not the start URL of an IAM Identity Center, else undefined */
+export function validateStartUrl(value: string): string | undefined {
+  return normalizeStartUrl(value) ? undefined : START_URL_ERROR;
+}
+
+/**
+ * True for an AWS Region name such as us-east-1, us-gov-west-1, cn-north-1, or eusc-de-east-1
+ * (AWS European Sovereign Cloud)
+ */
 export function isValidRegion(value: string): boolean {
-  return /^[a-z]{2}(-gov|-iso[a-z]?)?-[a-z]+-\d{1,2}$/.test(value);
+  return /^[a-z]{2,4}(-gov|-iso[a-z]?|-[a-z]{2})?-[a-z]+-\d{1,2}$/.test(value);
 }
 
 /** An error message when the Region is not valid, else undefined */
@@ -66,21 +86,28 @@ export function parseLoginLine(line: string): { code: string } | { url: string }
   return undefined;
 }
 
+/** The SSO OIDC device page of a Region: device.sso.<region>.amazonaws.com(.cn) */
+function deviceHost(region: string): string {
+  return `device.sso.${region}.amazonaws.com${region.startsWith('cn-') ? '.cn' : ''}`;
+}
+
 /**
  * True when the app may open this sign-in page: https, no credentials, and a host on awsapps.com
- * or awsapps.cn, or the host of the start URL that the user gave. A host such as
+ * or awsapps.cn. For IAM Identity Center (`startUrl` and `region` given) also the exact host of
+ * the start URL and the exact device page host of the Region. A host such as
  * awsapps.com.evil.example or evilawsapps.com does not match.
  */
-export function isAllowedSignInUrl(url: string, startUrl?: string): boolean {
+export function isAllowedSignInUrl(url: string, startUrl?: string, region?: string): boolean {
   const parsed = parseHttpsUrl(url);
   if (!parsed) return false;
   if (hasSuffix(parsed.hostname, AWSAPPS_SUFFIXES)) return true;
-  if (!startUrl || validateStartUrl(startUrl)) return false;
-  const start = parseHttpsUrl(startUrl.trim());
-  return !!start && start.host === parsed.host;
+  const normalized = startUrl === undefined ? undefined : normalizeStartUrl(startUrl);
+  if (!normalized) return false;
+  if (new URL(normalized).host === parsed.host) return true;
+  return region !== undefined && isValidRegion(region) && parsed.host === deviceHost(region);
 }
 
-/** Checks the body of POST /api/kiro/login. The values are trimmed. */
+/** Checks the body of POST /api/kiro/login. The values are trimmed; the start URL is normalized. */
 export function parseKiroLoginMethod(
   value: unknown
 ): { ok: true; value: KiroLoginMethod } | { ok: false; error: string } {
@@ -92,11 +119,11 @@ export function parseKiroLoginMethod(
   if (record.method === 'identity-center') {
     const startUrl = typeof record.startUrl === 'string' ? record.startUrl.trim() : '';
     const region = typeof record.region === 'string' ? record.region.trim() : '';
-    const startUrlError = validateStartUrl(startUrl);
-    if (startUrlError) return { ok: false, error: startUrlError };
+    const normalized = normalizeStartUrl(startUrl);
+    if (!normalized) return { ok: false, error: START_URL_ERROR };
     const regionError = validateRegion(region);
     if (regionError) return { ok: false, error: regionError };
-    return { ok: true, value: { method: 'identity-center', startUrl, region } };
+    return { ok: true, value: { method: 'identity-center', startUrl: normalized, region } };
   }
   return { ok: false, error: 'The sign-in method must be builder-id or identity-center' };
 }

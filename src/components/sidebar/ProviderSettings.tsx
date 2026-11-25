@@ -69,6 +69,8 @@ export function ProviderSettings({ preferences, onUpdate, kiro }: ProviderSettin
       if (kiro.signIn.phase === 'idle') setKiroPanel('form');
       return;
     }
+    // The last pick wins: a sign-in that ends later does not make Kiro the default
+    kiro?.setMakeDefault(false);
     onUpdate('preferredProvider', value as Provider);
   };
 

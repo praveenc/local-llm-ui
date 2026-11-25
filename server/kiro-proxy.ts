@@ -2,8 +2,10 @@
  * Kiro CLI routes:
  *
  * - GET  /api/kiro/status: installed, version, signed in or out (cached for 30 s)
- * - POST /api/kiro/login: signs in. Streams `data: {"login": <event>}` lines, then `[DONE]`
- * - POST /api/kiro/login/cancel: stops the sign-in that runs
+ * - POST /api/kiro/login: signs in. Streams `data: {"login": <event>}` lines, then `[DONE]`, with
+ *   a `: ping` comment every 15 s so that a tunnel does not close the idle stream
+ * - POST /api/kiro/login/cancel: stops the sign-in whose `runId` (from the `started` event) the
+ *   JSON body names
  * - POST /api/kiro/logout: signs out and returns the status
  *
  * The routes run kiro-cli with fixed arguments and no shell. The login route builds its arguments
@@ -19,7 +21,12 @@ import { parseKiroLoginMethod } from '../src/utils/kiroLogin.ts';
 import type { KiroLoginEvent } from '../src/utils/kiroLogin.ts';
 import type { KiroStatus } from '../src/utils/kiroStatus.ts';
 import type { KiroEnvironment } from './kiro/binary.ts';
-import { KiroLoginBusyError, createKiroLogin } from './kiro/login.ts';
+import {
+  KiroLoginBusyError,
+  LOGIN_BUSY_MESSAGE,
+  LOGOUT_BUSY_MESSAGE,
+  createKiroLogin,
+} from './kiro/login.ts';
 import type { KiroLogin } from './kiro/login.ts';
 import { createKiroStatusReader } from './kiro/status.ts';
 import { readBodyWithLimit } from './security.ts';
@@ -38,9 +45,13 @@ export interface KiroProxyOptions {
   /** Where to look for kiro-cli. Tests set it; the default is the real computer. */
   environment?: KiroEnvironment;
   loginTimeoutMs?: number;
+  /** How often the login stream sends a `: ping` comment. Tests make it short. */
+  loginHeartbeatMs?: number;
 }
 
 const LOGIN_BODY_LIMIT = 16 * 1024;
+const CANCEL_BODY_LIMIT = 1024;
+const HEARTBEAT_MS = 15_000;
 
 type Res = Parameters<Connect.NextHandleFunction>[1];
 
@@ -89,7 +100,11 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
 
     const controller = getLogin();
     if (controller.isRunning()) {
-      sendJson(res, 409, { error: 'A sign-in is already running' });
+      sendJson(res, 409, { error: LOGIN_BUSY_MESSAGE });
+      return;
+    }
+    if (controller.isSigningOut()) {
+      sendJson(res, 409, { error: LOGOUT_BUSY_MESSAGE });
       return;
     }
 
@@ -104,9 +119,16 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
       res.write(`data: ${JSON.stringify({ login: event })}\n\n`);
     };
 
+    // Many tunnels close a stream that sends nothing for a minute or so
+    const heartbeat = setInterval(() => {
+      if (!res.writableEnded && !res.destroyed) res.write(': ping\n\n');
+    }, options.loginHeartbeatMs ?? HEARTBEAT_MS);
+    heartbeat.unref();
+
     // A page that closes or reloads stops the sign-in
     let ended = false;
     res.on('close', () => {
+      clearInterval(heartbeat);
       if (!ended && !res.writableEnded) controller.cancel();
     });
 
@@ -123,6 +145,7 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
       });
     }
     ended = true;
+    clearInterval(heartbeat);
     if (!res.writableEnded && !res.destroyed) {
       res.write('data: [DONE]\n\n');
       res.end();
@@ -163,17 +186,28 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
           await handleLogin(req, res);
           return;
         }
-        // These two take no input. Read the body so that the connection is free.
-        req.resume();
         if (pathname === '/api/kiro/login/cancel') {
-          sendJson(res, 200, { cancelled: login?.cancel() ?? false });
+          const body = await readBodyWithLimit(req, res, CANCEL_BODY_LIMIT);
+          if (body === null) return;
+          let runId: unknown;
+          try {
+            runId = body ? (JSON.parse(body) as { runId?: unknown } | null)?.runId : undefined;
+          } catch {
+            sendJson(res, 400, { error: 'The request body is not valid JSON' });
+            return;
+          }
+          // Only the run that the page started: a late cancel must not stop a newer sign-in
+          const cancelled = typeof runId === 'string' && (login?.cancel(runId) ?? false);
+          sendJson(res, 200, { cancelled });
           return;
         }
+        // Logout takes no input. Read the body so that the connection is free.
+        req.resume();
         try {
           sendJson(res, 200, await getLogin().logout());
         } catch (error) {
           if (error instanceof KiroLoginBusyError) {
-            sendJson(res, 409, { error: 'A sign-in is running. Cancel it first.' });
+            sendJson(res, 409, { error: error.message });
             return;
           }
           console.warn('[kiro] sign-out failed:', error instanceof Error ? error.message : error);

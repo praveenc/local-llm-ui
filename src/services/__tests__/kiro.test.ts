@@ -74,7 +74,7 @@ describe('KiroService sign-in', () => {
       .fn()
       .mockResolvedValue(
         sseResponse([
-          line({ state: 'started' }),
+          line({ state: 'started', runId: 'r1' }),
           full.slice(0, 20),
           full.slice(20, 41),
           full.slice(41) + 'data: {"login":{"state":"error"',
@@ -90,7 +90,7 @@ describe('KiroService sign-in', () => {
       { signal: controller.signal, onEvent: (event) => events.push(event) }
     );
     expect(events).toEqual([
-      { state: 'started' },
+      { state: 'started', runId: 'r1' },
       { state: 'code', code: 'ABCD-EFGH', url: 'https://x.awsapps.com/s' },
       { state: 'error', message: 'No' },
     ]);
@@ -109,14 +109,46 @@ describe('KiroService sign-in', () => {
   it('ignores lines that are not JSON, and an event that comes without a break at the end', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(sseResponse(['data: nope\n\n', line({ state: 'started' }).trim()]))
+      vi
+        .fn()
+        .mockResolvedValue(
+          sseResponse(['data: nope\n\n', line({ state: 'started', runId: 'r1' }).trim()])
+        )
     );
     const events: unknown[] = [];
     await new KiroService().startLogin(
       { method: 'builder-id' },
       { onEvent: (event) => events.push(event) }
     );
-    expect(events).toEqual([{ state: 'started' }]);
+    expect(events).toEqual([{ state: 'started', runId: 'r1' }]);
+  });
+
+  it('skips the : ping comments of the server', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          sseResponse([
+            ': ping\n\n',
+            line({ state: 'started', runId: 'r1' }),
+            ': ping\n\n: pi',
+            'ng\n\n',
+            line({ state: 'error', message: 'No' }),
+            ': ping\n\n',
+            'data: [DONE]\n\n',
+          ])
+        )
+    );
+    const events: unknown[] = [];
+    await new KiroService().startLogin(
+      { method: 'builder-id' },
+      { onEvent: (event) => events.push(event) }
+    );
+    expect(events).toEqual([
+      { state: 'started', runId: 'r1' },
+      { state: 'error', message: 'No' },
+    ]);
   });
 
   it('throws the error text of a 409', async () => {
@@ -143,14 +175,15 @@ describe('KiroService sign-in', () => {
     ).rejects.toThrow('HTTP error! status: 502');
   });
 
-  it('cancels the sign-in with a JSON POST', async () => {
+  it('cancels the sign-in with a JSON POST that names the run', async () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ cancelled: true }));
     vi.stubGlobal('fetch', fetchMock);
-    await expect(new KiroService().cancelLogin()).resolves.toBe(true);
+    await expect(new KiroService().cancelLogin('r1')).resolves.toBe(true);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/kiro/login/cancel');
     expect(init.method).toBe('POST');
     expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(init.body as string)).toEqual({ runId: 'r1' });
   });
 
   it('signs out and returns the status, or throws the error text', async () => {

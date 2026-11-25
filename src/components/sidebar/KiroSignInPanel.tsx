@@ -2,7 +2,7 @@
  * The panel under the Kiro row: the sign-in form, the code to compare while the person approves
  * the sign-in in the browser, the error, and the confirmation for signing out.
  */
-import { useState } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/select';
 
 import type { KiroSignIn } from '../../hooks/useKiroSignIn';
-import { validateRegion, validateStartUrl } from '../../utils/kiroLogin';
+import { normalizeStartUrl, validateRegion, validateStartUrl } from '../../utils/kiroLogin';
 import type { KiroLoginMethod } from '../../utils/kiroLogin';
 import type { KiroSignInPreference } from '../../utils/preferences';
 
@@ -42,12 +42,38 @@ interface KiroSignInPanelProps {
   onDismiss: () => void;
 }
 
+type PanelView = 'form' | 'starting' | 'waiting' | 'error' | 'sign-out' | 'none';
+
+function panelView(signedIn: boolean, phase: KiroSignIn['phase'], mode: KiroPanelMode): PanelView {
+  if (signedIn) return mode === 'sign-out' ? 'sign-out' : 'none';
+  if (phase !== 'idle') return phase;
+  return mode === 'form' ? 'form' : 'none';
+}
+
+/**
+ * Moves focus to the first control of each new view of the panel, because the control that had
+ * it (Continue, Cancel, Try again) goes away. Not on the first render: opening the dialog while a
+ * sign-in waits keeps the dialog's own focus.
+ */
+function usePanelFocus(view: PanelView) {
+  const target = useRef<HTMLButtonElement>(null);
+  const shown = useRef(view);
+  useEffect(() => {
+    if (shown.current === view) return;
+    shown.current = view;
+    target.current?.focus();
+  }, [view]);
+  return target;
+}
+
 export function KiroSignInPanel(props: KiroSignInPanelProps) {
   const { signedIn, signIn, mode, onModeChange, onDismiss } = props;
+  const focusTarget = usePanelFocus(panelView(signedIn, signIn.phase, mode));
 
   if (signedIn) {
     return mode === 'sign-out' ? (
       <SignOutConfirm
+        focusTarget={focusTarget}
         isDefault={props.isDefault}
         signIn={signIn}
         onCancel={() => onModeChange('closed')}
@@ -60,7 +86,13 @@ export function KiroSignInPanel(props: KiroSignInPanelProps) {
     return (
       <div id={KIRO_PANEL_ID} aria-live="polite" className={PANEL_CLASS}>
         <p className="text-xs text-muted-foreground">Starting the sign-in…</p>
-        <Button type="button" variant="ghost" size="sm" onClick={cancelAll(props)}>
+        <Button
+          ref={focusTarget}
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={cancelAll(props)}
+        >
           Cancel
         </Button>
       </div>
@@ -83,7 +115,13 @@ export function KiroSignInPanel(props: KiroSignInPanelProps) {
           >
             Open sign-in page
           </a>
-          <Button type="button" variant="ghost" size="sm" onClick={cancelAll(props)}>
+          <Button
+            ref={focusTarget}
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={cancelAll(props)}
+          >
             Cancel
           </Button>
         </div>
@@ -92,13 +130,15 @@ export function KiroSignInPanel(props: KiroSignInPanelProps) {
   }
 
   if (signIn.phase === 'error') {
+    // No aria-live here: role="alert" announces the message, and it would be read twice
     return (
-      <div id={KIRO_PANEL_ID} aria-live="polite" className={PANEL_CLASS}>
+      <div id={KIRO_PANEL_ID} className={PANEL_CLASS}>
         <p role="alert" className="break-words text-xs text-destructive">
           {signIn.message}
         </p>
         <div className="flex items-center gap-2">
           <Button
+            ref={focusTarget}
             type="button"
             size="sm"
             onClick={() => {
@@ -125,7 +165,7 @@ export function KiroSignInPanel(props: KiroSignInPanelProps) {
     );
   }
 
-  return mode === 'form' ? <SignInForm {...props} /> : null;
+  return mode === 'form' ? <SignInForm {...props} focusTarget={focusTarget} /> : null;
 }
 
 function cancelAll({ signIn, onModeChange, onDismiss }: KiroSignInPanelProps) {
@@ -141,7 +181,14 @@ const METHOD_LABELS = {
   'identity-center': 'IAM Identity Center',
 } as const;
 
-function SignInForm({ signIn, saved, onModeChange, onRemember, onDismiss }: KiroSignInPanelProps) {
+function SignInForm({
+  signIn,
+  saved,
+  onModeChange,
+  onRemember,
+  onDismiss,
+  focusTarget,
+}: KiroSignInPanelProps & { focusTarget: RefObject<HTMLButtonElement | null> }) {
   const [method, setMethod] = useState<KiroLoginMethod['method']>(saved?.method ?? 'builder-id');
   const [startUrl, setStartUrl] = useState(saved?.startUrl ?? '');
   const [region, setRegion] = useState(saved?.region ?? '');
@@ -153,14 +200,17 @@ function SignInForm({ signIn, saved, onModeChange, onRemember, onDismiss }: Kiro
 
   const submit = () => {
     setSubmitted(true);
-    if (isCenter && (validateStartUrl(startUrl) || validateRegion(region))) return;
-    const login: KiroLoginMethod = isCenter
-      ? { method, startUrl: startUrl.trim(), region: region.trim() }
-      : { method: 'builder-id' };
+    // The form that the server sends to kiro-cli, so the saved value is the one that was checked
+    const normalized = normalizeStartUrl(startUrl);
+    if (isCenter && (!normalized || validateRegion(region))) return;
+    const login: KiroLoginMethod =
+      isCenter && normalized
+        ? { method, startUrl: normalized, region: region.trim() }
+        : { method: 'builder-id' };
     // The Identity Center values stay for the next time, also after a Builder ID sign-in
     onRemember({
       method,
-      startUrl: isCenter ? startUrl.trim() : saved?.startUrl,
+      startUrl: isCenter ? normalized : saved?.startUrl,
       region: isCenter ? region.trim() : saved?.region,
     });
     onModeChange('closed');
@@ -180,7 +230,7 @@ function SignInForm({ signIn, saved, onModeChange, onRemember, onDismiss }: Kiro
       <div className="grid gap-1.5">
         <Label htmlFor="kiro-sign-in-method">Sign-in method</Label>
         <Select value={method} onValueChange={(v) => setMethod(v as KiroLoginMethod['method'])}>
-          <SelectTrigger id="kiro-sign-in-method" className="w-full sm:w-64">
+          <SelectTrigger ref={focusTarget} id="kiro-sign-in-method" className="w-full sm:w-64">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -256,18 +306,21 @@ function SignInForm({ signIn, saved, onModeChange, onRemember, onDismiss }: Kiro
 }
 
 function SignOutConfirm({
+  focusTarget,
   isDefault,
   signIn,
   onCancel,
   onDone,
 }: {
+  focusTarget: RefObject<HTMLButtonElement | null>;
   isDefault: boolean;
   signIn: KiroSignIn;
   onCancel: () => void;
   onDone: () => void;
 }) {
+  // No aria-live here: the error below has role="alert", and it would be read twice
   return (
-    <div id={KIRO_PANEL_ID} aria-live="polite" className={PANEL_CLASS}>
+    <div id={KIRO_PANEL_ID} className={PANEL_CLASS}>
       <p className="text-xs text-muted-foreground">
         Sign out of Kiro? This also signs out Kiro CLI in your terminals and in other apps on this
         computer.
@@ -292,7 +345,7 @@ function SignOutConfirm({
         >
           {signIn.isSigningOut ? 'Signing out…' : 'Sign out'}
         </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+        <Button ref={focusTarget} type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>
       </div>

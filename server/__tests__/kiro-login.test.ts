@@ -1,10 +1,12 @@
 // @vitest-environment node
+import { spawn } from 'child_process';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { createServer } from 'http';
 import type { Server } from 'http';
 import type { AddressInfo } from 'net';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { KiroLoginEvent } from '../../src/utils/kiroLogin.ts';
@@ -14,6 +16,7 @@ import type { KiroEnvironment } from '../kiro/binary.ts';
 import { KiroLoginBusyError, createKiroLogin } from '../kiro/login.ts';
 import type { KiroLogin } from '../kiro/login.ts';
 
+const STARTED = { state: 'started', runId: expect.any(String) as string };
 const CODE = 'FVVW-JCBH';
 const GOOD_URL = `https://view.awsapps.com/start/#/device?user_code=${CODE}`;
 
@@ -28,8 +31,10 @@ if (env.FAKE_LOG) fs.appendFileSync(env.FAKE_LOG, args.join(' ') + '\\n');
 if (args[0] === '--version') {
   process.stdout.write('kiro-cli 3.6.0\\n');
 } else if (args[0] === 'logout') {
-  process.stdout.write('You are now logged out\\n');
-  process.exitCode = Number(env.FAKE_LOGOUT_CODE ?? 0);
+  setTimeout(() => {
+    process.stdout.write('You are now logged out\\n');
+    process.exitCode = Number(env.FAKE_LOGOUT_CODE ?? 0);
+  }, Number(env.FAKE_LOGOUT_DELAY ?? 0));
 } else if (args[0] === 'login') {
   fs.writeFileSync(env.FAKE_PID_FILE, String(process.pid));
   if (env.FAKE_NO_COLOR_CHECK) fs.writeFileSync(env.FAKE_NO_COLOR_CHECK, String(env.NO_COLOR));
@@ -38,14 +43,26 @@ if (args[0] === '--version') {
     fs.writeFileSync(env.FAKE_GRANDCHILD, String(grandchild.pid));
   }
   const url = env.FAKE_URL ?? '${GOOD_URL}';
-  if (env.FAKE_MODE === 'fail') {
+  const prompt = '\\n\\x1b[1mConfirm the following code in the browser\\x1b[0m\\n';
+  if (env.FAKE_MODE === 'print-then-fail') {
+    process.stdout.write(prompt + 'Code: ${CODE}\\n\\nOpen this URL: ' + url + '\\n');
+    setTimeout(() => process.exit(1), 100);
+  } else if (env.FAKE_MODE === 'url-first') {
+    process.stdout.write(prompt + 'Open this URL: ' + url + '\\n');
+    setTimeout(() => process.stdout.write('Code: ${CODE}\\n'), 100);
+    setInterval(() => {}, 1000);
+  } else if (env.FAKE_MODE === 'second-url') {
+    process.stdout.write(prompt + 'Code: ${CODE}\\nOpen this URL: ' + url + '\\n');
+    setTimeout(() => process.stdout.write('Open this URL: ' + env.FAKE_SECOND_URL + '\\n'), 200);
+    setInterval(() => {}, 1000);
+  } else if (env.FAKE_MODE === 'fail') {
     process.stdout.write('\\x1b[2K\\r▰▱▱ Logging in...');
     setTimeout(() => {
       process.stderr.write('\\x1b[31m' + (env.FAKE_ERROR ?? 'error: InvalidRequestException') + '\\x1b[0m\\n');
       process.exit(1);
     }, 100);
   } else {
-    process.stdout.write('\\n\\x1b[1mConfirm the following code in the browser\\x1b[0m\\nCode: ${CODE}\\n\\nOpen this URL: ' + url + '\\n');
+    process.stdout.write(prompt + 'Code: ${CODE}\\n\\nOpen this URL: ' + url + '\\n');
     process.stdout.write('\\r\\x1b[2K\\x1b[36m▰▱▱\\x1b[0m Logging in...');
     const timer = setInterval(() => {
       if (env.FAKE_APPROVE && fs.existsSync(env.FAKE_APPROVE)) {
@@ -262,10 +279,7 @@ describe('kiro login', () => {
     expect(login.isRunning()).toBe(true);
     // The code is sent once, though the output also has spinner lines and color codes
     await sleep(200);
-    expect(run.events).toEqual([
-      { state: 'started' },
-      { state: 'code', code: CODE, url: GOOD_URL },
-    ]);
+    expect(run.events).toEqual([STARTED, { state: 'code', code: CODE, url: GOOD_URL }]);
 
     s.status.current = SIGNED_IN;
     await writeFile(s.approve, '');
@@ -302,7 +316,7 @@ describe('kiro login', () => {
     pids.push(pid);
     await run.finished;
     expect(run.events).toEqual([
-      { state: 'started' },
+      STARTED,
       { state: 'error', message: 'Kiro CLI sent a sign-in page that the app does not trust' },
     ]);
     await expectGone(pid);
@@ -429,8 +443,8 @@ describe('kiro login', () => {
     await again.finished;
   });
 
-  it('close() stops the process and sends no events', async () => {
-    const s = await setup();
+  it('close() stops the process group and sends no events', async () => {
+    const s = await setup({ FAKE_GRANDCHILD: path.join(root, 'gc-close') });
     const login = newLogin(s);
     const run = begin(login);
     const pid = await readPid(s.pidFile);
@@ -440,8 +454,157 @@ describe('kiro login', () => {
     login.close();
     await run.finished;
     await expectGone(pid);
+    await expectGone(await readPid(path.join(root, 'gc-close')));
     expect(run.events).toHaveLength(seen);
     expect(login.isRunning()).toBe(false);
+  });
+
+  it('sends the code when the URL comes before it', async () => {
+    const s = await setup({ FAKE_MODE: 'url-first' });
+    const login = newLogin(s);
+    const run = begin(login);
+    pids.push(await readPid(s.pidFile));
+    await until(() => run.has('code') || undefined);
+    expect(run.events).toEqual([STARTED, { state: 'code', code: CODE, url: GOOD_URL }]);
+    login.cancel();
+    await run.finished;
+  });
+
+  it('stops the login when an untrusted URL comes after the code was sent', async () => {
+    const s = await setup({
+      FAKE_MODE: 'second-url',
+      FAKE_SECOND_URL: `https://evil.example/?user_code=${CODE}`,
+      FAKE_GRANDCHILD: path.join(root, 'gc-second-url'),
+    });
+    const login = newLogin(s);
+    const run = begin(login);
+    const pid = await readPid(s.pidFile);
+    pids.push(pid);
+    await run.finished;
+    expect(run.events).toEqual([
+      STARTED,
+      { state: 'code', code: CODE, url: GOOD_URL },
+      { state: 'error', message: 'Kiro CLI sent a sign-in page that the app does not trust' },
+    ]);
+    await expectGone(pid);
+    await expectGone(await readPid(path.join(root, 'gc-second-url')));
+  });
+
+  it('trusts the SSO OIDC device page of the Region of the method', async () => {
+    const s = await setup({
+      FAKE_URL: `https://device.sso.eu-west-1.amazonaws.com/?user_code=${CODE}`,
+    });
+    const login = newLogin(s);
+    const run = begin(login, {
+      method: 'identity-center',
+      startUrl: 'https://amzn.awsapps.com/start',
+      region: 'eu-west-1',
+    });
+    pids.push(await readPid(s.pidFile));
+    await until(() => run.has('code') || undefined);
+    await writeFile(s.approve, '');
+    await run.finished;
+    expect(run.events.map((event) => event.state)).toEqual(['started', 'code', 'done']);
+  });
+
+  it('does not trust the device page of another Region', async () => {
+    const s = await setup({
+      FAKE_URL: `https://device.sso.us-east-1.amazonaws.com/?user_code=${CODE}`,
+    });
+    const run = begin(newLogin(s), {
+      method: 'identity-center',
+      startUrl: 'https://amzn.awsapps.com/start',
+      region: 'eu-west-1',
+    });
+    const pid = await readPid(s.pidFile);
+    pids.push(pid);
+    await run.finished;
+    expect(run.has('code')).toBe(false);
+    expect(run.events.at(-1)).toMatchObject({ state: 'error' });
+    await expectGone(pid);
+  });
+
+  it('never shows an instruction line as the error', async () => {
+    const s = await setup({ FAKE_MODE: 'print-then-fail' });
+    const run = begin(newLogin(s));
+    pids.push(await readPid(s.pidFile));
+    await run.finished;
+    expect(run.events.at(-1)).toEqual({ state: 'error', message: 'Sign-in failed' });
+  });
+
+  it('shows a line that names an exception, and maps "Already logged in"', async () => {
+    const s = await setup({ FAKE_MODE: 'fail', FAKE_ERROR: 'AccessDeniedException: no' });
+    const run = begin(newLogin(s));
+    await run.finished;
+    expect(run.events.at(-1)).toEqual({ state: 'error', message: 'AccessDeniedException: no' });
+
+    const again = await setup({ FAKE_MODE: 'fail', FAKE_ERROR: 'error: Already logged in' });
+    const second = begin(newLogin(again));
+    await second.finished;
+    expect(second.events.at(-1)).toEqual({ state: 'error', message: 'Already signed in' });
+
+    const plain = await setup({ FAKE_MODE: 'fail', FAKE_ERROR: 'Something happened' });
+    const third = begin(newLogin(plain));
+    await third.finished;
+    expect(third.events.at(-1)).toEqual({ state: 'error', message: 'Sign-in failed' });
+  });
+
+  it('kills the group when kiro-cli exits with an error and leaves a process behind', async () => {
+    const gc = path.join(root, 'gc-fail');
+    const s = await setup({ FAKE_MODE: 'fail', FAKE_GRANDCHILD: gc });
+    const run = begin(newLogin(s));
+    pids.push(await readPid(s.pidFile));
+    const grandchild = await readPid(gc);
+    await run.finished;
+    expect(run.events.at(-1)).toMatchObject({ state: 'error' });
+    await expectGone(grandchild);
+  });
+
+  it('kills the group after a sign-in that works, too', async () => {
+    const gc = path.join(root, 'gc-done');
+    const s = await setup({ FAKE_GRANDCHILD: gc });
+    const run = begin(newLogin(s));
+    pids.push(await readPid(s.pidFile));
+    const grandchild = await readPid(gc);
+    await until(() => run.has('code') || undefined);
+    await writeFile(s.approve, '');
+    await run.finished;
+    expect(run.events.at(-1)).toMatchObject({ state: 'done' });
+    await expectGone(grandchild);
+  });
+
+  it('cancels only the run with the given id', async () => {
+    const s = await setup();
+    const login = newLogin(s);
+    const run = begin(login);
+    pids.push(await readPid(s.pidFile));
+    await until(() => run.has('code') || undefined);
+    const started = run.events[0] as { runId: string };
+    expect(login.cancel('another-run')).toBe(false);
+    expect(login.isRunning()).toBe(true);
+    expect(login.cancel(started.runId)).toBe(true);
+    await run.finished;
+    expect(run.events.at(-1)).toEqual({ state: 'error', message: 'Sign-in cancelled' });
+  });
+
+  it('refuses a sign-in while kiro-cli logout runs, and a second logout', async () => {
+    const s = await setup({ FAKE_LOGOUT_DELAY: '400' });
+    const login = newLogin(s);
+    const logout = login.logout();
+    expect(login.isSigningOut()).toBe(true);
+    await expect(login.start({ method: 'builder-id' }, () => {})).rejects.toThrow(
+      'Signing out. Try again in a moment.'
+    );
+    await expect(login.logout()).rejects.toThrow('Signing out. Try again in a moment.');
+    await logout;
+    expect(login.isSigningOut()).toBe(false);
+    expect(await runs(s.log)).toEqual(['logout']);
+    // Free again
+    const run = begin(login);
+    pids.push(await readPid(s.pidFile));
+    await until(() => run.has('code') || undefined);
+    login.cancel();
+    await run.finished;
   });
 
   it('signs out with kiro-cli logout and returns the refreshed status', async () => {
@@ -464,6 +627,59 @@ describe('kiro login', () => {
   });
 });
 
+// ─── The end of the server ───────────────────────────────────────────────────
+
+const LOGIN_MODULE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../kiro/login.ts');
+
+describe('kiro login when the server process ends', () => {
+  it.each(['SIGINT', 'SIGHUP'] as const)(
+    'kills the login group on %s (Ctrl+C, a closed terminal)',
+    async (signal) => {
+      const s = await setup({ FAKE_GRANDCHILD: path.join(root, `gc-${signal}`) });
+      const script = path.join(root, `server-${signal}.mjs`);
+      await writeFile(
+        script,
+        `import { createKiroLogin } from ${JSON.stringify(LOGIN_MODULE)};
+const login = createKiroLogin({
+  environment: ${JSON.stringify(s.environment)},
+  statusReader: { read: async () => (${JSON.stringify(SIGNED_OUT)}) },
+});
+console.info = () => {};
+void login.start({ method: 'builder-id' }, (event) => {
+  if (event.state === 'code') process.stdout.write('code\\n');
+});
+`
+      );
+      const server = spawn(
+        process.execPath,
+        ['--experimental-strip-types', '--no-warnings', script],
+        {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }
+      );
+      const exited = new Promise<NodeJS.Signals | null>((resolve) =>
+        server.once('exit', (_code, sig) => resolve(sig))
+      );
+      try {
+        await new Promise<void>((resolve, reject) => {
+          server.stdout.on('data', (chunk: Buffer) => {
+            if (chunk.toString().includes('code')) resolve();
+          });
+          void exited.then(() => reject(new Error('the server ended early')));
+        });
+        const pid = await readPid(s.pidFile);
+        const grandchild = await readPid(path.join(root, `gc-${signal}`));
+        pids.push(pid);
+        server.kill(signal);
+        expect(await exited).toBe(signal);
+        await until(() => (!isAlive(pid) && !isAlive(grandchild)) || undefined, 2000);
+      } finally {
+        server.kill('SIGKILL');
+      }
+    }
+  );
+});
+
 // ─── HTTP ────────────────────────────────────────────────────────────────────
 
 /** Reads the SSE events of a response one at a time */
@@ -478,6 +694,8 @@ function eventStream(response: Response) {
         if (end >= 0) {
           const block = buffer.slice(0, end);
           buffer = buffer.slice(end + 2);
+          // A `: ping` comment can come at any time; the browser skips it too
+          if (block.startsWith(':')) continue;
           const data = block.replace(/^data: /, '');
           return data === '[DONE]' ? 'DONE' : (JSON.parse(data) as { login: KiroLoginEvent }).login;
         }
@@ -499,6 +717,9 @@ describe('/api/kiro login routes', () => {
   let base: string;
   let s: Setup;
   let proxy: ReturnType<typeof createKiroProxy>;
+  /** The runId of the started event of a stream */
+  const runIdOf = (event: KiroLoginEvent | 'DONE' | undefined) =>
+    (event as { runId: string }).runId;
 
   const post = (route: string, body?: unknown, signal?: AbortSignal) =>
     fetch(`${base}${route}`, {
@@ -510,7 +731,11 @@ describe('/api/kiro login routes', () => {
 
   beforeEach(async () => {
     s = await setup();
-    proxy = createKiroProxy({ reader: s.reader, environment: s.environment });
+    proxy = createKiroProxy({
+      reader: s.reader,
+      environment: s.environment,
+      loginHeartbeatMs: 100,
+    });
     server = createServer((req, res) => {
       void proxy(req, res, () => {
         res.statusCode = 418;
@@ -533,7 +758,7 @@ describe('/api/kiro login routes', () => {
     expect(response.headers.get('content-type')).toBe('text/event-stream');
     expect(response.headers.get('cache-control')).toBe('no-store');
     const stream = eventStream(response);
-    expect(await stream.next()).toEqual({ state: 'started' });
+    expect(await stream.next()).toEqual(STARTED);
     expect(await stream.next()).toEqual({ state: 'code', code: CODE, url: GOOD_URL });
     pids.push(await readPid(s.pidFile));
     s.status.current = SIGNED_IN;
@@ -579,9 +804,64 @@ describe('/api/kiro login routes', () => {
     const second = await post('/api/kiro/login', { method: 'builder-id' });
     expect(second.status).toBe(409);
     expect(await second.json()).toEqual({ error: 'A sign-in is already running' });
-    expect((await post('/api/kiro/logout')).status).toBe(409);
-    await post('/api/kiro/login/cancel');
+    const logout = await post('/api/kiro/logout');
+    expect(logout.status).toBe(409);
+    expect(await logout.json()).toEqual({ error: 'A sign-in is running. Cancel it first.' });
+    proxy.close();
     await stream.all();
+  });
+
+  it('answers 409 to a sign-in while a sign-out runs', async () => {
+    s.environment.env.FAKE_LOGOUT_DELAY = '500';
+    s.status.current = SIGNED_IN;
+    const logout = post('/api/kiro/logout');
+    await until(async () => (await runs(s.log)).includes('logout') || undefined);
+    const login = await post('/api/kiro/login', { method: 'builder-id' });
+    expect(login.status).toBe(409);
+    expect(await login.json()).toEqual({ error: 'Signing out. Try again in a moment.' });
+    expect((await logout).status).toBe(200);
+    expect(await runs(s.log)).toEqual(['logout']);
+  });
+
+  it('sends the normalized start URL to kiro-cli', async () => {
+    s.environment.env.FAKE_URL = `https://x.awsapps.com/start/#/device?user_code=${CODE}`;
+    const response = await post('/api/kiro/login', {
+      method: 'identity-center',
+      startUrl: 'https://X\uFF0Eawsapps\uFF0Ecom/start',
+      region: 'eusc-de-east-1',
+    });
+    const stream = eventStream(response);
+    await stream.next();
+    await stream.next();
+    pids.push(await readPid(s.pidFile));
+    expect(await runs(s.log)).toEqual([
+      'login --license pro --identity-provider https://x.awsapps.com/start --region eusc-de-east-1 --use-device-flow',
+    ]);
+    proxy.close();
+    await stream.all();
+  });
+
+  it('sends a : ping comment while the sign-in waits, and none after [DONE]', async () => {
+    const response = await post('/api/kiro/login', { method: 'builder-id' });
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    while ((text.match(/: ping\n\n/g) ?? []).length < 2) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    expect(text).toContain('data: {"login":{"state":"code"');
+    pids.push(await readPid(s.pidFile));
+    await writeFile(s.approve, '');
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true);
+    // The stream is closed: a timer that still wrote would throw or keep the server busy
+    await sleep(300);
   });
 
   it('stops the sign-in when the client goes away', async () => {
@@ -594,22 +874,26 @@ describe('/api/kiro login routes', () => {
     pids.push(pid);
     controller.abort();
     await expectGone(pid);
-    // The slot is free again
-    await until(async () => {
-      const again = await post('/api/kiro/login/cancel');
-      return ((await again.json()) as { cancelled: boolean }).cancelled === false || undefined;
-    });
+    // The slot is free again: a sign-out no longer gets 409
+    await until(async () => (await post('/api/kiro/logout')).status === 200 || undefined);
   });
 
-  it('cancels with /login/cancel, and the stream ends with the cancel message', async () => {
+  it('cancels with /login/cancel and the run id, and the stream ends with the cancel message', async () => {
     expect(await (await post('/api/kiro/login/cancel')).json()).toEqual({ cancelled: false });
     const response = await post('/api/kiro/login', { method: 'builder-id' });
     const stream = eventStream(response);
-    await stream.next();
+    const runId = runIdOf(await stream.next());
     await stream.next();
     const pid = await readPid(s.pidFile);
     pids.push(pid);
-    const cancel = await post('/api/kiro/login/cancel');
+    // Without the id, or with the id of another run, nothing stops
+    for (const body of [{}, { runId: 'old-run' }, { runId: 5 }]) {
+      expect(await (await post('/api/kiro/login/cancel', body)).json()).toEqual({
+        cancelled: false,
+      });
+    }
+    expect(isAlive(pid)).toBe(true);
+    const cancel = await post('/api/kiro/login/cancel', { runId });
     expect(cancel.status).toBe(200);
     expect(await cancel.json()).toEqual({ cancelled: true });
     expect(await stream.all()).toEqual([{ state: 'error', message: 'Sign-in cancelled' }, 'DONE']);

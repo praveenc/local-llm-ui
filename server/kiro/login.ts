@@ -6,9 +6,11 @@
  * The code and the URL go to the caller through the events and never to the log.
  *
  * The login runs as its own process group (`detached`), because ~/.local/bin/kiro-cli can be a
- * wrapper that starts other processes. Stopping it kills the whole group.
+ * wrapper that starts other processes. Stopping it kills the whole group, and so does the end of
+ * the login (any exit code) and the end of the dev server (also Ctrl+C or a closed terminal).
  */
 import { type ChildProcess, spawn } from 'child_process';
+import { randomUUID } from 'crypto';
 import { StringDecoder } from 'string_decoder';
 
 import { isAllowedSignInUrl, parseLoginLine } from '../../src/utils/kiroLogin.ts';
@@ -16,6 +18,7 @@ import type { KiroLoginEvent, KiroLoginMethod } from '../../src/utils/kiroLogin.
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
 import { defaultKiroEnvironment, resolveKiroBinary } from './binary.ts';
 import type { KiroEnvironment } from './binary.ts';
+import { onProcessEnd } from './process-end.ts';
 import { runKiro, stripAnsi } from './run.ts';
 
 const DEFAULT_TIMEOUT_MS = 600_000;
@@ -36,25 +39,35 @@ export interface KiroLoginOptions {
 export interface KiroLogin {
   /** Resolves when the sign-in ends. Rejects with KiroLoginBusyError when one already runs. */
   start(method: KiroLoginMethod, onEvent: (event: KiroLoginEvent) => void): Promise<void>;
-  /** Stops the running sign-in. Returns false when none runs. */
-  cancel(): boolean;
+  /**
+   * Stops the running sign-in. With a run id, only when it is that run. Returns false when none
+   * (or another one) runs.
+   */
+  cancel(runId?: string): boolean;
   isRunning(): boolean;
+  /** True while `kiro-cli logout` runs */
+  isSigningOut(): boolean;
   logout(): Promise<KiroStatus>;
   /** Stops a running sign-in without events, for the end of the server */
   close(): void;
 }
 
+export const LOGIN_BUSY_MESSAGE = 'A sign-in is already running';
+export const LOGOUT_BUSY_MESSAGE = 'Signing out. Try again in a moment.';
+
+/** A sign-in or a sign-out runs already. The message says which. */
 export class KiroLoginBusyError extends Error {
-  constructor() {
-    super('A sign-in is already running');
+  constructor(message = LOGIN_BUSY_MESSAGE) {
+    super(message);
     this.name = 'KiroLoginBusyError';
   }
 }
 
 // ─── Process groups ──────────────────────────────────────────────────────────
 
-const liveChildren = new Set<ChildProcess>();
-let exitHandlerInstalled = false;
+/** Groups that may still have a process: from the spawn until their SIGKILL has run */
+const liveGroups = new Set<ChildProcess>();
+let removeEndHandler: (() => void) | undefined;
 
 function killGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   const pid = child.pid;
@@ -72,13 +85,22 @@ function killGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   }
 }
 
-/** Kills each running login when the server process ends, also when it ends in a hurry */
-function installExitHandler(): void {
-  if (exitHandlerInstalled) return;
-  exitHandlerInstalled = true;
-  process.on('exit', () => {
-    for (const child of liveChildren) killGroup(child, 'SIGKILL');
+function addGroup(child: ChildProcess): void {
+  liveGroups.add(child);
+  // Kills each live group when the server process ends: exit, Ctrl+C, or a closed terminal
+  removeEndHandler ??= onProcessEnd(() => {
+    for (const group of liveGroups) killGroup(group, 'SIGKILL');
   });
+}
+
+/** Kills what is left of the group, and forgets it */
+function endGroup(child: ChildProcess): void {
+  killGroup(child, 'SIGKILL');
+  liveGroups.delete(child);
+  if (liveGroups.size === 0 && removeEndHandler) {
+    removeEndHandler();
+    removeEndHandler = undefined;
+  }
 }
 
 // ─── Output ──────────────────────────────────────────────────────────────────
@@ -88,9 +110,15 @@ function isSpinnerLine(line: string): boolean {
   return /[▰▱]/.test(line) || /^\W*Logging in\W*$/i.test(line);
 }
 
+/** A line that says what went wrong: `error: …`, an exception, or "Already logged in" */
+function isErrorLine(line: string): boolean {
+  return /^error:/i.test(line) || /Exception/.test(line) || /already logged in/i.test(line);
+}
+
 function errorMessageFrom(line: string | undefined): string {
   if (!line) return 'Sign-in failed';
   if (/InvalidRequestException/i.test(line)) return 'The start URL or the Region is not correct';
+  if (/already logged in/i.test(line)) return 'Already signed in';
   return line.replace(/^error:\s*/i, '').slice(0, 200) || 'Sign-in failed';
 }
 
@@ -120,6 +148,7 @@ function createLineReader(onLine: (line: string) => void) {
 type EndEvent = Extract<KiroLoginEvent, { state: 'done' | 'error' }>;
 
 interface Run {
+  id: string;
   child?: ChildProcess;
   /** Sends the end event, once. Later events and output are ignored. */
   finish(event: EndEvent): void;
@@ -153,6 +182,8 @@ export function createKiroLogin(options: KiroLoginOptions): KiroLogin {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const environment = () => options.environment ?? defaultKiroEnvironment();
   let active: Run | undefined;
+  // One busy slot: a sign-in and a sign-out never run at the same time
+  let signingOut = false;
 
   function terminate(run: Run): void {
     const child = run.child;
@@ -160,7 +191,7 @@ export function createKiroLogin(options: KiroLoginOptions): KiroLogin {
     run.terminating = true;
     killGroup(child, 'SIGTERM');
     // Not cleared when the child exits: a process in the group can outlive the wrapper
-    run.killTimer = setTimeout(() => killGroup(child, 'SIGKILL'), KILL_GRACE_MS);
+    run.killTimer = setTimeout(() => endGroup(child), KILL_GRACE_MS);
     run.killTimer.unref();
   }
 
@@ -194,6 +225,7 @@ export function createKiroLogin(options: KiroLoginOptions): KiroLogin {
     }
 
     const startUrl = method.method === 'identity-center' ? method.startUrl : undefined;
+    const region = method.method === 'identity-center' ? method.region : undefined;
     let child: ChildProcess;
     try {
       child = spawn(binary.path, loginArgs(method), {
@@ -206,24 +238,24 @@ export function createKiroLogin(options: KiroLoginOptions): KiroLogin {
       return finish({ state: 'error', message: 'Could not start Kiro CLI' });
     }
     run.child = child;
-    liveChildren.add(child);
-    installExitHandler();
+    addGroup(child);
 
     let code: string | undefined;
     let url: string | undefined;
     let codeSent = false;
-    let lastLine: string | undefined;
+    let errorLine: string | undefined;
 
     const onLine = (line: string): void => {
       if (!line || run.finished) return;
       const parsed = parseLoginLine(line);
       if (!parsed) {
-        if (!isSpinnerLine(line)) lastLine = line;
+        // Instructions and the spinner are never the error
+        if (!isSpinnerLine(line) && isErrorLine(line)) errorLine = line;
         return;
       }
       if ('code' in parsed) code = parsed.code;
       else url = parsed.url;
-      if (url && !isAllowedSignInUrl(url, startUrl)) {
+      if (url && !isAllowedSignInUrl(url, startUrl, region)) {
         terminate(run);
         finish({
           state: 'error',
@@ -265,16 +297,18 @@ export function createKiroLogin(options: KiroLoginOptions): KiroLogin {
       finish({ state: 'error', message: 'Sign-in timed out' });
     }, timeoutMs);
 
-    emit({ state: 'started' });
+    emit({ state: 'started', runId: run.id });
 
     try {
       const result = await exited;
       for (const reader of readers) reader.flush();
-      liveChildren.delete(child);
+      // A process of the group (a wrapper's child) must not keep the device flow open
+      if (run.killTimer) clearTimeout(run.killTimer);
+      endGroup(child);
       if (run.finished) return;
       if (spawnFailed) return finish({ state: 'error', message: 'Could not start Kiro CLI' });
       if (result.code !== 0) {
-        return finish({ state: 'error', message: errorMessageFrom(lastLine) });
+        return finish({ state: 'error', message: errorMessageFrom(errorLine) });
       }
       try {
         const signedIn = await options.statusReader.read(true);
@@ -284,14 +318,15 @@ export function createKiroLogin(options: KiroLoginOptions): KiroLogin {
       }
     } finally {
       clearTimeout(timer);
-      liveChildren.delete(child);
     }
   }
 
   return {
     async start(method, onEvent) {
       if (active) throw new KiroLoginBusyError();
+      if (signingOut) throw new KiroLoginBusyError(LOGOUT_BUSY_MESSAGE);
       const run: Run = {
+        id: randomUUID(),
         finished: false,
         cancelled: false,
         closed: false,
@@ -332,9 +367,10 @@ export function createKiroLogin(options: KiroLoginOptions): KiroLogin {
       }
     },
 
-    cancel() {
+    cancel(runId) {
       const run = active;
       if (!run || run.finished) return false;
+      if (runId !== undefined && runId !== run.id) return false;
       run.cancelled = true;
       // Before the process starts, execute() sees the flag and ends the run
       if (run.child) {
@@ -345,25 +381,33 @@ export function createKiroLogin(options: KiroLoginOptions): KiroLogin {
     },
 
     isRunning: () => active !== undefined,
+    isSigningOut: () => signingOut,
 
     async logout() {
-      if (active) throw new KiroLoginBusyError();
-      const env = environment();
-      const binary = await resolveKiroBinary(env);
-      if (!binary || 'error' in binary) return options.statusReader.read(true);
-      let failure: string | undefined;
+      if (active) throw new KiroLoginBusyError('A sign-in is running. Cancel it first.');
+      if (signingOut) throw new KiroLoginBusyError(LOGOUT_BUSY_MESSAGE);
+      // Taken before the first await, so a sign-in cannot start in between
+      signingOut = true;
       try {
-        const result = await runKiro(binary.path, ['logout'], {
-          timeoutMs: LOGOUT_TIMEOUT_MS,
-          env: env.env,
-        });
-        if (result.code !== 0) failure = 'Kiro CLI could not sign out';
-      } catch (error) {
-        failure = `Sign-out failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+        const env = environment();
+        const binary = await resolveKiroBinary(env);
+        if (!binary || 'error' in binary) return await options.statusReader.read(true);
+        let failure: string | undefined;
+        try {
+          const result = await runKiro(binary.path, ['logout'], {
+            timeoutMs: LOGOUT_TIMEOUT_MS,
+            env: env.env,
+          });
+          if (result.code !== 0) failure = 'Kiro CLI could not sign out';
+        } catch (error) {
+          failure = `Sign-out failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+        }
+        const status = await options.statusReader.read(true);
+        if (failure && status.state === 'signed-in') throw new Error(failure);
+        return status;
+      } finally {
+        signingOut = false;
       }
-      const status = await options.statusReader.read(true);
-      if (failure && status.state === 'signed-in') throw new Error(failure);
-      return status;
     },
 
     close() {
