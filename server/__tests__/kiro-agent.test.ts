@@ -638,8 +638,12 @@ describe('KiroAgent review fixes', () => {
     expect(alive(pid)).toBe(false);
     await expect(c.agent.newSession()).rejects.toThrow(new KiroError('Kiro is stopping'));
 
+    const shared = getKiroAgent();
     await shutdownKiroAgent();
-    await expect(getKiroAgent().newSession()).rejects.toThrow(new KiroError('Kiro is stopping'));
+    await expect(shared.newSession()).rejects.toThrow(new KiroError('Kiro is stopping'));
+    // A new server in the same process gets a new agent
+    expect(getKiroAgent()).not.toBe(shared);
+    await shutdownKiroAgent();
   });
 
   // minor: workspace folder
@@ -685,6 +689,26 @@ describe('KiroAgent review fixes', () => {
     await c.agent.cancel(sessionId);
     expect(await reply).toBe('cancelled');
     expect(methods(await c.log())).not.toContain('session/delete');
+  });
+
+  it('isBusy, waitForIdle, and setOption while a reply runs or is cancelling', async () => {
+    const c = await setup();
+    const { sessionId } = await c.agent.newSession();
+    expect(c.agent.isBusy(sessionId)).toBe(false);
+    expect(await c.agent.waitForIdle(sessionId, 10)).toBe(true);
+    const reply = c.agent.prompt(sessionId, text('WAIT'), collect());
+    expect(c.agent.isBusy(sessionId)).toBe(true);
+    await expect(c.agent.setOption(sessionId, 'model', 'claude-fake-1')).rejects.toBeInstanceOf(
+      KiroBusyError
+    );
+    expect(await c.agent.waitForIdle(sessionId, 50)).toBe(false);
+    // A cancel that is ending still counts as busy until the reply ends
+    void c.agent.cancel(sessionId);
+    expect(c.agent.isBusy(sessionId)).toBe(true);
+    expect(await c.agent.waitForIdle(sessionId, 2000)).toBe(true);
+    expect(await reply).toBe('cancelled');
+    expect(c.agent.isBusy(sessionId)).toBe(false);
+    await c.agent.setOption(sessionId, 'model', 'claude-fake-1');
   });
 
   // minor: initialize checks

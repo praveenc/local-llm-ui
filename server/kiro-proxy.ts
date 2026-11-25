@@ -7,20 +7,33 @@
  * - POST /api/kiro/login/cancel: stops the sign-in whose `runId` (from the `started` event) the
  *   JSON body names
  * - POST /api/kiro/logout: signs out and returns the status
+ * - POST /api/kiro/models: the Kiro models (cached for an hour; the JSON body `{ "refresh": true }`
+ *   loads them again). It is a POST because a load can start `kiro-cli acp` (and the user's MCP
+ *   servers) and makes and deletes a session: no GET under /api/kiro may change state (SEC-13),
+ *   and the guard's JSON check applies only to a request with a body
+ * - POST /api/kiro/chat: one Kiro reply as SSE (server/kiro/chat.ts)
  *
  * The routes run kiro-cli with fixed arguments and no shell. The login route builds its arguments
  * from input that the shared checks in src/utils/kiroLogin.ts have validated, sends the code and
  * the sign-in URL only to the app's own page, and never logs them. The status route returns the
  * account email. The same-origin guard in security.ts (SEC-13) rejects other origins before this
  * middleware runs, and it requires JSON on every POST. The status route only reads: it must stay
- * a GET that changes nothing. Every route that changes state is a POST.
+ * a GET that changes nothing. Every route that changes state is a POST. The models route makes
+ * and deletes a session in the app's own Kiro folder, which the user never sees.
+ *
+ * The chat route never takes a folder from the browser: a new session uses the app's Kiro folder,
+ * and an existing session uses the folder in its own session.json. It does not log prompts or
+ * replies.
  */
 import type { Connect } from 'vite';
 
 import { parseKiroLoginMethod } from '../src/utils/kiroLogin.ts';
 import type { KiroLoginEvent } from '../src/utils/kiroLogin.ts';
 import type { KiroStatus } from '../src/utils/kiroStatus.ts';
+import { getKiroAgent, shutdownKiroAgent } from './kiro/agent.ts';
 import type { KiroEnvironment } from './kiro/binary.ts';
+import { createKiroChatHandler } from './kiro/chat.ts';
+import type { KiroChatAgent } from './kiro/chat.ts';
 import {
   KiroLoginBusyError,
   LOGIN_BUSY_MESSAGE,
@@ -28,6 +41,8 @@ import {
   createKiroLogin,
 } from './kiro/login.ts';
 import type { KiroLogin } from './kiro/login.ts';
+import { createKiroModelList } from './kiro/models.ts';
+import type { KiroModelList } from './kiro/models.ts';
 import { createKiroStatusReader } from './kiro/status.ts';
 import { readBodyWithLimit } from './security.ts';
 
@@ -36,7 +51,7 @@ interface KiroStatusSource {
 }
 
 export type KiroProxy = Connect.NextHandleFunction & {
-  /** Stops a running sign-in, for the end of the server */
+  /** Stops a running sign-in and the shared Kiro process, for the end of the server */
   close(): void;
 };
 
@@ -47,10 +62,17 @@ export interface KiroProxyOptions {
   loginTimeoutMs?: number;
   /** How often the login stream sends a `: ping` comment. Tests make it short. */
   loginHeartbeatMs?: number;
+  /** The Kiro agent for models and chat. Default: the app's one shared agent. */
+  agent?: KiroChatAgent & Parameters<typeof createKiroModelList>[0]['agent'];
+  /** How long the model list stays fresh. Default one hour. */
+  modelsTtlMs?: number;
+  /** How long a chat request waits for a running reply in its session. Default: cancelWait. */
+  chatBusyWaitMs?: number;
 }
 
 const LOGIN_BODY_LIMIT = 16 * 1024;
 const CANCEL_BODY_LIMIT = 1024;
+const MODELS_BODY_LIMIT = 1024;
 const HEARTBEAT_MS = 15_000;
 
 type Res = Parameters<Connect.NextHandleFunction>[1];
@@ -72,6 +94,14 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
   // Created on the first request, so importing this file does not read the home folder
   let reader = options.reader;
   let login: KiroLogin | undefined;
+  let models: KiroModelList | undefined;
+  let chat: ReturnType<typeof createKiroChatHandler> | undefined;
+  let usedSharedAgent = false;
+  const getAgent = () => {
+    if (options.agent) return options.agent;
+    usedSharedAgent = true;
+    return getKiroAgent();
+  };
 
   const getReader = (): KiroStatusSource =>
     (reader ??= createKiroStatusReader({ environment: options.environment }));
@@ -80,6 +110,20 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
       environment: options.environment,
       statusReader: getReader(),
       timeoutMs: options.loginTimeoutMs,
+    }));
+  const getModels = (): KiroModelList =>
+    (models ??= createKiroModelList({
+      agent: getAgent(),
+      statusReader: getReader(),
+      ttlMs: options.modelsTtlMs,
+    }));
+  const getChat = () =>
+    (chat ??= createKiroChatHandler({
+      agent: getAgent(),
+      statusReader: getReader(),
+      models: getModels(),
+      environment: options.environment,
+      busyWaitMs: options.chatBusyWaitMs,
     }));
 
   async function handleLogin(req: Parameters<Connect.NextHandleFunction>[0], res: Res) {
@@ -173,6 +217,44 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
         return;
       }
 
+      if (pathname === '/api/kiro/models') {
+        // A POST: a load can start kiro-cli and makes and deletes a session (SEC-13)
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { error: 'Method not allowed' }, { Allow: 'POST' });
+          return;
+        }
+        const body = await readBodyWithLimit(req, res, MODELS_BODY_LIMIT);
+        if (body === null) return;
+        let refresh = false;
+        try {
+          // An empty body or {} is fine
+          const json: unknown = body.trim() ? JSON.parse(body) : {};
+          refresh =
+            !!json && typeof json === 'object' && (json as { refresh?: unknown }).refresh === true;
+        } catch {
+          sendJson(res, 400, { error: 'The request body is not valid JSON' });
+          return;
+        }
+        const result = await getModels().list(refresh);
+        if (result.state === 'signed-out') {
+          sendJson(res, 401, { error: 'Not signed in to Kiro', code: 'signed-out' });
+        } else if (result.state === 'error') {
+          sendJson(res, 503, { error: result.message });
+        } else {
+          sendJson(res, 200, { models: result.models });
+        }
+        return;
+      }
+
+      if (pathname === '/api/kiro/chat') {
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { error: 'Method not allowed' }, { Allow: 'POST' });
+          return;
+        }
+        await getChat()(req, res);
+        return;
+      }
+
       if (
         pathname === '/api/kiro/login' ||
         pathname === '/api/kiro/login/cancel' ||
@@ -226,5 +308,11 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
     }
   };
 
-  return Object.assign(proxy, { close: () => login?.close() });
+  return Object.assign(proxy, {
+    close: () => {
+      login?.close();
+      // Only the app's shared agent, once this proxy used it; an injected one belongs to its caller
+      if (usedSharedAgent) void shutdownKiroAgent().catch(() => undefined);
+    },
+  });
 }

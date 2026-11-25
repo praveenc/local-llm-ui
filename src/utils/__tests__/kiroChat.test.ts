@@ -124,6 +124,17 @@ describe('buildKiroPrompt', () => {
     expect(text).toContain('mid x');
     expect(text).toContain('new');
   });
+
+  it('cuts a message that is larger than the limit', () => {
+    const text = buildKiroPrompt(
+      [{ role: 'assistant', content: `start ${'y'.repeat(MAX_CONTEXT_CHARS * 2)}` }],
+      'q'
+    );
+    expect(text).toContain('<message role="assistant">\nstart y');
+    expect(text).toContain('y\n(cut)\n</message>');
+    expect(text.length).toBeLessThan(MAX_CONTEXT_CHARS + 1_000);
+    expect(text).not.toContain('left out');
+  });
 });
 
 describe('parseMessageUsage with Kiro fields', () => {

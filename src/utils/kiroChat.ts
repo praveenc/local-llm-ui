@@ -147,10 +147,18 @@ export function kiroSessionIsStale(request: Pick<KiroChatRequest, 'history' | 's
 const escapeTags = (text: string) =>
   text.replace(/<\/(conversation_context|message)>/gi, '<\\/$1>');
 
+const CUT_NOTE = '\n(cut)';
+
+/** A message longer than MAX_CONTEXT_CHARS, cut to that size and ended with "(cut)" */
+const cutMessage = (text: string) =>
+  text.length > MAX_CONTEXT_CHARS
+    ? text.slice(0, MAX_CONTEXT_CHARS - CUT_NOTE.length) + CUT_NOTE
+    : text;
+
 /**
  * The prompt text for Kiro: a context block with the unseen messages, then the new message.
- * Without unseen messages, the new message alone. The block keeps the newest messages that fit
- * in MAX_CONTEXT_CHARS and says how many it left out.
+ * Without unseen messages, the new message alone. Each message is cut to MAX_CONTEXT_CHARS, and
+ * the block keeps the newest messages that fit in MAX_CONTEXT_CHARS and says how many it left out.
  */
 export function buildKiroPrompt(unseen: KiroHistoryMessage[], prompt: string): string {
   const messages = unseen.filter((m) => m.content.trim());
@@ -159,7 +167,7 @@ export function buildKiroPrompt(unseen: KiroHistoryMessage[], prompt: string): s
   const kept: string[] = [];
   let size = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
-    const entry = `<message role="${messages[i].role}">\n${escapeTags(messages[i].content)}\n</message>`;
+    const entry = `<message role="${messages[i].role}">\n${escapeTags(cutMessage(messages[i].content))}\n</message>`;
     if (size + entry.length > MAX_CONTEXT_CHARS && kept.length > 0) break;
     kept.unshift(entry);
     size += entry.length;

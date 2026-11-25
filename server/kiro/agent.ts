@@ -262,6 +262,39 @@ export class KiroAgent {
     return { ...this.gen!.info.get(sessionId) };
   }
 
+  /** How long the app waits for a reply to end after session/cancel */
+  get cancelWaitMs(): number {
+    return this.timeouts.cancelWait;
+  }
+
+  /** True while a prompt runs in this session, also while its cancel is ending */
+  isBusy(sessionId: string): boolean {
+    return this.prompts.has(sessionId);
+  }
+
+  /**
+   * Resolves true when no prompt runs in this session (also after a cancel ends), false when one
+   * still runs after `timeoutMs`.
+   */
+  async waitForIdle(sessionId: string, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const active = this.prompts.get(sessionId);
+      if (!active) return true;
+      const left = deadline - Date.now();
+      if (left <= 0) return false;
+      let timer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        active.done,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, left);
+          timer.unref();
+        }),
+      ]);
+      clearTimeout(timer);
+    }
+  }
+
   isLive(sessionId: string): boolean {
     const session = this.gen?.sessions.get(sessionId);
     return session !== undefined && !session.opening && session.unsafe === undefined;
@@ -352,6 +385,9 @@ export class KiroAgent {
     if (LOCKED_OPTIONS.has(configId)) {
       throw new KiroOptionError('This option cannot be changed from the app');
     }
+    // A change during a reply would apply to the rest of that reply
+    if (this.prompts.has(sessionId))
+      throw new KiroBusyError('Kiro is still answering in this chat');
     const gen = this.liveGeneration(sessionId);
     const option = gen.sessions.get(sessionId)!.configOptions.find((o) => o.id === configId);
     if (!option) throw new KiroOptionError(`Kiro has no option ${configId}`);
@@ -491,7 +527,9 @@ export class KiroAgent {
         await mkdir(dir, { recursive: true, mode: 0o700 });
         const uid = process.getuid?.();
         if (uid !== undefined && (await stat(dir)).uid !== uid) {
-          throw new KiroError(`The Kiro folder ${dir} belongs to another user`);
+          // The path goes to the terminal only, never to the browser
+          console.warn(`[kiro] the Kiro folder ${dir} belongs to another user`);
+          throw new KiroError('The Kiro folder of the app belongs to another user');
         }
         // mkdir sets the mode only on a folder that it creates
         await chmod(dir, 0o700);
@@ -908,7 +946,14 @@ export function getKiroAgent(): KiroAgent {
   return instance;
 }
 
-/** For the server close (K5): stops Kiro for good. Later calls reject with "Kiro is stopping". */
+/**
+ * For the server close: stops the Kiro agent for good. A caller that still holds it gets
+ * "Kiro is stopping". The next getKiroAgent() makes a new agent, because Vite can start a new
+ * server in the same process (for example after a change to vite.config.ts).
+ */
 export async function shutdownKiroAgent(): Promise<void> {
-  await getKiroAgent().close();
+  const current = instance;
+  if (!current) return;
+  instance = undefined;
+  await current.close();
 }
