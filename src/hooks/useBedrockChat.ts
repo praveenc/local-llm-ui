@@ -17,6 +17,12 @@ import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messa
 import { extractErrorMessage } from '../utils/errorMessage';
 import { normalizeMediaType } from '../utils/fileUtils';
 import type { KiroChatRequest, KiroHistoryMessage } from '../utils/kiroChat';
+import {
+  endApproval,
+  openApproval,
+  parseKiroPermissionQuestion,
+  parseKiroPermissionResult,
+} from '../utils/kiroPermissions';
 import { getMediaTypeFromFormat, lookupFormat } from '../utils/mediaTypes';
 import { loadPreferences } from '../utils/preferences';
 import { supportsThinkingEffort, thinkingEffortOptions, withoutMax } from '../utils/thinkingEffort';
@@ -25,6 +31,13 @@ import { toStoredToolCall } from '../utils/toolResults';
 import { type MessageUsage, parseMessageUsage } from '../utils/usage';
 import { buildWebSearchHeaders } from '../utils/webSearch';
 import { useConversation, useConversationMutations } from './index';
+import {
+  type StreamToolCall,
+  questionTarget,
+  questionToolCall,
+  withQuestionEnded,
+  withQuestionsEnded,
+} from './kiroApprovalState';
 
 export type ChatStatus = 'idle' | 'streaming' | 'submitted' | 'error';
 
@@ -391,15 +404,10 @@ export function useBedrockChat({
         let lastEventAt = requestStart;
 
         // Track pending tool calls
-        const toolCalls: Map<
-          string,
-          {
-            toolName: string;
-            args: Record<string, unknown>;
-            status: 'pending' | 'complete' | 'error';
-            result?: unknown;
-          }
-        > = new Map();
+        const toolCalls = new Map<string, StreamToolCall>();
+        // Kiro's questions on those tool calls
+        // Kiro's open questions: requestId → the tool call that shows it
+        const openQuestions = new Map<string, string>();
 
         // Helper to build parts array with reasoning, tool calls, and content
         const buildParts = (): MessagePart[] => {
@@ -416,6 +424,7 @@ export function useBedrockChat({
               args: tc.args,
               result: tc.result,
               status: tc.status,
+              ...(tc.approvals && { approvals: tc.approvals }),
             } as MessagePart);
           }
           if (fullContent) {
@@ -425,8 +434,8 @@ export function useBedrockChat({
         };
 
         // Push the assistant message's current parts into state (replaces the streaming one)
-        const flushAssistantMessage = () => {
-          assistantMessage.parts = buildParts();
+        const flushAssistantMessage = (change?: (parts: MessagePart[]) => MessagePart[]) => {
+          assistantMessage.parts = change ? change(buildParts()) : buildParts();
           setMessages((prev) => {
             const newMessages = [...prev];
             const lastIdx = newMessages.length - 1;
@@ -459,7 +468,13 @@ export function useBedrockChat({
           rafId = null;
           flushAssistantMessage();
         };
-        flushOnAbort = flushNow;
+        // Stop or an error: no question stays open, also when no frame is pending
+        flushOnAbort = () => {
+          if (openQuestions.size === 0) return flushNow();
+          if (rafId !== null) cancelAnimationFrame(rafId);
+          rafId = null;
+          flushAssistantMessage(withQuestionsEnded);
+        };
 
         // Both Bedrock and Mantle now use SSE format: data: {"content": "..."} or data: {"metadata": {...}}
         let buffer = '';
@@ -511,7 +526,8 @@ export function useBedrockChat({
                 parsed.content ||
                 parsed.reasoning ||
                 parsed.toolCall ||
-                parsed.toolResult
+                parsed.toolResult ||
+                parsed.permission
               ) {
                 setStreamStatus(null);
               }
@@ -537,7 +553,46 @@ export function useBedrockChat({
                   args: Record<string, unknown>;
                 };
                 const { id, name, args } = toolCall;
-                toolCalls.set(id, { toolName: name, args, status: 'pending' });
+                // A question can come before its tool call: keep it
+                const asked = toolCalls.get(id)?.approvals;
+                toolCalls.set(id, {
+                  toolName: name,
+                  args,
+                  status: 'pending',
+                  ...(asked && { approvals: asked }),
+                });
+                showAssistantMessage();
+              }
+
+              // Kiro: a question about a tool call, and its end
+              const question = kiroRequest
+                ? parseKiroPermissionQuestion(parsed.permission)
+                : undefined;
+              if (question) {
+                const id = questionTarget(question, [...toolCalls.keys()]);
+                const entry = toolCalls.get(id) ?? questionToolCall(question);
+                toolCalls.set(id, {
+                  ...entry,
+                  approvals: [...(entry.approvals ?? []), openApproval(question)],
+                });
+                openQuestions.set(question.requestId, id);
+                showAssistantMessage();
+              }
+              const answer = kiroRequest
+                ? parseKiroPermissionResult(parsed.permissionResult)
+                : undefined;
+              const answered = answer ? openQuestions.get(answer.requestId) : undefined;
+              const entry = answered ? toolCalls.get(answered) : undefined;
+              if (answer && answered && entry) {
+                openQuestions.delete(answer.requestId);
+                toolCalls.set(answered, {
+                  ...entry,
+                  approvals: entry.approvals?.map((a) =>
+                    a.requestId === answer.requestId && a.state === 'open'
+                      ? endApproval(a, answer)
+                      : a
+                  ),
+                });
                 showAssistantMessage();
               }
 
@@ -579,6 +634,13 @@ export function useBedrockChat({
           }
         }
 
+        // A question that is still open was not answered
+        for (const id of new Set(openQuestions.values())) {
+          const entry = toolCalls.get(id);
+          if (entry) toolCalls.set(id, withQuestionEnded(entry));
+          showAssistantMessage();
+        }
+        openQuestions.clear();
         // Flush the last pending frame so the final chunk always shows
         flushNow();
 

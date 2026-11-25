@@ -5,6 +5,7 @@
  * Adapter functions convert between our DB format and UIMessage format.
  */
 import type { Message as DbMessage, MessageFeedback, MessageUsage, Provider } from '../db/types';
+import { type ToolApproval, readStoredApprovals } from '../utils/kiroPermissions';
 import { getMediaTypeFromFormat } from '../utils/mediaTypes';
 
 /**
@@ -44,6 +45,8 @@ export interface ToolCallPart {
   args: Record<string, unknown>;
   result?: unknown;
   status: 'pending' | 'complete' | 'error';
+  /** Kiro's questions about this tool call, in order (K6). Stored ones are never open. */
+  approvals?: ToolApproval[];
 }
 
 /**
@@ -86,8 +89,9 @@ export function toUIMessage(dbMessage: DbMessage): UIMessage {
   }
 
   // Tool calls go between the thinking and the answer, as while the reply streamed
-  for (const toolCall of dbMessage.toolCalls ?? []) {
-    parts.push({ type: 'tool-call', ...toolCall });
+  for (const { approvals, ...toolCall } of dbMessage.toolCalls ?? []) {
+    const stored = readStoredApprovals(approvals);
+    parts.push({ type: 'tool-call', ...toolCall, ...(stored && { approvals: stored }) });
   }
 
   if (mainContent) {
