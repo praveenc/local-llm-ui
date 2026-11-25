@@ -14,7 +14,7 @@ import { createKiroProxy } from '../kiro-proxy.ts';
 import type { KiroProxy } from '../kiro-proxy.ts';
 import { KiroAgent } from '../kiro/agent.ts';
 import type { KiroEnvironment } from '../kiro/binary.ts';
-import { isPromptEcho } from '../kiro/chat.ts';
+import { isPromptEcho } from '../kiro/reply-meta.ts';
 
 const FAKE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),

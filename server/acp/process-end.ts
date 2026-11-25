@@ -2,7 +2,7 @@
  * Runs cleanup functions when the dev server process ends, also on Ctrl+C or a closed terminal.
  *
  * Node runs `exit` listeners after process.exit() and after Vite's SIGTERM handler. It does not
- * run them when SIGINT or SIGHUP end the process, and Vite handles neither. The Kiro processes
+ * run them when SIGINT or SIGHUP end the process, and Vite handles neither. The agent processes
  * run in process groups of their own (`detached`), so the terminal's SIGINT does not reach them.
  * This module adds SIGINT and SIGHUP listeners that run the cleanups, remove themselves, and send
  * the signal again, so the process still ends as it would without them.
