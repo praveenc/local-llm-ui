@@ -123,6 +123,17 @@ describe('AcpConnection requests', () => {
     ]);
   });
 
+  it('ignores an agent request whose id is not a string or a number', async () => {
+    const { conn, fromAgent, sent } = pair();
+    conn.onRequest(() => Promise.resolve({ ok: true }));
+    fromAgent.write(line({ id: { a: 1 }, method: 'known', params: {} }));
+    fromAgent.write(line({ id: [1], method: 'known', params: {} }));
+    await tick();
+    await tick();
+    expect(sent).toEqual([]);
+    expect(conn.ignoredLines).toBe(2);
+  });
+
   it('answers -32601 when no request handler is set', async () => {
     const { fromAgent, sent } = pair();
     fromAgent.write(line({ id: 3, method: 'session/request_permission', params: {} }));

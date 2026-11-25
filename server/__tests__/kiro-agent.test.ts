@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { spawn } from 'child_process';
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -11,13 +12,16 @@ import {
   KiroBusyError,
   KiroCancelTimeoutError,
   KiroCrashedError,
+  KiroError,
   KiroNotInstalledError,
   KiroOptionError,
   KiroSessionError,
   KiroSignedOutError,
+  getKiroAgent,
   optionIdForKind,
+  shutdownKiroAgent,
 } from '../kiro/agent.ts';
-import type { KiroAgentOptions } from '../kiro/agent.ts';
+import type { KiroAgentOptions, PermissionQuestion } from '../kiro/agent.ts';
 
 const FAKE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -62,27 +66,32 @@ interface Case {
   pids(): Promise<{ pid: number; grandchild?: number }>;
 }
 
-async function setup(
-  env: Record<string, string> = {},
-  options: KiroAgentOptions = {}
-): Promise<Case> {
+async function caseDir() {
   counter += 1;
   const dir = path.join(root, `case-${counter}`);
   const home = path.join(dir, 'home');
   await mkdir(home, { recursive: true });
   const logFile = path.join(dir, 'messages.log');
   const pidsFile = path.join(dir, 'pids.json');
+  const env = {
+    HOME: home,
+    PATH: '',
+    LOCAL_LLM_UI_KIRO_CLI: binary,
+    FAKE_KIRO_LOG: logFile,
+    FAKE_KIRO_PIDS: pidsFile,
+    FAKE_KIRO_STATE_DIR: dir,
+  };
+  return { dir, home, logFile, pidsFile, env };
+}
+
+async function setup(
+  env: Record<string, string> = {},
+  options: KiroAgentOptions = {}
+): Promise<Case> {
+  const { dir, home, logFile, pidsFile, env: base } = await caseDir();
   const agent = new KiroAgent({
     environment: {
-      env: {
-        HOME: home,
-        PATH: '',
-        LOCAL_LLM_UI_KIRO_CLI: binary,
-        FAKE_KIRO_LOG: logFile,
-        FAKE_KIRO_PIDS: pidsFile,
-        FAKE_KIRO_STATE_DIR: dir,
-        ...env,
-      },
+      env: { ...base, ...env },
       home,
       platform: 'linux',
     },
@@ -444,5 +453,324 @@ describe('KiroAgent failures and stop', () => {
     expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }));
     expect(() => process.kill(grandchild!, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }));
     expect(c.agent.state()).toMatchObject({ running: false, lastExit: { code: 0 } });
+  });
+});
+
+const SIGNAL_SCRIPT = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'kiro-agent-signal.ts'
+);
+
+const waitGone = (pid: number, timeout = 3000) =>
+  vi.waitFor(() => expect(alive(pid)).toBe(false), { timeout, interval: 25 });
+const autopilot = (c: Case, sessionId: string) =>
+  c.agent.configOptions(sessionId)?.find((o) => o.id === 'autopilot')?.currentValue;
+const configSets = async (c: Case) =>
+  (await c.log())
+    .filter((l) => l.msg.method === 'session/set_config_option')
+    .map((l) => l.msg.params as { configId: string; value: string });
+
+describe('KiroAgent review fixes', () => {
+  // B1
+  it('never deletes a loaded session that fails the Autopilot check', async () => {
+    const c = await setup({ FAKE_KIRO_MODE: 'autopilot-stuck' });
+    await expect(c.agent.ensureSession('sess_existing', c.dir)).rejects.toThrow(
+      new KiroSessionError('Kiro did not turn off Autopilot')
+    );
+    const log = methods(await c.log());
+    expect(log).toContain('session/load');
+    expect(log).not.toContain('session/delete');
+    expect(c.agent.isLive('sess_existing')).toBe(false);
+    expect(c.agent.state().liveSessions).toBe(0);
+  });
+
+  // M1
+  it('stops the recorded process groups after a crash', async () => {
+    const c = await setup({ FAKE_KIRO_MODE: 'crash-on-prompt', FAKE_KIRO_SPAWN_GRANDCHILD: '1' });
+    const { sessionId } = await c.agent.newSession();
+    const { pid, grandchild } = await c.pids();
+    expect(alive(grandchild!)).toBe(true);
+    await expect(c.agent.prompt(sessionId, text('hi'), collect())).rejects.toBeInstanceOf(
+      KiroCrashedError
+    );
+    await waitGone(pid);
+    await waitGone(grandchild!);
+  });
+
+  // M2
+  it('cancels the reply and turns Autopilot off again when Kiro reports it on', async () => {
+    const c = await setup({ FAKE_KIRO_MODE: 'autopilot-flip' });
+    const { sessionId } = await c.agent.newSession();
+    const pid = c.agent.state().pid;
+    expect(await c.agent.prompt(sessionId, text('hi'), collect())).toBe('cancelled');
+    expect(methods(await c.log())).toContain('session/cancel');
+    await vi.waitFor(() => expect(c.agent.isLive(sessionId)).toBe(true));
+    expect(autopilot(c, sessionId)).toBe('off');
+    const offs = (await configSets(c)).filter((p) => p.configId === 'autopilot');
+    expect(offs).toEqual([
+      { sessionId, configId: 'autopilot', value: 'off' },
+      { sessionId, configId: 'autopilot', value: 'off' },
+    ]);
+    expect(c.agent.state().pid).toBe(pid);
+  });
+
+  it('rejects changes to autopilot and mode', async () => {
+    const c = await setup();
+    const { sessionId } = await c.agent.newSession();
+    for (const [id, value] of [
+      ['autopilot', 'on'],
+      ['mode', 'vibe'],
+    ]) {
+      await expect(c.agent.setOption(sessionId, id, value)).rejects.toThrow(
+        new KiroOptionError('This option cannot be changed from the app')
+      );
+    }
+    expect((await configSets(c)).map((p) => p.value)).toEqual(['off']);
+  });
+
+  // M3
+  it('answers cancelled at once on cancel when the handler never answers', async () => {
+    const c = await setup({}, { permissionHandler: () => new Promise(() => undefined) });
+    const { sessionId } = await c.agent.newSession();
+    const pid = c.agent.state().pid;
+    const reply = c.agent.prompt(sessionId, text('TOOL'), collect());
+    await vi.waitFor(async () =>
+      expect((await c.log()).some((l) => l.msg.method === 'session/prompt')).toBe(true)
+    );
+    await sleep(100);
+    const start = Date.now();
+    await c.agent.cancel(sessionId);
+    expect(await reply).toBe('cancelled');
+    expect(Date.now() - start).toBeLessThan(1000);
+    expect(c.agent.state()).toMatchObject({ running: true, pid });
+    const answers = (await c.log())
+      .filter((l) => l.msg.method === undefined && l.msg.id !== undefined)
+      .map((l) => l.msg.result);
+    expect(answers).toEqual([{ outcome: { outcome: 'cancelled' } }]);
+  });
+
+  it('answers reject_once when the handler does not answer in time', async () => {
+    const c = await setup(
+      {},
+      { permissionHandler: () => new Promise(() => undefined), permissionTimeoutMs: 200 }
+    );
+    const { sessionId } = await c.agent.newSession();
+    const u = collect();
+    expect(await c.agent.prompt(sessionId, text('TOOL'), u)).toBe('end_turn');
+    const answers = (await c.log())
+      .filter((l) => l.msg.method === undefined && l.msg.id !== undefined)
+      .map((l) => l.msg.result);
+    expect(answers).toEqual([{ outcome: { outcome: 'selected', optionId: 'o2' } }]);
+    expect(u.updates.find((x) => x.sessionUpdate === 'tool_call_update')?.status).toBe('failed');
+  });
+
+  // M4
+  it('does not restart for a slow session/new while another session is live', async () => {
+    const c = await setup(
+      { FAKE_KIRO_MODE: 'hang-new', FAKE_KIRO_HANG_NEW_AT: '2' },
+      { timeouts: { newSession: 300 } }
+    );
+    const first = await c.agent.newSession();
+    const pid = c.agent.state().pid;
+    await expect(c.agent.newSession()).rejects.toThrow(
+      new KiroSessionError('Kiro is slow to open a chat. Try again.')
+    );
+    expect(c.agent.state().pid).toBe(pid);
+    expect(c.agent.isLive(first.sessionId)).toBe(true);
+    expect(methods(await c.log()).filter((m) => m === 'initialize')).toHaveLength(1);
+  });
+
+  // M5
+  it('kills Kiro and its groups when the app gets SIGINT', async () => {
+    const { home, env, pidsFile } = await caseDir();
+    const child = spawn(process.execPath, ['--experimental-strip-types', SIGNAL_SCRIPT], {
+      // The app needs PATH for `ps`
+      env: { ...env, HOME: home, PATH: process.env.PATH ?? '', FAKE_KIRO_SPAWN_GRANDCHILD: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const exited = new Promise<NodeJS.Signals | null>((resolve) =>
+      child.once('exit', (_code, signal) => resolve(signal))
+    );
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let out = '';
+        child.stdout.on('data', (chunk: Buffer) => {
+          out += chunk.toString();
+          if (out.includes('ready')) resolve();
+        });
+        child.once('exit', () => reject(new Error('the child ended before it was ready')));
+      });
+      const { pid, grandchild } = JSON.parse(await readFile(pidsFile, 'utf8')) as {
+        pid: number;
+        grandchild: number;
+      };
+      expect(alive(pid)).toBe(true);
+      expect(alive(grandchild)).toBe(true);
+      child.kill('SIGINT');
+      expect(await exited).toBe('SIGINT');
+      await waitGone(pid);
+      await waitGone(grandchild);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    }
+  });
+
+  // minor: stop() and close()
+  it('stop() during a session/new retry leaves no process', async () => {
+    const c = await setup({ FAKE_KIRO_MODE: 'hang-new' }, { timeouts: { newSession: 300 } });
+    const created = c.agent.newSession().catch((e: unknown) => e);
+    await vi.waitFor(() => readFile(path.join(c.dir, 'hung-once'), 'utf8'));
+    await sleep(320);
+    await c.agent.stop();
+    await created;
+    await sleep(100);
+    expect(c.agent.state().running).toBe(false);
+    const pids = [...new Set((await c.log()).map((l) => l.pid))];
+    for (const pid of pids) expect(alive(pid)).toBe(false);
+  });
+
+  it('close() and shutdownKiroAgent() stop for good', async () => {
+    const c = await setup();
+    await c.agent.newSession();
+    const pid = c.agent.state().pid!;
+    await c.agent.close();
+    expect(alive(pid)).toBe(false);
+    await expect(c.agent.newSession()).rejects.toThrow(new KiroError('Kiro is stopping'));
+
+    await shutdownKiroAgent();
+    await expect(getKiroAgent().newSession()).rejects.toThrow(new KiroError('Kiro is stopping'));
+  });
+
+  // minor: workspace folder
+  it('sets mode 0700 on an existing workspace folder', async () => {
+    const workspaceDir = path.join(root, `ws-open-${counter + 1}`);
+    await mkdir(workspaceDir, { recursive: true, mode: 0o755 });
+    await chmod(workspaceDir, 0o755);
+    const c = await setup({}, { workspaceDir });
+    await c.agent.newSession();
+    const info = await stat(workspaceDir);
+    expect(info.mode & 0o777).toBe(0o700);
+    expect(info.uid).toBe(process.getuid?.());
+  });
+
+  // minor: ensureSession
+  it('ensureSession on a live session refreshes the idle timer', async () => {
+    const c = await setup({}, { idleMs: 300 });
+    const { sessionId } = await c.agent.newSession();
+    const pid = c.agent.state().pid;
+    await sleep(200);
+    await c.agent.ensureSession(sessionId, c.dir);
+    await sleep(200);
+    expect(c.agent.state().pid).toBe(pid);
+    expect(await c.agent.prompt(sessionId, text('hi'), collect())).toBe('end_turn');
+  });
+
+  it('shares one session/load between concurrent ensureSession calls', async () => {
+    const c = await setup();
+    await Promise.all([
+      c.agent.ensureSession('sess_a', c.dir),
+      c.agent.ensureSession('sess_a', c.dir),
+      c.agent.ensureSession('sess_a', c.dir),
+    ]);
+    expect(methods(await c.log()).filter((m) => m === 'session/load')).toHaveLength(1);
+    expect(c.agent.isLive('sess_a')).toBe(true);
+  });
+
+  it('deleteSession throws KiroBusyError while that session answers', async () => {
+    const c = await setup();
+    const { sessionId } = await c.agent.newSession();
+    const reply = c.agent.prompt(sessionId, text('WAIT'), collect());
+    await expect(c.agent.deleteSession(sessionId)).rejects.toBeInstanceOf(KiroBusyError);
+    await c.agent.cancel(sessionId);
+    expect(await reply).toBe('cancelled');
+    expect(methods(await c.log())).not.toContain('session/delete');
+  });
+
+  // minor: initialize checks
+  it('maps -32000 Authentication required to KiroSignedOutError', async () => {
+    const c = await setup({ FAKE_KIRO_MODE: 'auth-required' });
+    await expect(c.agent.newSession()).rejects.toBeInstanceOf(KiroSignedOutError);
+  });
+
+  it('throws KiroSessionError when Kiro cannot load sessions', async () => {
+    const c = await setup({ FAKE_KIRO_MODE: 'no-load' });
+    await expect(c.agent.newSession()).rejects.toThrow(
+      new KiroSessionError('This Kiro CLI cannot load sessions')
+    );
+    expect(c.agent.state().running).toBe(false);
+    const { pid } = await c.pids();
+    await waitGone(pid);
+  });
+});
+
+describe('KiroAgent API for K5 and K6', () => {
+  it('sessionInfo keeps context, title, and credits, also outside prompts', async () => {
+    const c = await setup();
+    expect(c.agent.sessionInfo('sess_x')).toBeUndefined();
+    const { sessionId } = await c.agent.newSession();
+    await vi.waitFor(() => expect(c.agent.sessionInfo(sessionId)?.contextPercent).toBe(1.5));
+    await c.agent.prompt(sessionId, text('hi'), collect());
+    expect(c.agent.sessionInfo(sessionId)).toEqual({
+      contextPercent: 4.2,
+      title: 'Fake title',
+      credits: 0.05,
+    });
+
+    await c.agent.ensureSession('sess_loaded', c.dir);
+    expect(c.agent.sessionInfo('sess_loaded')).toEqual({ contextPercent: 3.5 });
+  });
+
+  it('prompt onPermission gets the question and its answer is sent', async () => {
+    const c = await setup();
+    const { sessionId } = await c.agent.newSession();
+    const questions: PermissionQuestion[] = [];
+    const u = collect();
+    const result = await c.agent.prompt(sessionId, text('TOOL'), {
+      onUpdate: u.onUpdate,
+      onPermission: (q) => {
+        questions.push(q);
+        return { optionId: q.options.find((o) => o.kind === 'allow_once')!.optionId };
+      },
+    });
+    expect(result).toBe('end_turn');
+    expect(questions).toHaveLength(1);
+    expect(questions[0]).toMatchObject({
+      requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      toolCallId: expect.stringMatching(/^run_command_/),
+      title: 'echo hi > hello.txt',
+      signal: expect.any(AbortSignal),
+    });
+    expect(questions[0].options.map((o) => o.kind)).toEqual([
+      'allow_always',
+      'reject_once',
+      'allow_once',
+      'reject_always',
+    ]);
+    expect(u.updates.find((x) => x.sessionUpdate === 'tool_call_update')?.status).toBe('completed');
+  });
+
+  it('extension() calls only the allowed Kiro methods', async () => {
+    const c = await setup();
+    await expect(
+      c.agent.extension<{ data: { planName: string } }>('_kiro/account/getUsage', {})
+    ).resolves.toMatchObject({ success: true, data: { planName: 'FAKE' } });
+    await expect(c.agent.extension('_kiro/other', {})).rejects.toBeInstanceOf(KiroError);
+    expect(methods(await c.log())).not.toContain('_kiro/other');
+  });
+
+  it('ensureSession applies only the options that the session lists', async () => {
+    const c = await setup();
+    await c.agent.ensureSession('sess_opts', c.dir, {
+      options: { model: 'claude-fake-1', nope: 'x', autopilot: 'on', mode: 'vibe' },
+    });
+    expect(c.agent.configOptions('sess_opts')?.find((o) => o.id === 'model')?.currentValue).toBe(
+      'claude-fake-1'
+    );
+    expect(autopilot(c, 'sess_opts')).toBe('off');
+    expect((await configSets(c)).map((p) => [p.configId, p.value])).toEqual([
+      ['autopilot', 'off'],
+      ['model', 'claude-fake-1'],
+    ]);
   });
 });

@@ -37,7 +37,11 @@ export class AcpClosedError extends Error {
 export interface CloseInfo {
   code: number | null;
   signal: NodeJS.Signals | null;
-  /** Why the connection closed: 'stream end', 'child exit', an error, or a caller's reason */
+  /**
+   * Why the connection closed: 'stream end', 'child exit', an error, or a caller's reason.
+   * stdout often closes before the child exits, so `code` is then null: read the exit code from
+   * the child's own 'exit' event.
+   */
   reason: string;
 }
 
@@ -210,8 +214,11 @@ export class AcpConnection {
     }
     const hasId = message.id !== undefined && message.id !== null;
     if (typeof message.method === 'string') {
-      if (hasId) this.onAgentRequest(message.id!, message.method, message.params);
-      else this.onAgentNotification(message.method, message.params);
+      if (!hasId) this.onAgentNotification(message.method, message.params);
+      // JSON-RPC allows only a string or a number as an id
+      else if (typeof message.id === 'number' || typeof message.id === 'string')
+        this.onAgentRequest(message.id, message.method, message.params);
+      else this.ignoredLines += 1;
       return;
     }
     if (hasId && typeof message.id === 'number') {

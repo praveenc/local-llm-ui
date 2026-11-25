@@ -7,8 +7,9 @@
  *
  * Logs lifecycle lines only. Never log prompt text, tool input, or the account.
  */
+import { randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
-import { mkdir } from 'fs/promises';
+import { chmod, mkdir, stat } from 'fs/promises';
 import path from 'path';
 
 import { AcpClosedError, AcpConnection, AcpError, AcpTimeoutError } from './acp-client.ts';
@@ -19,6 +20,7 @@ import type {
   InitializeResult,
   LoadSessionResult,
   NewSessionResult,
+  PermissionOption,
   PermissionOptionKind,
   PermissionOutcome,
   PermissionRequest,
@@ -30,7 +32,7 @@ import type {
 } from './acp-types.ts';
 import { defaultKiroEnvironment, resolveKiroBinary } from './binary.ts';
 import type { KiroEnvironment } from './binary.ts';
-import { spawnKiroAcp, stopProcessTree } from './process.ts';
+import { recordProcessGroups, spawnKiroAcp, stopProcessTree } from './process.ts';
 import type { KiroChild } from './process.ts';
 
 export { AcpError, AcpTimeoutError } from './acp-client.ts';
@@ -55,6 +57,7 @@ export class KiroCancelTimeoutError extends KiroError {}
 
 export type PermissionDecision = { optionId: string } | 'cancelled';
 
+/** The agent-wide handler. Default: deny. */
 export type PermissionHandler = (input: {
   sessionId: string;
   request: PermissionRequest;
@@ -62,13 +65,45 @@ export type PermissionHandler = (input: {
   signal: AbortSignal;
 }) => Promise<PermissionDecision> | PermissionDecision;
 
+/** One permission request of one prompt, for the chat that asked (K6) */
+export interface PermissionQuestion {
+  /** A random id for this request, for the answer from the browser */
+  requestId: string;
+  toolCallId: string;
+  title?: string;
+  options: PermissionOption[];
+  /** Aborts when the prompt is cancelled or ends */
+  signal: AbortSignal;
+}
+
+export type PromptPermissionHandler = (
+  question: PermissionQuestion
+) => Promise<PermissionDecision> | PermissionDecision;
+
 export interface KiroAgentTimeouts {
   initialize: number;
   newSession: number;
   loadSession: number;
   configOption: number;
+  deleteSession: number;
   cancelWait: number;
 }
+
+/** What the app knows of a live session, also from updates outside a prompt */
+export interface KiroSessionInfo {
+  /** Percent of the context window, from context_usage or the session/load result */
+  contextPercent?: number;
+  /** From focus_update */
+  title?: string;
+  /** The session's credits as Kiro reports them in session_usage */
+  credits?: number;
+}
+
+/** The Kiro extension methods that `extension()` may call */
+export const KIRO_EXTENSION_METHODS: readonly string[] = ['_kiro/account/getUsage'];
+
+/** Options that the app never changes: Autopilot stays off (D7), the agent stays Kiro's default (D9) */
+const LOCKED_OPTIONS = new Set(['autopilot', 'mode']);
 
 export interface KiroAgentOptions {
   environment?: KiroEnvironment;
@@ -78,6 +113,8 @@ export interface KiroAgentOptions {
   timeouts?: Partial<KiroAgentTimeouts>;
   /** Default: deny (D7: no tool runs without a question until approvals land) */
   permissionHandler?: PermissionHandler;
+  /** A permission that gets no answer in this time is denied. Default 10 minutes. */
+  permissionTimeoutMs?: number;
   /** For tests: the stop timings of the process tree */
   stopTimings?: { graceMs?: number; killMs?: number };
 }
@@ -94,6 +131,7 @@ const DEFAULT_TIMEOUTS: KiroAgentTimeouts = {
   newSession: 30_000,
   loadSession: 120_000,
   configOption: 30_000,
+  deleteSession: 30_000,
   cancelWait: 30_000,
 };
 
@@ -124,6 +162,10 @@ function clientVersion(): string {
 
 interface Session {
   configOptions: ConfigOption[];
+  /** True during session/new or session/load and the first Autopilot check */
+  opening: boolean;
+  /** Set while Autopilot was reported on and is being turned off again: the session is not live */
+  unsafe?: Promise<void>;
 }
 
 /** One `kiro-cli acp` process and the sessions that are live on it */
@@ -131,12 +173,16 @@ interface Generation {
   proc: KiroChild;
   conn: AcpConnection;
   sessions: Map<string, Session>;
+  info: Map<string, KiroSessionInfo>;
+  /** The app stops this process; a close is then expected */
+  stopRequested: boolean;
   stopping?: Promise<void>;
 }
 
 interface ActivePrompt {
   gen: Generation;
   onUpdate: (update: SessionUpdate) => void;
+  onPermission?: PromptPermissionHandler;
   cancelled: boolean;
   cancelTimedOut: boolean;
   controller: AbortController;
@@ -145,11 +191,29 @@ interface ActivePrompt {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref());
 
+const autopilotOf = (options: ConfigOption[]) =>
+  options.find((o) => o.id === 'autopilot')?.currentValue;
+
+const aborted = (signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    if (signal.aborted) resolve();
+    else signal.addEventListener('abort', () => resolve(), { once: true });
+  });
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+
+const asNumber = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
 export class KiroAgent {
   private readonly options: KiroAgentOptions;
   private readonly timeouts: KiroAgentTimeouts;
   private readonly idleMs: number;
   private readonly permissionHandler: PermissionHandler;
+  private readonly permissionTimeoutMs: number;
 
   private gen: Generation | undefined;
   private starting: Promise<Generation> | undefined;
@@ -161,12 +225,21 @@ export class KiroAgent {
   private pendingRequests = 0;
   private idleTimer: NodeJS.Timeout | undefined;
   private lastExit: KiroAgentState['lastExit'];
+  /** stop() calls that run now: no new process starts meanwhile */
+  private stopRuns = 0;
+  /** Counts stop() calls: a retry that began before a stop() must not start a process */
+  private stopCount = 0;
+  /** Processes that are being stopped; stop() waits for them */
+  private readonly stoppings = new Set<Promise<void>>();
+  /** Set by close(): the agent never starts again */
+  private closed = false;
 
   constructor(options: KiroAgentOptions = {}) {
     this.options = options;
     this.timeouts = { ...DEFAULT_TIMEOUTS, ...options.timeouts };
     this.idleMs = options.idleMs ?? 600_000;
     this.permissionHandler = options.permissionHandler ?? denyPermission;
+    this.permissionTimeoutMs = options.permissionTimeoutMs ?? 600_000;
   }
 
   state(): KiroAgentState {
@@ -178,20 +251,32 @@ export class KiroAgent {
     };
   }
 
-  /** The latest config options of a live session */
+  /** The latest config options of a session on the current process */
   configOptions(sessionId: string): ConfigOption[] | undefined {
     return this.gen?.sessions.get(sessionId)?.configOptions;
   }
 
-  isLive(sessionId: string): boolean {
-    return this.gen?.sessions.has(sessionId) ?? false;
+  /** Context, title, and credits of a live session; undefined when it is not live */
+  sessionInfo(sessionId: string): KiroSessionInfo | undefined {
+    if (!this.isLive(sessionId)) return undefined;
+    return { ...this.gen!.info.get(sessionId) };
   }
 
+  isLive(sessionId: string): boolean {
+    const session = this.gen?.sessions.get(sessionId);
+    return session !== undefined && !session.opening && session.unsafe === undefined;
+  }
+
+  /**
+   * A new session. `cwd` is the folder that Kiro's tools work in: it must never come from the
+   * browser. Default: the app's Kiro workspace folder.
+   */
   async newSession(input: { cwd?: string } = {}): Promise<{
     sessionId: string;
     configOptions: ConfigOption[];
   }> {
     const cwd = input.cwd ?? (await this.workspaceDir());
+    const stops = this.stopCount;
     let gen = await this.start();
     let result: NewSessionResult;
     try {
@@ -203,8 +288,16 @@ export class KiroAgent {
       );
     } catch (error) {
       if (!(error instanceof AcpTimeoutError)) throw error;
+      // A restart would end the replies and the sessions of other chats
+      const busy =
+        this.gen !== gen ||
+        gen.sessions.size > 0 ||
+        this.pendingRequests > 0 ||
+        [...this.prompts.values()].some((p) => p.gen === gen);
+      if (busy) throw new KiroSessionError('Kiro is slow to open a chat. Try again.');
       console.warn('[kiro] session/new timed out, starting a new process');
       await this.stopGeneration(gen);
+      if (this.stopCount !== stops) throw new KiroError('Kiro is stopping');
       gen = await this.start();
       result = await this.call<NewSessionResult>(
         gen,
@@ -214,46 +307,51 @@ export class KiroAgent {
       );
     }
     const sessionId = result.sessionId;
-    gen.sessions.set(sessionId, { configOptions: result.configOptions ?? [] });
-    await this.afterOpen(gen, sessionId);
+    void recordProcessGroups(gen.proc.child);
+    gen.sessions.set(sessionId, { configOptions: result.configOptions ?? [], opening: true });
+    await this.afterOpen(gen, sessionId, { created: true });
     return { sessionId, configOptions: gen.sessions.get(sessionId)?.configOptions ?? [] };
   }
 
-  async loadSession(sessionId: string, cwd: string): Promise<ConfigOption[]> {
-    const gen = await this.start();
-    const result = await this.call<LoadSessionResult>(
-      gen,
-      'session/load',
-      { sessionId, cwd, mcpServers: [], _meta: { kiro: { noReplay: true } } },
-      this.timeouts.loadSession
-    );
-    gen.sessions.set(sessionId, {
-      configOptions: result?.configOptions ?? gen.sessions.get(sessionId)?.configOptions ?? [],
-    });
-    await this.afterOpen(gen, sessionId);
-    // The same option settings again
-    for (const [configId, value] of this.desired.get(sessionId) ?? []) {
-      const option = gen.sessions.get(sessionId)?.configOptions.find((o) => o.id === configId);
-      if (!option || option.currentValue === value) continue;
-      if (!option.options?.some((o) => o.value === value)) continue;
-      await this.setConfig(gen, sessionId, configId, value);
+  /**
+   * Makes the session live: a no-op when it is live, else session/load. Concurrent calls share
+   * one load. `options` (from the saved conversation) replace the wanted option values; after a
+   * load, the ones that the session lists are set again.
+   *
+   * `cwd` must never come from the browser: use the workspace folder or the session's own
+   * `workspacePaths`.
+   */
+  async ensureSession(
+    sessionId: string,
+    cwd: string,
+    input: { options?: Record<string, string> } = {}
+  ): Promise<void> {
+    if (input.options) {
+      const wanted = new Map<string, string>();
+      for (const [configId, value] of Object.entries(input.options)) {
+        if (!LOCKED_OPTIONS.has(configId) && typeof value === 'string') wanted.set(configId, value);
+      }
+      this.desired.set(sessionId, wanted);
     }
-    return gen.sessions.get(sessionId)?.configOptions ?? [];
-  }
-
-  /** No-op when the session is live on the current process, else session/load */
-  async ensureSession(sessionId: string, cwd: string): Promise<void> {
-    if (this.isLive(sessionId)) return;
+    const unsafe = this.gen?.sessions.get(sessionId)?.unsafe;
+    if (unsafe) await unsafe;
+    if (this.isLive(sessionId)) {
+      // The idle timer must not end the process between ensureSession and prompt
+      this.clearIdle();
+      this.scheduleIdle();
+      return;
+    }
     const loading = this.loading.get(sessionId);
     if (loading) return loading;
-    const promise = this.loadSession(sessionId, cwd)
-      .then(() => undefined)
-      .finally(() => this.loading.delete(sessionId));
+    const promise = this.loadSession(sessionId, cwd).finally(() => this.loading.delete(sessionId));
     this.loading.set(sessionId, promise);
     return promise;
   }
 
   async setOption(sessionId: string, configId: string, value: string): Promise<ConfigOption[]> {
+    if (LOCKED_OPTIONS.has(configId)) {
+      throw new KiroOptionError('This option cannot be changed from the app');
+    }
     const gen = this.liveGeneration(sessionId);
     const option = gen.sessions.get(sessionId)!.configOptions.find((o) => o.id === configId);
     if (!option) throw new KiroOptionError(`Kiro has no option ${configId}`);
@@ -269,10 +367,24 @@ export class KiroAgent {
     return options;
   }
 
+  /** Calls a Kiro extension method from KIRO_EXTENSION_METHODS */
+  async extension<T>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
+    if (!KIRO_EXTENSION_METHODS.includes(method)) {
+      throw new KiroError(`The app does not call ${method}`);
+    }
+    const gen = await this.start();
+    return this.call<T>(gen, method, params, timeoutMs ?? this.timeouts.configOption);
+  }
+
   async prompt(
     sessionId: string,
     blocks: ContentBlock[],
-    input: { onUpdate: (update: SessionUpdate) => void; signal?: AbortSignal }
+    input: {
+      onUpdate: (update: SessionUpdate) => void;
+      signal?: AbortSignal;
+      /** Answers this prompt's permission requests. Default: the agent's permissionHandler. */
+      onPermission?: PromptPermissionHandler;
+    }
   ): Promise<StopReason> {
     if (this.prompts.has(sessionId))
       throw new KiroBusyError('Kiro is still answering in this chat');
@@ -283,6 +395,7 @@ export class KiroAgent {
     const active: ActivePrompt = {
       gen,
       onUpdate: input.onUpdate,
+      onPermission: input.onPermission,
       cancelled: false,
       cancelTimedOut: false,
       controller: new AbortController(),
@@ -290,6 +403,7 @@ export class KiroAgent {
     };
     this.prompts.set(sessionId, active);
     this.clearIdle();
+    void recordProcessGroups(gen.proc.child);
     const onAbort = () => void this.cancel(sessionId).catch(() => undefined);
     input.signal?.addEventListener('abort', onAbort, { once: true });
     try {
@@ -332,17 +446,39 @@ export class KiroAgent {
   }
 
   async deleteSession(sessionId: string): Promise<void> {
+    if (this.prompts.has(sessionId)) {
+      throw new KiroBusyError('Kiro is still answering in this chat');
+    }
     const gen = this.gen?.sessions.has(sessionId) ? this.gen : await this.start();
-    await this.call(gen, 'session/delete', { sessionId }, this.timeouts.configOption);
+    await this.call(gen, 'session/delete', { sessionId }, this.timeouts.deleteSession);
     gen.sessions.delete(sessionId);
+    gen.info.delete(sessionId);
     this.desired.delete(sessionId);
   }
 
-  /** Stops the process and all its process groups. Safe to call more than once. */
+  /**
+   * Stops the process and all its process groups. Safe to call more than once. No new process
+   * starts while it runs: such calls reject with KiroError('Kiro is stopping').
+   */
   async stop(): Promise<void> {
-    this.clearIdle();
-    if (this.starting) await this.starting.catch(() => undefined);
-    if (this.gen) await this.stopGeneration(this.gen);
+    this.stopRuns += 1;
+    this.stopCount += 1;
+    try {
+      this.clearIdle();
+      while (this.starting || this.gen || this.stoppings.size) {
+        if (this.starting) await this.starting.catch(() => undefined);
+        if (this.gen) await this.stopGeneration(this.gen);
+        if (this.stoppings.size) await Promise.all(this.stoppings);
+      }
+    } finally {
+      this.stopRuns -= 1;
+    }
+  }
+
+  /** stop(), and the agent never starts again */
+  close(): Promise<void> {
+    this.closed = true;
+    return this.stop();
   }
 
   // --- process ---
@@ -351,18 +487,25 @@ export class KiroAgent {
     if (!this.workspaceReady) {
       const environment = this.options.environment ?? defaultKiroEnvironment();
       const dir = this.options.workspaceDir ?? path.join(environment.home, '.local-llm-ui', 'kiro');
-      this.workspaceReady = mkdir(dir, { recursive: true, mode: 0o700 }).then(
-        () => dir,
-        (error: unknown) => {
-          this.workspaceReady = undefined;
-          throw error;
+      this.workspaceReady = (async () => {
+        await mkdir(dir, { recursive: true, mode: 0o700 });
+        const uid = process.getuid?.();
+        if (uid !== undefined && (await stat(dir)).uid !== uid) {
+          throw new KiroError(`The Kiro folder ${dir} belongs to another user`);
         }
-      );
+        // mkdir sets the mode only on a folder that it creates
+        await chmod(dir, 0o700);
+        return dir;
+      })().catch((error: unknown) => {
+        this.workspaceReady = undefined;
+        throw error;
+      });
     }
     return this.workspaceReady;
   }
 
   private start(): Promise<Generation> {
+    if (this.closed || this.stopRuns > 0) return Promise.reject(new KiroError('Kiro is stopping'));
     if (this.gen) return Promise.resolve(this.gen);
     if (!this.starting) {
       this.starting = this.launch().finally(() => {
@@ -381,7 +524,13 @@ export class KiroAgent {
 
     const proc = spawnKiroAcp(binary.path, { cwd, env: environment.env });
     const conn = AcpConnection.fromChild(proc.child);
-    const gen: Generation = { proc, conn, sessions: new Map() };
+    const gen: Generation = {
+      proc,
+      conn,
+      sessions: new Map(),
+      info: new Map(),
+      stopRequested: false,
+    };
     proc.child.once('error', (error) => conn.close(error.message));
     void proc.exited.then((exit) => {
       this.lastExit = exit;
@@ -390,6 +539,11 @@ export class KiroAgent {
     conn.onClose(() => {
       // Every prompt on it is rejected by the connection
       if (this.gen === gen) this.gen = undefined;
+      if (!gen.stopRequested) {
+        // A crash: its children are reparented now, so stop the groups recorded while it ran
+        console.warn('[kiro] agent closed unexpectedly');
+        void this.stopGeneration(gen, { graceMs: 0 });
+      }
       this.scheduleIdle();
     });
     conn.onNotification((method, params) => this.onNotification(gen, method, params));
@@ -415,12 +569,14 @@ export class KiroAgent {
     } finally {
       this.pendingRequests -= 1;
     }
-    const signedOut =
-      result?.authMethods?.some((m) => m.id === 'kiro-login') === true ||
-      result?.agentCapabilities?.loadSession !== true;
-    if (signedOut) {
+    await recordProcessGroups(proc.child);
+    if (result?.authMethods?.some((m) => m.id === 'kiro-login') === true) {
       await this.stopGeneration(gen);
       throw new KiroSignedOutError('Kiro CLI is not signed in');
+    }
+    if (result?.agentCapabilities?.loadSession !== true) {
+      await this.stopGeneration(gen);
+      throw new KiroSessionError('This Kiro CLI cannot load sessions');
     }
     if (conn.closed) throw new KiroCrashedError('Kiro CLI stopped while it started');
     console.log(`[kiro] agent started pid ${proc.pid}`);
@@ -429,14 +585,18 @@ export class KiroAgent {
     return gen;
   }
 
-  private stopGeneration(gen: Generation): Promise<void> {
+  private stopGeneration(gen: Generation, timings: { graceMs?: number } = {}): Promise<void> {
     if (!gen.stopping) {
+      gen.stopRequested = true;
       if (this.gen === gen) this.gen = undefined;
-      gen.stopping = (async () => {
-        gen.conn.close('stopped');
-        await stopProcessTree(gen.proc.child, this.options.stopTimings);
-        console.log(`[kiro] agent stopped pid ${gen.proc.pid}`);
-      })();
+      gen.conn.close('stopped');
+      gen.stopping = stopProcessTree(gen.proc.child, {
+        ...this.options.stopTimings,
+        ...timings,
+      }).then(() => console.log(`[kiro] agent stopped pid ${gen.proc.pid}`));
+      const stopping = gen.stopping;
+      this.stoppings.add(stopping);
+      void stopping.finally(() => this.stoppings.delete(stopping));
     }
     return gen.stopping;
   }
@@ -444,11 +604,33 @@ export class KiroAgent {
   // --- requests ---
 
   private liveGeneration(sessionId: string): Generation {
-    const gen = this.gen;
-    if (!gen || !gen.sessions.has(sessionId)) {
+    if (!this.isLive(sessionId)) {
       throw new KiroSessionError('The Kiro session is not open. Call ensureSession first.');
     }
-    return gen;
+    return this.gen!;
+  }
+
+  private async loadSession(sessionId: string, cwd: string): Promise<void> {
+    const gen = await this.start();
+    const result = await this.call<LoadSessionResult>(
+      gen,
+      'session/load',
+      { sessionId, cwd, mcpServers: [], _meta: { kiro: { noReplay: true } } },
+      this.timeouts.loadSession
+    );
+    void recordProcessGroups(gen.proc.child);
+    gen.sessions.set(sessionId, { configOptions: result?.configOptions ?? [], opening: true });
+    const meta = asRecord(result?._meta);
+    const percent = asNumber(asRecord(meta?.contextUsage)?.usagePercentage);
+    if (percent !== undefined) this.infoFor(gen, sessionId).contextPercent = percent;
+    await this.afterOpen(gen, sessionId, { created: false });
+    // The same option settings again
+    for (const [configId, value] of this.desired.get(sessionId) ?? []) {
+      const option = gen.sessions.get(sessionId)?.configOptions.find((o) => o.id === configId);
+      if (!option || option.currentValue === value) continue;
+      if (!option.options?.some((o) => o.value === value)) continue;
+      await this.setConfig(gen, sessionId, configId, value);
+    }
   }
 
   private async call<T>(
@@ -481,6 +663,7 @@ export class KiroAgent {
     return error;
   }
 
+  /** set_config_option. The result is checked for Autopilot like every config change. */
   private async setConfig(
     gen: Generation,
     sessionId: string,
@@ -496,29 +679,114 @@ export class KiroAgent {
     const options = result?.configOptions ?? [];
     const session = gen.sessions.get(sessionId);
     if (session && options.length) session.configOptions = options;
+    const repair = this.checkSafe(gen, sessionId, options);
+    if (repair) {
+      await repair;
+      if (gen.sessions.get(sessionId)?.unsafe !== undefined || !gen.sessions.has(sessionId)) {
+        throw new KiroSessionError('Kiro did not turn off Autopilot');
+      }
+      return gen.sessions.get(sessionId)!.configOptions;
+    }
     return options;
   }
 
-  /** Autopilot off (D7), read back from Kiro. Else the session is deleted. */
-  private async afterOpen(gen: Generation, sessionId: string): Promise<void> {
-    const current = () =>
-      gen.sessions.get(sessionId)?.configOptions.find((o) => o.id === 'autopilot')?.currentValue;
-    if (current() === 'off') return;
-    let ok = false;
+  /**
+   * Autopilot off (D7), read back from Kiro. When it stays on, a session that this call created
+   * is deleted. A loaded session is never deleted: it stays on disk and is not live.
+   */
+  private async afterOpen(
+    gen: Generation,
+    sessionId: string,
+    { created }: { created: boolean }
+  ): Promise<void> {
+    const session = gen.sessions.get(sessionId)!;
     try {
-      const options = await this.setConfig(gen, sessionId, 'autopilot', 'off');
-      ok = options.find((o) => o.id === 'autopilot')?.currentValue === 'off';
-    } catch (error) {
-      if (error instanceof KiroCrashedError) throw error;
+      if (autopilotOf(session.configOptions) !== 'off') {
+        let ok = false;
+        try {
+          const result = await this.call<SetConfigOptionResult>(
+            gen,
+            'session/set_config_option',
+            { sessionId, configId: 'autopilot', value: 'off' },
+            this.timeouts.configOption
+          );
+          if (result?.configOptions?.length) session.configOptions = result.configOptions;
+          ok = autopilotOf(session.configOptions) === 'off';
+        } catch (error) {
+          if (error instanceof KiroCrashedError) throw error;
+        }
+        if (!ok) {
+          this.dropSession(gen, sessionId, session);
+          if (created) {
+            try {
+              await this.call(gen, 'session/delete', { sessionId }, this.timeouts.deleteSession);
+            } catch {
+              // The session stays on disk; it is not live in the app
+            }
+          }
+          throw new KiroSessionError('Kiro did not turn off Autopilot');
+        }
+      }
+    } finally {
+      session.opening = false;
     }
-    if (ok) return;
+    // A config_option_update during the open may have turned it on again
+    const repair = this.checkSafe(gen, sessionId, session.configOptions);
+    if (repair) {
+      await repair;
+      if (!this.isLive(sessionId)) throw new KiroSessionError('Kiro did not turn off Autopilot');
+    }
+  }
+
+  /**
+   * Runs on every set_config_option result and every config_option_update. When Autopilot is not
+   * off: cancel the session's reply, turn Autopilot off again, and keep the session not live until
+   * Kiro reads back off. When that fails, the session is dropped (a later ensureSession loads it).
+   */
+  private checkSafe(
+    gen: Generation,
+    sessionId: string,
+    options: ConfigOption[]
+  ): Promise<void> | undefined {
+    const session = gen.sessions.get(sessionId);
+    if (!session || session.opening || gen.stopRequested) return undefined;
+    if (session.unsafe) return session.unsafe;
+    if (!options.length || autopilotOf(options) === 'off') return undefined;
+    console.warn('[kiro] Autopilot turned on in a session, turning it off again');
+    const active = this.prompts.get(sessionId);
+    if (active?.gen === gen) void this.cancel(sessionId).catch(() => undefined);
+    const repair = (async () => {
+      let ok = false;
+      try {
+        const result = await this.call<SetConfigOptionResult>(
+          gen,
+          'session/set_config_option',
+          { sessionId, configId: 'autopilot', value: 'off' },
+          this.timeouts.configOption
+        );
+        if (result?.configOptions?.length) session.configOptions = result.configOptions;
+        ok = autopilotOf(session.configOptions) === 'off';
+      } catch {
+        // Not off: the session is dropped below
+      }
+      if (gen.sessions.get(sessionId) !== session) return;
+      if (ok) session.unsafe = undefined;
+      else this.dropSession(gen, sessionId, session);
+    })();
+    session.unsafe = repair;
+    return repair;
+  }
+
+  private dropSession(gen: Generation, sessionId: string, session: Session): void {
+    if (gen.sessions.get(sessionId) !== session) return;
     gen.sessions.delete(sessionId);
-    try {
-      await this.call(gen, 'session/delete', { sessionId }, this.timeouts.configOption);
-    } catch {
-      // The session stays on disk; it is not live in the app
-    }
-    throw new KiroSessionError('Kiro did not turn off Autopilot');
+    gen.info.delete(sessionId);
+  }
+
+  private infoFor(gen: Generation, sessionId: string): KiroSessionInfo {
+    let info = gen.info.get(sessionId);
+    if (!info) gen.info.set(sessionId, (info = {}));
+    return info;
   }
 
   // --- from Kiro ---
@@ -531,10 +799,33 @@ export class KiroAgent {
     if (update.sessionUpdate === 'config_option_update') {
       const session = gen.sessions.get(sessionId);
       const options = (update as { configOptions?: unknown }).configOptions;
-      if (session && Array.isArray(options)) session.configOptions = options as ConfigOption[];
+      if (session && Array.isArray(options)) {
+        session.configOptions = options as ConfigOption[];
+        void this.checkSafe(gen, sessionId, session.configOptions);
+      }
+    } else if (update.sessionUpdate === 'session_info_update') {
+      this.noteInfo(gen, sessionId, update);
     }
     const active = this.prompts.get(sessionId);
     if (active && active.gen === gen) active.onUpdate(update);
+  }
+
+  private noteInfo(gen: Generation, sessionId: string, update: SessionUpdate): void {
+    const kiro = asRecord(asRecord(update._meta)?.kiro);
+    if (!kiro) return;
+    const kind = kiro.kind;
+    if (kind === 'context_usage' || (kind === undefined && kiro.contextUsage)) {
+      const percent =
+        asNumber(kiro.usagePercentage) ?? asNumber(asRecord(kiro.contextUsage)?.usagePercentage);
+      if (percent !== undefined) this.infoFor(gen, sessionId).contextPercent = percent;
+    } else if (kind === 'focus_update') {
+      const title = typeof kiro.title === 'string' ? kiro.title : update.title;
+      if (typeof title === 'string' && title) this.infoFor(gen, sessionId).title = title;
+    } else if (kind === 'session_usage' && Array.isArray(kiro.credits)) {
+      const credit = kiro.credits.map(asRecord).find((c) => c?.unit === 'credit');
+      const usage = asNumber(credit?.usage);
+      if (usage !== undefined) this.infoFor(gen, sessionId).credits = usage;
+    }
   }
 
   private async onPermission(
@@ -549,17 +840,41 @@ export class KiroAgent {
     };
     const active = this.prompts.get(request?.sessionId);
     if (!active || active.gen !== gen || active.cancelled) return cancelled;
-    let decision: PermissionDecision;
-    try {
-      decision = await this.permissionHandler({
+    const signal = active.controller.signal;
+    const ask = async (): Promise<PermissionDecision> => {
+      if (active.onPermission) {
+        return active.onPermission({
+          requestId: randomUUID(),
+          toolCallId: String(request.toolCall?.toolCallId ?? ''),
+          title: typeof request.toolCall?.title === 'string' ? request.toolCall.title : undefined,
+          options,
+          signal,
+        });
+      }
+      return this.permissionHandler({
         sessionId: request.sessionId,
         request: { ...request, options },
-        signal: active.controller.signal,
+        signal,
       });
-    } catch {
-      return active.cancelled ? cancelled : reject();
-    }
-    if (active.cancelled || decision === 'cancelled') return cancelled;
+    };
+    let timer: NodeJS.Timeout | undefined;
+    // A handler that never answers must not hold the reply: cancel and a timeout answer for it
+    const answer = await Promise.race([
+      ask().then(
+        (decision) => ({ decision }),
+        () => 'failed' as const
+      ),
+      aborted(signal).then(() => 'cancelled' as const),
+      new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), this.permissionTimeoutMs);
+        timer.unref();
+      }),
+    ]);
+    clearTimeout(timer);
+    if (active.cancelled || answer === 'cancelled') return cancelled;
+    if (answer === 'failed' || answer === 'timeout') return reject();
+    const { decision } = answer;
+    if (decision === 'cancelled') return cancelled;
     if (!options.some((o) => o.optionId === decision.optionId)) return reject();
     return { outcome: { outcome: 'selected', optionId: decision.optionId } };
   }
@@ -593,9 +908,7 @@ export function getKiroAgent(): KiroAgent {
   return instance;
 }
 
-/** For the server close (K5) */
+/** For the server close (K5): stops Kiro for good. Later calls reject with "Kiro is stopping". */
 export async function shutdownKiroAgent(): Promise<void> {
-  const agent = instance;
-  instance = undefined;
-  await agent?.stop();
+  await getKiroAgent().close();
 }

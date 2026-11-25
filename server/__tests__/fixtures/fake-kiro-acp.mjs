@@ -1,7 +1,11 @@
 // A fake `kiro-cli acp` for tests. It speaks newline-delimited JSON-RPC on stdio like kiro-cli 3.
 // The messages are small hand-made copies of the shapes that kiro-cli 3.5.0 sends.
 //
-// FAKE_KIRO_MODE: ok | signed-out | hang-new | crash-on-prompt | ignore-cancel | autopilot-stuck
+// FAKE_KIRO_MODE: ok | signed-out | auth-required | no-load | hang-new | crash-on-prompt |
+//   ignore-cancel | autopilot-stuck | autopilot-flip
+// auth-required: initialize succeeds, session/new answers -32000 'Authentication required'
+// FAKE_KIRO_HANG_NEW_AT: with hang-new, the session/new call (1-based) that hangs (default 1)
+// autopilot-flip: a prompt turns Autopilot on (with a config_option_update), then waits for cancel
 // FAKE_KIRO_STATE_DIR: folder for marker files (hang-new hangs on the first process only)
 // FAKE_KIRO_LOG: file; each received message is appended as one JSON line {pid, msg}
 // FAKE_KIRO_SPAWN_GRANDCHILD=1: start a long-lived process in its own process group
@@ -84,6 +88,7 @@ const options = (s) => [
 ];
 
 const sessions = new Map();
+let newCalls = 0;
 const cancelled = new Set();
 const waiters = new Map(); // agent request id -> resolve
 let agentRequestId = 1000;
@@ -118,6 +123,12 @@ async function runPrompt(id, { sessionId, prompt }) {
     content: { type: 'text', text: `thinking about ${sessionId}` },
   });
   notify('_kiro/mcp/status', { sessionId, servers: [] });
+  if (mode === 'autopilot-flip') {
+    s.autopilot = 'on';
+    update(sessionId, { sessionUpdate: 'config_option_update', configOptions: options(s) });
+    while (!cancelled.has(sessionId)) await sleep(10);
+    return send({ id, result: { stopReason: 'cancelled' } });
+  }
   if (mode === 'crash-on-prompt') {
     update(sessionId, {
       sessionUpdate: 'agent_message_chunk',
@@ -187,6 +198,10 @@ async function runPrompt(id, { sessionId, prompt }) {
       status: 'success',
     })
   );
+  update(
+    sessionId,
+    meta('session_usage', { credits: [{ usage: 0.05, unit: 'credit', unitPlural: 'credits' }] })
+  );
   send({ id, result: { stopReason: 'end_turn' } });
 }
 
@@ -210,7 +225,7 @@ const handlers = {
     return {
       protocolVersion: 1,
       agentCapabilities: {
-        loadSession: true,
+        loadSession: mode !== 'no-load',
         promptCapabilities: { image: true, embeddedContext: true },
         sessionCapabilities: { list: {}, close: {}, delete: {}, fork: {} },
       },
@@ -219,10 +234,12 @@ const handlers = {
     };
   },
   'session/new'(params) {
-    if (mode === 'signed-out') {
+    if (mode === 'signed-out' || mode === 'auth-required') {
       throw { code: -32000, message: 'Authentication required. Not logged in.' };
     }
-    if (mode === 'hang-new' && stateDir) {
+    newCalls += 1;
+    const hangAt = Number(process.env.FAKE_KIRO_HANG_NEW_AT ?? '1');
+    if (mode === 'hang-new' && stateDir && newCalls === hangAt) {
       const marker = path.join(stateDir, 'hung-once');
       if (!existsSync(marker)) {
         writeFileSync(marker, String(process.pid));
@@ -231,6 +248,15 @@ const handlers = {
     }
     const sessionId = `sess_${randomUUID()}`;
     const s = open(sessionId);
+    // Like Kiro: context usage arrives outside a prompt, after session/new
+    setTimeout(
+      () =>
+        update(sessionId, {
+          sessionUpdate: 'session_info_update',
+          _meta: { kiro: { kind: 'context_usage', usagePercentage: 1.5 } },
+        }),
+      0
+    );
     return {
       sessionId,
       modes: {},
@@ -240,7 +266,11 @@ const handlers = {
   },
   'session/load'({ sessionId }) {
     const s = open(sessionId);
-    return { modes: {}, configOptions: options(s), _meta: { id: sessionId } };
+    return {
+      modes: {},
+      configOptions: options(s),
+      _meta: { id: sessionId, title: 'Fake title', contextUsage: { usagePercentage: 3.5 } },
+    };
   },
   'session/set_config_option'({ sessionId, configId, value }) {
     const s = sessions.get(sessionId);
@@ -252,6 +282,9 @@ const handlers = {
       s[configId] = value;
     }
     return { configOptions: options(s) };
+  },
+  '_kiro/account/getUsage'() {
+    return { success: true, data: { planName: 'FAKE', usageBreakdowns: [] } };
   },
   'session/delete'({ sessionId }) {
     sessions.delete(sessionId);

@@ -7,6 +7,8 @@
 import { execFile, execFileSync, spawn } from 'child_process';
 import type { ChildProcess } from 'child_process';
 
+import { onProcessEnd } from './process-end.ts';
+
 export const KIRO_ACP_ARGS = ['acp', '--agent-engine', 'v3', '--auth-method', 'cli'];
 
 const STDERR_RING_BYTES = 64 * 1024;
@@ -21,31 +23,49 @@ export interface KiroChild {
   exited: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
 }
 
-/** Process groups of live Kiro children, killed synchronously if the app exits */
-const liveChildren = new Set<ChildProcess>();
-let exitHandlerInstalled = false;
+/**
+ * Kiro children and the process groups recorded for them while they were alive. An entry stays
+ * until its groups are stopped, so the sync kill at the end of the app also reaches the groups of
+ * a child that crashed.
+ */
+const tracked = new Map<ChildProcess, Set<number>>();
+let removeEndHandler: (() => void) | undefined;
 
-function installExitHandler(): void {
-  if (exitHandlerInstalled) return;
-  exitHandlerInstalled = true;
-  process.once('exit', () => {
-    for (const child of liveChildren) {
-      const pid = child.pid;
-      if (pid === undefined) continue;
-      let groups = [pid];
-      try {
-        const out = execFileSync('ps', PS_ARGS, {
-          encoding: 'utf8',
-          maxBuffer: PS_MAX_BUFFER,
-          timeout: 1000,
-        });
-        groups = descendantGroups(parsePs(out), pid);
-      } catch {
-        // Kill at least the child's own group
+function childAlive(child: ChildProcess): boolean {
+  return child.exitCode === null && child.signalCode === null;
+}
+
+/** Sync SIGKILL of every tracked group. Runs on exit, SIGINT, and SIGHUP of the app. */
+function killTrackedSync(): void {
+  for (const [child, groups] of tracked) {
+    const pid = child.pid;
+    const all = new Set(groups);
+    if (pid !== undefined) {
+      all.add(pid);
+      if (childAlive(child)) {
+        try {
+          const out = execFileSync('ps', PS_ARGS, {
+            encoding: 'utf8',
+            maxBuffer: PS_MAX_BUFFER,
+            timeout: 1000,
+          });
+          for (const g of descendantGroups(parsePs(out), pid)) all.add(g);
+        } catch {
+          // Kill at least the recorded groups and the child's own group
+        }
       }
-      signalGroups(groups, 'SIGKILL');
     }
-  });
+    signalGroups([...all], 'SIGKILL');
+  }
+}
+
+function track(child: ChildProcess, pid: number): void {
+  removeEndHandler ??= onProcessEnd(killTrackedSync);
+  tracked.set(child, new Set([pid]));
+}
+
+function untrack(child: ChildProcess): void {
+  tracked.delete(child);
 }
 
 export function spawnKiroAcp(
@@ -62,7 +82,6 @@ export function spawnKiroAcp(
   });
   const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
     child.once('exit', (code, signal) => {
-      liveChildren.delete(child);
       resolve({ code, signal });
     });
     // A spawn error (ENOENT, EACCES) has no 'exit' event
@@ -71,14 +90,12 @@ export function spawnKiroAcp(
     });
   });
   let ring = Buffer.alloc(0);
+  child.stderr?.on('error', () => undefined);
   child.stderr?.on('data', (chunk: Buffer) => {
     ring = Buffer.concat([ring, chunk]);
     if (ring.length > STDERR_RING_BYTES) ring = ring.subarray(ring.length - STDERR_RING_BYTES);
   });
-  if (child.pid !== undefined) {
-    installExitHandler();
-    liveChildren.add(child);
-  }
+  if (child.pid !== undefined) track(child, child.pid);
   return {
     child,
     pid: child.pid ?? -1,
@@ -131,7 +148,8 @@ export function descendantGroups(rows: PsRow[], root: number): number[] {
   return [...groups].filter((g) => g > 1 && g !== own);
 }
 
-function snapshotGroups(root: number): Promise<number[]> {
+/** The groups of the root and all its descendants now, from one `ps` snapshot */
+export function snapshotGroups(root: number): Promise<number[]> {
   return new Promise((resolve) => {
     execFile('ps', PS_ARGS, { encoding: 'utf8', maxBuffer: PS_MAX_BUFFER }, (error, stdout) => {
       resolve(error ? [root] : descendantGroups(parsePs(stdout), root));
@@ -159,11 +177,32 @@ function groupAlive(group: number): boolean {
   }
 }
 
+/**
+ * Records the descendant groups of a live child, so that they can be stopped after the child
+ * crashed (its children are then reparented and cannot be found from it).
+ */
+export async function recordProcessGroups(child: ChildProcess): Promise<void> {
+  const pid = child.pid;
+  if (pid === undefined || !childAlive(child)) return;
+  const groups = await snapshotGroups(pid);
+  // A snapshot after the exit could miss reparented children; it adds nothing wrong
+  const set = tracked.get(child);
+  if (!set) return;
+  for (const g of groups) set.add(g);
+}
+
+/** The groups recorded for the child, with its own group */
+export function recordedGroups(child: ChildProcess): number[] {
+  return [...(tracked.get(child) ?? [])];
+}
+
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, ms)).unref());
 
 /**
  * Closes stdin, sends SIGTERM to every group after graceMs and SIGKILL after killMs.
+ * The groups are the recorded ones (see recordProcessGroups) and those of a snapshot now.
+ * When the child has already exited, SIGTERM goes out at once.
  * Resolves when the child has exited and its groups are gone, or after killMs + 1 s.
  */
 export async function stopProcessTree(
@@ -181,7 +220,8 @@ export async function stopProcessTree(
     : new Promise<void>((resolve) => child.once('exit', () => resolve()));
 
   // Snapshot first: once the child exits, its children are reparented and cannot be found
-  const groups = await snapshotGroups(pid);
+  const groups = [...new Set([...recordedGroups(child), ...(await snapshotGroups(pid))])];
+  const graceDeadline = childExited() ? start : start + graceMs;
   const allGone = () => childExited() && !groups.some(groupAlive);
 
   try {
@@ -194,14 +234,20 @@ export async function stopProcessTree(
     while (!allGone()) {
       const left = deadline - Date.now();
       if (left <= 0) return false;
-      await Promise.race([exited, sleep(Math.min(left, 25))]);
+      const pause = sleep(Math.min(left, 25));
+      // Once the child has exited, `exited` is settled: racing it would spin without a pause
+      await (childExited() ? pause : Promise.race([exited, pause]));
     }
     return true;
   };
 
-  if (await waitUntil(start + graceMs)) return;
-  signalGroups(groups.filter(groupAlive), 'SIGTERM');
-  if (await waitUntil(start + killMs)) return;
-  signalGroups(groups.filter(groupAlive), 'SIGKILL');
-  await waitUntil(start + killMs + 1000);
+  try {
+    if (await waitUntil(graceDeadline)) return;
+    signalGroups(groups.filter(groupAlive), 'SIGTERM');
+    if (await waitUntil(start + killMs)) return;
+    signalGroups(groups.filter(groupAlive), 'SIGKILL');
+    await waitUntil(start + killMs + 1000);
+  } finally {
+    if (allGone()) untrack(child);
+  }
 }
