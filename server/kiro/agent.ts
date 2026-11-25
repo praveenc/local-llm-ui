@@ -12,7 +12,7 @@ import { readFileSync } from 'fs';
 import { chmod, mkdir, stat } from 'fs/promises';
 import path from 'path';
 
-import { AcpClosedError, AcpConnection, AcpError, AcpTimeoutError } from './acp-client.ts';
+import { AcpClosedError, AcpConnection, AcpError, AcpTimeoutError } from '../acp/client.ts';
 import type {
   ConfigOption,
   ContentBlock,
@@ -29,13 +29,13 @@ import type {
   SessionUpdate,
   SetConfigOptionResult,
   StopReason,
-} from './acp-types.ts';
+} from '../acp/types.ts';
 import { defaultKiroEnvironment, resolveKiroBinary } from './binary.ts';
 import type { KiroEnvironment } from './binary.ts';
-import { recordProcessGroups, spawnKiroAcp, stopProcessTree } from './process.ts';
-import type { KiroChild } from './process.ts';
+import { recordProcessGroups, spawnKiroAcp, stopProcessTree } from '../acp/process.ts';
+import type { KiroChild } from '../acp/process.ts';
 
-export { AcpError, AcpTimeoutError } from './acp-client.ts';
+export { AcpError, AcpTimeoutError } from '../acp/client.ts';
 
 // --- errors ---
 

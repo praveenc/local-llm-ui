@@ -29,7 +29,7 @@ import type { KiroChatEvent, KiroChatRequest } from '../../src/utils/kiroChat.ts
 import { kiroEffortSetting, parseKiroModels } from '../../src/utils/kiroModels.ts';
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
 import { endStreamWithError, readBodyWithLimit } from '../security.ts';
-import type { ConfigOption, SessionUpdate, ToolCallUpdate } from './acp-types.ts';
+import type { ConfigOption, SessionUpdate, ToolCallUpdate } from '../acp/types.ts';
 import {
   AcpError,
   KiroBusyError,

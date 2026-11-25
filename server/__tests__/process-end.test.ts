@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-const MODULE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../kiro/process-end.ts');
+const MODULE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../acp/process-end.ts');
 
 let root: string;
 let counter = 0;

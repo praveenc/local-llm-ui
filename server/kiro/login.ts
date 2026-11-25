@@ -18,7 +18,7 @@ import type { KiroLoginEvent, KiroLoginMethod } from '../../src/utils/kiroLogin.
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
 import { defaultKiroEnvironment, resolveKiroBinary } from './binary.ts';
 import type { KiroEnvironment } from './binary.ts';
-import { onProcessEnd } from './process-end.ts';
+import { onProcessEnd } from '../acp/process-end.ts';
 import { runKiro, stripAnsi } from './run.ts';
 
 const DEFAULT_TIMEOUT_MS = 600_000;

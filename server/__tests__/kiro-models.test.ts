@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
-import type { ConfigOption } from '../kiro/acp-types.ts';
+import type { ConfigOption } from '../acp/types.ts';
 import { KiroSignedOutError } from '../kiro/agent.ts';
 import { KIRO_MODELS_FAILED, createKiroModelList } from '../kiro/models.ts';
 
