@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   GROUP_STATE_STORAGE_KEY,
+  KIRO_GROUP_STATE_STORAGE_KEY,
   formatRowTime,
   getGroupKey,
   getGroupLabel,
@@ -131,6 +132,13 @@ describe('group open state', () => {
       'previous-30-days': true,
     });
     expect(loadGroupOpenState()).toEqual({ yesterday: false, 'previous-30-days': true });
+  });
+
+  it('keeps the Kiro sessions groups apart from the conversation groups', () => {
+    saveGroupOpenState({ today: false }, KIRO_GROUP_STATE_STORAGE_KEY);
+    expect(loadGroupOpenState(KIRO_GROUP_STATE_STORAGE_KEY)).toEqual({ today: false });
+    expect(loadGroupOpenState()).toEqual({});
+    expect(localStorage.getItem(GROUP_STATE_STORAGE_KEY)).toBeNull();
   });
 
   it('loads an empty state when nothing or something broken is stored', () => {

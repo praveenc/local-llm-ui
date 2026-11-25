@@ -34,6 +34,7 @@ import {
   isThinkingEffort,
 } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
+import { KiroSessionsChoice } from './KiroSessionsChoice';
 import { KIRO_PANEL_ID, KiroSignInPanel } from './KiroSignInPanel';
 import type { KiroPanelMode } from './KiroSignInPanel';
 import {
@@ -124,7 +125,16 @@ export function ProviderSettings({ preferences, onUpdate, kiro }: ProviderSettin
                   saved={preferences.kiroSignIn}
                   isDefault={preferences.preferredProvider === 'kiro'}
                   onRemember={(pref) => onUpdate('kiroSignIn', pref)}
-                  thinking={thinkingRow(KIRO_PROVIDER)}
+                  thinking={
+                    <>
+                      {thinkingRow(KIRO_PROVIDER)}
+                      <KiroSessionsChoice
+                        signedIn={kiro.status?.state === 'signed-in'}
+                        value={preferences.showKiroSessions}
+                        onChange={(show) => onUpdate('showKiroSessions', show)}
+                      />
+                    </>
+                  }
                 />
               )}
             </Fragment>
@@ -241,7 +251,7 @@ type KiroRowProps = NonNullable<ProviderSettingsProps['kiro']> & {
   saved?: KiroSignInPreference;
   isDefault: boolean;
   onRemember: (preference: KiroSignInPreference) => void;
-  /** The Default thinking row, when Kiro is the default provider */
+  /** The Default thinking row, when Kiro is the default provider, and the sessions choice */
   thinking?: ReactNode;
 };
 

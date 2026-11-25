@@ -1,17 +1,9 @@
-import {
-  AlertTriangle,
-  ChevronRight,
-  MessageSquare,
-  MoreHorizontal,
-  Pencil,
-  Search,
-  Trash2,
-} from 'lucide-react';
+import { AlertTriangle, MessageSquare, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 
 import { useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import {
   Dialog,
   DialogContent,
@@ -27,7 +19,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { EditableTitleInput } from '@/components/ui/editable-title-input';
-import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 import { useConversationMutations, useConversations } from '../../hooks';
@@ -40,14 +31,20 @@ import {
   loadGroupOpenState,
   saveGroupOpenState,
 } from '../../utils/conversationGroups';
+import { GroupHeader } from './sidebarParts';
+
+const CHATS = { one: 'chat', other: 'chats' };
 
 interface ConversationListProps {
+  /** The Search chats text; the Sidebar owns it, so it filters the Kiro sessions too */
+  query: string;
   activeConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
 }
 
 export function ConversationList({
+  query,
   activeConversationId,
   onSelectConversation,
   onNewChat,
@@ -61,7 +58,6 @@ export function ConversationList({
     title: string;
   } | null>(null);
 
-  const [query, setQuery] = useState('');
   const needle = query.trim().toLowerCase();
   const now = new Date();
   const allGroups = groupConversations(conversations ?? [], now);
@@ -111,7 +107,7 @@ export function ConversationList({
     saveGroupOpenState(next);
   };
 
-  if (!conversations || conversations.length === 0) {
+  if (!needle && (!conversations || conversations.length === 0)) {
     return (
       <div className="px-3 py-4 text-center">
         <MessageSquare className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
@@ -123,26 +119,6 @@ export function ConversationList({
 
   return (
     <div className="flex flex-col">
-      <div className="relative px-2 pb-1">
-        <Search
-          className="pointer-events-none absolute left-4 top-1/2 size-3.5 -translate-y-[calc(50%+2px)] text-muted-foreground"
-          aria-hidden
-        />
-        <Input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape' && query) {
-              e.preventDefault();
-              setQuery('');
-            }
-          }}
-          placeholder="Search chats"
-          aria-label="Search chats"
-          className="h-8 pl-7 text-sm"
-        />
-      </div>
       {needle && grouped.length === 0 && (
         <p className="px-3 py-2 text-sm text-muted-foreground" role="status">
           No chats match “{query.trim()}”
@@ -161,36 +137,7 @@ export function ConversationList({
             }}
             className="pt-3 compact:pt-1.5"
           >
-            {/* The header stays at the top of the list while its rows scroll by */}
-            <h3 className="sticky top-0 z-10 bg-sidebar px-2">
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  // A closed group says how many chats it hides: "Previous 30 days, 8 chats"
-                  aria-label={
-                    open ? undefined : `${group.label}, ${count} ${count === 1 ? 'chat' : 'chats'}`
-                  }
-                  className="flex min-h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-[13px] font-medium text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:inset-ring-2 focus-visible:inset-ring-ring motion-reduce:transition-none pointer-coarse:min-h-11"
-                >
-                  <ChevronRight
-                    aria-hidden
-                    className={cn(
-                      'size-4 shrink-0 transition-transform motion-reduce:transition-none',
-                      open && 'rotate-90'
-                    )}
-                  />
-                  <span className="truncate">{group.label}</span>
-                  {!open && (
-                    <span
-                      aria-hidden
-                      className="ml-auto pl-2 text-xs tabular-nums text-muted-foreground"
-                    >
-                      {count}
-                    </span>
-                  )}
-                </button>
-              </CollapsibleTrigger>
-            </h3>
+            <GroupHeader label={group.label} count={count} open={open} noun={CHATS} />
             <CollapsibleContent>
               <div className="flex flex-col gap-0.5 compact:gap-0 px-2">
                 {group.items.map((conv) => {

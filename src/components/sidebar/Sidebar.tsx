@@ -1,13 +1,16 @@
 import { FileText, Plus, Settings } from 'lucide-react';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 
+import { useKiroSessions } from '../../hooks/useKiroSessions';
 import { ViewPromptsModal } from '../prompts';
 import { ConversationList } from './ConversationList';
+import { KiroSessionList } from './KiroSessionList';
+import { ChatSearchInput } from './sidebarParts';
 
 interface SidebarProps {
   onNewChat?: () => void;
@@ -27,6 +30,23 @@ export function Sidebar({
   onSelectConversation,
 }: SidebarProps) {
   const [promptsOpen, setPromptsOpen] = useState(false);
+  // One Search chats field filters Conversations and Kiro sessions
+  const [query, setQuery] = useState('');
+
+  const openConversation = useCallback(
+    (id: string) => onSelectConversation?.(id),
+    [onSelectConversation]
+  );
+  const kiro = useKiroSessions(openConversation);
+  const { syncIfNewer } = kiro;
+  // Opening an imported Kiro chat first adds the turns that Kiro made since (in the terminal)
+  const selectConversation = useCallback(
+    (id: string) => {
+      onSelectConversation?.(id);
+      syncIfNewer(id);
+    },
+    [onSelectConversation, syncIfNewer]
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -45,16 +65,20 @@ export function Sidebar({
         <div className="px-3 py-2">
           <h2 className="text-[13px] text-muted-foreground font-normal">Conversations</h2>
         </div>
+        <ChatSearchInput value={query} onChange={setQuery} />
         <ScrollArea className="flex-1">
           <nav aria-label="Conversations">
             {onNewChat && onSelectConversation && (
               <ConversationList
+                query={query}
                 activeConversationId={activeConversationId ?? null}
-                onSelectConversation={onSelectConversation}
+                onSelectConversation={selectConversation}
                 onNewChat={onNewChat}
               />
             )}
           </nav>
+          {/* Only when Kiro is signed in and the switch in Preferences → Providers is on (D11) */}
+          {kiro.enabled && onSelectConversation && <KiroSessionList query={query} kiro={kiro} />}
         </ScrollArea>
       </div>
 
