@@ -15,6 +15,8 @@
 //   `effortLevel` and a `thinking` option (a model change resets both), session.json on disk under
 //   $HOME/.kiro/sessions, and the title sent twice in a reply
 // FAKE_KIRO_NO_EFFORT=1: with FAKE_KIRO_CHAT, no `effortLevel` option (like kiro-cli 3.4)
+// FAKE_KIRO_USAGE: getUsage answers `full` (placeholder credits), `error` (an ACP error), or `bad`
+//   (a result with no plan). Default: a plan with no credits.
 // FAKE_KIRO_SLOW_CONFIG_MS: set_config_option (other than autopilot) answers after this delay
 // Prompt text: TOOL asks for a permission, WAIT waits for session/cancel, SLOW streams slowly,
 //   TOOLOK runs a tool that completes, MCPTOOL runs an MCP tool, MAXTOKENS ends with max_tokens,
@@ -424,6 +426,38 @@ const handlers = {
     return { configOptions: options(s) };
   },
   '_kiro/account/getUsage'() {
+    const usage = process.env.FAKE_KIRO_USAGE;
+    if (usage === 'error') throw { code: -32603, message: 'Internal error: usage unavailable' };
+    if (usage === 'bad') return { success: false, message: 'no plan' };
+    if (usage === 'full') {
+      return {
+        success: true,
+        message: 'Plan: KIRO POWER | 1 usage breakdowns',
+        data: {
+          planName: 'KIRO POWER',
+          billingCycleReset: '2026-12-01',
+          overagesEnabled: true,
+          overageCapable: true,
+          isEnterprise: false,
+          usageBreakdowns: [
+            {
+              resourceType: 'CREDIT',
+              displayName: 'Credits',
+              used: 1250.5,
+              limit: 10000,
+              percentage: 12,
+              currentOverages: 0,
+              overageRate: 0.04,
+              overageCharges: 0,
+              currency: 'USD',
+              hasLimit: true,
+            },
+          ],
+          bonusCredits: [],
+          addOnCredits: [],
+        },
+      };
+    }
     return { success: true, data: { planName: 'FAKE', usageBreakdowns: [] } };
   },
   'session/delete'({ sessionId }) {

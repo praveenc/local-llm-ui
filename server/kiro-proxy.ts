@@ -11,6 +11,8 @@
  *   loads them again). It is a POST because a load can start `kiro-cli acp` (and the user's MCP
  *   servers) and makes and deletes a session: no GET under /api/kiro may change state (SEC-13),
  *   and the guard's JSON check applies only to a request with a body
+ * - POST /api/kiro/usage: the account credits, `{ usage }` or `{ usage: null }` (cached for 5 min).
+ *   A POST because it can start `kiro-cli acp`. It starts nothing when Kiro is signed out.
  * - POST /api/kiro/chat: one Kiro reply as SSE (server/kiro/chat.ts)
  *
  * The routes run kiro-cli with fixed arguments and no shell. The login route builds its arguments
@@ -44,6 +46,8 @@ import type { KiroLogin } from './kiro/login.ts';
 import { createKiroModelList } from './kiro/models.ts';
 import type { KiroModelList } from './kiro/models.ts';
 import { createKiroStatusReader } from './kiro/status.ts';
+import { createKiroUsage } from './kiro/usage.ts';
+import type { KiroUsageReader } from './kiro/usage.ts';
 import { readBodyWithLimit } from './security.ts';
 
 interface KiroStatusSource {
@@ -63,7 +67,9 @@ export interface KiroProxyOptions {
   /** How often the login stream sends a `: ping` comment. Tests make it short. */
   loginHeartbeatMs?: number;
   /** The Kiro agent for models and chat. Default: the app's one shared agent. */
-  agent?: KiroChatAgent & Parameters<typeof createKiroModelList>[0]['agent'];
+  agent?: KiroChatAgent &
+    Parameters<typeof createKiroModelList>[0]['agent'] &
+    Parameters<typeof createKiroUsage>[0]['agent'];
   /** How long the model list stays fresh. Default one hour. */
   modelsTtlMs?: number;
   /** How long a chat request waits for a running reply in its session. Default: cancelWait. */
@@ -73,6 +79,7 @@ export interface KiroProxyOptions {
 const LOGIN_BODY_LIMIT = 16 * 1024;
 const CANCEL_BODY_LIMIT = 1024;
 const MODELS_BODY_LIMIT = 1024;
+const USAGE_BODY_LIMIT = 1024;
 const HEARTBEAT_MS = 15_000;
 
 type Res = Parameters<Connect.NextHandleFunction>[1];
@@ -95,6 +102,7 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
   let reader = options.reader;
   let login: KiroLogin | undefined;
   let models: KiroModelList | undefined;
+  let usage: KiroUsageReader | undefined;
   let chat: ReturnType<typeof createKiroChatHandler> | undefined;
   let usedSharedAgent = false;
   const getAgent = () => {
@@ -117,6 +125,8 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
       statusReader: getReader(),
       ttlMs: options.modelsTtlMs,
     }));
+  const getUsage = (): KiroUsageReader =>
+    (usage ??= createKiroUsage({ agent: getAgent(), statusReader: getReader() }));
   const getChat = () =>
     (chat ??= createKiroChatHandler({
       agent: getAgent(),
@@ -243,6 +253,17 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
         } else {
           sendJson(res, 200, { models: result.models });
         }
+        return;
+      }
+
+      if (pathname === '/api/kiro/usage') {
+        // A POST: the call can start kiro-cli (SEC-13). The body has no input; it only has a limit.
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { error: 'Method not allowed' }, { Allow: 'POST' });
+          return;
+        }
+        if ((await readBodyWithLimit(req, res, USAGE_BODY_LIMIT)) === null) return;
+        sendJson(res, 200, { usage: await getUsage().read() });
         return;
       }
 
