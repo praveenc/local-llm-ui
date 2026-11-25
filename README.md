@@ -212,7 +212,7 @@ The send button is at the end. While a reply streams, the send button changes to
 
 ### Model picker
 
-The model picker groups the models by provider. Type in the search box to filter the list. If a provider is not available, the picker shows a short hint that tells you how to connect it.
+The model picker groups the models by provider. Type in the search box to filter the list. The group of the selected model's provider shows first. With no model selected, your default provider shows first. If a provider is not available, the picker shows a short hint that tells you how to connect it.
 
 For Amazon Bedrock, the picker shows a short name with the inference profile at the end, for example **Claude Haiku 5.5 · Global**. Put the pointer on the model in the chat input to see its full name and its provider.
 

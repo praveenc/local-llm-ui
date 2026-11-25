@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- The model picker now lists the group of the selected model's provider first, so a selected Kiro model no longer sits below 92 Amazon Bedrock models. With no model selected, your default provider shows first. The other groups keep their order, also during a search ([#85])
 - A web page on a different site could send requests to the `/api` routes: a form post could start a chat with your AWS credentials or API keys, or start an MCP server command. The routes now accept requests only from the app's own pages, and a request with a body must be JSON ([#76])
 
 ## [1.2.0] - 2026-11-24
@@ -237,6 +238,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#85]: https://github.com/praveenc/local-llm-ui/pull/85
 [#81]: https://github.com/praveenc/local-llm-ui/pull/81
 [#80]: https://github.com/praveenc/local-llm-ui/pull/80
 [#79]: https://github.com/praveenc/local-llm-ui/pull/79
