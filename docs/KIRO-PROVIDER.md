@@ -42,9 +42,9 @@ The plan supports kiro-cli 3 only. kiro-cli 2 gets a clear message and no Kiro f
 |---|---|---|---|
 | K1 | `fix/api-same-origin` | 1 | Done, merged ([#76](https://github.com/praveenc/local-llm-ui/pull/76)) |
 | K2 | `feat/kiro-detect` | 2 | Done, merged ([#77](https://github.com/praveenc/local-llm-ui/pull/77)) |
-| K3 | `feat/kiro-sign-in` | 3 | In review ([#78](https://github.com/praveenc/local-llm-ui/pull/78)) |
-| K4 | `feat/kiro-acp-client` | 4 | In review ([#79](https://github.com/praveenc/local-llm-ui/pull/79)) |
-| K5 | `feat/kiro-chat` | 5 | Planned |
+| K3 | `feat/kiro-sign-in` | 3 | Done, merged ([#78](https://github.com/praveenc/local-llm-ui/pull/78)) |
+| K4 | `feat/kiro-acp-client` | 4 | Done, merged ([#79](https://github.com/praveenc/local-llm-ui/pull/79)) |
+| K5 | `feat/kiro-chat` | 5 | In review ([#80](https://github.com/praveenc/local-llm-ui/pull/80)) |
 | K6 | `feat/kiro-approvals` | 6 | Planned |
 | K7 | `feat/kiro-sessions` | 7 | Planned |
 | K8 | `feat/kiro-credits` | 8 | Planned |
@@ -68,6 +68,14 @@ The plan supports kiro-cli 3 only. kiro-cli 2 gets a clear message and no Kiro f
 - **After a crash, stop the recorded groups (K4 review).** Once `kiro-cli acp` is dead, `ps` cannot find its children. The app records the process groups while the process runs and stops them after a crash.
 - **No engine check (K4).** The `initialize` result has no field that names the engine. The app starts `--agent-engine v3`, and K2 already refuses Kiro CLI 2, so K4 does not check it again.
 - **Real check of K4 (before the review fixes).** With kiro-cli 3.6.0: two sessions on one process in 4.0 s, Autopilot off and read back on both, two replies at the same time, a shell command denied by default (its file was not made), a cancel in 2.6 s, and a stop in 1.5 s with no process left.
+- **The model list starts Kiro (K5).** Kiro lists its models only in the options of a session. The server makes a session, reads the list, and deletes the session. One start of `kiro-cli acp` also starts the user's MCP servers, so the server keeps the list for 1 hour, and each chat session that opens makes it fresh again. The route is a `POST`, because it changes state. The app does not wait for Kiro's models before it restores a model of another provider.
+- **Kiro sends no tokens (K5).** Kiro reports credits per reply (`turn_completion`) and a context percentage (`context_usage`). `MessageUsage` gets `credits` and `contextPercent`. Under a Kiro reply the app shows `0.05 credits · 2.9 s`, and the context ring uses Kiro's percentage.
+- **The session event marks what Kiro has seen (K5).** The server sends `{ session }` right before Kiro gets the message. The browser counts the message as seen only after that event, and a reply without text does not count as a message. When the chat has fewer messages than Kiro saw (a regenerate or a delete), the server starts a new session with the whole chat as context. A session that the request made and did not use is deleted.
+- **One reply at a time in a session (K5 review).** A new message right after **Stop** waits until Kiro has ended the cancelled reply, and only then changes the model or the effort.
+- **Regenerate kept the user message twice (found in K5).** Regenerate deleted the reply but kept the user row, and then added the user message again. Regenerate now deletes from the user message, as **Retry** does. This was a bug for all providers.
+- **Titles that the user changed (K5).** A conversation gets `titleEdited` when you rename it. Kiro's title replaces only a title that is still the automatic title of the first message, so chats renamed before this version keep their names.
+- **Errors without paths (K5 review).** The browser gets plain error text. Details, for example a folder path, go to the terminal that runs `npm run dev`.
+- **Kiro asks for some tools only (K5).** Kiro's default agent runs some tools, for example reads, without a question. The app denies every question that Kiro asks until K6.
 - **Rules for the Kiro routes.** No `GET` under `/api/kiro` may change state, because older browsers send a cross-site `GET` without the headers that the guard checks. `GET /api/kiro/status` only reads. Sign-in, chat, approvals, and sign-out are `POST` with JSON. A WebSocket route would need its own `Origin` check, so the plan uses SSE only.
 
 ## What kiro-cli 3 does
@@ -146,7 +154,7 @@ Routes:
 | `GET /api/kiro/status` | Installed, path, version, supported, signed in, account | K2 |
 | `POST /api/kiro/login` | Start sign-in. SSE: code and URL, then done or error | K3 |
 | `POST /api/kiro/login/cancel`, `POST /api/kiro/logout` | Stop sign-in, sign out | K3 |
-| `GET /api/kiro/models` | Model list with levels and credit rate | K5 |
+| `POST /api/kiro/models` | Model list with levels and credit rate. A `POST`, because a load can start Kiro CLI and make a session | K5 |
 | `POST /api/kiro/chat` | One reply, as SSE | K5 |
 | `POST /api/kiro/permission` | The answer to an approval | K6 |
 | `GET /api/kiro/sessions?days=7` | Sessions on disk | K7 |

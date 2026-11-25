@@ -6,7 +6,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vitejs.dev/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-Local LLM UI is a chat app for large language models. It runs on your computer and connects to local models (Ollama, LM Studio) and cloud models (Amazon Bedrock, Anthropic, Groq, and more) from one window.
+Local LLM UI is a chat app for large language models. It runs on your computer and connects to local models (Ollama, LM Studio), cloud models (Amazon Bedrock, Anthropic, Groq, and more), and the Kiro agent from one window.
 
 ![An empty chat with the chat input in the middle and the conversation list grouped by date in the sidebar.](.github/images/home.png)
 
@@ -25,6 +25,7 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 **Models and providers**
 
 - Chat with models from Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Anthropic, OpenRouter, Groq, and Cerebras.
+- Chat with Kiro through the Kiro CLI on your computer, with Kiro's own models.
 - Find a model in one searchable list, grouped by provider.
 - Start each new chat with the model that you used last.
 - See a checklist of the providers when no model is ready. Each row tells you what is missing.
@@ -33,8 +34,8 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 
 - See replies as they stream.
 - See what the model did before it answered (thinking, web searches, tool calls) in one line above the answer. Click the line to see each step.
-- Set the thinking effort, from Off to XHigh.
-- See the tokens, time, and cost of each reply.
+- Set the thinking effort, from Off to XHigh (Max for some Kiro models).
+- See the tokens, time, and cost of each reply, or the Kiro credits.
 - See how full the context window is, with a warning before it fills.
 
 **Tools**
@@ -97,6 +98,7 @@ You need at least one provider. Local providers need no API key. Cloud providers
 | [OpenRouter](https://openrouter.ai/settings/keys) | Cloud | An API key |
 | [Groq](https://console.groq.com/keys) | Cloud | An API key |
 | [Cerebras](https://cloud.cerebras.ai) | Cloud | An API key |
+| [Kiro](https://kiro.dev/docs/cli/) | Agent | Kiro CLI 3 on the computer that runs the app, and a Kiro sign-in |
 
 ### Ollama
 
@@ -144,8 +146,6 @@ If the Bedrock console asks you to request model access, do that for the models 
 
 [Kiro CLI](https://kiro.dev/docs/cli/) 3 gives access to Kiro's agents and models from your computer. The app uses the `kiro-cli` that you use in the terminal. Kiro CLI 2 is not supported.
 
-Support for Kiro comes in steps. In this version, you can sign in to Kiro from the app and see its state. Chat with Kiro models comes in a later version.
-
 1. Install Kiro CLI 3. See [the Kiro CLI documentation](https://kiro.dev/docs/cli/).
 2. Open **Preferences → Providers**. The **Kiro** row shows **Not signed in**.
 3. Click **Sign in**. Select **AWS Builder ID** or **IAM Identity Center**, and click **Continue**. For IAM Identity Center, also type your start URL and the Region.
@@ -165,6 +165,24 @@ The app shows the Kiro row only when it finds `kiro-cli`. It looks in these plac
 3. Each folder in `PATH`.
 
 The app runs Kiro CLI on the computer that runs `npm run dev`, as it does with AWS credentials. When you open the app through a tunnel, the sign-in page opens on your desktop, and Kiro CLI on the host gets the sign-in.
+
+#### Chat with Kiro
+
+When you are signed in, the model picker has a **Kiro** group with Kiro's models, for example **Claude Opus 5.5** and **GPT 5.6 Sol**. Put the pointer on a model to see its description and its credit rate, for example **2× credits**.
+
+Kiro is an agent, not only a model. Each chat with Kiro is a Kiro session, the same as a session in the terminal:
+
+- Kiro keeps the history of the session. The app sends only your new message. When a chat has messages that Kiro has not seen (for example replies from a different model), the app sends them once, before your message.
+- Kiro works in the folder `~/.local-llm-ui/kiro`. Its tools can read and change files and run commands there.
+- Kiro asks before it runs a tool that its default agent does not allow. In this version, the app answers **Deny** to each of these questions, and the step above the answer says **Denied: approvals come in a later version**. Kiro can still run the tools that its default agent allows without a question.
+- Kiro uses its own tools and MCP servers. For a Kiro model, the chat input does not show web search, MCP tools, inference settings, or **Add photos or files**.
+- **Regenerate** does not show on Kiro replies, because Kiro cannot remove a reply from its session.
+- **Stop** stops the reply. A tool call that has already started can continue to its end.
+- When a chat still has its automatic title, Kiro's short title replaces it.
+
+The first Kiro reply after a start takes a few seconds more: the app starts Kiro CLI, and Kiro CLI starts your MCP servers. The reply shows **Starting Kiro…** until then. Kiro CLI stops after 10 minutes without use.
+
+**Delete** removes a chat from the app only. The Kiro session stays on disk, and `kiro-cli --resume-picker` can still open it.
 
 ### Providers with an API key
 
@@ -211,6 +229,7 @@ For models that can think before they answer, a **Thinking** button shows next t
 | Default | Nothing. The model uses its own setting. |
 | Off | Thinking off. If the model cannot turn thinking off, the app uses its lowest level. |
 | Minimal, Low, Medium, High, XHigh | That level. If the model does not have the level, the app uses the nearest level that it has. |
+| Max | Only for Kiro models that have it. |
 
 The **Thinking** button shows for these models:
 
@@ -222,6 +241,7 @@ The **Thinking** button shows for these models:
 | OpenRouter | Claude 4 and later, OpenAI reasoning models |
 | Groq | gpt-oss |
 | Ollama | Models that Ollama lists with the "thinking" capability (Ollama 0.6 or later) |
+| Kiro | Models that Kiro lists with effort levels or a thinking switch. The menu shows only the levels of the model. |
 
 Some models have fewer levels:
 
@@ -350,6 +370,8 @@ The context indicator in the chat input shows how full the context window of the
 - At 70%, the indicator changes color and says **Near the limit**.
 - At 90%, it says **Almost full**. A reply can fail when the window is full. Start a new chat.
 
+For a Kiro chat, the value is the percentage that Kiro reports. Kiro makes the session smaller by itself when it gets full.
+
 Click the indicator to see the input and output tokens of the chat, the tokens read from the prompt cache, the reasoning tokens, and the cost.
 
 ### Usage and cost
@@ -358,6 +380,7 @@ Under each reply, next to the rating buttons, the app shows the input and output
 
 - With tools on, one reply can have several model calls. The tokens and the cost include all of them.
 - Local models (Ollama and LM Studio) are free. The context popover shows **Free**.
+- Kiro counts credits, not tokens. Under a Kiro reply the app shows the credits and the time, for example `0.05 credits · 2.9 s`, and the context popover shows the credits of the chat.
 - If the app has no price for a model, it shows no cost under the reply and **No price data** in the popover.
 - Claude prices come from the Anthropic pricing page. For the prices and how the app applies them, see [docs/ANTHROPIC_PRICING.md](docs/ANTHROPIC_PRICING.md). The cost is an estimate. Your provider's bill is the real cost.
 
@@ -486,7 +509,7 @@ The React app runs in the browser. Vite middleware in `vite.config.ts` adds serv
 | `/api/anthropic` | Anthropic |
 | `/api/openrouter` | OpenRouter |
 | `/api/aisdk` | Groq and Cerebras |
-| `/api/kiro` | Kiro CLI on the computer that runs the app |
+| `/api/kiro` | Kiro CLI on the computer that runs the app: status, sign-in, models, and chat |
 
 The routes accept requests only from the pages of the app. A request from a different website gets the error 403. A request with a body (`POST`, `PUT`, `PATCH`, or `DELETE`) that is not JSON gets the error 415. Scripts and `curl` can still call the routes: they do not send the headers of a browser, but a request with a body must send `Content-Type: application/json`.
 

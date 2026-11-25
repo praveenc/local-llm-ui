@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- Chat with Kiro: a **Kiro** group in the model picker with Kiro's models and credit rates, replies with thinking and tool steps, credits and the context percentage under each reply, a Max thinking level for Kiro models that have it, and Kiro's chat title. Each chat is a Kiro session in `~/.local-llm-ui/kiro`, and the app denies each tool question until the approval UI comes ([#80])
 - Sign in to Kiro from **Preferences → Providers** with AWS Builder ID or IAM Identity Center. The app opens the sign-in page in a new tab and shows the code to compare. **Sign out** is in the same row ([#78])
 - Kiro row in **Preferences → Providers**: when Kiro CLI 3 is installed, it shows the account, the sign-in method, and the version, or what to do when Kiro CLI is signed out or too old. **Check again** reads the state again ([#77])
 
@@ -232,6 +233,8 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#80]: https://github.com/praveenc/local-llm-ui/pull/80
+[#79]: https://github.com/praveenc/local-llm-ui/pull/79
 [#78]: https://github.com/praveenc/local-llm-ui/pull/78
 [#77]: https://github.com/praveenc/local-llm-ui/pull/77
 [#76]: https://github.com/praveenc/local-llm-ui/pull/76
