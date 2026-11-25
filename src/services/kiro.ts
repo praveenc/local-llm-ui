@@ -1,5 +1,12 @@
 import type { KiroLoginEvent, KiroLoginMethod } from '../utils/kiroLogin';
 import { type KiroModel, kiroSupportsThinking } from '../utils/kiroModels';
+import {
+  type KiroSessionOpenResponse,
+  type KiroSessionSummary,
+  type KiroSessionWindow,
+  parseKiroSessionOpenResponse,
+  parseKiroSessionsResponse,
+} from '../utils/kiroSessions';
 import type { KiroStatus } from '../utils/kiroStatus';
 import type { ModelInfo } from './types';
 
@@ -16,6 +23,14 @@ async function responseError(response: Response): Promise<string> {
 
 /** The picker's hint when Kiro is signed out */
 export const KIRO_SIGN_IN_MESSAGE = 'Sign in to Kiro in Preferences → Providers';
+
+/** Thrown when Kiro is signed out (401), so a caller can hide what needs Kiro */
+export class KiroSignedOutError extends Error {
+  constructor() {
+    super(KIRO_SIGN_IN_MESSAGE);
+    this.name = 'KiroSignedOutError';
+  }
+}
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -134,6 +149,41 @@ export class KiroService {
         supportsThinking: kiroSupportsThinking(kiro),
         kiro,
       }));
+  }
+
+  /**
+   * Kiro's sessions of the window, newest first, from Kiro's own list (K7). Throws
+   * `KiroSignedOutError` when Kiro is signed out, else an error in words.
+   */
+  async listSessions(days: KiroSessionWindow): Promise<KiroSessionSummary[]> {
+    // A POST: the list can start kiro-cli
+    const response = await fetch('/api/kiro/sessions', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ days }),
+    });
+    if (response.status === 401) throw new KiroSignedOutError();
+    if (!response.ok) throw new Error(await responseError(response));
+    const sessions = parseKiroSessionsResponse(await response.json());
+    if (!sessions) throw new Error('Kiro sent a session list that the app cannot read.');
+    return sessions;
+  }
+
+  /**
+   * The turns of a Kiro session after `skipTurns`, as compact messages. Kiro replays the session;
+   * nothing in it changes. Throws an error in words.
+   */
+  async openSession(sessionId: string, skipTurns = 0): Promise<KiroSessionOpenResponse> {
+    const response = await fetch('/api/kiro/sessions/open', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ sessionId, skipTurns }),
+    });
+    if (response.status === 401) throw new KiroSignedOutError();
+    if (!response.ok) throw new Error(await responseError(response));
+    const session = parseKiroSessionOpenResponse(await response.json());
+    if (!session) throw new Error('Kiro sent a session that the app cannot read.');
+    return session;
   }
 }
 
