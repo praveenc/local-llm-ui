@@ -292,6 +292,21 @@ preview: { cors: false, /* ... */ },
 - **Errors.** The browser gets plain text. Unknown errors say "Kiro failed. See the terminal that runs npm run dev.", and the detail goes to the terminal. No folder path goes to the browser.
 - **Logs.** One line per reply: the stop reason and the time. No message text, history, tool input or output, or title.
 
+### SEC-18: The Kiro Sessions Routes
+
+`POST /api/kiro/sessions` and `POST /api/kiro/sessions/open` (`server/kiro/sessions.ts`, with `replay.ts`, `lease.ts`, and the generic `listSessions`, `replaySession`, and `closeSession` in `server/acp/agent.ts`). The parsers and limits that the browser and the server share are in `src/utils/kiroSessions.ts`. The rules:
+
+- **Two routes, both `POST` with JSON.** A call can start Kiro CLI, so a `GET` answers 405 (SEC-13). The body is at most 1 KB. The guard of SEC-13 runs first, so a cross-site `POST` gets 403 and a body that is not JSON gets 415.
+- **Folder name only.** The server reads `cwd` from `session/list` and sends the browser only the last part of it (`folder`). The browser never sends a folder. The open route loads the session in the `cwd` that Kiro lists for the id.
+- **Ids from Kiro's list.** The id must match `sess_<uuid>` (400 otherwise) and must be in Kiro's own list (404 otherwise). So a request cannot name a session that Kiro does not list, and cannot reach a path.
+- **Only the fields that the app needs.** The server keeps the id, the folder, the title, the last change, and the status of each session, and drops every other field when it parses the list. `_meta.kiro.customAgents` (13 MB of 14 MB) and the other `_meta` fields never reach the cache or the browser. The list has at most 2,000 sessions, newest first. One `session/list` runs at a time, and the parsed list is kept 60 s.
+- **The replay is read only.** `session/load` with replay does not change the session files (checked with SHA-256 on the largest session). The replayed session is not added to the live sessions, so the app sends it no prompt, and it uses no tool. The server collects the updates as they come and keeps only compact turns. The load has the 120 s time limit of SEC-15. A replay for a session that answers a prompt now gets 409.
+- **Response limits.** Tool output is cut to 8,000 characters, each string of tool arguments to 2,000, one message to 400,000, and the thinking of one reply to 100,000. The response has at most 16 MB of JSON. The server adds turns from the newest back, and says how many older turns it left out. The server leaves out images and counts them. Kiro's text is stored as text and shown through the same Markdown rendering as other replies.
+- **Close after the reply, not after an error.** The chat route sends `session/close` after a prompt that ended, so the terminal can resume the session. It does not close after a failed prompt, because another program can hold the lease, and a close must not touch it. A replay closes only the session that it loaded. With kiro-cli 3.6.1, a close by a program that does not hold the lease did not remove the lease of the program that holds it.
+- **No lock in the app.** When another program holds the session, the chat shows Kiro's own text (cut to 300 characters, in single spaces). The text names the other program and its process number, and no path.
+- **Errors and logs.** The browser gets plain words in `{ error }`: "Kiro has no session with this id.", "Kiro is answering in this session. Try again when the reply ends.", and "Kiro could not open this session. See the terminal that runs npm run dev." The terminal gets the counts and the times: the sessions kept and all sessions, and for an import the turns, the messages, the bytes, and the time. No title, folder, message text, tool input or output, or session id is logged.
+- **Browser storage.** An import writes the conversation and its messages in one Dexie transaction and checks again that the session is not imported. **Delete** removes the conversation from the app only (D13): Kiro's files are not touched.
+
 ---
 
 ## Client-Side Security

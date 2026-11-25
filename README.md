@@ -48,6 +48,7 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 
 - Keep all chats in your browser (IndexedDB). No account is necessary.
 - Find a chat in the conversation list. The list groups the chats by date and shows the time of each chat. The app remembers which groups are open.
+- Open a Kiro session that you made in the terminal, and continue it in the app or in the terminal.
 - Rename a chat from the header.
 - Select text in a reply and ask about it with **Quote and Ask**.
 - Save prompts that you use frequently.
@@ -183,6 +184,8 @@ Kiro is an agent, not only a model. Each chat with Kiro is a Kiro session, the s
 The first Kiro reply after a start takes a few seconds more: the app starts Kiro CLI, and Kiro CLI starts your MCP servers. The reply shows **Starting Kiro…** until then. Kiro CLI stops after 10 minutes without use.
 
 **Delete** removes a chat from the app only. The Kiro session stays on disk, and `kiro-cli --resume-picker` can still open it.
+
+Kiro sessions that you made in the terminal can show in the sidebar. See [Kiro sessions](#kiro-sessions). After each reply, the app lets go of the session, so that you can continue it in the terminal. If a terminal holds the session, Kiro refuses the message, and the chat shows Kiro's own text, for example "This session is loaded in another program". Close the session in the terminal, then click **Retry**.
 
 ### Providers with an API key
 
@@ -392,7 +395,41 @@ Click a group heading to open or close the group. The app remembers which groups
 
 Each chat shows the time of its last message at the right: the time of day for Today and Yesterday, the day of the week for Previous 7 days, and the date for older chats. Put the pointer on the time to see the full date. Put the pointer on the chat to see the **...** button, with **Rename** and **Delete**.
 
-Type in **Search chats** at the top of the conversation list. The list shows only the chats whose title contains the text, and opens all the groups that have a match. Push **Esc** to clear the search.
+Type in **Search chats** at the top of the conversation list. The list shows only the chats whose title contains the text, and opens all the groups that have a match. The search also filters the [Kiro sessions](#kiro-sessions). Push **Esc** to clear the search.
+
+### Kiro sessions
+
+If you use Kiro in the terminal, the sidebar can list your Kiro sessions. You can open one in the app and continue it there.
+
+To turn the list on:
+
+1. Open **Preferences → Providers** and sign in to Kiro.
+2. In the Kiro row, click **Show** when the app asks "Show your Kiro sessions in the sidebar?". Click **Not now** to keep the list off.
+3. To change the choice later, use the switch **Show Kiro sessions in the sidebar** in the same row.
+
+The **Kiro sessions** section is below **Conversations**. It uses the same date groups, and each row also shows the name of the session's folder. Use the menu in the section header to select **Last 7 days** (the default), **Last 30 days**, or **All**. The app keeps your choice. The list updates when you come back to the window and each minute while the page is open. While the section is on, Kiro CLI keeps running for this reason.
+
+The list comes from Kiro, not from files that the app reads. Kiro CLI also lists sessions that tools make for themselves, so some rows can have titles that you did not write. The list hides sessions that were never used. A session that is already in **Conversations** does not show in this section.
+
+To open a session:
+
+1. Click the session. The row says **Importing…** while Kiro sends the session.
+2. The chat shows the messages, the thinking, the tool steps, and the credits of each reply. The session moves to **Conversations**.
+3. Type a message. The chat continues the same Kiro session in its own folder, and Kiro knows the earlier messages.
+
+Some limits apply to an import:
+
+- The app leaves out images, and says how many.
+- For a very long session, the app leaves out the oldest turns, and says how many. The limit is 16 MB of imported text for each session. The app keeps the newest turns.
+- The app cuts each tool output to 8,000 characters.
+
+To continue a session in both places:
+
+- When you make a new turn in the terminal and then open the chat in the app, the app adds the new turns at the end. It does this only when the session is in the list that the section shows now. Select **All** if the session is old. A chat that was imported before this feature does not get new turns.
+- After a reply in the app, the next open of that chat can ask Kiro for the session again, and add nothing. This takes a short time.
+- The terminal can use the session after the app's reply. If the terminal holds the session when you send a message in the app, the chat shows Kiro's text about the other program. Close the session in the terminal and click **Retry**.
+
+**Delete** removes the chat from the app only. Kiro keeps the session and its files, and the session shows in the **Kiro sessions** section again.
 
 ### Rename a chat
 

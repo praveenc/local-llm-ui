@@ -55,7 +55,7 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 | K5 | `feat/kiro-chat` | 5 | Done, merged ([#80](https://github.com/praveenc/local-llm-ui/pull/80)) |
 | H1 | `refactor/acp-harness` | D15 | In review ([#81](https://github.com/praveenc/local-llm-ui/pull/81)) |
 | K6 | `feat/kiro-approvals` | 6 | Planned |
-| K7 | `feat/kiro-sessions` | 7 | Planned |
+| K7 | `feat/kiro-sessions` | 7 | In review ([#83](https://github.com/praveenc/local-llm-ui/pull/83)) |
 | K8 | `feat/kiro-credits` | 8 | Planned |
 | K9 | `feat/kiro-session-options` | 9 | Planned |
 
@@ -99,6 +99,17 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 - **No agent version (probe, 2026-11-25).** In 3.6.0 the `initialize` answer has no agent version.
 - **The ACP layer runs without Kiro (H1).** It runs with a small non-Kiro test agent. A test fails if a file in `server/acp/` names Kiro or imports from outside the folder.
 - **Rules for the Kiro routes.** No `GET` under `/api/kiro` may change state, because older browsers send a cross-site `GET` without the headers that the guard checks. `GET /api/kiro/status` only reads. Sign-in, chat, approvals, and sign-out are `POST` with JSON. A WebSocket route would need its own `Origin` check, so the plan uses SSE only.
+- **The list and the import come from Kiro (K7).** The server reads `session/list` and keeps only the id, folder, title, last change, and status of each session. `_meta.kiro.customAgents` is 13 MB of 14 MB, and the server drops it at once. `POST /api/kiro/sessions/open` runs `session/load` with replay, collects the replayed updates, and closes the session. The replay of the largest session is 64.6 MB of updates, but the collector keeps only compact turns. The app never reads `~/.kiro/sessions` for the list or the transcript (D18).
+- **Real import of the largest session (K7).** The largest idle session had 22 MB on disk, 58 turns, and 3,595 tool calls. The server took 2.6 s, and the chat showed after 3.7 s. The response was 7.9 MB, so the 16 MB limit did not apply. The app stored 116 messages, and the browser storage went from 253 KB to 5.3 MB. The two session files, the file count, and the file times did not change. **Delete** removed the chat from the app only.
+- **Kiro lists more than chats (K7).** The list has sessions that Kiro makes for itself (memory consolidation, prompt optimiser) and sessions whose first message is a system prompt. The app hides only "New Session" (D19) and shows the rest as Kiro lists them. In a list of about 2,300 sessions, Last 7 days shows 85 rows and All shows 275 rows.
+- **The lease starts at `session/load` (K7, kiro-cli 3.6.1).** The lease file is written when a program loads the session, not at the first prompt. A `session/close` from a program that does not hold the lease does not remove the lease: the app replayed and closed a session that a probe held, and the probe could still prompt. The app closes a session only after a prompt that ended, never after a failed one.
+- **A close after each reply costs one load (K7).** After `session/close`, the next message in the chat runs `session/load` without replay. This also picks up turns that the terminal made. Kiro lets you prompt after a close in the same process, but the app does not depend on it.
+- **The sync counts turns, not time (K7).** The chat stores `kiro.turns` (the turns that it has) and `kiro.updatedAt`. A later open of a chat whose session Kiro changed asks the open route for the turns after `kiro.turns` and adds them at the end. Clocks of the browser and the server do not matter. If Kiro reports fewer turns than the chat has (for example after Kiro makes the session smaller), the app adds nothing and only stores the new `updatedAt`. A turn that is still running (no `turn_end`) is left out, so the next sync gets it in full.
+- **A send waits for a running sync (K7 review).** When you open a chat and send a message at once, the send could read the chat before the sync wrote the new turns. The messages then showed twice. The send now waits for the sync of the same chat ("Adding the new Kiro turns…"). A test with a slow open route checked the result: no duplicates and the right turn count.
+- **Sync limits (K7).** A chat syncs only when its session is in the list that the browser holds now. The list covers the window of the menu (Last 7 days by default), so an older session needs **All**. A chat that was made before K7 has no turn count and never syncs. After a reply in the app, Kiro's `updatedAt` is newer than the stored one, so the next open runs one replay that adds nothing (about 0.2 s for a small session, about 2.6 s for the largest).
+- **A stopped reply can count one turn less (K7 review).** If Kiro sends no `turn_end` for a reply that you stopped, the replay counts one turn less than the app stored. The sync then adds nothing, which is safe. The next terminal turn makes the counts agree again.
+- **Polling keeps Kiro CLI running (K7).** Each list call restarts the 10-minute idle time of Kiro CLI. The browser refreshes only while the page is visible and the section is on, at most once a minute, and the server keeps the list 60 s. Kiro CLI stops 10 minutes after you hide the page or turn the section off.
+- **Kiro tells the server when the list changes (K7).** The server drops its list cache on `_kiro/sessions/changed`. Kiro sends it on each app reply, so the cache is new after each reply. It does not report a change from a terminal. A change from a terminal shows after the 60 s cache.
 
 ## What kiro-cli 3 does
 
@@ -183,12 +194,15 @@ The ACP code is in `server/acp/`. It is generic and has no Kiro names (D15). A t
 | `status.ts` | `--version` and `whoami`, check for 3.x (D2) |
 | `login.ts` | The device-flow sign-in and sign-out |
 | `models.ts` | The model list: one short session, read `configOptions`, delete the session, keep the list 1 hour |
-| `session-files.ts` | The folder of an existing session, read from its `session.json` (replaced by `session/list` in K7) |
+| `session-files.ts` | The folder of an existing session, read from its `session.json`. The chat route uses it (SEC-16). The sessions routes use `session/list` instead (K7) |
 | `harness.ts` | The Kiro adapter: `kiro-cli acp` arguments, environment, own folder, signed-out rules, names, `_meta.kiro` hooks |
 | `errors.ts` | The Kiro error classes |
 | `autopilot.ts` | The lock on `autopilot` and `mode` (SEC-15). K6 deletes this file (D17) |
 | `agent.ts` | The Kiro agent: the generic agent with the Kiro harness, the singleton, the extension methods that are allowed |
 | `chat.ts` | The `/api/kiro/chat` route |
+| `sessions.ts` | The `/api/kiro/sessions` and `/api/kiro/sessions/open` routes: the list with a 60 s cache, and the import with replay (K7) |
+| `replay.ts` | Turns the replayed `session/update` messages into compact messages, with the size limits (K7) |
+| `lease.ts` | Kiro's own "loaded in another program" text, for the chat error (K7) |
 | `reply-meta.ts` | The `_meta.kiro` fields of a reply: title, context, credits, display error |
 | `chat-options.ts` | Set the model and the Thinking level on a session |
 | `approvals.ts` | The answers to permission requests. Denies all until K6 |
@@ -204,7 +218,7 @@ Routes:
 | `POST /api/kiro/chat` | One reply, as SSE | K5 |
 | `POST /api/kiro/permission` | The answer to an approval | K6 |
 | `POST /api/kiro/sessions` | The list of Kiro sessions. A `POST`, because the list can start Kiro CLI | K7 |
-| `POST /api/kiro/sessions/open` | Import a session with replay | K7 |
+| `POST /api/kiro/sessions/open` | Import a session with replay, or the turns after a known count. JSON | K7 |
 | `POST /api/kiro/usage` | Account credits. A `POST`, because it can start Kiro CLI | K8 |
 
 ### SSE events
@@ -231,7 +245,7 @@ The chat route sends the existing events, and four new ones. `useBedrockChat.ts`
 
 ### Data
 
-- `Conversation.kiro` is `{ sessionId, seenMessages }` today. `seenMessages` is how many messages Kiro has seen (D12). K7 adds `updatedAt`, the Kiro last change of the last import.
+- `Conversation.kiro` is `{ sessionId, seenMessages }` today. `seenMessages` is how many messages Kiro has seen (D12). K7 adds `updatedAt` (the Kiro last change of the last import or sync) and `turns` (how many turns of the session the chat holds).
 - Dexie version 3 adds an index on `kiro.sessionId`, so K7 can find a session that is already imported. The other tables do not change.
 - `MessageUsage` gets `credits` and `contextPercent`.
 
@@ -324,16 +338,18 @@ Kiro runs its own tools and its own MCP servers. For a Kiro model, the chat inpu
 ### 7. Kiro sessions in the sidebar
 
 - **Change:**
-  - After sign-in, the Kiro row asks the question from D11. The switch **Show Kiro sessions in the sidebar** keeps the answer.
-  - `POST /api/kiro/sessions` calls `session/list` on the shared Kiro process (D18). The server removes the agent prompts in `_meta.kiro.customAgents` and hides sessions that were never used (D19). Each session keeps its id, folder, title, last change, and status.
-  - The **Kiro sessions** section shows under **Conversations** (D10). It uses the date groups and row style of PR 7 (Today, Yesterday, Previous 7 days), with the folder name of the session on each row. A menu in the header changes the window: Last 7 days (default), Last 30 days, All. **Search chats** filters both sections.
-  - The list refreshes when the section opens and when the window gets focus, at most once a minute. The app does not use `_kiro/sessions/changed`, because it reports only sessions of the same process.
-  - A click on a session calls `POST /api/kiro/sessions/open`. The server loads the session with replay, maps the replayed messages with the same code as a live reply, and sends them as SSE: user text, thinking, tool calls with status and output (in the compact form of `toolResults.ts`), credits, and context %. The title comes from the load answer. The app makes a conversation with these messages and opens it. The next prompt continues the Kiro session in its own folder.
-  - A later open replays the session again, so turns that you made in the terminal show too. The conversation keeps the Kiro last change of the import in `kiro.updatedAt`.
-  - After each reply, the server calls `session/close`, so the terminal can resume the session.
-  - When another program has loaded the session, Kiro answers the prompt with "This session is loaded in another program". The chat shows this text as the error.
-  - The app does not read `~/.kiro/sessions` for the list or the transcript.
-- **Tests:** A fake process that answers `session/list` and replays a session. A session with no use is hidden. A real list with kiro-cli, and a real import of the largest session (22 MB): import time and the size in IndexedDB. A session continued in the terminal, then opened again. A session that a terminal has loaded.
+  - After sign-in, the Kiro row asks the question from D11. The switch **Show Kiro sessions in the sidebar** keeps the answer (`showKiroSessions` in the preferences).
+  - `POST /api/kiro/sessions` calls `session/list` on the shared Kiro process (D18). The body is `{ days: 7 | 30 | null }`. The server keeps only the id, folder, title, last change, and status of each session. It drops `_meta.kiro.customAgents` and hides sessions that were never used (D19). `folder` is the last part of the session folder, so the browser gets no full path. The server keeps the parsed list 60 s and drops it when Kiro sends `_kiro/sessions/changed`.
+  - The **Kiro sessions** section shows under **Conversations** (D10). It uses the date groups and row style of PR 7, with the folder name on each row, and its own open-state key. A menu in the header changes the window: Last 7 days (default), Last 30 days, All. **Search chats** filters both sections. A session that a conversation already has does not show.
+  - The list refreshes when the window gets focus and each minute while the page is visible. The server cache holds 60 s, so a change from a terminal shows within a minute.
+  - A click calls `POST /api/kiro/sessions/open` with the session id and `skipTurns`. The id must match `sess_<uuid>` and be in Kiro's own list. The server loads the session with replay in its own folder, maps the replayed updates with the same code as a live reply, and closes the session. The answer is JSON (not SSE): title, last change, model, and compact messages. Each message has the text (without the app's `<conversation_context>` block), the thinking, the tool calls with status and output (cut to 8,000 characters), the credits, the context percentage, and the time. The app leaves out images and says how many. The answer has at most 16 MB of JSON. When it is longer, the oldest turns are left out, and the app says how many.
+  - The app makes the conversation and its messages in one Dexie transaction (database version 3, index `kiro.sessionId`), then opens it. A second click on the same session opens the existing conversation.
+  - A later open of a chat whose session Kiro changed (the list has a newer `updatedAt`) calls the open route with `skipTurns` set to the turns that the chat holds, and adds the new turns at the end. If the chat also has messages that Kiro has not seen, `seenMessages` stays the same. The next prompt then sends them, and the new turns, once as context. A send waits for a running sync of the same chat.
+  - After each reply, the server calls `session/close`, so the terminal can resume the session. It does not close after a failed prompt, because the lease may belong to another program.
+  - When another program has loaded the session, Kiro answers the prompt with "This session is loaded in another program". The chat shows this text as the error, with **Retry**. The app has no lock of its own.
+  - The app does not read `~/.kiro/sessions` for the list or the transcript. `server/kiro/session-files.ts` only checks the folder of one session for the chat route (SEC-16).
+  - Known limits: a chat syncs only when its session is in the list of the current window, a chat made before K7 has no turn count and does not sync, and the reopen after an app reply does one replay that adds nothing. See "Found during the work".
+- **Tests:** The fake ACP agent and the fake Kiro answer `session/list` (with a "New Session" entry and a big `customAgents`), replay a session before the load answer, answer `session/close`, and refuse a prompt with the lease error. Server tests for both routes, the replay mapping and its limits, and the close after a reply. Browser tests for the import, the sync, the Dexie version 3 upgrade from version 2 data, the section, and the D11 question. A real list with kiro-cli 3.6.1, a real import of the largest idle session (22 MB), a session that a probe continued, and a session that a probe held.
 
 ### 8. Kiro credits
 
