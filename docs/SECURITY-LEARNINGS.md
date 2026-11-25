@@ -292,6 +292,18 @@ preview: { cors: false, /* ... */ },
 - **Errors.** The browser gets plain text. Unknown errors say "Kiro failed. See the terminal that runs npm run dev.", and the detail goes to the terminal. No folder path goes to the browser.
 - **Logs.** One line per reply: the stop reason and the time. No message text, history, tool input or output, or title.
 
+### SEC-19: The Kiro Account Credits Route
+
+`POST /api/kiro/usage` (`server/kiro/usage.ts`) returns the plan and the credits of the signed-in Kiro account. The rules:
+
+- **Account data goes only to the app's pages.** The route is behind the same-origin guard (SEC-13). A cross-site request gets 403.
+- **Not logged.** The server never logs the plan, the credits, or the email. A failed call logs one line with the error class only.
+- **A POST, because it can start Kiro CLI.** The call needs a running `kiro-cli acp`. The route accepts only `POST` with JSON and a body of at most 1 KB. Other methods get 405 and do not start Kiro CLI (SEC-13).
+- **No start when signed out.** The server reads the cached status first. When Kiro is signed out or missing, it returns `{ "usage": null }` and does not start Kiro CLI.
+- **Known fields only.** The parser in `src/utils/kiroUsage.ts` keeps only the fields that it knows, with the right types. It gives `null` for any other shape.
+- **Errors.** Any failure gives `{ "usage": null }`. The browser gets no error text and no path.
+- **Cache.** The server keeps the result 5 minutes and runs one call at a time. The app does not keep it in storage.
+
 ---
 
 ## Client-Side Security

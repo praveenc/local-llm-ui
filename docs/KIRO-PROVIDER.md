@@ -56,7 +56,7 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 | H1 | `refactor/acp-harness` | D15 | In review ([#81](https://github.com/praveenc/local-llm-ui/pull/81)) |
 | K6 | `feat/kiro-approvals` | 6 | Planned |
 | K7 | `feat/kiro-sessions` | 7 | Planned |
-| K8 | `feat/kiro-credits` | 8 | Planned |
+| K8 | `feat/kiro-credits` | 8 | In review ([#84](https://github.com/praveenc/local-llm-ui/pull/84)) |
 | K9 | `feat/kiro-session-options` | 9 | Planned |
 
 ### Found during the work
@@ -99,6 +99,9 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 - **No agent version (probe, 2026-11-25).** In 3.6.0 the `initialize` answer has no agent version.
 - **The ACP layer runs without Kiro (H1).** It runs with a small non-Kiro test agent. A test fails if a file in `server/acp/` names Kiro or imports from outside the folder.
 - **Rules for the Kiro routes.** No `GET` under `/api/kiro` may change state, because older browsers send a cross-site `GET` without the headers that the guard checks. `GET /api/kiro/status` only reads. Sign-in, chat, approvals, and sign-out are `POST` with JSON. A WebSocket route would need its own `Origin` check, so the plan uses SSE only.
+- **`getUsage` can show more credits than the limit (K8).** The test account was over its limit, and `percentage` was above 100. The app shows the number that Kiro reports and adds `· N over the limit`. `bonusCredits` and `addOnCredits` have no known item shape, so the app ignores them.
+- **The first usage call starts Kiro CLI (K8).** It took 2.7 s on a cold start, not the 300 ms of the probe. A later call from the cache took 3 ms. The server does not start Kiro CLI when the status says signed out.
+- **The usage cache has no account key per running call (K8, open).** If the account changes while a call runs (about 300 ms), the old account's credits can go into the cache for up to 5 minutes. A later change can store the account key with each call.
 
 ## What kiro-cli 3 does
 
@@ -342,7 +345,10 @@ Kiro runs its own tools and its own MCP servers. For a Kiro model, the chat inpu
   - The Kiro row in Preferences shows the plan and the credits of the account: "Kiro Power · 1,250 of 10,000 credits used · resets 1 Dec". The reset date is a `YYYY-MM-DD` string.
   - The percentage can go above 100. The app shows the number that Kiro reports and does not cap it.
   - The context popover of a Kiro chat shows the credits of this chat and of the account.
+  - The server reads only the known fields with the right types (`src/utils/kiroUsage.ts`). Any other answer, and any error, gives `{ usage: null }`, and the app shows nothing. When Kiro is signed out, the route does not start Kiro CLI.
+  - The line adds `· N over the limit` when the account uses more credits than the limit. With no limit, it shows `1,250 credits used`.
 - **Tests:** Unit tests for the formatting, with a percentage above 100. A real call.
+- **Done:** The parser and the formatters have unit tests. The route has tests with the fake ACP process (cache, one call at a time, error, signed out, wrong method, body limit). Real Kiro CLI 3.6.1: the first call took 2.7 s because it started Kiro CLI, and a cached call took 3 ms.
 
 ### 9. Session options
 
