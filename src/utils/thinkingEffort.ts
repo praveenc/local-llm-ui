@@ -19,7 +19,8 @@
  */
 import type { Provider } from '../db/types.ts';
 
-export type ThinkingEffort = 'default' | 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type ThinkingEffort =
+  'default' | 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /** The AI SDK `reasoning` call option values that we send */
 export type ReasoningLevel = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
@@ -34,6 +35,22 @@ export const THINKING_EFFORT_OPTIONS: ReadonlyArray<{ value: ThinkingEffort; lab
   { value: 'xhigh', label: 'XHigh' },
 ];
 
+/**
+ * Max: only Kiro models offer it, and only when the model lists it (`thinkingEffortOptions`).
+ * Other providers get XHigh for it (`withoutMax`), for example after a model change.
+ */
+export const MAX_THINKING_EFFORT_OPTION = { value: 'max', label: 'Max' } as const;
+
+const ALL_THINKING_EFFORTS: ReadonlyArray<{ value: ThinkingEffort; label: string }> = [
+  ...THINKING_EFFORT_OPTIONS,
+  MAX_THINKING_EFFORT_OPTION,
+];
+
+/** Max is a Kiro level. Every other provider uses XHigh, its highest level, instead. */
+export function withoutMax<T extends ThinkingEffort>(effort: T): Exclude<T, 'max'> | 'xhigh' {
+  return effort === 'max' ? 'xhigh' : (effort as Exclude<T, 'max'>);
+}
+
 /** Providers whose proxy sends the thinking effort */
 export const THINKING_EFFORT_PROVIDERS: readonly Provider[] = [
   'bedrock',
@@ -45,10 +62,10 @@ export const THINKING_EFFORT_PROVIDERS: readonly Provider[] = [
 ];
 
 export const isThinkingEffort = (value: unknown): value is ThinkingEffort =>
-  THINKING_EFFORT_OPTIONS.some((option) => option.value === value);
+  ALL_THINKING_EFFORTS.some((option) => option.value === value);
 
 export const thinkingEffortLabel = (effort: ThinkingEffort): string =>
-  THINKING_EFFORT_OPTIONS.find((option) => option.value === effort)?.label ?? effort;
+  ALL_THINKING_EFFORTS.find((option) => option.value === effort)?.label ?? effort;
 
 /**
  * Get the Claude major/minor version from a model ID in the new naming style
@@ -151,7 +168,8 @@ export function buildReasoningParams(
 ): { reasoning?: ReasoningLevel } {
   if (!isThinkingEffort(effort) || effort === 'default') return {};
   if (!supportsThinkingEffort(provider, modelId)) return {};
-  return { reasoning: effort === 'off' ? 'none' : effort };
+  const level = withoutMax(effort);
+  return { reasoning: level === 'off' ? 'none' : level };
 }
 
 /**
@@ -204,14 +222,14 @@ export function mantleReasoningEffort(
   const style = mantleThinkingStyle(modelId);
   if (!style) return undefined;
   if (style === 'toggle') return effort === 'off' ? 'none' : 'high';
-  switch (effort) {
+  switch (withoutMax(effort)) {
     case 'off':
     case 'minimal':
       return 'low';
     case 'xhigh':
       return 'high';
     default:
-      return effort;
+      return withoutMax(effort) as 'low' | 'medium' | 'high';
   }
 }
 
@@ -243,8 +261,9 @@ export function ollamaThinkValue(
   );
   if (levels.length === 0) return effort !== 'off';
 
+  const level = withoutMax(effort);
   const wanted =
-    effort === 'off' || effort === 'minimal' ? 'low' : effort === 'xhigh' ? 'high' : effort;
+    level === 'off' || level === 'minimal' ? 'low' : level === 'xhigh' ? 'high' : level;
   if (levels.includes(wanted)) return wanted;
   // Nearest listed level: lower first, then higher
   const order = ['low', 'medium', 'high'] as const;

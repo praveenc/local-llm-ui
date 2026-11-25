@@ -116,10 +116,16 @@ describe('buildReasoningParams', () => {
     expect(buildReasoningParams('bedrock', opus, 'xhigh')).toEqual({ reasoning: 'xhigh' });
   });
 
+  it('sends XHigh for Max, which only Kiro models offer', () => {
+    expect(buildReasoningParams('bedrock', opus, 'max')).toEqual({ reasoning: 'xhigh' });
+    expect(mantleReasoningEffort('openai.gpt-oss-120b', 'max')).toBe('high');
+    expect(ollamaThinkValue('max', { values: ['low', 'medium', 'high'] })).toBe('high');
+  });
+
   it('sends nothing for Default, unknown values, or models without thinking', () => {
     expect(buildReasoningParams('bedrock', opus, 'default')).toEqual({});
     expect(buildReasoningParams('bedrock', opus, undefined)).toEqual({});
-    expect(buildReasoningParams('bedrock', opus, 'max')).toEqual({});
+    expect(buildReasoningParams('bedrock', opus, 'turbo')).toEqual({});
     expect(buildReasoningParams('bedrock', opus, 42)).toEqual({});
     expect(buildReasoningParams('lmstudio', 'qwen3:8b', 'high')).toEqual({});
   });
@@ -180,7 +186,7 @@ describe('mantleReasoningEffort', () => {
 
   it('sends nothing for Default or for other models', () => {
     expect(mantleReasoningEffort('openai.gpt-oss-120b', 'default')).toBeUndefined();
-    expect(mantleReasoningEffort('openai.gpt-oss-120b', 'max')).toBeUndefined();
+    expect(mantleReasoningEffort('openai.gpt-oss-120b', 'turbo')).toBeUndefined();
     expect(mantleReasoningEffort('mistral.devstral-2-123b', 'high')).toBeUndefined();
   });
 });
