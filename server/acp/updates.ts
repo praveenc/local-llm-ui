@@ -18,16 +18,12 @@ export interface UpdateMapperOptions {
   send(event: AcpStreamEvent): void;
   /** The name that the work row shows for a tool call */
   toolName(update: Pick<ToolCallUpdate, 'toolCallId' | 'title' | 'kind'>): string;
-  /** The error text of a tool call that the app denied */
-  deniedText: string;
   /** Every update that is not a chunk or a tool call */
   onOther?(update: SessionUpdate): void;
 }
 
 export interface UpdateMapper {
   onUpdate(update: SessionUpdate): void;
-  /** The app denied this tool call: its failed result says deniedText */
-  markDenied(toolCallId: string): void;
   /** True once the reply sent text that is not empty */
   readonly hasText: boolean;
 }
@@ -56,9 +52,8 @@ export function toolOutputText(update: Pick<ToolCallUpdate, 'content' | 'rawOutp
 
 export function createUpdateMapper(options: UpdateMapperOptions): UpdateMapper {
   const { send } = options;
-  // The reply's tool calls, by id, and the ones that the app denied
+  // The reply's tool calls, by id
   const tools = new Map<string, { name: string; done: boolean }>();
-  const denied = new Set<string>();
   let hasText = false;
 
   const announce = (update: ToolCallUpdate) => {
@@ -103,8 +98,10 @@ export function createUpdateMapper(options: UpdateMapperOptions): UpdateMapper {
             toolResult: { id: tool.toolCallId, name: entry.name, result: toolOutputText(tool) },
           });
         } else {
-          const error = denied.has(tool.toolCallId) ? options.deniedText : toolOutputText(tool);
-          send({ toolResult: { id: tool.toolCallId, name: entry.name, error } });
+          // The agent's own text, also for a tool that the user denied
+          send({
+            toolResult: { id: tool.toolCallId, name: entry.name, error: toolOutputText(tool) },
+          });
         }
         return;
       }
@@ -116,7 +113,6 @@ export function createUpdateMapper(options: UpdateMapperOptions): UpdateMapper {
 
   return {
     onUpdate,
-    markDenied: (toolCallId) => void denied.add(toolCallId),
     get hasText() {
       return hasText;
     },

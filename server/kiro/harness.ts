@@ -6,7 +6,6 @@ import { chmod, mkdir, stat } from 'fs/promises';
 import path from 'path';
 
 import type { AcpHarness, AgentErrorKind } from '../acp/harness.ts';
-import { kiroAutopilotGuard } from './autopilot.ts';
 import { defaultKiroEnvironment, resolveKiroBinary } from './binary.ts';
 import type { KiroEnvironment } from './binary.ts';
 import {
@@ -110,8 +109,6 @@ export function createKiroHarness(options: KiroHarnessOptions = {}): AcpHarness<
     extensionMethods: KIRO_EXTENSION_METHODS,
 
     loadMeta: { kiro: { noReplay: true } },
-
-    guard: kiroAutopilotGuard,
 
     sessionInfo: {
       fromUpdate(update, info) {
