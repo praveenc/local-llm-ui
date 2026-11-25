@@ -3,8 +3,10 @@
  *
  * The route opens the chat's Kiro session (or a new one), sets the model and the Thinking level
  * when they changed, sends the new message with the messages that Kiro has not seen (D12), and
- * maps Kiro's updates to the app's SSE events. Every permission request is denied (D7) until the
- * approvals of K6.
+ * maps Kiro's updates to the app's SSE events. Kiro's permission questions go to the browser as
+ * `permission` events (D16); the answer comes back through POST /api/kiro/permission and the shared
+ * registry. Every question that was sent ends with a `permissionResult` event. While a question is
+ * open, a `: ping` comment every 15 s keeps a tunnel from closing the idle stream.
  *
  * The `session` event comes right before session/prompt: after the session is open, after a
  * running or cancelling reply in it ended, and after the options are set. The browser counts the
@@ -18,7 +20,6 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 
 import {
-  KIRO_DENIED_TOOL,
   KIRO_STOP_NOTICES,
   buildKiroPrompt,
   kiroSessionIsStale,
@@ -27,6 +28,8 @@ import {
 } from '../../src/utils/kiroChat.ts';
 import type { KiroChatEvent, KiroChatRequest } from '../../src/utils/kiroChat.ts';
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
+import type { PermissionRegistry } from '../acp/permission-registry.ts';
+import type { PromptPermissionHandler } from '../acp/permissions.ts';
 import { createUpdateMapper } from '../acp/updates.ts';
 import type { AcpStreamEvent } from '../acp/updates.ts';
 import { endStreamWithError, readBodyWithLimit } from '../security.ts';
@@ -41,7 +44,7 @@ import {
   KiroSignedOutError,
 } from './agent.ts';
 import type { KiroAgent } from './agent.ts';
-import { denyAllApprovals } from './approvals.ts';
+import { kiroPermissionResult, kiroQuestion } from './approvals.ts';
 import { defaultKiroEnvironment } from './binary.ts';
 import type { KiroEnvironment } from './binary.ts';
 import { applyOptions } from './chat-options.ts';
@@ -49,6 +52,7 @@ import type { KiroModelList } from './models.ts';
 import { createKiroReplyMeta, kiroToolName } from './reply-meta.ts';
 import { findKiroSessionCwd } from './session-files.ts';
 
+const PING_MS = 15_000;
 const BUSY_TEXT = 'Kiro is still answering in this chat. Wait for the reply, or click Stop.';
 /** The text for an error that the route does not know: the detail goes to the terminal only */
 export const KIRO_CHAT_FAILED = 'Kiro failed. See the terminal that runs npm run dev.';
@@ -72,6 +76,10 @@ export interface KiroChatHandlerOptions {
   agent: KiroChatAgent;
   statusReader: { read(refresh?: boolean): Promise<KiroStatus> };
   models: Pick<KiroModelList, 'update'>;
+  /** The open questions, shared with POST /api/kiro/permission */
+  permissions: Pick<PermissionRegistry, 'ask'>;
+  /** How often an open question sends a `: ping` comment. Default 15 s. Tests make it short. */
+  pingMs?: number;
   /** Where Kiro keeps its sessions (the home folder). Default: the real computer. */
   environment?: KiroEnvironment;
   bodyLimit?: number;
@@ -192,6 +200,8 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
     // A session that this request made, until session/prompt is sent: deleted when the request
     // ends before that, so no empty session stays on disk
     let unused: string | undefined;
+    // The ping timers of the open questions
+    const pings = new Set<NodeJS.Timeout>();
     try {
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/event-stream');
@@ -255,18 +265,32 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
         title: agent.sessionInfo(id)?.title,
         send,
       });
-      const mapper = createUpdateMapper({
-        send,
-        toolName: kiroToolName,
-        deniedText: KIRO_DENIED_TOOL,
-        onOther: meta.onUpdate,
-      });
-      const onPermission = denyAllApprovals(id, mapper.markDenied);
+      const mapper = createUpdateMapper({ send, toolName: kiroToolName, onOther: meta.onUpdate });
+      const onPermission: PromptPermissionHandler = (question) => {
+        send({ permission: kiroQuestion(question) });
+        const ping = setInterval(() => {
+          if (!res.writableEnded && !res.destroyed) res.write(': ping\n\n');
+        }, options.pingMs ?? PING_MS);
+        ping.unref();
+        pings.add(ping);
+        const stop = () => {
+          clearInterval(ping);
+          pings.delete(ping);
+        };
+        if (question.signal.aborted) stop();
+        else question.signal.addEventListener('abort', stop, { once: true });
+        return options.permissions.ask(question);
+      };
 
       stopReason = await agent.prompt(
         id,
         [{ type: 'text', text: buildKiroPrompt(unseen, request.prompt) }],
-        { onUpdate: mapper.onUpdate, signal: controller.signal, onPermission }
+        {
+          onUpdate: mapper.onUpdate,
+          signal: controller.signal,
+          onPermission,
+          onPermissionEnd: (end) => send({ permissionResult: kiroPermissionResult(end) }),
+        }
       );
 
       // A reply with no text that Kiro ended with an error (for example, no credits left)
@@ -301,6 +325,8 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
         sendJson(res, 500, { error: errorText(error) });
       }
     } finally {
+      for (const ping of pings) clearInterval(ping);
+      pings.clear();
       if (!res.writableEnded && !res.destroyed) res.end();
       if (unused) {
         try {

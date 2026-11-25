@@ -53,8 +53,8 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 | K3 | `feat/kiro-sign-in` | 3 | Done, merged ([#78](https://github.com/praveenc/local-llm-ui/pull/78)) |
 | K4 | `feat/kiro-acp-client` | 4 | Done, merged ([#79](https://github.com/praveenc/local-llm-ui/pull/79)) |
 | K5 | `feat/kiro-chat` | 5 | Done, merged ([#80](https://github.com/praveenc/local-llm-ui/pull/80)) |
-| H1 | `refactor/acp-harness` | D15 | In review ([#81](https://github.com/praveenc/local-llm-ui/pull/81)) |
-| K6 | `feat/kiro-approvals` | 6 | Planned |
+| H1 | `refactor/acp-harness` | D15 | Done, merged ([#81](https://github.com/praveenc/local-llm-ui/pull/81)) |
+| K6 | `feat/kiro-approvals` | 6 | Done, merged ([#82](https://github.com/praveenc/local-llm-ui/pull/82)) |
 | K7 | `feat/kiro-sessions` | 7 | Planned |
 | K8 | `feat/kiro-credits` | 8 | In review ([#84](https://github.com/praveenc/local-llm-ui/pull/84)) |
 | K9 | `feat/kiro-session-options` | 9 | Planned |
@@ -73,7 +73,7 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 - **Tunnels close idle connections (K3 review).** The sign-in stream sends `: ping` every 15 s while it waits for the approval.
 - **Sign-out signs out everywhere (K3).** `kiro-cli logout` signs out every Kiro CLI on the computer, also in terminals. The app asks before it signs out.
 - **The engine has its own process groups (K4).** The v3 engine runs in a process group of its own, and a wrapper script adds one more. One `kiro-cli acp` starts 20 to 26 processes, the user's MCP servers, which is another reason for one shared process (D5). A stop reads all descendant groups with `ps` before it closes stdin, then sends `SIGTERM` and `SIGKILL` to each group. With kiro-cli 3.6.0, nothing was left 1.5 s after a stop. Exit code 143 after `SIGTERM` is normal.
-- **Autopilot stays off (K4 review).** The app checks Autopilot after every option change and every `config_option_update`. If Kiro turns it on, the app cancels the reply of that session, turns Autopilot off again, and uses the session only after it reads `off` back. The app does not change `mode` (the agent) or `autopilot` itself: an agent can have its own allow rules that run tools without a question (KiroBoo found this), so D9 keeps Kiro's default agent. D17 changes this in K6.
+- **Autopilot stays off (K4 review).** The app checks Autopilot after every option change and every `config_option_update`. If Kiro turns it on, the app cancels the reply of that session, turns Autopilot off again, and uses the session only after it reads `off` back. The app does not change `mode` (the agent) or `autopilot` itself: an agent can have its own allow rules that run tools without a question (KiroBoo found this), so D9 keeps Kiro's default agent. K6 removes this lock (D17).
 - **A failed load must not delete (K4 review).** When a session from disk fails the Autopilot check, the app stops using it but keeps it on disk. Only a session that the app made in that call is deleted.
 - **After a crash, stop the recorded groups (K4 review).** Once `kiro-cli acp` is dead, `ps` cannot find its children. The app records the process groups while the process runs and stops them after a crash.
 - **No engine check (K4).** The `initialize` result has no field that names the engine. The app starts `--agent-engine v3`, and K2 already refuses Kiro CLI 2, so K4 does not check it again.
@@ -99,6 +99,14 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 - **No agent version (probe, 2026-11-25).** In 3.6.0 the `initialize` answer has no agent version.
 - **The ACP layer runs without Kiro (H1).** It runs with a small non-Kiro test agent. A test fails if a file in `server/acp/` names Kiro or imports from outside the folder.
 - **Rules for the Kiro routes.** No `GET` under `/api/kiro` may change state, because older browsers send a cross-site `GET` without the headers that the guard checks. `GET /api/kiro/status` only reads. Sign-in, chat, approvals, and sign-out are `POST` with JSON. A WebSocket route would need its own `Origin` check, so the plan uses SSE only.
+- **The question has its own id (K6).** The server makes a random `requestId` for each question, so the browser never sees Kiro's JSON-RPC id. The registry accepts one answer and only an option that the question lists, then forgets the question. A second answer gets 404.
+- **A denied tool is not a failed tool (K6).** Kiro ends a rejected tool as `failed` with its own text. The row reads the last approval of the tool call: a reject option gives **Denied**, and a question that ended with no answer gives **Not answered**. Neither counts as a failure. A rejected "Review changes" counts as denied in the summary.
+- **A question can come before its tool call (K6).** The row of a question with no known tool call is made at once, and the later tool call keeps its approvals. "Review changes" has a made-up tool call id, so it goes to the write that `files[].toolCallId` names.
+- **Idle streams (K6).** A question can wait 10 minutes with no data on the stream. The chat route sends `: ping` every 15 s while a question is open, as the sign-in route does.
+- **Real check of K6 (kiro-cli 3.6.1, Claude Haiku 5.5, 2026-11-25).** The question showed after about 8 s with Kiro's four options. **Allow** made the file, and **Deny** did not. **Always allow** gave no second question for the same command. A write with Autopilot on asked once, with no "Review changes". **Stop** ended the open question and the next message worked. A read asked nothing. The two-question path is not reachable in the browser with Autopilot on, so a fake-process test covers it. K9 can check it with Autopilot off.
+- **An "Always" rule is narrow (K6).** After **Always allow** for one `echo` command, a later `echo` command with another start asked again. The rule is Kiro's. The app shows the question as Kiro sends it.
+- **A stopped reply is not saved (found in K6).** The app does not store a reply that **Stop** ended, so a reload does not show its **Not answered** row. The stored form is covered by unit tests. This was the case before K6.
+- **Small points left (K6).** The question line shows the command between backticks as plain text, and the line shows once in the row summary and once under the tool line. At 390 px the tool line cuts the command, and the question line under it shows the whole command.
 - **`getUsage` can show more credits than the limit (K8).** The test account was over its limit, and `percentage` was above 100. The app shows the number that Kiro reports and adds `· N over the limit`. `bonusCredits` and `addOnCredits` have no known item shape, so the app ignores them.
 - **The first usage call starts Kiro CLI (K8).** It took 2.7 s on a cold start, not the 300 ms of the probe. A later call from the cache took 3 ms. The server does not start Kiro CLI when the status says signed out.
 - **The usage cache has no account key per running call (K8, open).** If the account changes while a call runs (about 300 ms), the old account's credits can go into the cache for up to 5 minutes. A later change can store the account key with each call.
@@ -173,7 +181,8 @@ The ACP code is in `server/acp/`. It is generic and has no Kiro names (D15). A t
 | `process-end.ts` | Run the cleanups when the dev server ends, also on Ctrl+C and a closed terminal |
 | `harness.ts` | The adapter interface (types only): how to start the agent, its names, its errors, its `_meta` fields |
 | `agent.ts` | The shared agent process (D5): start on demand, stop when idle or when Vite stops, restart after a crash, live sessions, open approvals, cancel |
-| `permissions.ts` | Permission types, the choice of an option by kind, the default denial, the answer logic |
+| `permissions.ts` | Permission types, the choice of an option by kind, the default denial, the answer logic, how a question ends |
+| `permission-registry.ts` | The open questions, each under a random request id. It accepts one answer, and only an option that the question lists (K6) |
 | `updates.ts` | Map `session/update` messages to the app's SSE events. Pure functions, tested with recorded probe messages |
 | `config-options.ts` | Helpers for the config options of a session |
 
@@ -189,12 +198,12 @@ The ACP code is in `server/acp/`. It is generic and has no Kiro names (D15). A t
 | `session-files.ts` | The folder of an existing session, read from its `session.json` (replaced by `session/list` in K7) |
 | `harness.ts` | The Kiro adapter: `kiro-cli acp` arguments, environment, own folder, signed-out rules, names, `_meta.kiro` hooks |
 | `errors.ts` | The Kiro error classes |
-| `autopilot.ts` | The lock on `autopilot` and `mode` (SEC-15). K6 deletes this file (D17) |
 | `agent.ts` | The Kiro agent: the generic agent with the Kiro harness, the singleton, the extension methods that are allowed |
 | `chat.ts` | The `/api/kiro/chat` route |
 | `reply-meta.ts` | The `_meta.kiro` fields of a reply: title, context, credits, display error |
 | `chat-options.ts` | Set the model and the Thinking level on a session |
-| `approvals.ts` | The answers to permission requests. Denies all until K6 |
+| `approvals.ts` | Turns a permission question into the SSE event: Kiro's options, the command, the files of a "Review changes" question, and how a question ended (K6) |
+| `permission-route.ts` | The `POST /api/kiro/permission` route (K6) |
 
 Routes:
 
@@ -205,14 +214,14 @@ Routes:
 | `POST /api/kiro/login/cancel`, `POST /api/kiro/logout` | Stop sign-in, sign out | K3 |
 | `POST /api/kiro/models` | Model list with levels and credit rate. A `POST`, because a load can start Kiro CLI and make a session | K5 |
 | `POST /api/kiro/chat` | One reply, as SSE | K5 |
-| `POST /api/kiro/permission` | The answer to an approval | K6 |
+| `POST /api/kiro/permission` | The answer to an approval question. It never starts Kiro CLI | K6 |
 | `POST /api/kiro/sessions` | The list of Kiro sessions. A `POST`, because the list can start Kiro CLI | K7 |
 | `POST /api/kiro/sessions/open` | Import a session with replay | K7 |
 | `POST /api/kiro/usage` | Account credits. A `POST`, because it can start Kiro CLI | K8 |
 
 ### SSE events
 
-The chat route sends the existing events, and four new ones. `useBedrockChat.ts` ignores unknown keys today, so other providers do not change.
+The chat route sends the existing events, and new ones. `useBedrockChat.ts` ignores unknown keys today, so other providers do not change.
 
 | Kiro | App SSE event |
 |---|---|
@@ -221,7 +230,8 @@ The chat route sends the existing events, and four new ones. `useBedrockChat.ts`
 | `agent_thought_chunk` | `{reasoning}` |
 | `tool_call` | `{toolCall: {id, name: title, args: rawInput}}` |
 | `tool_call_update` `completed` / `failed` | `{toolResult: {id, name, result}}` / `{toolResult: {id, name, error}}` |
-| `session/request_permission` | `{permission: {requestId, toolCallId, title, options}}`, new (K6) |
+| `session/request_permission` | `{permission: {requestId, toolCallId, title, options, …}}`, new (K6) |
+| A question ends (answer, stop, closed stream, time limit) | `{permissionResult: {requestId, optionId?, kind?, outcome}}`, new (K6) |
 | `focus_update` | `{title}`, new |
 | `context_usage`, `turn_completion` | `{metadata: {credits, contextPercent, latencyMs}}`, new fields |
 | `stopReason` other than `end_turn` | Notice text, as `noAnswerNotice` does today |
@@ -315,14 +325,19 @@ Kiro runs its own tools and its own MCP servers. For a Kiro model, the chat inpu
 ### 6. Tool approvals
 
 - **Change:**
-  - A request shows in the work row, open, with the tool title and its command or path: "Kiro wants to run `echo hi > hello.txt`". Under it are Kiro's own options with Kiro's labels: **Allow**, **Always allow**, **Deny**, **Always deny** (D16).
-  - A click sends `POST /api/kiro/permission` with the request id and the option id. The step then shows the label that you chose.
-  - Kiro asks twice for a file write: for the write, and then "Review changes" with **Accept changes** and **Reject changes**. The app links the second question to the write with `_meta.kiro.files[].toolCallId`, and both show in the same row.
+  - Kiro's default agent runs Autopilot, as in the terminal (D17). Reads run without a question. Shell commands and file writes ask. The app does not lock `autopilot` or `mode`. K6 deletes `server/kiro/autopilot.ts` and removes the guard line in `server/kiro/harness.ts`. The generic `SessionGuard` hook stays, because its tests use it, and no harness sets it.
+  - A question shows in the work row, open, with its line, for example "Kiro wants to run" and the command. Under the tool line are Kiro's own options with Kiro's labels and in Kiro's order: **Allow**, **Always allow**, **Deny**, **Always deny** (D16). The buttons are 44 px high.
+  - The server makes a random `requestId` for each question and sends `{ permission: … }` on the chat stream. The id is not Kiro's JSON-RPC id. `server/acp/permission-registry.ts` keeps the question with Kiro's options.
+  - A click sends `POST /api/kiro/permission` with `{ requestId, optionId }`. The body is JSON and at most 1 KB. The answer is 200, 404 (the question is unknown or has ended), or 400 (the option is not one of the question's options). The buttons stay disabled while the request waits, and an error shows in words.
+  - When a question ends, the server sends `{ permissionResult: … }`. The tool line then says the answer from the option kind: **Allowed**, **Always allowed**, **Denied**, **Always denied**, or for "Review changes" **Changes accepted** and **Changes rejected**.
+  - A tool that the user denied says **Denied**, not **Failed**, and the summary says "1 denied" in the muted colour. A tool that fails for another reason still says **Failed**.
+  - Kiro asks twice for a file write when Autopilot is off: for the write, and then "Review changes" with **Accept changes** and **Reject changes**. The app links the second question to the write with `_meta.kiro.files[].toolCallId`, and both show in the row of the write. A question whose tool call has not arrived yet gets a row of its own, and the later tool call keeps it.
   - Kiro asks one question at a time in a session, so the row shows one open question.
   - Kiro keeps the "always" rules in its own memory for the session. The app stores no rule and has no approval setting of its own.
-  - When the reply stream closes or the user clicks **Stop**, the server answers `cancelled`, so Kiro does not wait. Kiro counts this as one Deny.
-  - The app no longer locks `autopilot` and `mode` (D17). New sessions use Kiro's defaults, as in the terminal. K6 deletes `server/kiro/autopilot.ts` and removes the guard line in `server/kiro/harness.ts`.
-- **Tests:** The fake process asks for approval. Allow, always allow, deny, a "Review changes" question, a closed stream, and Stop. A real shell command and a real file write with kiro-cli.
+  - **Stop**, a closed stream, a crash, and the 10-minute limit end every open question. **Stop**, a closed stream, and a crash answer `cancelled`, and Kiro counts this as one Deny. The time limit answers `reject_once`. The row says **Not answered** in each case, because the user chose nothing. No question stays open.
+  - While a question is open, the chat stream sends `: ping` every 15 s, so a tunnel does not close the idle connection.
+  - The answers are stored with the message in the compact form of `toolResults.ts`. An open question that is stored shows as **Not answered**.
+- **Tests:** The fake process asks for approval. Allow, always allow, deny, a "Review changes" question, a closed stream, and Stop. Route tests for 200, 400, 404, 405, 413, and a cross-site request. Work row tests for the open state, the words, "1 denied", the click, and a reload. A real shell command, a real deny, a real always allow, a real file write, Stop with an open question, and a read with kiro-cli 3.6.1 in headless Chromium.
 
 ### 7. Kiro sessions in the sidebar
 

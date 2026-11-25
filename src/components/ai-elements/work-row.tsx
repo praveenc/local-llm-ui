@@ -4,18 +4,19 @@
  * The work row: one line above an answer that says what the model did before it answered
  * (thinking, web searches, tool calls). While the reply runs, the line shows the step that
  * runs now; after it, a summary such as "Thought 4 s · 3 searches · 18 sources". Click the
- * line to see each step.
+ * line to see each step. While Kiro asks a question, the row is open and the line says it.
  */
-import { ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronRight, CircleHelp, Loader2 } from 'lucide-react';
 import { Streamdown } from 'streamdown';
 
-import { memo, useState } from 'react';
+import { Fragment, memo, useState } from 'react';
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 
 import type { Provider } from '../../db/types';
 import type { ToolCallPart } from '../../types/ai-messages';
+import { openQuestion } from '../../utils/kiroPermissions';
 import { currentStep, summarizeWork, thoughtLabel } from '../../utils/workSummary';
 import { replyRehypePlugins } from './reply-plugins';
 import { useStreamdownCode } from './streamdown-code';
@@ -48,6 +49,9 @@ export const WorkRow = memo(
     const [open, setOpen] = useState(false);
     const codeProps = useStreamdownCode();
     const hasReasoning = Boolean(reasoning);
+    // Kiro's open question: the row opens by itself and stays open while it waits
+    const asking = toolCalls.some((t) => openQuestion(t.approvals));
+    if (asking && !open) setOpen(true);
 
     const step = isRunning
       ? currentStep({ hasReasoning, hasText, toolCalls, provider })
@@ -60,7 +64,9 @@ export const WorkRow = memo(
           className="flex max-w-full items-center gap-1.5 rounded py-0.5 text-left text-[13px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           data-running={step ? '' : undefined}
         >
-          {step ? (
+          {asking ? (
+            <CircleHelp className="size-3.5 shrink-0" aria-hidden />
+          ) : step ? (
             <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
           ) : (
             <ChevronRight
@@ -79,6 +85,18 @@ export const WorkRow = memo(
                 <span className="text-destructive">{summary.failed} failed</span>
               </>
             )}
+            {!step &&
+              [
+                summary.denied > 0 && `${summary.denied} denied`,
+                summary.notAnswered > 0 && `${summary.notAnswered} not answered`,
+              ]
+                .filter(Boolean)
+                .map((text, i) => (
+                  <Fragment key={i}>
+                    {(i > 0 || summary.parts.length > 0 || summary.failed > 0) && ' · '}
+                    <span>{text}</span>
+                  </Fragment>
+                ))}
           </span>
         </CollapsibleTrigger>
 

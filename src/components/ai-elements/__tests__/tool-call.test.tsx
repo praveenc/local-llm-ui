@@ -135,3 +135,67 @@ describe('WorkRow', () => {
     expect(steps).toHaveTextContent('Failed');
   });
 });
+
+describe('ToolCall with Kiro approvals', () => {
+  const kiroPart = (overrides: Partial<ToolCallPart>) =>
+    part({ toolName: 'shell', args: { command: 'echo bye' }, ...overrides });
+
+  it('says "Denied", not "Failed", for a tool that the user denied', () => {
+    renderStep(
+      kiroPart({
+        status: 'error',
+        result: 'The user rejected this tool call',
+        approvals: [{ requestId: 'r1', state: 'answered', kind: 'reject_once' }],
+      })
+    );
+    const line = screen.getByRole('button');
+    expect(line).toHaveTextContent('Denied');
+    expect(line).not.toHaveTextContent('Failed');
+  });
+
+  it('says "Failed" for a real error after an allowed question', () => {
+    renderStep(
+      kiroPart({
+        status: 'error',
+        result: 'Command exited with status 1',
+        approvals: [{ requestId: 'r1', state: 'answered', kind: 'allow_once' }],
+      })
+    );
+    expect(screen.getByRole('button')).toHaveTextContent('Allowed · Failed');
+  });
+
+  it('ends a pending tool whose question was not answered', () => {
+    renderStep(
+      kiroPart({ status: 'pending', approvals: [{ requestId: 'r1', state: 'not-answered' }] })
+    );
+    const line = screen.getByRole('button');
+    expect(line).toHaveTextContent('Not answered');
+    expect(line).not.toHaveTextContent('Running…');
+    expect(line).toBeEnabled();
+  });
+
+  it('says "Waiting for your answer" while a question is open', () => {
+    renderStep(
+      kiroPart({
+        status: 'pending',
+        approvals: [
+          {
+            requestId: '00000000-0000-4000-8000-00000000000a',
+            state: 'open',
+            title: 'Review changes',
+            review: true,
+            options: [
+              { optionId: 'a', name: 'Accept changes', kind: 'allow_once' },
+              { optionId: 'r', name: 'Reject changes', kind: 'reject_once' },
+            ],
+          },
+        ],
+      })
+    );
+    expect(screen.getByRole('button', { name: /shell/ })).toHaveTextContent(
+      'Waiting for your answer'
+    );
+    expect(screen.getByText('Kiro wants you to review the changes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Accept changes' })).toBeEnabled();
+  });
+});

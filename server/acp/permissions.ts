@@ -1,11 +1,12 @@
 /**
  * Permission requests of an ACP agent (session/request_permission).
  *
- * The default answer is a denial. An answer is always one of the request's own options, chosen
- * by kind and never by id. A handler that fails, does not answer in time, or answers an option
- * that the request does not list gets the reject_once option.
+ * The default answer is a denial. An answer is always one of the request's own options. Where the
+ * app picks one itself, it chooses by kind and never by id. A handler that fails, does not answer
+ * in time, or answers an option that the request does not list gets the reject_once option.
  */
 import type {
+  Loose,
   PermissionOption,
   PermissionOptionKind,
   PermissionOutcome,
@@ -29,8 +30,29 @@ export interface PermissionQuestion {
   toolCallId: string;
   title?: string;
   options: PermissionOption[];
-  /** Aborts when the prompt is cancelled or ends */
+  /** The request's own `_meta`, for the harness adapter */
+  meta?: Loose;
+  /** Aborts when the prompt is cancelled or ends, and when this question ends */
   signal: AbortSignal;
+}
+
+/**
+ * How a question ended. `answered`: the handler chose one of the request's options. `cancelled`:
+ * the prompt was cancelled or ended, or the handler cancelled. `timeout`: no valid answer in time
+ * (also a handler that failed or chose an option that the request does not list); the agent got
+ * the reject_once option.
+ */
+export type PermissionEndKind = 'answered' | 'cancelled' | 'timeout';
+
+/** The end of one question of a prompt, for the chat that asked */
+export interface PermissionEnd {
+  requestId: string;
+  toolCallId: string;
+  end: PermissionEndKind;
+  /** The option that the agent got, if any */
+  optionId?: string;
+  /** The kind of that option */
+  kind?: string;
 }
 
 export type PromptPermissionHandler = (
@@ -68,12 +90,18 @@ export async function answerPermission(input: {
   /** True once the prompt was cancelled */
   cancelled: () => boolean;
   ask: () => Promise<PermissionDecision>;
-}): Promise<PermissionOutcome> {
+}): Promise<{ outcome: PermissionOutcome; end: PermissionEndKind }> {
   const { options, signal } = input;
-  const cancelled: PermissionOutcome = { outcome: { outcome: 'cancelled' } };
-  const reject = (): PermissionOutcome => {
+  const cancelled = {
+    outcome: { outcome: { outcome: 'cancelled' } } as PermissionOutcome,
+    end: 'cancelled' as const,
+  };
+  const reject = () => {
     const optionId = options.find((o) => o.kind === 'reject_once')?.optionId;
-    return optionId ? { outcome: { outcome: 'selected', optionId } } : cancelled;
+    const outcome: PermissionOutcome = optionId
+      ? { outcome: { outcome: 'selected', optionId } }
+      : { outcome: { outcome: 'cancelled' } };
+    return { outcome, end: 'timeout' as const };
   };
   let timer: NodeJS.Timeout | undefined;
   const answer = await Promise.race([
@@ -93,5 +121,8 @@ export async function answerPermission(input: {
   const { decision } = answer;
   if (decision === 'cancelled') return cancelled;
   if (!options.some((o) => o.optionId === decision.optionId)) return reject();
-  return { outcome: { outcome: 'selected', optionId: decision.optionId } };
+  return {
+    outcome: { outcome: { outcome: 'selected', optionId: decision.optionId } },
+    end: 'answered',
+  };
 }

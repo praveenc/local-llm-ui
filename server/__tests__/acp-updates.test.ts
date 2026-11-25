@@ -11,7 +11,6 @@ function setup() {
   const mapper = createUpdateMapper({
     send: (e) => void events.push(e),
     toolName: (u) => u.kind ?? 'tool',
-    deniedText: 'DENIED',
     onOther: (u) => void other.push(u),
   });
   return { events, other, mapper };
@@ -65,7 +64,7 @@ describe('createUpdateMapper', () => {
     ]);
   });
 
-  it('sends a failed tool with its output, and a denied one with deniedText', () => {
+  it("sends a failed tool with the agent's own text, also a denied one", () => {
     const { events, mapper } = setup();
     mapper.onUpdate({ sessionUpdate: 'tool_call', toolCallId: 'f', kind: 'execute' });
     mapper.onUpdate({
@@ -75,7 +74,6 @@ describe('createUpdateMapper', () => {
       rawOutput: 'boom',
     });
     mapper.onUpdate({ sessionUpdate: 'tool_call', toolCallId: 'd', kind: 'edit' });
-    mapper.markDenied('d');
     mapper.onUpdate({
       sessionUpdate: 'tool_call_update',
       toolCallId: 'd',
@@ -85,7 +83,7 @@ describe('createUpdateMapper', () => {
     expect(events.slice(1, 2)).toEqual([
       { toolResult: { id: 'f', name: 'execute', error: 'boom' } },
     ]);
-    expect(events.at(-1)).toEqual({ toolResult: { id: 'd', name: 'edit', error: 'DENIED' } });
+    expect(events.at(-1)).toEqual({ toolResult: { id: 'd', name: 'edit', error: 'rejected' } });
   });
 
   it('announces and ends a tool call that arrives completed or only as an update', () => {

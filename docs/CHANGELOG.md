@@ -12,12 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - Kiro account credits: the Kiro row in **Preferences → Providers** and the context popover of a Kiro chat show your plan and your credits, for example `Kiro Power · 1,250 of 10,000 credits used · resets 1 Dec`. The app asks Kiro for them with a new `POST /api/kiro/usage` route and keeps them for 5 minutes ([#84])
+- Kiro tool approvals: when Kiro asks to run a shell command or write a file, the step above the answer opens and shows Kiro's own buttons (**Allow**, **Always allow**, **Deny**, **Always deny**, or **Accept changes** and **Reject changes**). The step then says your answer. A denied tool says **Denied** and the summary says "1 denied". **Stop**, a reload, and a 10-minute wait end an open question as **Not answered** ([#82])
 - Chat with Kiro: a **Kiro** group in the model picker with Kiro's models and credit rates, replies with thinking and tool steps, credits and the context percentage under each reply, a Max thinking level for Kiro models that have it, and Kiro's chat title. Each chat is a Kiro session in `~/.local-llm-ui/kiro`, and the app denies each tool question until the approval UI comes ([#80])
 - Sign in to Kiro from **Preferences → Providers** with AWS Builder ID or IAM Identity Center. The app opens the sign-in page in a new tab and shows the code to compare. **Sign out** is in the same row ([#78])
 - Kiro row in **Preferences → Providers**: when Kiro CLI 3 is installed, it shows the account, the sign-in method, and the version, or what to do when Kiro CLI is signed out or too old. **Check again** reads the state again ([#77])
 
 #### Changed
 
+- Kiro chats use Kiro's default Autopilot, as in the terminal: reads run without a question, and shell commands and file writes ask. The app no longer turns Autopilot off or locks the agent, and it no longer answers **Deny** for you ([#82])
 - The Kiro code is split into a generic ACP layer (`server/acp/`) and a Kiro harness (`server/kiro/`), so another ACP harness can use the same layer later. Nothing changes in behaviour ([#81])
 
 #### Fixed
@@ -239,6 +241,7 @@ PR numbers link to GitHub.
 - ESLint for code quality
 
 [#84]: https://github.com/praveenc/local-llm-ui/pull/84
+[#82]: https://github.com/praveenc/local-llm-ui/pull/82
 [#81]: https://github.com/praveenc/local-llm-ui/pull/81
 [#80]: https://github.com/praveenc/local-llm-ui/pull/80
 [#79]: https://github.com/praveenc/local-llm-ui/pull/79

@@ -174,10 +174,10 @@ Kiro is an agent, not only a model. Each chat with Kiro is a Kiro session, the s
 
 - Kiro keeps the history of the session. The app sends only your new message. When a chat has messages that Kiro has not seen (for example replies from a different model), the app sends them once, before your message.
 - Kiro works in the folder `~/.local-llm-ui/kiro`. Its tools can read and change files and run commands there.
-- Kiro asks before it runs a tool that its default agent does not allow. In this version, the app answers **Deny** to each of these questions, and the step above the answer says **Denied: approvals come in a later version**. Kiro can still run the tools that its default agent allows without a question.
+- Kiro asks before it runs some tools. The question shows in the step above the answer. See [Answer Kiro's questions](#answer-kiros-questions).
 - Kiro uses its own tools and MCP servers. For a Kiro model, the chat input does not show web search, MCP tools, inference settings, or **Add photos or files**.
 - **Regenerate** does not show on Kiro replies, because Kiro cannot remove a reply from its session.
-- **Stop** stops the reply. A tool call that has already started can continue to its end.
+- **Stop** stops the reply and ends an open question. A tool call that has already started can continue to its end.
 - When a chat still has its automatic title, Kiro's short title replaces it.
 
 The **Kiro** row in **Preferences → Providers** also shows your Kiro plan and your credits, for example `Kiro Power · 1,250 of 10,000 credits used · resets 1 Dec`. If you use more credits than the limit, the line also shows how many are over, for example `· 250 over the limit`. The app asks Kiro for these numbers and keeps them for 5 minutes. If Kiro does not give them, the line does not show.
@@ -185,6 +185,29 @@ The **Kiro** row in **Preferences → Providers** also shows your Kiro plan and 
 The first Kiro reply after a start takes a few seconds more: the app starts Kiro CLI, and Kiro CLI starts your MCP servers. The reply shows **Starting Kiro…** until then. Kiro CLI stops after 10 minutes without use.
 
 **Delete** removes a chat from the app only. The Kiro session stays on disk, and `kiro-cli --resume-picker` can still open it.
+
+#### Answer Kiro's questions
+
+Kiro works as it does in the terminal. Its default agent runs Autopilot, so these rules apply:
+
+- Kiro reads files without a question.
+- Kiro asks before it runs a shell command.
+- Kiro asks before it writes a file.
+
+When Kiro asks, the step above the answer opens by itself. Its line says what Kiro wants, for example "Kiro wants to run" and the command. Under the tool line are Kiro's own buttons, in Kiro's order. A shell command or a file write shows **Allow**, **Always allow**, **Deny**, and **Always deny**. Click one button to answer. Kiro waits for your answer, and the reply continues after it.
+
+After your answer, the step says what you chose: **Allowed**, **Always allowed**, **Denied**, or **Always denied**. When you deny a tool, the step does not say **Failed**, and the line above the answer says, for example, `1 denied`. A tool that fails for a different reason still says **Failed**.
+
+Some points to know:
+
+- Kiro keeps the **Always** rules, not the app. A rule holds for that Kiro session only. A new chat starts a new session and asks again. A rule can be narrow: **Always allow** for `echo hi` does not cover every command.
+- With Autopilot off, a file write asks twice. First Kiro asks for the write. Then it asks **Review changes**, with **Accept changes** and **Reject changes**. Both questions show in the step of the write. This version does not turn Autopilot off.
+- **Stop** ends an open question. The step says **Not answered**, and Kiro counts it as one **Deny**. A reload or a closed page ends the question in the same way, and the app does not save that reply.
+- A question that has no answer for 10 minutes also ends. Kiro then gets a **Deny**, and the step says **Not answered**.
+- Kiro asks one question at a time in a session.
+- If the app cannot send your answer, the step says why, and the buttons work again.
+
+Each answer shows in the chat after a reload.
 
 ### Providers with an API key
 
