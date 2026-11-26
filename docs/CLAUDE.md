@@ -91,7 +91,8 @@ Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort
 ### Key Hooks
 
 - `useAllModels.ts` - Aggregates models from all providers
-- `useBedrockChat.ts` - Chat state and streaming for every provider
+- `useBedrockChat.ts` - Chat state and streaming for every provider. The state of a running reply is not in the hook: it lives in `src/utils/replyStore.ts`, keyed by conversation id, so a reply keeps running when you open another chat. A run writes only through its own handle, and every database write of a reply uses the reply's own conversation id.
+- `useReplies.ts` - `useReply(id)` and `useReplyActivity()` read the reply store with `useSyncExternalStore` (the reply of the open chat, and the sidebar words "Replying…" and "Waiting for your answer"). The toast rules are in `src/utils/replyNotice.ts` (`REPLY_NOTICE_RULES`), and `src/services/replyNotices.ts` shows the toast (the **Open** action only for a chat that is not on screen)
 - `useConversation.ts`, `useConversations.ts` - Conversation state/CRUD
 - `useSavedPrompts.ts` - Saved prompts with Dexie reactive queries
 - `useKiroSessions.ts` - The Kiro sessions list (focus and 60 s refresh), import, and sync of terminal turns
