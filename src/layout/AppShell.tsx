@@ -11,6 +11,7 @@ import { useConversationMutations } from '../hooks/useConversationMutations';
 import { useKiroStatus } from '../hooks/useKiroStatus';
 import { useResolvedVisualMode } from '../hooks/useResolvedVisualMode';
 import { conversationService } from '../services';
+import { setFallbackReplyOpener } from '../services/replyNotices';
 import {
   DEFAULT_COLOR_THEME,
   applyColorTheme,
@@ -222,6 +223,12 @@ export default function AppShell() {
       return model ? { kind: 'conversation', conversationId: id, model } : null;
     });
   };
+
+  // The Open action of a reply toast, when no sidebar is mounted (collapsed or closed)
+  useEffect(() => {
+    setFallbackReplyOpener(handleSelectConversation);
+    return () => setFallbackReplyOpener(null);
+  });
 
   const handleToggleTheme = () => {
     handleAppearanceChange({

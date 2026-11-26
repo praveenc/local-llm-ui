@@ -2,13 +2,15 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useState } from 'react';
+import { act, useState } from 'react';
 
 import { GROUP_STATE_STORAGE_KEY } from '../../../utils/conversationGroups';
+import { type ReplyRun, replyStore } from '../../../utils/replyStore';
 import { ConversationList } from '../ConversationList';
 import { ChatSearchInput } from '../sidebarParts';
 
 const updateConversationTitle = vi.fn();
+const deleteConversation = vi.hoisted(() => vi.fn<(id: string) => Promise<void>>(async () => {}));
 const onSelectConversation = vi.fn();
 
 vi.mock('../../../hooks', () => ({
@@ -16,7 +18,7 @@ vi.mock('../../../hooks', () => ({
     conversations: mockConversations(),
     isLoading: false,
   }),
-  useConversationMutations: () => ({ deleteConversation: vi.fn(), updateConversationTitle }),
+  useConversationMutations: () => ({ deleteConversation, updateConversationTitle }),
 }));
 
 const daysAgo = (days: number) => {
@@ -276,5 +278,56 @@ describe('ConversationList search and stored groups', () => {
     await user.click(button);
     expect(button).toHaveAttribute('aria-expanded', 'true');
     expect(localStorage.getItem(GROUP_STATE_STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe('ConversationList running replies', () => {
+  it('says "Replying…" and "Waiting for your answer" in words on the running rows', () => {
+    renderList();
+    expect(screen.queryByText('Replying…')).not.toBeInTheDocument();
+    let replying!: ReplyRun;
+    act(() => {
+      replying = replyStore.start('c1', []);
+      replyStore.start('c2', []).update({ waiting: true });
+    });
+
+    const long = 'A conversation title that is much longer than twenty five characters';
+    const row = (name: string) => screen.getByRole('button', { name }).parentElement!;
+    expect(within(row('Old title')).getByText('Replying…')).toBeInTheDocument();
+    expect(within(row(long)).getByText('Waiting for your answer')).toBeInTheDocument();
+    // The spinner stops when reduced motion is on; the question icon does not spin
+    expect(row('Old title').querySelector('svg')).toHaveClass('motion-reduce:animate-none');
+    expect(row(long).querySelector('svg')).not.toHaveClass('animate-spin');
+    expect(row('Old title').querySelector('time')).toBeNull();
+
+    act(() => replying.end('stopped'));
+    expect(within(row('Old title')).queryByText('Replying…')).not.toBeInTheDocument();
+    expect(row('Old title').querySelector('time')).not.toBeNull();
+  });
+
+  it('stops a running reply and waits for its last write before the delete', async () => {
+    const user = userEvent.setup();
+    const order: string[] = [];
+    deleteConversation.mockImplementation(async () => {
+      order.push('delete');
+    });
+    // No component reads the store yet
+    const run = replyStore.start('c1', []);
+    run.signal.addEventListener('abort', () => {
+      order.push('abort');
+      // The run saves its last text, then finishes
+      setTimeout(() => {
+        order.push('finish');
+        run.finish();
+      }, 0);
+    });
+    renderList('c1');
+    await user.click(screen.getByRole('button', { name: 'Options for Old title' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Delete/ }));
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    await vi.waitFor(() => expect(deleteConversation).toHaveBeenCalledWith('c1'));
+    expect(order).toEqual(['abort', 'finish', 'delete']);
+    expect(replyStore.get('c1')).toBeUndefined();
   });
 });
