@@ -35,6 +35,8 @@ interface ContextIndicatorProps {
   maxTokens?: number;
   /** The current model is a Kiro model */
   kiro?: boolean;
+  /** No model is selected */
+  noModel?: boolean;
 }
 
 const chipClass = `${composerChip} gap-1 px-2 tabular-nums has-[>svg]:px-2`;
@@ -56,6 +58,8 @@ function costText(usage: ChatUsage): { value: string; note?: string } {
   if (usage.allLocal) return { value: 'Free', note: 'Local model' };
   if (usage.cost === undefined) return { value: 'No price data' };
   const unpriced = usage.unpricedReplies;
+  // Only free replies have a price: "$0.00" would read as the price of the whole chat
+  if (usage.cost === 0 && unpriced > 0) return { value: 'No price data' };
   return {
     value: formatCost(usage.cost),
     note: unpriced
@@ -79,7 +83,19 @@ function contextFill(
   return { used: usage.contextTokens, max: maxTokens };
 }
 
-export function ContextIndicator({ usage, maxTokens, kiro = false }: ContextIndicatorProps) {
+/** The text in place of the fill, when the fill is not known */
+function fillNote(usage: ChatUsage, noModel: boolean): string | undefined {
+  if (noModel) return 'Select a model to see the context use.';
+  if (usage.fillFromOtherModel) return 'Context use shows after the next reply from this model.';
+  return undefined;
+}
+
+export function ContextIndicator({
+  usage,
+  maxTokens,
+  kiro = false,
+  noModel = false,
+}: ContextIndicatorProps) {
   if (usage.totals.replies === 0) return null;
 
   const fill = contextFill(usage, maxTokens, kiro);
@@ -87,6 +103,7 @@ export function ContextIndicator({ usage, maxTokens, kiro = false }: ContextIndi
   const hasTokens = usage.tokenReplies > 0;
   const hasCredits = usage.kiroReplies > 0;
   const cost = hasTokens ? costText(usage) : undefined;
+  const note = fill ? undefined : fillNote(usage, noModel);
 
   return (
     <Context usedTokens={fill?.used ?? 0} maxTokens={fill?.max ?? 0}>
@@ -106,13 +123,8 @@ export function ContextIndicator({ usage, maxTokens, kiro = false }: ContextIndi
         </ContextTrigger>
       )}
       <ContextContent side="top" align="end" className="z-[1100]">
-        {fill ? (
-          <ContextContentHeader showTokens={!kiro} />
-        ) : (
-          <p className="p-3 text-xs text-muted-foreground">
-            Context use shows after the next reply from this model.
-          </p>
-        )}
+        {fill && <ContextContentHeader showTokens={!kiro} />}
+        {note && <p className="p-3 text-xs text-muted-foreground">{note}</p>}
         {hasTokens && (
           <ContextContentBody className="space-y-1">
             <p className="pb-1 text-xs font-medium">This chat</p>

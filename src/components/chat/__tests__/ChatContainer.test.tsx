@@ -144,6 +144,7 @@ describe('ChatContainer', () => {
     await user.click(screen.getByRole('button', { name: 'Usage of this chat' }));
     expect(await screen.findByText('900')).toBeInTheDocument();
     expect(screen.getByText('Free')).toBeInTheDocument();
+    expect(screen.getByText('Select a model to see the context use.')).toBeInTheDocument();
   });
 
   it('shows no usage chip before the first reply', () => {

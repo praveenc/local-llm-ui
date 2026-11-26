@@ -26,6 +26,7 @@ const usage = (overrides: Partial<ChatUsage> = {}): ChatUsage => ({
   replyCosts: new Map(),
   credits: 0,
   kiroReplies: 0,
+  fillFromOtherModel: false,
   ...overrides,
 });
 
@@ -113,9 +114,12 @@ describe('ContextIndicator', () => {
 
   it('shows the totals without a fill when the current model has not replied last', async () => {
     const user = userEvent.setup();
-    for (const props of [{ maxTokens: 10000 }, { maxTokens: undefined }, { kiro: true }]) {
+    for (const props of [{ maxTokens: 10000 }, { kiro: true }]) {
       const { unmount } = render(
-        <ContextIndicator usage={usage({ contextTokens: 0 })} {...props} />
+        <ContextIndicator
+          usage={usage({ contextTokens: 0, fillFromOtherModel: true })}
+          {...props}
+        />
       );
       expect(screen.queryByRole('button', { name: /Context used/ })).not.toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'Usage of this chat' }));
@@ -127,6 +131,34 @@ describe('ContextIndicator', () => {
       expect(screen.getByText('$0.012')).toBeInTheDocument();
       unmount();
     }
+  });
+
+  it('asks for a model when no model is selected', async () => {
+    const user = userEvent.setup();
+    render(
+      <ContextIndicator usage={usage({ contextTokens: 0, fillFromOtherModel: true })} noModel />
+    );
+    await user.click(screen.getByRole('button', { name: 'Usage of this chat' }));
+    expect(await screen.findByText('Select a model to see the context use.')).toBeInTheDocument();
+    expect(screen.queryByText(/Context use shows after the next reply/)).not.toBeInTheDocument();
+    expect(screen.getByText('This chat')).toBeInTheDocument();
+  });
+
+  it('promises no fill when the current model replied last without one', async () => {
+    const user = userEvent.setup();
+    render(<ContextIndicator usage={usage({ contextTokens: 0 })} maxTokens={10000} />);
+    await user.click(screen.getByRole('button', { name: 'Usage of this chat' }));
+    expect(await screen.findByText('This chat')).toBeInTheDocument();
+    expect(screen.queryByText(/Context use shows after the next reply/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Select a model/)).not.toBeInTheDocument();
+  });
+
+  it('says No price data, not $0.00, when only free replies have a price', async () => {
+    const user = userEvent.setup();
+    render(<ContextIndicator usage={usage({ cost: 0, unpricedReplies: 1 })} maxTokens={10000} />);
+    await user.click(screen.getByRole('button', { name: /Context used/ }));
+    expect(await screen.findByText('No price data')).toBeInTheDocument();
+    expect(screen.queryByText('$0.00')).not.toBeInTheDocument();
   });
 });
 

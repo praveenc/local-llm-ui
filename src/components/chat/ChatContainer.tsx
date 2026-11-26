@@ -721,6 +721,7 @@ const ChatContainer = ({
                     usage={chatUsage}
                     maxTokens={contextLimits?.contextWindow}
                     kiro={isKiro}
+                    noModel={!selectedModel}
                   />
                 )}
                 <PromptInputSubmitWithAttachments

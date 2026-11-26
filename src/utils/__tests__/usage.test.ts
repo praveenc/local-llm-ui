@@ -210,8 +210,8 @@ describe('summarizeChatUsage', () => {
     );
     expect(summary.contextTokens).toBe(1950);
     expect(summary.totals).toMatchObject({ inputTokens: 4000, outputTokens: 300, replies: 2 });
-    expect(summary.cost).toBeCloseTo((4000 * 2 + 300 * 10) / 1_000_000);
-    expect(summary.replyCosts.get('a')).toBeCloseTo((1000 * 2 + 100 * 10) / 1_000_000);
+    expect(summary.cost).toBeCloseTo((4000 * 2 + 300 * 10) / 1_000_000, 10);
+    expect(summary.replyCosts.get('a')).toBeCloseTo((1000 * 2 + 100 * 10) / 1_000_000, 10);
     expect(summary.unpricedReplies).toBe(0);
     expect(summary.allLocal).toBe(false);
   });
@@ -286,10 +286,11 @@ describe('summarizeChatUsage', () => {
     const bedrock = { provider: 'bedrock' as const, id: 'global.anthropic.claude-sonnet-5-5' };
     const ollama = { provider: 'ollama' as const, id: 'qwen3:8b' };
     const unpriced = { provider: 'bedrock-mantle' as const, id: 'nvidia.nemotron-nano-9b-v2' };
-    const sonnetCost = (input: number, output: number) =>
+    const sonnetCost = (input: number, output: number, cacheRead = 0) =>
       replyCost(priceFor(bedrock.provider, bedrock.id), {
         inputTokens: input,
         outputTokens: output,
+        cacheReadTokens: cacheRead,
       }) as number;
 
     const mixed = [
@@ -315,7 +316,7 @@ describe('summarizeChatUsage', () => {
         expect(summary.tokenReplies).toBe(2);
         expect(summary.kiroReplies).toBe(2);
         expect(summary.credits).toBe(0.63);
-        expect(summary.cost).toBeCloseTo(sonnetCost(1000, 100) + sonnetCost(2000, 300));
+        expect(summary.cost).toBeCloseTo(sonnetCost(1000, 100) + sonnetCost(2000, 300, 800), 10);
         expect(summary.unpricedReplies).toBe(0);
         expect(summary.allLocal).toBe(false);
       }
@@ -369,10 +370,41 @@ describe('summarizeChatUsage', () => {
         ],
         bedrock
       );
-      expect(summary.cost).toBeCloseTo(sonnetCost(1000, 100));
+      expect(summary.cost).toBeCloseTo(sonnetCost(1000, 100), 10);
       expect(summary.unpricedReplies).toBe(2);
       expect(summary.tokenReplies).toBe(4);
       expect(summary.allLocal).toBe(false);
+    });
+
+    it('sums the cost of every priced reply, not only the last one', () => {
+      // Costs above $1, so a sum that keeps one reply fails at any precision
+      const big = [
+        user,
+        reply('a', bedrock, { inputTokens: 400_000, outputTokens: 50_000 }),
+        user,
+        reply('b', kiro, { credits: 1 }),
+        user,
+        reply('c', bedrock, { inputTokens: 600_000, outputTokens: 80_000 }),
+      ];
+      const summary = summarizeChatUsage(big, bedrock);
+      const first = sonnetCost(400_000, 50_000);
+      const second = sonnetCost(600_000, 80_000);
+      expect(first).toBeGreaterThan(1);
+      expect(second).toBeGreaterThan(1);
+      expect(summary.cost).toBeCloseTo(first + second, 10);
+      expect(summary.replyCosts.get('a')).toBeCloseTo(first, 10);
+      expect(summary.replyCosts.get('c')).toBeCloseTo(second, 10);
+    });
+
+    it('says when the fill waits for a reply of the current model', () => {
+      expect(summarizeChatUsage(mixed, kiro).fillFromOtherModel).toBe(false);
+      expect(summarizeChatUsage(mixed, bedrock).fillFromOtherModel).toBe(true);
+      expect(summarizeChatUsage(mixed, null).fillFromOtherModel).toBe(true);
+      expect(summarizeChatUsage([user], bedrock).fillFromOtherModel).toBe(false);
+      // Kiro replied last but gave no percentage: no fill, and no promise of one
+      const noPercent = summarizeChatUsage([user, reply('a', kiro, { credits: 0.1 })], kiro);
+      expect(noPercent.contextPercent).toBeUndefined();
+      expect(noPercent.fillFromOtherModel).toBe(false);
     });
 
     it('is empty for a chat with no replies', () => {
@@ -420,7 +452,8 @@ describe('summarizeChatUsage', () => {
       const live = summarizeChatUsage(mixed, kiro);
       const fromDb = summarizeChatUsage(reloaded, kiro);
       expect(fromDb.totals).toEqual(live.totals);
-      expect(fromDb.cost).toBeCloseTo(live.cost as number);
+      expect(fromDb.cost).toBeCloseTo(live.cost as number, 10);
+      expect(fromDb.cost).toBeCloseTo(sonnetCost(1000, 100) + sonnetCost(2000, 300, 800), 10);
       expect(fromDb.credits).toBe(live.credits);
       expect(fromDb.contextPercent).toBe(live.contextPercent);
       expect(fromDb.tokenReplies).toBe(live.tokenReplies);

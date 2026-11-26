@@ -208,6 +208,28 @@ describe('ChatContainer with Kiro', () => {
       expect(popover.getByText('0.25 credits')).toBeInTheDocument();
     });
 
+    it('shows the sum of the cost of every Bedrock reply', async () => {
+      const user = userEvent.setup();
+      const bedrock = { provider: 'bedrock', id: bedrockModel.id, name: bedrockModel.name };
+      chat.messages = [
+        ...saved(),
+        { id: 'u3', role: 'user', parts: text('again') },
+        {
+          id: 'a3',
+          role: 'assistant',
+          parts: text('three'),
+          model: bedrock,
+          usage: { inputTokens: 2000, outputTokens: 400 },
+        },
+      ];
+      renderChat(kiroModel);
+      await user.click(screen.getByRole('button', { name: 'Usage of this chat' }));
+      const popover = within(await screen.findByRole('dialog'));
+      // Haiku 5.5 at $0.1 / $0.5 per M: $0.00027 + $0.0004. The last reply alone is $0.0004.
+      expect(popover.getByText('$0.0007')).toBeInTheDocument();
+      expect(popover.queryByText('$0.0004')).not.toBeInTheDocument();
+    });
+
     it('fills the ring for the Kiro model that replied last, with both totals', async () => {
       const user = userEvent.setup();
       chat.messages = saved();

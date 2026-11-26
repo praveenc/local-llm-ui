@@ -38,6 +38,8 @@ export interface ChatUsage {
   kiroReplies: number;
   /** Kiro: how full the context window is (0 to 100), when the last reply came from the current Kiro model */
   contextPercent?: number;
+  /** The last reply with usage came from another model (or no model is selected): the fill waits for a reply */
+  fillFromOtherModel: boolean;
 }
 
 const sameModel = (a: UIMessage['model'], b: CurrentModel | null | undefined) =>
@@ -87,6 +89,7 @@ export function summarizeChatUsage(
     // A sum of floats: 0.21 + 0.42 is 0.6300000000000001
     credits: Number(credits.toFixed(4)),
     kiroReplies,
+    fillFromOtherModel: !!last && !lastIsCurrent,
     ...(kiroLast &&
       last?.usage?.contextPercent !== undefined && { contextPercent: last.usage.contextPercent }),
   };
