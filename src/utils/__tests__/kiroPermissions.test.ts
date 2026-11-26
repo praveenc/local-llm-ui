@@ -10,6 +10,7 @@ import {
   parseKiroPermissionQuestion,
   parseKiroPermissionResult,
   questionLine,
+  questionParts,
   readStoredApprovals,
   toStoredApproval,
 } from '../kiroPermissions.ts';
@@ -88,6 +89,25 @@ describe('parseKiroPermissionQuestion', () => {
   it('cuts long texts', () => {
     const parsed = parseKiroPermissionQuestion({ ...shell, command: 'x'.repeat(5000) });
     expect(parsed?.command).toHaveLength(2000);
+  });
+
+  it('records that a command was cut, and only then', () => {
+    expect(parseKiroPermissionQuestion({ ...shell, command: 'x'.repeat(2001) })?.commandCut).toBe(
+      true
+    );
+    const exact = parseKiroPermissionQuestion({ ...shell, command: 'x'.repeat(2000) });
+    expect(exact?.command).toHaveLength(2000);
+    expect(exact).not.toHaveProperty('commandCut');
+    expect(parseKiroPermissionQuestion(shell)).not.toHaveProperty('commandCut');
+    expect(
+      parseKiroPermissionQuestion({ ...shell, command: undefined, title: 'T'.repeat(5000) })
+    ).not.toHaveProperty('commandCut');
+  });
+
+  it('keeps the cut mark on the open approval', () => {
+    const question = parseKiroPermissionQuestion({ ...shell, command: 'x'.repeat(2500) })!;
+    expect(openApproval(question)).toMatchObject({ commandCut: true });
+    expect(openApproval({ ...shell, requestId: REQUEST_ID })).not.toHaveProperty('commandCut');
   });
 });
 
@@ -203,8 +223,8 @@ describe('approvals', () => {
 });
 
 describe('questionLine', () => {
-  it('names the command, the review, or the tool and its resource', () => {
-    expect(questionLine(openApproval(shell))).toBe('Kiro wants to run `echo hi > hello.txt`');
+  it('names the command, the review, or the tool and its resource, with no backticks', () => {
+    expect(questionLine(openApproval(shell))).toBe('Kiro wants to run echo hi > hello.txt');
     expect(questionLine({ review: true, title: 'Review changes' })).toBe(
       'Kiro wants you to review the changes'
     );
@@ -212,12 +232,74 @@ describe('questionLine', () => {
       'Kiro wants to use Write File · notes.txt'
     );
     expect(questionLine({ title: 'Write File' })).toBe('Kiro wants to use Write File');
+    expect(questionLine({ resource: 'notes.txt' })).toBe('Kiro wants to use notes.txt');
     expect(questionLine({})).toBe('Waiting for your answer');
+    // Backticks inside a command are its own content; the question adds none
+    expect(questionLine({ command: 'echo `date`' })).toBe('Kiro wants to run echo `date`');
+    for (const approval of [
+      { review: true },
+      { title: 'Write File', resource: 'notes.txt' },
+      { title: 'Write File' },
+      { resource: 'notes.txt' },
+      {},
+    ]) {
+      expect(questionLine(approval)).not.toContain('`');
+    }
+    expect(questionLine({ command: 'x'.repeat(10) })).toBe(`Kiro wants to run ${'x'.repeat(10)}`);
   });
 
-  it('shortens a long command', () => {
-    expect(questionLine({ command: 'x'.repeat(200) })).toBe(
-      `Kiro wants to run \`${'x'.repeat(80)}…\``
-    );
+  it('shortens a long command to one line of 80 characters', () => {
+    expect(questionLine({ command: 'x'.repeat(200) })).toBe(`Kiro wants to run ${'x'.repeat(80)}…`);
+    expect(questionLine({ command: 'echo a\n  echo b\n' })).toBe('Kiro wants to run echo a echo b');
+  });
+
+  it('cuts a very long title or resource', () => {
+    const line = questionLine({ title: 'T'.repeat(500) });
+    expect(line.length).toBeLessThanOrEqual(161);
+    expect(line.endsWith('…')).toBe(true);
+  });
+});
+
+describe('questionParts', () => {
+  it('gives the whole command as code, without a cut', () => {
+    const command = `echo ${'x'.repeat(300)}`;
+    expect(questionParts({ command })).toEqual({ before: 'Kiro wants to run', code: command });
+  });
+
+  it('says when the command was cut', () => {
+    expect(questionParts({ command: 'ls', commandCut: true })).toEqual({
+      before: 'Kiro wants to run',
+      code: 'ls',
+      codeCut: true,
+    });
+    expect(questionParts({ command: 'ls' })).not.toHaveProperty('codeCut');
+  });
+
+  it('drops the trailing line breaks of a command for display only', () => {
+    const approval = { command: 'echo hi\n\n' };
+    expect(questionParts(approval).code).toBe('echo hi');
+    expect(approval.command).toBe('echo hi\n\n');
+    expect(questionLine(approval)).toBe('Kiro wants to run echo hi');
+  });
+
+  it('keeps the line breaks of a command', () => {
+    const command = 'for f in a b; do\n  echo "$f"\ndone';
+    expect(questionParts({ command }).code).toBe(command);
+  });
+
+  it('has no code for the other kinds', () => {
+    expect(questionParts({ review: true, command: 'ls' })).toEqual({
+      before: 'Kiro wants you to review the changes',
+    });
+    expect(questionParts({ title: 'Write File', resource: 'notes.txt' })).toEqual({
+      before: 'Kiro wants to use Write File · notes.txt',
+    });
+    expect(questionParts({ title: 'Write File' })).toEqual({
+      before: 'Kiro wants to use Write File',
+    });
+    expect(questionParts({ resource: 'notes.txt' })).toEqual({
+      before: 'Kiro wants to use notes.txt',
+    });
+    expect(questionParts({})).toEqual({ before: 'Waiting for your answer' });
   });
 });

@@ -74,18 +74,26 @@ afterEach(() => {
 });
 
 describe('WorkRow with a Kiro question', () => {
-  it('opens by itself and says the question on its line', () => {
+  it('opens by itself, says "Waiting for your answer" on its line, and shows the question once', () => {
     renderRow([shell({ approvals: [openShell] })]);
     const steps = screen.getByRole('list', { name: 'Steps' });
     expect(steps).toBeVisible();
-    // The row's line and the question both say it in words
-    expect(screen.getAllByText('Kiro wants to run `echo hi > hello.txt`')).toHaveLength(2);
+    // The row's line says only that Kiro waits; the question with the command shows once
+    // (the tool's own line shows the command as its argument, in a span, not as the question)
+    expect(document.querySelectorAll('code')).toHaveLength(1);
+    expect(screen.getAllByText('Kiro wants to run')).toHaveLength(1);
+    expect(document.querySelector('code')).toHaveTextContent('echo hi > hello.txt');
+    // The summary line (the row's trigger) says exactly this, with no command
+    const summaryLine = screen.getByRole('button', { name: 'Waiting for your answer' });
+    expect(summaryLine).toHaveAttribute('data-running');
+    expect(summaryLine.textContent).toBe('Waiting for your answer');
     expect(within(steps).getByText('Waiting for your answer')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('`');
   });
 
   it("shows Kiro's options as buttons in Kiro's order, outside the tool line's button", () => {
     renderRow([shell({ approvals: [openShell] })]);
-    const group = screen.getByRole('group', { name: 'Kiro wants to run `echo hi > hello.txt`' });
+    const group = screen.getByRole('group', { name: 'Kiro wants to run echo hi > hello.txt' });
     const buttons = within(group).getAllByRole('button');
     expect(buttons.map((b) => b.textContent)).toEqual([
       'Allow',

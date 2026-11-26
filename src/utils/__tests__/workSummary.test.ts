@@ -281,7 +281,7 @@ describe('Kiro questions in the work row', () => {
     expect(summary).toMatchObject({ failed: 1, denied: 1, notAnswered: 1 });
   });
 
-  it('says the open question as the current step, before a pending tool', () => {
+  it('says "Waiting for your answer" as the current step, before a pending tool, with no command', () => {
     expect(
       currentStep({
         hasReasoning: false,
@@ -292,7 +292,7 @@ describe('Kiro questions in the work row', () => {
           call({ toolName: 'shell', status: 'pending', approvals: [question] }),
         ],
       })
-    ).toBe('Kiro wants to run `echo hi > hello.txt`');
+    ).toBe('Waiting for your answer');
   });
 
   it('stores a denied tool as denied, and an open question as not answered', () => {
