@@ -71,7 +71,7 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 20 | Replies keep running in their own chat | `fix/background-replies` | Done, merged ([#88](https://github.com/praveenc/local-llm-ui/pull/88)) |
 | 21 | Totals of the whole chat in the context popover | `feat/chat-totals` ([#89](https://github.com/praveenc/local-llm-ui/pull/89)) | Done, merged ([#89](https://github.com/praveenc/local-llm-ui/pull/89)) |
 | 22 | MCP servers that fail say why, and recover | M1 `fix/mcp-npx-launch` (stacked on M2) | In progress |
-| 23 | Clearer Add MCP server form | M2 `fix/mcp-server-form` | In progress |
+| 23 | Clearer Add MCP server form | M2 `fix/mcp-server-form` ([#92](https://github.com/praveenc/local-llm-ui/pull/92)) | Done, in review |
 | 24 | Local servers that are standalone programs | M3 `feat/mcp-standalone-commands` | Planned, waits on M1 and M2 |
 | 25 | Import MCP servers from other tools | M4 `feat/mcp-import` | Planned, waits on M3 |
 
@@ -710,7 +710,7 @@ Evidence comes from `main` at `abb6c12`, `@ai-sdk/mcp` 2.0.91, two screenshots o
   - **Two requests can start two processes.** `getOrCreateClient` has no record of a start that is still running, so a status check and a chat at the same time each start the server. The second one replaces the cache entry, and the first process is never closed (code reading).
   - **The app starts half-typed servers.** Each save of Preferences (700 ms after typing stops, `PreferencesDialog.tsx:59`) fires `PREFERENCES_CHANGED_EVENT` (`preferences.ts:87` to `:91`). The MCP button in the chat input then checks every enabled server again (`MCPToolsIndicator.tsx:62` to `:73` and `:83` to `:90`). A new config hash closes the old client and starts a new one. So while you type `@praveenc/llmstxt-doc-search`, the app can run `npx -y @praveenc/llm`, which downloads and runs whatever package has that name. The browser sends every enabled server, also one with no command (`MCPToolsIndicator.tsx:90`, `useBedrockChat.ts:378` to `:379`).
 - **Fix** (D14 (b) and (c)):
-  - Keep the last 4 KB of each child's error output (`stderr: 'pipe'`), and still copy it to the terminal with the server name in front. When a start fails, the error says what happened and shows the last lines, cut to 300 characters. For example: "The server stopped before it answered (exit code 1): npm error code E401 Unable to authenticate, your authentication token seems to be invalid."
+  - Keep the last 4 KB of each child's error output (`stderr: 'pipe'`), and still copy it to the terminal with the server name in front. When a start fails, the error says what happened and shows the last 6 lines, cut to 400 characters. For example: "The server stopped before it answered (exit code 1): npm error code E401 Unable to authenticate, your authentication token seems to be invalid."
   - When a server process stops, remove its client from the cache. The next check or chat starts it again. The app does not restart it by itself, so a broken server cannot loop.
   - Use the SDK's `initializationOptions.timeout` instead of `Promise.race`, so a timeout closes the process. The error says "The server did not answer in 15 s" and shows the last output.
   - Keep one start for each server. A second request waits for the start that runs.
@@ -738,6 +738,12 @@ Evidence comes from `main` at `abb6c12`, `@ai-sdk/mcp` 2.0.91, two screenshots o
   - Help text under **Environment Variables**: "One variable in each row, with no quotes. The app does not expand `$VAR` or `~`: type the full value." Placeholders: `NAME` and `value`.
   - A field whose text starts and ends with the same quote shows a warning under it: "The quotes are part of this value. Remove them unless the server needs them." The value still saves as you typed it.
 - **Trade-offs:** The help text makes the local form about two lines taller.
+- **Done in M2:**
+  - `createDefaultStdioConfig`, `createDefaultHTTPConfig`, and `createDefaultSSEConfig` start with an empty name. A transport change keeps the name, also an empty one. Saved servers keep their names.
+  - A new server opens, and the Name field gets the focus once, when the form mounts. A collapse and an expand later do not move the focus. Saved servers start closed, as before.
+  - The help text under **Arguments** and **Environment Variables** is linked to each field with `aria-describedby`, so a screen reader reads it with the field. The headers editor has no help text and no quote warning, because its values are password fields.
+  - `hasOuterQuotes` (`src/utils/mcpFieldHints.ts`) holds the quote rule: two or more characters, and the same `"` or `'` at both ends after a trim. The warning uses `text-status-warn`, an icon, and words, and the value saves as typed.
+  - The warning is `text-xs`, the size of the field errors. The help text stays `text-[10px]`, as the other help text of this form.
 
 ### 24. Local servers that are standalone programs
 

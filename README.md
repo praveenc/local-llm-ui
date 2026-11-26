@@ -409,7 +409,12 @@ To add a server:
 
 1. Open **Preferences → MCP Servers**.
 2. Click **Local** for a stdio server or **Remote** for an HTTP or SSE server. If you have no servers yet, the buttons are **Add Local Server** and **Add Remote Server**.
-3. Fill in the form. A local server needs a command and its arguments. A remote server needs a URL and, if necessary, headers.
+3. Fill in the form. A new server opens with the cursor in **Name**. A local server needs these fields:
+   - **Command**: the program that starts the server, for example `npx` or `uvx`.
+   - **Arguments**: one argument in each field, with no quotes. For `npx -y @modelcontextprotocol/server-filesystem ~/notes`, type `-y`, then `@modelcontextprotocol/server-filesystem`, then the full path of the folder. The app does not use a shell, so it does not remove quotes, and it does not expand `~` or `$HOME`.
+   - **Environment Variables**: one variable in each row. Type the full value, with no quotes and no `$VAR`.
+
+   A remote server needs a URL and, if necessary, headers. A field whose value starts and ends with a quote shows a warning, because the quotes go to the server as part of the value.
 
 ![The MCP Servers tab of Preferences with a local server and the form of a remote HTTP server.](.github/images/preferences-mcp-servers.png)
 
