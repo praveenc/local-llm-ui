@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatCreditRate } from '@/utils/kiroModels';
 import { modelLabel } from '@/utils/modelLabel';
+import { currentProvider, currentProviderFirst } from '@/utils/modelOrder';
+import type { Provider } from '@/utils/preferences';
 import { isModelPickerShortcut, modelPickerShortcutLabel } from '@/utils/shortcuts';
 
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
@@ -41,6 +43,8 @@ interface ModelSelectorButtonProps {
   disabled?: boolean;
   className?: string;
   onOpenPreferences?: () => void;
+  /** Default provider from Preferences. Its group shows first when no model is selected. */
+  defaultProvider?: Provider;
   /** Optional control, so the chat can open the picker (for example from an error) */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -54,6 +58,7 @@ export function ModelSelectorButton({
   disabled,
   className,
   onOpenPreferences,
+  defaultProvider,
   open: openProp,
   onOpenChange,
 }: ModelSelectorButtonProps) {
@@ -85,7 +90,11 @@ export function ModelSelectorButton({
     setOpen(false);
   };
 
-  const activeProviders = providers.filter((provider) => provider.models.length > 0);
+  // The group of the current provider first, the others in their order
+  const activeProviders = currentProviderFirst(
+    providers.filter((provider) => provider.models.length > 0),
+    currentProvider(selectedModel, defaultProvider)
+  );
   const selectedLabel = selectedModel ? modelLabel(selectedModel).label : undefined;
   const unavailableProviders = providers.filter((provider) => provider.status === 'error');
   const checkingProviders = providers.filter((provider) => provider.status === 'loading');

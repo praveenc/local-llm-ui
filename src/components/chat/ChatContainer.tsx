@@ -25,7 +25,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 
-import type { MessageUsage } from '../../db/types';
+import type { MessageUsage, Provider } from '../../db/types';
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
 import { useBedrockChat } from '../../hooks/useBedrockChat';
 import type { ToolCallPart, UIMessage } from '../../types/ai-messages';
@@ -171,6 +171,8 @@ interface BedrockChatContainerProps {
   onInsertPromptRef?: React.MutableRefObject<((text: string) => void) | null>;
   /** Opens Preferences on the Providers tab, from the first-run checklist and the picker */
   onOpenPreferences?: () => void;
+  /** Default provider from Preferences: its models show first in the picker when no model is selected */
+  defaultProvider?: Provider;
   /** One line saying a model was picked automatically */
   autoSelectNote?: string;
 }
@@ -203,6 +205,7 @@ const ChatContainer = ({
   onInsertPromptRef,
   avatarInitials,
   onOpenPreferences,
+  defaultProvider,
   autoSelectNote,
 }: BedrockChatContainerProps) => {
   const [inputValue, setInputValue] = useState('');
@@ -642,6 +645,7 @@ const ChatContainer = ({
                   isLoading={isLoadingModels}
                   disabled={isLoading}
                   onOpenPreferences={onOpenPreferences}
+                  defaultProvider={defaultProvider}
                   open={pickerOpen}
                   onOpenChange={setPickerOpen}
                 />

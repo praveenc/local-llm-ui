@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { ProviderModels } from '../../../hooks/useAllModels';
+import type { Provider } from '../../../utils/preferences';
 import { ModelSelectorButton } from '../ModelSelectorButton';
 
 describe('ModelSelectorButton', () => {
@@ -175,5 +177,94 @@ describe('ModelSelectorButton', () => {
       await screen.findByRole('option', { name: /Claude Sonnet 5\.5 · US/ })
     ).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Haiku/ })).not.toBeInTheDocument();
+  });
+
+  describe('group order', () => {
+    const entry = (provider: Provider, providerName: string, ...ids: string[]): ProviderModels => ({
+      provider,
+      providerName,
+      status: 'success',
+      models: ids.map((id) => ({ id, name: id, provider, providerName })),
+    });
+    // Bedrock is first in the list, as in the app
+    const providers = [
+      entry('ollama', 'Ollama', 'llama-a'),
+      entry('bedrock', 'Amazon Bedrock', 'model-a', 'model-b'),
+      entry('kiro', 'Kiro', 'model-c'),
+    ];
+    const headings = () =>
+      Array.from(document.querySelectorAll('[cmdk-group-heading]')).map((el) => el.textContent);
+
+    it('shows the group of the selected model first', () => {
+      render(
+        <ModelSelectorButton
+          providers={providers}
+          selectedModel={providers[2].models[0]}
+          defaultProvider="ollama"
+          onSelectModel={vi.fn()}
+        />
+      );
+      fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+      expect(headings()).toEqual([
+        'Kiro · 1 model',
+        'Ollama · 1 model',
+        'Amazon Bedrock · 2 models',
+      ]);
+      // The picker opens on the first row of the list
+      expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getAllByRole('option')[0]).toHaveTextContent('model-c');
+    });
+
+    it('shows the default provider first when no model is selected', () => {
+      render(
+        <ModelSelectorButton
+          providers={providers}
+          selectedModel={null}
+          defaultProvider="bedrock"
+          onSelectModel={vi.fn()}
+        />
+      );
+      fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+      expect(headings()).toEqual([
+        'Amazon Bedrock · 2 models',
+        'Ollama · 1 model',
+        'Kiro · 1 model',
+      ]);
+    });
+
+    it('keeps the list order with no model and no default provider', () => {
+      render(
+        <ModelSelectorButton providers={providers} selectedModel={null} onSelectModel={vi.fn()} />
+      );
+      fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+      expect(headings()).toEqual([
+        'Ollama · 1 model',
+        'Amazon Bedrock · 2 models',
+        'Kiro · 1 model',
+      ]);
+    });
+
+    it('keeps the current provider first while you search, also when another group matches better', async () => {
+      const search = [
+        entry('bedrock', 'Amazon Bedrock', 'zz-claude-opus-long-name'),
+        entry('kiro', 'Kiro', 'opus'),
+      ];
+      render(
+        <ModelSelectorButton
+          providers={search}
+          selectedModel={search[0].models[0]}
+          onSelectModel={vi.fn()}
+        />
+      );
+      fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+      fireEvent.change(screen.getByPlaceholderText('Search models...'), {
+        target: { value: 'opus' },
+      });
+      await screen.findAllByRole('option');
+      expect(screen.getAllByRole('option')).toHaveLength(2);
+      // Kiro has the best match, but the Bedrock group stays on top. This guards against a cmdk
+      // that sorts groups by score.
+      expect(headings()).toEqual(['Amazon Bedrock · 1 model', 'Kiro · 1 model']);
+    });
   });
 });

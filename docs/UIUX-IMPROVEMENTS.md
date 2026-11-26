@@ -1,6 +1,6 @@
 # UI and UX improvements
 
-Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Last updated 2026-11-24. See [Progress](#progress) for the state of each item.
+Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Item 19 is in review. Last updated 2026-11-25. See [Progress](#progress) for the state of each item.
 
 This document reviews the current chat UI and proposes changes, in order of impact. It also records the decisions made so far and the questions that are still open.
 
@@ -60,6 +60,7 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 16 | Sidebar groups with more structure | 7 `feat/sidebar-groups` ([#71](https://github.com/praveenc/local-llm-ui/pull/71)) | Done, merged |
 | 17 | Web search on by default | 8 `feat/web-search-default` ([#72](https://github.com/praveenc/local-llm-ui/pull/72)) | Done, merged |
 | 18 | Rename a chat from the header | 9 `feat/rename-title` ([#73](https://github.com/praveenc/local-llm-ui/pull/73), stacked on #72) | Done, merged |
+| 19 | Current provider first in the model picker | `fix/model-picker-order` ([#85](https://github.com/praveenc/local-llm-ui/pull/85)) | In review ([#85](https://github.com/praveenc/local-llm-ui/pull/85)) |
 
 ### Found during the work
 
@@ -600,6 +601,20 @@ Conversations
   - The `h1` has the click handler, and the "Rename chat" pencil button is the keyboard and screen reader path. The ESLint config has no a11y rules that reject this. The pencil shows on hover and focus, and always on touch screens (44 px below `md`).
   - After Enter or Esc, focus goes back to the pencil. After a click outside, focus stays where you clicked.
   - Tested in Chromium: a chat from 20 days ago keeps its group and its `updatedAt` after a rename in the header and in the sidebar, and the name stays after a reload. A 170-character title does not make the page scroll sideways at 390 px.
+
+### 19. Current provider first in the model picker
+
+- **Categories:** Core flows. **Effort:** S.
+- **Problem:** With a Kiro model selected, the model picker still opens with "Amazon Bedrock · 92 models" at the top. The Kiro models are far down the list, so you must scroll to find them. The same happens for any provider that is not first in the fixed order.
+- **Evidence:**
+  - `useAllModels.ts:123` to `:152`: the app loads the providers in a fixed order (Bedrock, Mantle, API-key providers, LM Studio, Ollama, Kiro), and the picker shows them in that order.
+  - `ModelSelectorButton.tsx:94` and `:147`: the groups show in the order of `providers`, with no regard for the selected model or the default provider.
+- **Fix:**
+  - `currentProviderFirst` (`src/utils/modelOrder.ts`) puts the group of the current provider first and keeps the order of the other groups. The current provider is the provider of the selected model. With no model selected, it is the default provider from **Preferences → Providers**.
+  - A search keeps the order: cmdk 1.1.1 sorts the items inside a group, not the groups. A test guards this. The picker still opens on its first row.
+  - Groups that show "Checking…" or an error hint stay below the groups with models.
+  - `AppShell` passes `preferredProvider` to the picker through `ChatContainer`.
+- **Done in this PR:** unit tests for the order function and for the picker (selected model, default provider, no provider, and a search where another group matches better).
 
 ### Found during the planning
 

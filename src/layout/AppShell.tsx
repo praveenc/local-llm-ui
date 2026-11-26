@@ -315,6 +315,7 @@ export default function AppShell() {
           avatarInitials={userPreferences.avatarInitials}
           onInsertPromptRef={insertPromptRef}
           onOpenPreferences={() => openPreferences('providers')}
+          defaultProvider={userPreferences.preferredProvider}
           autoSelectNote={autoSelectNote}
         />
       </div>
