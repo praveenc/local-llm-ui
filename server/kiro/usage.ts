@@ -3,7 +3,8 @@
  *
  * `_kiro/account/getUsage` needs no session and answers in about 300 ms, but it can start
  * `kiro-cli acp` (and the user's MCP servers). The result is kept 5 minutes per account, and
- * one call runs at a time. A signed-out Kiro never starts the process.
+ * one call runs at a time for each account. A call keeps the account that was current when it
+ * started, and its result is kept only when that account is still the current one at its end. A signed-out Kiro never starts the process.
  *
  * Any failure gives null ("not available"), is not kept, and logs one line with the error class
  * only. The account data (plan, credits, email) is never logged.
@@ -32,15 +33,18 @@ export function createKiroUsage(options: KiroUsageReaderOptions): KiroUsageReade
   const ttlMs = options.ttlMs ?? 300_000;
   const now = options.now ?? Date.now;
 
-  let cached: { usage: KiroUsage; at: number } | undefined;
-  /** The account of the cached result, to drop it when the account changes. Never logged. */
+  /** The last result and the account that it is for. Never logged. */
+  let cached: { usage: KiroUsage; at: number; key: string } | undefined;
+  /** The account of the last read, to drop the result when the account changes. Never logged. */
   let account: string | undefined;
-  let loading: Promise<KiroUsage | null> | undefined;
+  /** The running call and the account that it started for */
+  let loading: { key: string; promise: Promise<KiroUsage | null> } | undefined;
 
-  async function load(): Promise<KiroUsage | null> {
+  async function load(key: string): Promise<KiroUsage | null> {
     try {
       const usage = parseKiroUsage(await agent.extension<unknown>(GET_USAGE, {}));
-      if (usage) cached = { usage, at: now() };
+      // A call for an account that is no longer the current one keeps nothing
+      if (usage && account === key) cached = { usage, at: now(), key };
       return usage;
     } catch (error) {
       console.warn(`[kiro] account usage failed: ${error instanceof Error ? error.name : 'error'}`);
@@ -62,14 +66,20 @@ export function createKiroUsage(options: KiroUsageReaderOptions): KiroUsageReade
         return null;
       }
       const key = `${status.account.type}:${status.account.email ?? ''}`;
-      if (account !== undefined && key !== account) cached = undefined;
+      if (cached && cached.key !== key) cached = undefined;
       account = key;
 
       if (cached && now() - cached.at < ttlMs) return cached.usage;
-      loading ??= load().finally(() => {
-        loading = undefined;
-      });
-      return loading;
+      // Share a running call only when it is for this account
+      if (loading?.key === key) return loading.promise;
+      const run = {
+        key,
+        promise: load(key).finally(() => {
+          if (loading === run) loading = undefined;
+        }),
+      };
+      loading = run;
+      return run.promise;
     },
   };
 }
