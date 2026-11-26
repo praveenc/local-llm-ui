@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-26
+
+PR numbers link to GitHub.
+
 ### 2026-11
 
 #### Added
@@ -17,15 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kiro agent and options in the chat input: the **Agent** button lists the Kiro agents with their descriptions and a search box, and the **Options** menu shows the other Kiro options, for example Autopilot, with Kiro's names and help text. A change applies to the next message, and the values stay with the Kiro session. Select **Supervised** under **Autopilot** to turn Autopilot off for a chat: a file write then asks twice, for the write and for **Review changes**. The chat request has a new `sessionOptions` field, and the server sends only values that Kiro lists ([#86])
 - Kiro account credits: the Kiro row in **Preferences → Providers** and the context popover of a Kiro chat show your plan and your credits, for example `Kiro Power · 1,250 of 10,000 credits used · resets 1 Dec`. The app asks Kiro for them with a new `POST /api/kiro/usage` route and keeps them for 5 minutes ([#84])
 - Kiro sessions in the sidebar: a **Kiro sessions** section lists the sessions that you made in the terminal, with date groups, the folder name, a Last 7 days, Last 30 days, or All menu, and **Search chats**. A click imports the session with its messages, thinking, tool steps, and credits, and you can continue it in the app or in the terminal. Turn it on in the Kiro row in **Preferences → Providers** ([#83])
-- Kiro tool approvals: when Kiro asks to run a shell command or write a file, the step above the answer opens and shows Kiro's own buttons (**Allow**, **Always allow**, **Deny**, **Always deny**, or **Accept changes** and **Reject changes**). The step then says your answer. A denied tool says **Denied** and the summary says "1 denied". **Stop**, a reload, and a 10-minute wait end an open question as **Not answered** ([#82])
-- Chat with Kiro: a **Kiro** group in the model picker with Kiro's models and credit rates, replies with thinking and tool steps, credits and the context percentage under each reply, a Max thinking level for Kiro models that have it, and Kiro's chat title. Each chat is a Kiro session in `~/.local-llm-ui/kiro`, and the app denies each tool question until the approval UI comes ([#80])
+- Kiro tool approvals: when Kiro asks to run a shell command or write a file, the step above the answer opens and shows Kiro's own buttons (**Allow**, **Always allow**, **Deny**, **Always deny**, or **Accept changes** and **Reject changes**). The step then says your answer. A denied tool says **Denied** and the summary says "1 denied". **Stop**, a reload, and a 10-minute wait end an open question as **Not answered**. Kiro chats use Kiro's default Autopilot, as in the terminal: reads run without a question, and shell commands and file writes ask ([#82])
+- A generic ACP layer in `server/acp/` and a Kiro harness in `server/kiro/`, so that another ACP harness can use the same layer later ([#81])
+- Chat with Kiro: a **Kiro** group in the model picker with Kiro's models and credit rates, replies with thinking and tool steps, credits and the context percentage under each reply, a Max thinking level for Kiro models that have it, and Kiro's chat title. Each chat is a Kiro session ([#80])
+- One shared Kiro CLI process for all Kiro chats. It starts at the first Kiro request and stops after 10 minutes without use. When the dev server stops, when you push Ctrl+C, or when Kiro CLI crashes, the app stops all the processes that Kiro CLI started, also your MCP servers ([#79])
 - Sign in to Kiro from **Preferences → Providers** with AWS Builder ID or IAM Identity Center. The app opens the sign-in page in a new tab and shows the code to compare. **Sign out** is in the same row ([#78])
 - Kiro row in **Preferences → Providers**: when Kiro CLI 3 is installed, it shows the account, the sign-in method, and the version, or what to do when Kiro CLI is signed out or too old. **Check again** reads the state again ([#77])
-
-#### Changed
-
-- Kiro chats use Kiro's default Autopilot, as in the terminal: reads run without a question, and shell commands and file writes ask. The app no longer turns Autopilot off or locks the agent, and it no longer answers **Deny** for you ([#82])
-- The Kiro code is split into a generic ACP layer (`server/acp/`) and a Kiro harness (`server/kiro/`), so another ACP harness can use the same layer later. Nothing changes in behaviour ([#81])
 
 #### Fixed
 
@@ -318,7 +319,8 @@ PR numbers link to GitHub.
 [#21]: https://github.com/praveenc/local-llm-ui/pull/21
 [#19]: https://github.com/praveenc/local-llm-ui/pull/19
 [#16]: https://github.com/praveenc/local-llm-ui/pull/16
-[Unreleased]: https://github.com/praveenc/local-llm-ui/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/praveenc/local-llm-ui/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/praveenc/local-llm-ui/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/praveenc/local-llm-ui/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/praveenc/local-llm-ui/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/praveenc/local-llm-ui/releases/tag/v1.0.0
