@@ -2,18 +2,22 @@
  * MCPToolsIndicator Component
  *
  * Toolbar button that shows MCP server connectivity and available tools
- * in a popover. Fetches status on mount and when preferences change.
+ * in a popover. A check starts each local server, so it runs only on mount, when the window gets
+ * MCP_SERVERS_CHECK_EVENT (Preferences closed), and when the popover opens. A change of the
+ * preferences does not check: the user may still be typing a command.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plug2 } from 'lucide-react';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { fetchMCPServerStatus } from '@/services/mcpStatus';
 import type { MCPServerConfig } from '@/types/mcp';
+import { MCP_SERVERS_CHECK_EVENT, checkableServers } from '@/utils/mcpServers';
 import { PREFERENCES_CHANGED_EVENT, loadPreferences } from '@/utils/preferences';
 
 import {
@@ -23,14 +27,6 @@ import {
   composerIconButton,
 } from './composerStyles';
 
-interface MCPServerStatus {
-  name: string;
-  id: string;
-  status: 'connected' | 'error';
-  tools: string[];
-  error?: string;
-}
-
 interface MCPToolsIndicatorProps {
   disabled?: boolean;
   /** False when the selected model cannot use tools: the request sends no MCP servers */
@@ -39,80 +35,65 @@ interface MCPToolsIndicatorProps {
 
 const MCP_STATUS_QUERY_KEY = ['mcp-status'] as const;
 
-function getEnabledConfigs(): MCPServerConfig[] {
-  return Object.values(loadPreferences().mcpServers ?? {}).filter((server) => server.enabled);
+function getCheckableConfigs(): MCPServerConfig[] {
+  return checkableServers(loadPreferences().mcpServers);
 }
 
 export function MCPToolsIndicator({ disabled, toolsSupported = true }: MCPToolsIndicatorProps) {
   const queryClient = useQueryClient();
-  const [enabledConfigs, setEnabledConfigs] = useState<MCPServerConfig[]>(getEnabledConfigs);
-  const [configVersion, setConfigVersion] = useState(0);
+  const [enabledConfigs, setEnabledConfigs] = useState<MCPServerConfig[]>(getCheckableConfigs);
+
+  const hasServers = enabledConfigs.length > 0;
+
+  // A fixed key and no automatic fetch: the checks below are the only ones
+  const statusQuery = useQuery({
+    queryKey: MCP_STATUS_QUERY_KEY,
+    enabled: false,
+    staleTime: 0,
+    gcTime: 0,
+    queryFn: ({ signal }) => fetchMCPServerStatus(getCheckableConfigs(), signal),
+  });
+  const { refetch } = statusQuery;
 
   const refreshConfigs = useCallback(() => {
-    const enabled = getEnabledConfigs();
+    const checkable = getCheckableConfigs();
 
-    setEnabledConfigs(enabled);
-    setConfigVersion((previous) => previous + 1);
+    setEnabledConfigs(checkable);
 
-    if (enabled.length === 0) {
+    if (checkable.length === 0) {
       queryClient.removeQueries({ queryKey: MCP_STATUS_QUERY_KEY });
     }
   }, [queryClient]);
 
-  useEffect(() => {
-    const handler = () => {
-      refreshConfigs();
-    };
+  const check = useCallback(() => {
+    if (getCheckableConfigs().length === 0) return;
+    void refetch();
+  }, [refetch]);
 
-    window.addEventListener('storage', handler);
-    window.addEventListener(PREFERENCES_CHANGED_EVENT, handler);
+  // The page load
+  useEffect(() => {
+    check();
+    // Once: later checks have their own triggers
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // These change which servers count (the button shows or hides), but never start a server
+    window.addEventListener('storage', refreshConfigs);
+    window.addEventListener(PREFERENCES_CHANGED_EVENT, refreshConfigs);
+
+    const handleCheck = () => {
+      refreshConfigs();
+      check();
+    };
+    window.addEventListener(MCP_SERVERS_CHECK_EVENT, handleCheck);
 
     return () => {
-      window.removeEventListener('storage', handler);
-      window.removeEventListener(PREFERENCES_CHANGED_EVENT, handler);
+      window.removeEventListener('storage', refreshConfigs);
+      window.removeEventListener(PREFERENCES_CHANGED_EVENT, refreshConfigs);
+      window.removeEventListener(MCP_SERVERS_CHECK_EVENT, handleCheck);
     };
-  }, [refreshConfigs]);
-
-  const enabledServerKey = useMemo(
-    () => enabledConfigs.map(({ id, transport }) => ({ id, transport })),
-    [enabledConfigs]
-  );
-
-  const hasServers = enabledConfigs.length > 0;
-
-  const statusQuery = useQuery({
-    queryKey: [...MCP_STATUS_QUERY_KEY, configVersion, enabledServerKey],
-    enabled: hasServers,
-    staleTime: 0,
-    gcTime: 0,
-    queryFn: async (): Promise<MCPServerStatus[]> => {
-      const prefs = loadPreferences();
-      const latestEnabledConfigs = Object.values(prefs.mcpServers ?? {}).filter(
-        (server): server is MCPServerConfig => server.enabled
-      );
-
-      if (latestEnabledConfigs.length === 0) {
-        return [];
-      }
-
-      try {
-        const response = await fetch('/api/bedrock-aisdk/mcp-status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mcpServers: latestEnabledConfigs }),
-        });
-
-        if (!response.ok) {
-          return [];
-        }
-
-        const data = (await response.json()) as { servers?: MCPServerStatus[] };
-        return data.servers ?? [];
-      } catch {
-        return [];
-      }
-    },
-  });
+  }, [refreshConfigs, check]);
 
   const servers = hasServers ? (statusQuery.data ?? []) : [];
   const loading = hasServers && statusQuery.isFetching;
@@ -149,7 +130,11 @@ export function MCPToolsIndicator({ disabled, toolsSupported = true }: MCPToolsI
   }
 
   return (
-    <Popover>
+    <Popover
+      onOpenChange={(open) => {
+        if (open) check();
+      }}
+    >
       <TooltipProvider>
         <Tooltip>
           <PopoverTrigger asChild>

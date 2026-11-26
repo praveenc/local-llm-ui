@@ -105,4 +105,37 @@ describe('useBedrockChat tools', () => {
     expect(request.headers).not.toHaveProperty('X-Brave-Api-Key');
     expect(request.body.mcpServers).toEqual([mcpServer]);
   });
+
+  it('sends only the MCP servers that are enabled and complete', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        mcpServers: {
+          s1: mcpServer,
+          noCommand: { ...mcpServer, id: 'noCommand', command: '' },
+          noName: { ...mcpServer, id: 'noName', name: ' ' },
+          off: { ...mcpServer, id: 'off', enabled: false },
+          noUrl: {
+            id: 'noUrl',
+            name: 'Remote',
+            enabled: true,
+            transport: 'http',
+            url: '',
+            headers: {},
+          },
+        },
+      })
+    );
+    const request = await send({ id: 'qwen3:8b', name: 'qwen3:8b', provider: 'ollama' }, false);
+    expect(request.body.mcpServers).toEqual([mcpServer]);
+  });
+
+  it('sends no MCP servers when none is complete', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ mcpServers: { s1: { ...mcpServer, command: '' } } })
+    );
+    const request = await send({ id: 'qwen3:8b', name: 'qwen3:8b', provider: 'ollama' }, false);
+    expect(request.body).not.toHaveProperty('mcpServers');
+  });
 });

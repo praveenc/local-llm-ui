@@ -5,6 +5,8 @@ import type { KiroSignInOptions, KiroSignInPhase } from '../../../hooks/useKiroS
 import { kiroService } from '../../../services/kiro';
 import type { KiroStatus } from '../../../utils/kiroStatus';
 import type { KiroUsage } from '../../../utils/kiroUsage';
+import { MCP_SERVERS_CHECK_EVENT } from '../../../utils/mcpServers';
+import { PREFERENCES_CHANGED_EVENT } from '../../../utils/preferences';
 import { PreferencesDialog } from '../PreferencesDialog';
 
 const kiro = vi.hoisted(() => ({
@@ -1013,5 +1015,51 @@ describe('PreferencesDialog appearance', () => {
     renderDialog({ visualMode: 'dark' });
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Display' }), { button: 0 });
     expect(screen.getByRole('radio', { name: 'Dark' })).toBeChecked();
+  });
+});
+
+describe('PreferencesDialog MCP check', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    kiro.status = { state: 'not-installed' };
+  });
+
+  it('asks for an MCP check when it closes, after the pending save', () => {
+    const events: string[] = [];
+    const record = (name: string) => () => events.push(name);
+    const onChanged = record('preferences');
+    const onCheck = record('check');
+    window.addEventListener(PREFERENCES_CHANGED_EVENT, onChanged);
+    window.addEventListener(MCP_SERVERS_CHECK_EVENT, onCheck);
+
+    try {
+      const { onOpenChange } = renderDialog({ preferredProvider: 'bedrock' });
+      fireEvent.click(screen.getByRole('button', { name: /Add key \(Groq\)/ }));
+      fireEvent.change(screen.getByLabelText('Groq API key'), { target: { value: 'gsk_1' } });
+      // Typed, not saved yet: the close saves it
+      expect(events).toEqual([]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(events).toEqual(['preferences', 'check']);
+    } finally {
+      window.removeEventListener(PREFERENCES_CHANGED_EVENT, onChanged);
+      window.removeEventListener(MCP_SERVERS_CHECK_EVENT, onCheck);
+    }
+  });
+
+  it('asks for no MCP check while it stays open', () => {
+    const onCheck = vi.fn();
+    window.addEventListener(MCP_SERVERS_CHECK_EVENT, onCheck);
+    try {
+      renderDialog({ preferredProvider: 'bedrock' });
+      fireEvent.click(screen.getByRole('button', { name: /Add key \(Groq\)/ }));
+      fireEvent.change(screen.getByLabelText('Groq API key'), { target: { value: 'gsk_1' } });
+      fireEvent.blur(screen.getByLabelText('Groq API key'));
+      expect(onCheck).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(MCP_SERVERS_CHECK_EVENT, onCheck);
+    }
   });
 });
