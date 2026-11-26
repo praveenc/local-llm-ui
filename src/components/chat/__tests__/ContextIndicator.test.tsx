@@ -20,6 +20,7 @@ const usage = (overrides: Partial<ChatUsage> = {}): ChatUsage => ({
     replies: 2,
   },
   cost: 0.0123,
+  tokenReplies: 2,
   unpricedReplies: 0,
   allLocal: false,
   replyCosts: new Map(),
@@ -96,14 +97,36 @@ describe('ContextIndicator', () => {
     expect(await screen.findByText('Free')).toBeInTheDocument();
 
     rerender(<ContextIndicator usage={usage({ unpricedReplies: 1 })} maxTokens={10000} />);
-    expect(screen.getByText('1 reply has no price')).toBeInTheDocument();
+    expect(screen.getByText('1 reply has no price data')).toBeInTheDocument();
   });
 
   it('renders nothing before a reply has usage', () => {
+    const totals = { ...usage().totals, inputTokens: 0, outputTokens: 0, replies: 0 };
     const { container } = render(
-      <ContextIndicator usage={usage({ contextTokens: 0 })} maxTokens={10000} />
+      <ContextIndicator
+        usage={usage({ contextTokens: 0, totals, tokenReplies: 0, cost: undefined })}
+        maxTokens={10000}
+      />
     );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('shows the totals without a fill when the current model has not replied last', async () => {
+    const user = userEvent.setup();
+    for (const props of [{ maxTokens: 10000 }, { maxTokens: undefined }, { kiro: true }]) {
+      const { unmount } = render(
+        <ContextIndicator usage={usage({ contextTokens: 0 })} {...props} />
+      );
+      expect(screen.queryByRole('button', { name: /Context used/ })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Usage of this chat' }));
+      expect(
+        await screen.findByText('Context use shows after the next reply from this model.')
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/of the context window/)).not.toBeInTheDocument();
+      expect(screen.getByText('This chat')).toBeInTheDocument();
+      expect(screen.getByText('$0.012')).toBeInTheDocument();
+      unmount();
+    }
   });
 });
 
@@ -112,7 +135,61 @@ describe('ContextIndicator for Kiro', () => {
     kiroUsage.value = undefined;
   });
 
-  const kiroChat = () => usage({ credits: 0.25, kiroReplies: 2, contextPercent: 30 });
+  const kiroChat = () =>
+    usage({
+      totals: { ...usage().totals, inputTokens: 0, outputTokens: 0 },
+      tokenReplies: 0,
+      cost: undefined,
+      credits: 0.25,
+      kiroReplies: 2,
+      contextPercent: 30,
+    });
+
+  const mixedChat = () =>
+    usage({
+      totals: { ...usage().totals, replies: 4 },
+      credits: 0.63,
+      kiroReplies: 2,
+      contextPercent: 9,
+    });
+
+  const account: KiroUsage = {
+    planName: 'KIRO POWER',
+    resetDate: '2026-12-01',
+    credits: { used: 1250, limit: 10000, percentage: 12, overages: 0, hasLimit: true },
+    overagesEnabled: false,
+  };
+
+  it('shows the tokens, the cost, the credits, and the account for a mixed chat', async () => {
+    const user = userEvent.setup();
+    kiroUsage.value = account;
+    render(<ContextIndicator usage={mixedChat()} kiro />);
+    await user.click(screen.getByRole('button', { name: 'Context used: 9%' }));
+    expect(await screen.findByText('This chat')).toBeInTheDocument();
+    expect(screen.getByText('2.4K')).toBeInTheDocument();
+    expect(screen.getByText('Cost')).toBeInTheDocument();
+    expect(screen.getByText('$0.012')).toBeInTheDocument();
+    expect(screen.getByText('Credits in this chat')).toBeInTheDocument();
+    expect(screen.getByText('0.63 credits')).toBeInTheDocument();
+    expect(screen.getByText('Kiro account')).toBeInTheDocument();
+  });
+
+  it('shows the credits of a mixed chat also when the current model is not Kiro', async () => {
+    const user = userEvent.setup();
+    render(<ContextIndicator usage={mixedChat()} maxTokens={10000} />);
+    await user.click(screen.getByRole('button', { name: 'Context used: 12%' }));
+    expect(await screen.findByText('$0.012')).toBeInTheDocument();
+    expect(screen.getByText('0.63 credits')).toBeInTheDocument();
+  });
+
+  it('shows no cost line for a chat of Kiro replies only', async () => {
+    const user = userEvent.setup();
+    render(<ContextIndicator usage={kiroChat()} kiro />);
+    await user.click(screen.getByRole('button', { name: /Context used: 30%/ }));
+    expect(await screen.findByText('Credits in this chat')).toBeInTheDocument();
+    expect(screen.queryByText('Cost')).not.toBeInTheDocument();
+    expect(screen.queryByText('This chat')).not.toBeInTheDocument();
+  });
 
   it('shows the credits of the chat and the plan and credits of the account', async () => {
     const user = userEvent.setup();
@@ -122,7 +199,7 @@ describe('ContextIndicator for Kiro', () => {
       credits: { used: 1250, limit: 10000, percentage: 12, overages: 0, hasLimit: true },
       overagesEnabled: false,
     };
-    render(<ContextIndicator usage={kiroChat()} maxTokens={100} kiro />);
+    render(<ContextIndicator usage={kiroChat()} kiro />);
     await user.click(screen.getByRole('button', { name: /Context used: 30%/ }));
     expect(await screen.findByText('Credits in this chat')).toBeInTheDocument();
     expect(screen.getByText('0.25 credits')).toBeInTheDocument();
@@ -136,7 +213,7 @@ describe('ContextIndicator for Kiro', () => {
     const user = userEvent.setup();
     for (const value of [undefined, null]) {
       kiroUsage.value = value;
-      const { unmount } = render(<ContextIndicator usage={kiroChat()} maxTokens={100} kiro />);
+      const { unmount } = render(<ContextIndicator usage={kiroChat()} kiro />);
       await user.click(screen.getByRole('button', { name: /Context used: 30%/ }));
       expect(await screen.findByText('Credits in this chat')).toBeInTheDocument();
       expect(screen.queryByText('Kiro account')).not.toBeInTheDocument();

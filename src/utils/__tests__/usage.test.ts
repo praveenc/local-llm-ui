@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { UIMessage } from '../../types/ai-messages';
+import type { Message as DbMessage } from '../../db/types';
+import { type UIMessage, toUIMessages } from '../../types/ai-messages';
 import { summarizeChatUsage } from '../chatUsage';
 import { claudeContextWindow, parseClaudeModel } from '../claudeModels';
 import { getModelContextLimits } from '../modelContext';
@@ -191,19 +192,22 @@ describe('summarizeChatUsage', () => {
 
   it('takes the context from the last reply and the cost from all replies', () => {
     const sonnet = { provider: 'anthropic' as const, id: 'claude-sonnet-5-5' };
-    const summary = summarizeChatUsage([
-      user,
-      reply('a', sonnet, { inputTokens: 1000, outputTokens: 100 }),
-      user,
-      reply('b', sonnet, {
-        inputTokens: 3000,
-        outputTokens: 200,
-        steps: [
-          { inputTokens: 1200, outputTokens: 50 },
-          { inputTokens: 1800, outputTokens: 150 },
-        ],
-      }),
-    ]);
+    const summary = summarizeChatUsage(
+      [
+        user,
+        reply('a', sonnet, { inputTokens: 1000, outputTokens: 100 }),
+        user,
+        reply('b', sonnet, {
+          inputTokens: 3000,
+          outputTokens: 200,
+          steps: [
+            { inputTokens: 1200, outputTokens: 50 },
+            { inputTokens: 1800, outputTokens: 150 },
+          ],
+        }),
+      ],
+      sonnet
+    );
     expect(summary.contextTokens).toBe(1950);
     expect(summary.totals).toMatchObject({ inputTokens: 4000, outputTokens: 300, replies: 2 });
     expect(summary.cost).toBeCloseTo((4000 * 2 + 300 * 10) / 1_000_000);
@@ -231,6 +235,7 @@ describe('summarizeChatUsage', () => {
     ]);
     expect(local.allLocal).toBe(true);
     expect(local.cost).toBe(0);
+    expect(local.tokenReplies).toBe(1);
   });
 
   it('is empty for a chat without usage', () => {
@@ -243,12 +248,15 @@ describe('summarizeChatUsage', () => {
 
   it('adds up Kiro credits and takes the context percent of the last Kiro reply', () => {
     const kiro = { provider: 'kiro' as const, id: 'claude-opus-5.5' };
-    const summary = summarizeChatUsage([
-      user,
-      reply('a', kiro, { credits: 0.05, contextPercent: 3, latencyMs: 2900 }),
-      user,
-      reply('b', kiro, { credits: 0.12, contextPercent: 7.5 }),
-    ]);
+    const summary = summarizeChatUsage(
+      [
+        user,
+        reply('a', kiro, { credits: 0.05, contextPercent: 3, latencyMs: 2900 }),
+        user,
+        reply('b', kiro, { credits: 0.12, contextPercent: 7.5 }),
+      ],
+      kiro
+    );
     expect(summary.credits).toBeCloseTo(0.17);
     expect(summary.kiroReplies).toBe(2);
     expect(summary.contextPercent).toBe(7.5);
@@ -257,15 +265,165 @@ describe('summarizeChatUsage', () => {
     expect(summary.allLocal).toBe(false);
     expect(summary.cost).toBeUndefined();
     expect(summary.replyCosts.size).toBe(0);
+    expect(summary.tokenReplies).toBe(0);
   });
 
   it('has no Kiro context percent when the last reply came from another model', () => {
-    const summary = summarizeChatUsage([
-      reply('a', { provider: 'kiro', id: 'auto' }, { credits: 1, contextPercent: 40 }),
-      reply('b', { provider: 'ollama', id: 'qwen3:8b' }, { inputTokens: 10, outputTokens: 5 }),
-    ]);
+    const summary = summarizeChatUsage(
+      [
+        reply('a', { provider: 'kiro', id: 'auto' }, { credits: 1, contextPercent: 40 }),
+        reply('b', { provider: 'ollama', id: 'qwen3:8b' }, { inputTokens: 10, outputTokens: 5 }),
+      ],
+      { provider: 'ollama', id: 'qwen3:8b' }
+    );
     expect(summary.contextPercent).toBeUndefined();
     expect(summary.credits).toBe(1);
     expect(summary.contextTokens).toBe(15);
+  });
+
+  describe('totals of the whole chat', () => {
+    const kiro = { provider: 'kiro' as const, id: 'claude-opus-5.5' };
+    const bedrock = { provider: 'bedrock' as const, id: 'global.anthropic.claude-sonnet-5-5' };
+    const ollama = { provider: 'ollama' as const, id: 'qwen3:8b' };
+    const unpriced = { provider: 'bedrock-mantle' as const, id: 'nvidia.nemotron-nano-9b-v2' };
+    const sonnetCost = (input: number, output: number) =>
+      replyCost(priceFor(bedrock.provider, bedrock.id), {
+        inputTokens: input,
+        outputTokens: output,
+      }) as number;
+
+    const mixed = [
+      user,
+      reply('a', bedrock, { inputTokens: 1000, outputTokens: 100 }),
+      user,
+      reply('b', kiro, { credits: 0.21, contextPercent: 4 }),
+      user,
+      reply('c', bedrock, { inputTokens: 2000, outputTokens: 300, cacheReadTokens: 800 }),
+      user,
+      reply('d', kiro, { credits: 0.42, contextPercent: 9 }),
+    ];
+
+    it('adds tokens and cost from Bedrock and credits from Kiro, apart', () => {
+      for (const current of [kiro, bedrock, null]) {
+        const summary = summarizeChatUsage(mixed, current);
+        expect(summary.totals).toMatchObject({
+          inputTokens: 3000,
+          outputTokens: 400,
+          cacheReadTokens: 800,
+          replies: 4,
+        });
+        expect(summary.tokenReplies).toBe(2);
+        expect(summary.kiroReplies).toBe(2);
+        expect(summary.credits).toBe(0.63);
+        expect(summary.cost).toBeCloseTo(sonnetCost(1000, 100) + sonnetCost(2000, 300));
+        expect(summary.unpricedReplies).toBe(0);
+        expect(summary.allLocal).toBe(false);
+      }
+    });
+
+    it('takes the fill only from a last reply of the current model', () => {
+      expect(summarizeChatUsage(mixed, kiro).contextPercent).toBe(9);
+      expect(summarizeChatUsage(mixed, kiro).contextTokens).toBe(0);
+      // Bedrock replied before Kiro: its old size misses the Kiro turns
+      expect(summarizeChatUsage(mixed, bedrock).contextTokens).toBe(0);
+      expect(summarizeChatUsage(mixed, bedrock).contextPercent).toBeUndefined();
+      expect(summarizeChatUsage(mixed, null).contextTokens).toBe(0);
+      // Another Kiro model has its own window
+      const other = summarizeChatUsage(mixed, { provider: 'kiro', id: 'gpt-5.6-sol' });
+      expect(other.contextPercent).toBeUndefined();
+      // Bedrock last, same provider but another model
+      const bedrockLast = [
+        ...mixed,
+        user,
+        reply('e', bedrock, { inputTokens: 50, outputTokens: 5 }),
+      ];
+      expect(summarizeChatUsage(bedrockLast, bedrock).contextTokens).toBe(55);
+      expect(
+        summarizeChatUsage(bedrockLast, {
+          provider: 'bedrock',
+          id: 'us.anthropic.claude-sonnet-5-5',
+        }).contextTokens
+      ).toBe(0);
+    });
+
+    it('marks a chat of local and Kiro replies as free, not as $0.00 of a priced model', () => {
+      const summary = summarizeChatUsage(
+        [
+          reply('a', ollama, { inputTokens: 10, outputTokens: 5 }),
+          reply('b', kiro, { credits: 0.05 }),
+        ],
+        ollama
+      );
+      expect(summary.allLocal).toBe(true);
+      expect(summary.tokenReplies).toBe(1);
+      expect(summary.credits).toBe(0.05);
+    });
+
+    it('keeps the known cost and counts the unpriced replies', () => {
+      const summary = summarizeChatUsage(
+        [
+          reply('a', bedrock, { inputTokens: 1000, outputTokens: 100 }),
+          reply('b', unpriced, { inputTokens: 10, outputTokens: 5 }),
+          reply('c', unpriced, { inputTokens: 10, outputTokens: 5 }),
+          reply('d', ollama, { inputTokens: 10, outputTokens: 5 }),
+        ],
+        bedrock
+      );
+      expect(summary.cost).toBeCloseTo(sonnetCost(1000, 100));
+      expect(summary.unpricedReplies).toBe(2);
+      expect(summary.tokenReplies).toBe(4);
+      expect(summary.allLocal).toBe(false);
+    });
+
+    it('is empty for a chat with no replies', () => {
+      const summary = summarizeChatUsage([user], bedrock);
+      expect(summary.totals.replies).toBe(0);
+      expect(summary.tokenReplies).toBe(0);
+      expect(summary.kiroReplies).toBe(0);
+      expect(summary.cost).toBeUndefined();
+      expect(summary.allLocal).toBe(false);
+    });
+
+    it('gives the same totals for a chat read back from the database', () => {
+      const stored = (
+        id: string,
+        sequence: number,
+        role: DbMessage['role'],
+        model: { provider: DbMessage['provider']; id: string },
+        usage?: DbMessage['usage']
+      ): DbMessage => ({
+        id,
+        conversationId: 'c1',
+        role,
+        content: 'x',
+        sequence,
+        createdAt: new Date(2026, 10, 26),
+        provider: model.provider,
+        modelId: model.id,
+        modelName: model.id,
+        ...(usage && { usage }),
+      });
+      const reloaded = toUIMessages([
+        stored('u1', 0, 'user', bedrock),
+        stored('a', 1, 'assistant', bedrock, { inputTokens: 1000, outputTokens: 100 }),
+        stored('u2', 2, 'user', kiro),
+        stored('b', 3, 'assistant', kiro, { credits: 0.21, contextPercent: 4 }),
+        stored('u3', 4, 'user', bedrock),
+        stored('c', 5, 'assistant', bedrock, {
+          inputTokens: 2000,
+          outputTokens: 300,
+          cacheReadTokens: 800,
+        }),
+        stored('u4', 6, 'user', kiro),
+        stored('d', 7, 'assistant', kiro, { credits: 0.42, contextPercent: 9 }),
+      ]);
+      const live = summarizeChatUsage(mixed, kiro);
+      const fromDb = summarizeChatUsage(reloaded, kiro);
+      expect(fromDb.totals).toEqual(live.totals);
+      expect(fromDb.cost).toBeCloseTo(live.cost as number);
+      expect(fromDb.credits).toBe(live.credits);
+      expect(fromDb.contextPercent).toBe(live.contextPercent);
+      expect(fromDb.tokenReplies).toBe(live.tokenReplies);
+    });
   });
 });
