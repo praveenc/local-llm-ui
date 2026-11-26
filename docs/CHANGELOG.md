@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+PR numbers link to GitHub.
+
+### 2026-11
+
+#### Fixed
+
+- A Kiro tool question now shows the whole command, up to 2,000 characters, as code that keeps its line breaks, wraps on a narrow screen, and scrolls after about 10 lines. Before, the question cut the command at 80 characters and showed backticks as text, so the end of a long command was hidden. When Kiro sends a longer command, a line under it says that only the start shows. While the question is open, the line above the answer says **Waiting for your answer**, so the question shows only once ([#92])
+
 ## [1.3.0] - 2026-11-26
 
 PR numbers link to GitHub.
@@ -250,6 +258,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#92]: https://github.com/praveenc/local-llm-ui/pull/92
 [#90]: https://github.com/praveenc/local-llm-ui/pull/90
 [#89]: https://github.com/praveenc/local-llm-ui/pull/89
 [#88]: https://github.com/praveenc/local-llm-ui/pull/88

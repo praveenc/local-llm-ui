@@ -260,7 +260,7 @@ Kiro works as it does in the terminal. Its default agent runs Autopilot, so thes
 - Kiro asks before it runs a shell command.
 - Kiro asks before it writes a file.
 
-When Kiro asks, the step above the answer opens by itself. If you are in a different chat, a toast tells you that Kiro waits, and **Open** takes you to the question. Its line says what Kiro wants, for example "Kiro wants to run" and the command. Under the tool line are Kiro's own buttons, in Kiro's order. A shell command or a file write shows **Allow**, **Always allow**, **Deny**, and **Always deny**. Click one button to answer. Kiro waits for your answer, and the reply continues after it.
+When Kiro asks, the step above the answer opens by itself, and the line above the answer says **Waiting for your answer**. If you are in a different chat, a toast tells you that Kiro waits, and **Open** takes you to the question. The question is under the tool line. It says what Kiro wants, for example "Kiro wants to run", and shows the whole command as code. A long command scrolls in its box. If Kiro sends a command that is longer than 2,000 characters, a line under the box says that only the start shows. Under the question are Kiro's own buttons, in Kiro's order. A shell command or a file write shows **Allow**, **Always allow**, **Deny**, and **Always deny**. Click one button to answer. Kiro waits for your answer, and the reply continues after it.
 
 After your answer, the step says what you chose: **Allowed**, **Always allowed**, **Denied**, or **Always denied**. When you deny a tool, the step does not say **Failed**, and the line above the answer says, for example, `1 denied`. A tool that fails for a different reason still says **Failed**.
 

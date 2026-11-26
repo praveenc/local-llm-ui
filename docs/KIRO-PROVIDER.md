@@ -1,6 +1,6 @@
 # Kiro provider
 
-Status: done. All PRs are merged and ship in release 1.3.0. All decisions take the recommended option (2026-11-24). On 2026-11-25 the direction became: Kiro is the provider and kiro-cli is the harness (D15 to D20). See [Progress](#progress) for the state of each PR. Last updated 2026-11-26.
+Status: items 1 to 10 are done, merged, and ship in release 1.3.0. Item 11 (the small points left) is in review as K11a to K11d. All decisions take the recommended option (2026-11-24). On 2026-11-25 the direction became: Kiro is the provider and kiro-cli is the harness (D15 to D20). See [Progress](#progress) for the state of each PR. Last updated 2026-11-26.
 
 This document plans Kiro as a provider. Kiro is not an HTTP API. It is a local agent (`kiro-cli`) that the app starts as a child process and talks to with the Agent Client Protocol (ACP): JSON-RPC, one message per line, on stdin and stdout. Kiro keeps its own login, model list, sessions on disk, tools, and credits. The app must fit these into its existing patterns: one model picker, one chat view, one work row, one SSE format.
 
@@ -43,6 +43,14 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 | D18 | Where do Kiro sessions come from? | Approved: (a). From Kiro: `session/list` for the list, `session/load` with replay to import a session, `session/close` after each reply so the terminal can resume it, and Kiro's lease error ("loaded in another program") as the chat error. The app does not read `~/.kiro/sessions` for the list or the transcript. Changes how D10 works, not what it shows. | K7 |
 | D19 | Which sessions does the list show? | Approved: (a). The list hides sessions that were never used: their title is "New Session", Kiro's name before the first prompt. | K7 |
 | D20 | Which session options does the chat input show? | Approved: (a). The options that Kiro lists. `mode` shows as an agent picker. The options without an ACP category (for example Autopilot) show in one menu, with Kiro's names and descriptions. The app picks a control by the ACP category (`mode`, `model`, `thought_level`), so it works for any harness. | K9 |
+| D21 | How much of the command does a tool question show? | Approved: (a). The whole command as Kiro sent it, up to 2,000 characters (`MAX_TEXT`), not the 80-character cut. It shows as code in neutral grey that wraps, keeps its line breaks, and scrolls after about 10 lines. The page never scrolls sideways at 390 px. When Kiro sent a longer command, a line says that only the start shows. The plain text of the question (the `aria-label`) has no backticks. | K11a |
+| D22 | Where does the question show while it is open? | Approved: (a). Once, under the tool line. The summary line of the work row says "Waiting for your answer", with no command. | K11a |
+| D23 | How does a chat sync when its session is not in the list that the browser holds? | Approved: (a). The sync asks once for the **All** list, with the same query key and stale time. Built in K11d, and then replaced in the same PR by the exact check of D25: an open no longer looks at any list. | K11d |
+| D24 | How does a chat that was made before K7 (no `kiro.turns`) sync? | Approved: (a). Its first open runs one count-only replay that stores `kiro.turns`, `kiro.updatedAt`, and the options, and adds no message. Terminal turns made before that open are not imported. Turns after it sync. | K11d |
+| D25 | How does the app know that the chat has every turn of its session? | Approved: (a). From Kiro's exact `updatedAt`. Final form: the browser checks Kiro's exact time before each send and on open (`ifUpdatedAfter` on `POST /api/kiro/sessions/open`). The same instant gives `{ unchanged: true }` with no load. A newer time gives the turns after `kiro.turns`, and the app adds them before the message. The chat route stamps the time before the prompt (`sessionUpdatedBefore`, read after the load) and after it (`sessionUpdatedAt`). A reply counts on only when the time before equals the stored time. | K11d |
+| D26 | Does the **Agent** picker of a new chat get the agents again? | Approved: (a). When it opens, at most once per 60 s across the app, with `refreshOptions: true` on `POST /api/kiro/models` (one `session/new` and `session/delete`, about 1 s, no status read). First held back, because the first probe said that a running kiro-cli does not list a new agent. That probe was wrong: its agent files lacked keys. The second probe showed that kiro-cli reads `~/.kiro/agents/` again on each `session/new`, so the refresh was built. | K11c |
+| D27 | Where do the picks that are not sent yet live? | Approved: (a). With the chat in IndexedDB, in a top-level `kiroPicks` field of the conversation (not indexed, so no Dexie version change). The app clears a pick when Kiro's snapshot shows its value, moves the picks with the first message of a new chat, drops a value that Kiro no longer lists, and deletes the picks with the chat. A new chat with no record keeps them in memory. | K11c |
+| D28 | What does the app do with a `~/.local-llm-ui` that is a symlink? | Approved: (a). It follows the link to write the settings file and checks the owner, but it never changes the mode of a folder that it reached through a link. A folder that the app makes, or a real folder, gets mode 0700. The same rule holds for the default work folder. | K11b |
 
 ## Progress
 
@@ -59,6 +67,10 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 | K8 | `feat/kiro-credits` | 8 | Done, merged ([#84](https://github.com/praveenc/local-llm-ui/pull/84)) |
 | K9 | `feat/kiro-session-options` | 9 | Done, merged ([#86](https://github.com/praveenc/local-llm-ui/pull/86)) |
 | KD | `feat/kiro-defaults` | D6, D9, 10 | Done, merged ([#87](https://github.com/praveenc/local-llm-ui/pull/87)) |
+| K11a | `fix/kiro-question-line` | 11 (D21, D22) | In review ([#92](https://github.com/praveenc/local-llm-ui/pull/92)) |
+| K11b | `fix/kiro-settings-folder` | 11 (D28) | In review ([#93](https://github.com/praveenc/local-llm-ui/pull/93)) |
+| K11c | `fix/kiro-session-options` | 11 (D26, D27) | In review ([#94](https://github.com/praveenc/local-llm-ui/pull/94)) |
+| K11d | `fix/kiro-session-sync` | 11 (D23, D24, D25) | In review ([#95](https://github.com/praveenc/local-llm-ui/pull/95)) |
 
 ### Found during the work
 
@@ -107,7 +119,7 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 - **Real check of K6 (kiro-cli 3.6.1, Claude Haiku 5.5, 2026-11-25).** The question showed after about 8 s with Kiro's four options. **Allow** made the file, and **Deny** did not. **Always allow** gave no second question for the same command. A write with Autopilot on asked once, with no "Review changes". **Stop** ended the open question and the next message worked. A read asked nothing. The two-question path is not reachable in the browser with Autopilot on, so a fake-process test covers it. K9 can check it with Autopilot off.
 - **An "Always" rule is narrow (K6).** After **Always allow** for one `echo` command, a later `echo` command with another start asked again. The rule is Kiro's. The app shows the question as Kiro sends it.
 - **A stopped reply is not saved (found in K6).** The app does not store a reply that **Stop** ended, so a reload does not show its **Not answered** row. The stored form is covered by unit tests. This was the case before K6.
-- **Small points left (K6).** The question line shows the command between backticks as plain text, and the line shows once in the row summary and once under the tool line. At 390 px the tool line cuts the command, and the question line under it shows the whole command.
+- **Small points left (K6).** The question line shows the command between backticks as plain text, and the line shows once in the row summary and once under the tool line. At 390 px the tool line cuts the command, and the question line under it shows the whole command. Fixed in K11a (#92).
 - **The list and the import come from Kiro (K7).** The server reads `session/list` and keeps only the id, folder, title, last change, and status of each session. `_meta.kiro.customAgents` is 13 MB of 14 MB, and the server drops it at once. `POST /api/kiro/sessions/open` runs `session/load` with replay, collects the replayed updates, and closes the session. The replay of the largest session is 64.6 MB of updates, but the collector keeps only compact turns. The app never reads `~/.kiro/sessions` for the list or the transcript (D18).
 - **Real import of the largest session (K7).** The largest idle session had 22 MB on disk, 58 turns, and 3,595 tool calls. The server took 2.6 s, and the chat showed after 3.7 s. The response was 7.9 MB, so the 16 MB limit did not apply. The app stored 116 messages, and the browser storage went from 253 KB to 5.3 MB. The two session files, the file count, and the file times did not change. **Delete** removed the chat from the app only.
 - **Kiro lists more than chats (K7).** The list has sessions that Kiro makes for itself (memory consolidation, prompt optimiser) and sessions whose first message is a system prompt. The app hides only "New Session" (D19) and shows the rest as Kiro lists them. In a list of about 2,300 sessions, Last 7 days shows 85 rows and All shows 275 rows.
@@ -138,6 +150,10 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 - **The tools use the session folder, not the process folder (KD e2e, kiro-cli 3.6.2).** The Kiro process starts in the default folder, and only `session/new` gets the stored folder. A new chat ran `pwd` in the stored folder, a new chat after **Use the default** ran in the default folder, and an old chat kept its own folder. So a change needs no restart. `pwd` ran without a question, because Kiro treats it as a read.
 - **The default agent goes through the pending picks of K9 (KD).** `movePendingSessionOptions` moves the picks of the new-chat key to the new conversation, and it now also moves the default agent. `useBedrockChat.ts` is not changed. With a non-Kiro model, the value stays in memory unused. Nothing sends it, because only the Kiro path reads pending options. The e2e check showed a Bedrock chat with no `sessionOptions` in its request.
 - **Small points left (KD).** When `~/.local-llm-ui` is a symlink, the app follows it when it writes the setting and sets its target to mode 0700. With a custom `environment` and no `agent` option, the proxy makes its own settings object. Only tests do this. The Preferences footer does not say "Saved" for the folder: the folder row says it in words.
+- **The command was cut with no mark (K11a review).** The parser cuts a command at 2,000 characters, and the question showed the cut text as if it were whole. The parser now marks a cut command, and the question says that only the start shows.
+- **The command font was too small (K11a review).** `text-[0.875em]` inside the row's `text-xs` gave about 10.5 px of monospace, for the text that the user approves. The block now inherits `text-xs`.
+- **Kiro can make the command longer (K11a e2e, kiro-cli 3.6.2).** A prompt with a 261-character `echo` gave a 429-character command in the question. The block showed the 429 characters that the `permission` event had, byte for byte.
+- **"Waiting for your answer" shows twice (K11a e2e).** While a question is open, the words show in the summary line and as the state at the end of the tool line. The two have different jobs, so both stay. The tool line still shows the command on one cut line, and the block under it shows it whole.
 
 ## What kiro-cli 3 does
 
@@ -438,6 +454,44 @@ Kiro runs its own tools and its own MCP servers. For a Kiro model, the chat inpu
 - **Tests:** Server: the usage cache with an account switch during a call; the settings route (200, a 400 for each rule with a real temporary folder layout, a symlink to a system folder, a symlinked settings folder, `~/` expansion, `null`, 405, 413, 415, 403); the harness uses the stored folder for a new session and not for a loaded one; the chat body with `cwd` or `workspaceDir` changes nothing. Browser: the folder field (save, error words, **Use the default**), the default agent list from a fixture, a new chat gets the pick, an unlisted id is ignored with the note, and `movePendingSessionOptions` moves the default.
 - **Done:** `make check` passes (115 files, 1306 tests) and `make build` passes. A break test (the system-folder rule returns nothing) fails 3 tests, and a second one (the `settingsDirs` field removed) fails 4. A real run with kiro-cli 3.6.2: a new chat ran `pwd` in the chosen folder, a new chat after **Use the default** ran in `~/.local-llm-ui/kiro`, and an old chat kept its folder. `/etc`, `~`, `~/.ssh`, a folder that does not exist, a link to `/etc`, `/`, and a relative path each showed a message and wrote no settings file. The default agent showed in the picker before the first message, worked with the reply "pong", and showed after a reload. A cross-site `POST` got 403, a `GET` 405, a `text/plain` body 415, and a 5 KB body 413. Headless Chromium at 1440, 1024, and 390 px, light and dark: no sideways scroll and no page errors.
 
+### 11. Small points left (K11)
+
+The small points left of K6, K7, K9, and KD (see [Found during the work](#found-during-the-work)). Two audits checked each one again on 2026-11-26 with `file:line` evidence, and two probes of kiro-cli 3.6.2 answered the open questions about Kiro. The work is four stacked PRs.
+
+#### K11a: the question line (D21, D22)
+
+- **Change:**
+  - The question under the tool line shows the whole command as Kiro sent it, up to 2,000 characters (`MAX_TEXT`), in a `<pre><code>` block (D21). The block uses the neutral grey of inline code (`bg-surface-quiet`), keeps the line breaks, wraps long tokens (`[overflow-wrap:anywhere]`), inherits the row's `text-xs`, and scrolls after about 10 lines. Trailing line breaks are not shown. The block can take focus (`tabIndex={0}`, name "Command"), so a keyboard user can scroll it.
+  - When Kiro sent a command longer than 2,000 characters, the parser marks it (`commandCut`), and a line under the block says "The command is longer than 2,000 characters. Only the start shows."
+  - `questionParts()` in `src/utils/kiroPermissions.ts` gives the words and the command. `questionLine()` is the plain text for the `aria-label`: no backticks, one line, cut at 80 characters (160 for a title or a path).
+  - While a question is open, the summary line of the work row says "Waiting for your answer" and no command (D22). The question shows once, under the tool line.
+- **Tests:**
+  - `kiroPermissions.test.ts`: every kind of question has a text without backticks; a 300-character command stays whole; a multi-line command keeps its lines; `commandCut` is set above 2,000 characters and not at exactly 2,000.
+  - `permission-question.test.tsx` (new): the command is in a `<code>` element, the block can take focus and has its name, the cut line shows only for a cut command, and each kind without a command (a review, a title, a path, nothing) reads well.
+  - `work-row.test.tsx`: the summary line, found by its role and name, says exactly "Waiting for your answer", and the command shows once in the row.
+- **Done:** `make check` passes (120 files, 1380 tests) and `make build` passes. The new 300-character test and the work-row test fail on main. A real run with kiro-cli 3.6.2 and Claude Haiku 5.5 in headless Chromium: Kiro asked for a 429-character `echo` command, and the code block held the same 429 characters as the `permission` event. A heredoc kept its 4 lines. At 390 px the block was 271 px wide with no sideways overflow, and it scrolled after about 10 lines. **Deny** gave **Denied** and "1 denied". After a reload the row looked the same. No backtick in the text or in any `aria-label` or `title`. Light and dark at 1440, 1024, and 390 px, with no sideways scroll and no page errors.
+
+#### K11b: the settings folder (D28)
+
+- **Change:**
+  - `ensurePrivateDir()` in `server/kiro/settings.ts` makes `~/.local-llm-ui`, or checks it, for the settings file (D28). It reads the path with `lstat` first, and sets mode 0700 only on a folder that it makes now or on a real folder. A folder that it reaches through a symlink keeps its own mode. The owner check uses `stat`, so a link to a folder of another user is still refused. Only `ENOENT` from `lstat` means "missing". The settings file and its temp file stay 0600. The harness uses the same rule for the default work folder.
+  - `kiroSettingsFor(environment?)` builds the settings object: the shared one without an environment, and one per environment object. The proxy and the harness both use it, so they share one cache.
+  - The Preferences footer says **Saved** when the folder for new Kiro chats saves. The row keeps its own **Saved** and **Not saved.** words, and the footer never says "Not saved" for the folder.
+
+#### K11c: session options (D26, D27)
+
+- **Change:**
+  - The **Agent** picker of a chat with no Kiro session, and the **Default agent** list in Preferences, ask for the default session options again when they open (D26). One throttle in `src/services/kiro.ts` allows one refresh per 60 s across the app. The request is `POST /api/kiro/models` with `{ refreshOptions: true }`. The server loads one short session again and shares the load between requests, and it does not read the status again. While the refresh runs, the picker shows the old list, and the new list replaces it without closing the popover or moving the focus.
+  - A pick that no reply has applied yet is kept in the conversation record in IndexedDB, in `Conversation.kiroPicks` (D27). A reload reads it back, a value that Kiro no longer lists is dropped, and a `sessionOptions` event clears only the picks whose value it shows.
+  - The Kiro harness names the options that Kiro keeps per process (`contentCollection`). The snapshot marks them with `scope: 'process'`. A new session does not get the stored value of such an option, and the **Options** menu says "Applies to all Kiro chats until Kiro CLI stops." under it.
+
+#### K11d: sync of terminal turns (D23, D24, D25)
+
+- **Change:**
+  - `POST /api/kiro/sessions/open` takes `ifUpdatedAfter`. The server reads Kiro's exact `updatedAt` for the session with a `session/list` of the session's own folder. The same instant gives `{ unchanged: true, updatedAt }` with no load. A newer time gives the replay of the turns after `skipTurns`. A turn that runs in the terminal gives 409.
+  - Before each send, and when you open the chat, the browser asks with the stored time and the stored count (D25), and adds the new turns before the message. A chat with no count gets one count-only recount on its first open (D24).
+  - The chat route reads the time after the load (`sessionUpdatedBefore`) and after the prompt (`sessionUpdatedAt`). A reply counts on only when the time before equals the stored time.
+
 ## Found during the planning
 
 - **Cross-site POSTs reach the proxies (item 1).** This is true today for all providers, not only Kiro. K1 fixes it first, because Kiro makes the risk larger.
@@ -461,8 +515,12 @@ Kiro runs its own tools and its own MCP servers. For a Kiro model, the chat inpu
 | K8 | `feat/kiro-credits` | 8 | H1 |
 | K9 | `feat/kiro-session-options` | 9 | K6 |
 | KD | `feat/kiro-defaults` | D6, D9, 10 | K9 |
+| K11a | `fix/kiro-question-line` | 11 (D21, D22) | KD |
+| K11b | `fix/kiro-settings-folder` | 11 (D28) | K11a |
+| K11c | `fix/kiro-session-options` | 11 (D26, D27) | K11b |
+| K11d | `fix/kiro-session-sync` | 11 (D23, D24, D25) | K11c |
 
-Merge order: K1 to K5 (merged), then H1, K6, K7, K8, K9. Plan 2 (PRs 6 to 9) is merged in v1.2.0, so no PR waits on it. K6, K7, and K8 are built at the same time after H1. H1 splits `server/kiro/` so that the three PRs edit different files. K9 starts when K6 is merged. KD starts after K9 is merged.
+Merge order: K1 to K5 (merged), then H1, K6, K7, K8, K9. Plan 2 (PRs 6 to 9) is merged in v1.2.0, so no PR waits on it. K6, K7, and K8 are built at the same time after H1. H1 splits `server/kiro/` so that the three PRs edit different files. K9 starts when K6 is merged. KD starts after K9 is merged. Item 11 merges in the order K11a, K11b, K11c, K11d. The four branches are stacked in this order, so each PR shows only its own commits.
 
 Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes:
 
@@ -475,6 +533,7 @@ Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes:
 - K8: account credits.
 - K9: session options in the chat input.
 - KD: the folder for new Kiro chats and the default agent in the Kiro row, and a note in the `CLAUDE.md` files and `docs/SECURITY-LEARNINGS.md` (SEC-21).
+- K11a to K11d: the README parts whose behaviour changes, an entry under "Fixed" in the changelog, the routes and hooks in the `CLAUDE.md` files, and SEC-16 to SEC-21 where a rule changes.
 
 K2 also updates `.kiro/steering/CLAUDE.md` (provider and proxy tables) and `docs/SECURITY.md` (how the app starts Kiro and what it sends). H1 updates both `CLAUDE.md` files and `docs/SECURITY-LEARNINGS.md` (paths only).
 
