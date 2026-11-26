@@ -201,6 +201,21 @@ describe('POST /api/kiro/chat', () => {
     );
   });
 
+  it('ignores a folder in the chat body (SEC-16, SEC-21)', async () => {
+    const c = await setup();
+    const { status } = await chat(c, {
+      ...base,
+      prompt: 'hello',
+      cwd: '/tmp',
+      workspaceDir: '/tmp',
+    });
+    expect(status).toBe(200);
+    const created = (await c.log()).find((m) => m.method === 'session/new');
+    expect((created?.params as { cwd: string }).cwd).toBe(
+      path.join(c.home, '.local-llm-ui', 'kiro')
+    );
+  });
+
   it('reuses the session with no context block, and a stale chat gets a new session', async () => {
     const c = await setup();
     const first = await chat(c, { ...base, prompt: 'one' });
