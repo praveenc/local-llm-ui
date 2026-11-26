@@ -23,10 +23,9 @@ import {
 } from '../services/aisdk';
 import { openrouterService } from '../services/openrouter';
 import type { KiroModelMeta } from '../services/types';
-import type { KiroStatus } from '../utils/kiroStatus';
 import { loadPreferences } from '../utils/preferences';
 import type { Provider, UserPreferences } from '../utils/preferences';
-import { KIRO_STATUS_QUERY_KEY } from './useKiroStatus';
+import { kiroStatusQueryOptions } from './useKiroStatus';
 
 export interface UnifiedModel {
   id: string;
@@ -255,11 +254,10 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
   const queryClient = useQueryClient();
 
   // Ask Kiro for its models again when it becomes signed in or stops being signed in (sign-in,
-  // sign-out, or a status check). This only reads the status that useKiroStatus fetches.
-  const { data: kiroStatus } = useQuery<KiroStatus>({
-    queryKey: KIRO_STATUS_QUERY_KEY,
-    enabled: false,
-  });
+  // sign-out, or a status check). This only reads the status that useKiroStatus fetches:
+  // `enabled: false` stops this hook from starting a fetch, and the shared options give the query
+  // its function.
+  const { data: kiroStatus } = useQuery({ ...kiroStatusQueryOptions, enabled: false });
   const kiroSignedIn = kiroStatus ? kiroStatus.state === 'signed-in' : undefined;
   const previousKiroSignedInRef = useRef<boolean | undefined>(undefined);
   useEffect(() => {

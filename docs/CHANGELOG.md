@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- The browser console no longer logs "No queryFn was passed" for the Kiro status in development. The model list only reads the status, and it now uses the same query definition as the Kiro status hook, so it never starts a status fetch of its own ([#90])
 - A reply no longer moves into the new chat when you click **New chat** or a different chat while it streams. The reply keeps running, and the app saves it in its own chat. You can start a new chat during a reply, and **Stop** stops only the reply of the open chat. **Delete** on a chat with a running reply stops the reply first ([#88])
 - The Kiro account credits could show for the wrong account when you changed the account while the app read them. Each read now keeps its own account, and its result is kept only when that account is still the current one ([#87])
 - The model picker now lists the group of the selected model's provider first, so a selected Kiro model no longer sits below 92 Amazon Bedrock models. With no model selected, your default provider shows first. The other groups keep their order, also during a search ([#85])
@@ -248,6 +249,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#90]: https://github.com/praveenc/local-llm-ui/pull/90
 [#89]: https://github.com/praveenc/local-llm-ui/pull/89
 [#88]: https://github.com/praveenc/local-llm-ui/pull/88
 [#87]: https://github.com/praveenc/local-llm-ui/pull/87
