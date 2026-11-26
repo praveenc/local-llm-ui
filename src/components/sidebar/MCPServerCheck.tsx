@@ -10,6 +10,7 @@ import { AlertCircle, Check } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { fetchMCPServerStatus } from '@/services/mcpStatus';
 import type { MCPServerStatus } from '@/services/mcpStatus';
 import type { MCPServerConfig } from '@/types/mcp';
@@ -84,13 +85,14 @@ export function MCPServerCheck({ config }: { config: MCPServerConfig }) {
 
   const current = check && check.key === key ? check : null;
   const running = current?.running ?? false;
+  const blocked = incomplete || running;
 
   const run = async () => {
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
     setCheck({ key, running: true, servers: [] });
-    const servers = await fetchMCPServerStatus([config], controller.signal);
+    const servers = await fetchMCPServerStatus([config], { signal: controller.signal });
     // The fields changed or the form closed while the check ran: this answer is not for them
     if (controller.signal.aborted) return;
     setCheck({ key, running: false, servers });
@@ -100,12 +102,17 @@ export function MCPServerCheck({ config }: { config: MCPServerConfig }) {
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-2">
         <Button
+          type="button"
           variant="outline"
           size="sm"
-          onClick={() => void run()}
-          disabled={incomplete || running}
+          onClick={() => {
+            if (!blocked) void run();
+          }}
+          // Not `disabled`: the button keeps the focus while it runs, and stays focusable when
+          // the form is incomplete, so a screen reader reads the hint
+          aria-disabled={blocked || undefined}
           aria-describedby={incomplete ? hintId : undefined}
-          className="h-7 text-xs"
+          className={cn('h-7 text-xs', blocked && 'cursor-default opacity-50 hover:bg-transparent')}
         >
           {running ? 'Checking…' : 'Check'}
         </Button>

@@ -51,7 +51,9 @@ export function MCPToolsIndicator({ disabled, toolsSupported = true }: MCPToolsI
     enabled: false,
     staleTime: 0,
     gcTime: 0,
-    queryFn: ({ signal }) => fetchMCPServerStatus(getCheckableConfigs(), signal),
+    // The full set of servers that the app can use, so the server closes the ones that left it
+    queryFn: ({ signal }) =>
+      fetchMCPServerStatus(getCheckableConfigs(), { signal, closeOthers: true }),
   });
   const { refetch } = statusQuery;
 
@@ -84,7 +86,12 @@ export function MCPToolsIndicator({ disabled, toolsSupported = true }: MCPToolsI
 
     const handleCheck = () => {
       refreshConfigs();
-      check();
+      if (getCheckableConfigs().length > 0) {
+        check();
+      } else {
+        // No server left: the server still closes the ones that it runs (the last one deleted)
+        void fetchMCPServerStatus([], { closeOthers: true });
+      }
     };
     window.addEventListener(MCP_SERVERS_CHECK_EVENT, handleCheck);
 
@@ -189,7 +196,9 @@ export function MCPToolsIndicator({ disabled, toolsSupported = true }: MCPToolsI
                 </span>
               </div>
 
-              {server.error && <p className="text-xs text-destructive ml-4">{server.error}</p>}
+              {server.error && (
+                <p className="ml-4 min-w-0 break-words text-xs text-destructive">{server.error}</p>
+              )}
 
               {server.tools.length > 0 && (
                 <div className="ml-4 flex flex-wrap gap-1">

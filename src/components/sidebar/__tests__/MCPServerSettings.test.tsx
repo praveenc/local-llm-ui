@@ -510,7 +510,7 @@ describe('MCPServerSettings Check button', () => {
     const { user } = setup({ s2: { ...remote, url: '' } });
     await user.click(screen.getByRole('button', { name: 'Remote one' }));
     const button = screen.getByRole('button', { name: 'Check' });
-    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).toHaveAccessibleDescription('Fill in the form to check this server.');
   });
 });

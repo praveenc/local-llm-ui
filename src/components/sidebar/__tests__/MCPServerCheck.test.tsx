@@ -59,18 +59,28 @@ describe('MCPServerCheck', () => {
     await screen.findByText('Connected · 1 tool');
   });
 
-  it('says Checking… and disables the button while the check runs', async () => {
+  it('says Checking… and ignores clicks while the check runs, and keeps the focus', async () => {
     let finish: (value: Response) => void = () => undefined;
     fetchMock.mockReturnValue(new Promise<Response>((resolve) => (finish = resolve)));
     const user = userEvent.setup();
     render(<MCPServerCheck config={local} />);
-    await user.click(checkButton());
-    expect(screen.getByRole('button', { name: 'Checking…' })).toBeDisabled();
+    checkButton().focus();
+    await user.keyboard('{Enter}');
+    const running = screen.getByRole('button', { name: 'Checking…' });
+    expect(running).toHaveAttribute('aria-disabled', 'true');
+    expect(running).not.toBeDisabled();
+    expect(running).toHaveFocus();
+    expect(running).toHaveClass('opacity-50');
+    await user.click(running);
+    await user.keyboard('{Enter}');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/Connected/)).not.toBeInTheDocument();
     await act(async () => {
       finish({ ok: true, json: () => Promise.resolve({ servers: [] }) } as Response);
     });
-    expect(screen.getByRole('button', { name: 'Check' })).toBeEnabled();
+    const idle = screen.getByRole('button', { name: 'Check' });
+    expect(idle).not.toHaveAttribute('aria-disabled');
+    expect(idle).toHaveFocus();
   });
 
   it('shows the number of tools, with the singular for one tool', async () => {
@@ -153,19 +163,24 @@ describe('MCPServerCheck', () => {
     ['a local server with no name', { ...local, name: '' }],
     ['a remote server with no URL', { ...remote, url: '' }],
     ['a remote server with a broken URL', { ...remote, url: 'not a url' }],
-  ] as Array<[string, MCPServerConfig]>)('disables the button for %s', async (_label, config) => {
+  ] as Array<[string, MCPServerConfig]>)('turns the button off for %s', async (_label, config) => {
     const user = userEvent.setup();
     render(<MCPServerCheck config={config} />);
     const button = checkButton();
-    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveClass('opacity-50');
     expect(button).toHaveAccessibleDescription('Fill in the form to check this server.');
+    // Focusable, so a screen reader reads the hint
+    await user.tab();
+    expect(button).toHaveFocus();
     await user.click(button);
+    await user.keyboard('{Enter}');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('shows no hint for a complete server', () => {
     render(<MCPServerCheck config={local} />);
-    expect(checkButton()).toBeEnabled();
+    expect(checkButton()).not.toHaveAttribute('aria-disabled');
     expect(checkButton()).not.toHaveAttribute('aria-describedby');
     expect(screen.queryByText('Fill in the form to check this server.')).not.toBeInTheDocument();
   });
@@ -188,7 +203,7 @@ describe('MCPServerCheck', () => {
       const { rerender } = await checked(local);
       rerender(<MCPServerCheck config={next} />);
       expect(screen.queryByText('Connected · 2 tools')).not.toBeInTheDocument();
-      expect(checkButton()).toBeEnabled();
+      expect(checkButton()).not.toHaveAttribute('aria-disabled');
     });
 
     it('clears the result when the URL or the headers of a remote server change', async () => {
@@ -231,7 +246,7 @@ describe('MCPServerCheck', () => {
       expect(signal?.aborted).toBe(false);
       rerender(<MCPServerCheck config={{ ...local, args: ['-y', 'other'] }} />);
       expect(signal?.aborted).toBe(true);
-      expect(checkButton()).toBeEnabled();
+      expect(checkButton()).not.toHaveAttribute('aria-disabled');
       // The old answer comes late and must not show
       await act(async () => {
         finish({
@@ -258,7 +273,10 @@ describe('MCPServerCheck', () => {
       await user.click(checkButton());
       rerender(<MCPServerCheck config={{ ...local, name: 'Renamed' }} />);
       expect(signal?.aborted).toBe(false);
-      expect(screen.getByRole('button', { name: 'Checking…' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Checking…' })).toHaveAttribute(
+        'aria-disabled',
+        'true'
+      );
       await act(async () => {
         finish({
           ok: true,

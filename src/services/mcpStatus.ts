@@ -9,21 +9,33 @@ export interface MCPServerStatus {
   error?: string;
 }
 
+export interface FetchMCPServerStatusOptions {
+  signal?: AbortSignal;
+  /**
+   * True when `configs` is the full set of servers that the app can use: the server then closes
+   * the other servers that it still runs. A check of one server leaves this off.
+   */
+  closeOthers?: boolean;
+}
+
 /**
  * Check the given servers. A check starts each local server, so the caller passes only complete
- * servers. No servers: no request. A failed request gives an empty list.
+ * servers. No servers: no request, except with `closeOthers`, which then closes every server
+ * that the server still runs. A failed request gives an empty list.
  */
 export async function fetchMCPServerStatus(
   configs: MCPServerConfig[],
-  signal?: AbortSignal
+  { signal, closeOthers = false }: FetchMCPServerStatusOptions = {}
 ): Promise<MCPServerStatus[]> {
-  if (configs.length === 0) return [];
+  if (configs.length === 0 && !closeOthers) return [];
 
   try {
     const response = await fetch('/api/bedrock-aisdk/mcp-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mcpServers: configs }),
+      body: JSON.stringify(
+        closeOthers ? { mcpServers: configs, closeOthers } : { mcpServers: configs }
+      ),
       signal,
     });
 

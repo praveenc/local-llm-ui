@@ -80,8 +80,17 @@ describe('MCPToolsIndicator', () => {
     let fetchSpy: ReturnType<typeof vi.fn>;
     const bodies = () =>
       fetchSpy.mock.calls.map(
-        (call) => JSON.parse((call[1] as { body: string }).body) as { mcpServers: unknown[] }
+        (call) =>
+          JSON.parse((call[1] as { body: string }).body) as {
+            mcpServers: unknown[];
+            closeOthers?: boolean;
+          }
       );
+    // Let pending effects, queries, and microtasks run, so a check that would start shows
+    const flush = async () => {
+      await act(async () => {});
+      await act(async () => {});
+    };
 
     const renderIndicator = () =>
       render(
@@ -114,6 +123,8 @@ describe('MCPToolsIndicator', () => {
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       expect(bodies()[0].mcpServers).toEqual([server('a')]);
+      // The full set: the server closes the servers that are not in it
+      expect(bodies()[0].closeOthers).toBe(true);
       expect(screen.getByRole('button', { name: 'MCP tools: 2' })).toBeInTheDocument();
     });
 
@@ -129,7 +140,7 @@ describe('MCPToolsIndicator', () => {
         window.dispatchEvent(new Event(PREFERENCES_CHANGED_EVENT));
         window.dispatchEvent(new Event('storage'));
       });
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await flush();
 
       expect(fetchSpy).not.toHaveBeenCalled();
     });
@@ -150,6 +161,7 @@ describe('MCPToolsIndicator', () => {
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       expect(bodies()[0].mcpServers).toEqual([server('a'), server('b')]);
+      expect(bodies()[0].closeOthers).toBe(true);
     });
 
     it('checks when the popover opens', async () => {
@@ -165,15 +177,41 @@ describe('MCPToolsIndicator', () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
 
-    it('sends nothing when no server is complete, and shows the empty state', async () => {
+    it('wraps a long error, so the popover does not scroll sideways', async () => {
+      const error =
+        'The server stopped before it answered (exit code 1): npm error 401 Unauthorized - GET ' +
+        'https://registry.example.com/@scope%2fa-very-long-package-name-with-no-spaces-at-all';
+      fetchSpy.mockImplementation(async () => ({
+        ok: true,
+        json: async () => ({
+          servers: [{ id: 'a', name: 'Server a', status: 'error', tools: [], error }],
+        }),
+      }));
+      store(server('a'));
+      renderIndicator();
+      await settle();
+
+      fireEvent.click(screen.getByRole('button', { name: /MCP tools/ }));
+      const text = await screen.findByText(error);
+
+      expect(text).toHaveClass('break-words');
+      expect(text).toHaveClass('min-w-0');
+    });
+
+    it('starts no server when none is complete, and shows the empty state', async () => {
       store(server('half', { command: '' }), server('off', { enabled: false }));
       renderIndicator();
+      await flush();
+      // The page load checks nothing
+      expect(fetchSpy).not.toHaveBeenCalled();
+
       act(() => {
         window.dispatchEvent(new CustomEvent(MCP_SERVERS_CHECK_EVENT));
       });
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await flush();
 
-      expect(fetchSpy).not.toHaveBeenCalled();
+      // Preferences closed: an empty list, so the server closes the servers that it still runs
+      expect(bodies()).toEqual([{ mcpServers: [], closeOthers: true }]);
       const button = screen.getByRole('button', { name: 'MCP tools' });
       expect(button).toHaveAttribute('aria-disabled', 'true');
     });
