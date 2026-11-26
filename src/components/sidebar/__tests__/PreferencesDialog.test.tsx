@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { KiroSignInOptions, KiroSignInPhase } from '../../../hooks/useKiroSignIn';
 import type { KiroStatus } from '../../../utils/kiroStatus';
+import type { KiroUsage } from '../../../utils/kiroUsage';
 import { PreferencesDialog } from '../PreferencesDialog';
 
 const kiro = vi.hoisted(() => ({
@@ -12,6 +13,11 @@ const kiro = vi.hoisted(() => ({
 }));
 vi.mock('../../../hooks/useKiroStatus', () => ({
   useKiroStatus: () => kiro,
+}));
+
+const kiroUsage = vi.hoisted(() => ({ value: undefined as KiroUsage | null | undefined }));
+vi.mock('../../../hooks/useKiroUsage', () => ({
+  useKiroUsage: () => kiroUsage.value,
 }));
 
 const signIn = vi.hoisted(() => ({
@@ -178,6 +184,41 @@ describe('PreferencesDialog Kiro', () => {
     kiro.status = { state: 'not-installed' };
     kiro.refresh.mockReset();
     kiro.isRefreshing = false;
+    kiroUsage.value = undefined;
+  });
+
+  const signedIn = (): KiroStatus => ({
+    state: 'signed-in',
+    path: '~/.local/bin/kiro-cli',
+    version: '3.6.1',
+    account: { type: 'builder-id', email: 'dev@example.com' },
+  });
+
+  it('shows the plan and the credits of the account in the signed-in Kiro row', () => {
+    kiro.status = signedIn();
+    kiroUsage.value = {
+      planName: 'KIRO POWER',
+      resetDate: '2026-12-01',
+      credits: { used: 1250, limit: 10000, percentage: 12, overages: 0, hasLimit: true },
+      overagesEnabled: false,
+    };
+    renderDialog({});
+    expect(
+      screen.getByText('Kiro Power · 1,250 of 10,000 credits used · resets 1 Dec')
+    ).toBeInTheDocument();
+  });
+
+  it('shows no credits line while they load, when Kiro cannot tell, or when signed out', () => {
+    kiro.status = signedIn();
+    for (const value of [undefined, null]) {
+      kiroUsage.value = value;
+      renderDialog({});
+      expect(screen.queryByText(/credits used/)).not.toBeInTheDocument();
+      cleanup();
+    }
+    kiro.status = { state: 'signed-out', path: '~/.local/bin/kiro-cli', version: '3.6.1' };
+    renderDialog({});
+    expect(screen.queryByText(/credits used/)).not.toBeInTheDocument();
   });
 
   it('has no Kiro row when kiro-cli is not installed or the status is not known', () => {

@@ -9,6 +9,7 @@ import {
   parseKiroSessionsResponse,
 } from '../utils/kiroSessions';
 import type { KiroStatus } from '../utils/kiroStatus';
+import type { KiroUsage } from '../utils/kiroUsage';
 import type { ModelInfo } from './types';
 
 /** The text of an error response ({ error }), or a short message for its status */
@@ -202,6 +203,21 @@ export class KiroService {
     const session = parseKiroSessionOpenResponse(await response.json());
     if (!session) throw new Error('Kiro sent a session that the app cannot read.');
     return session;
+  }
+
+  /**
+   * The plan and the credits of the Kiro account, or null when Kiro cannot tell (signed out,
+   * missing, or an error). A POST: the call can start kiro-cli. The server keeps it 5 minutes.
+   */
+  async getUsage(): Promise<KiroUsage | null> {
+    const response = await fetch('/api/kiro/usage', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: '{}',
+    });
+    if (!response.ok) throw new Error(await responseError(response));
+    const body = (await response.json()) as { usage?: KiroUsage | null };
+    return body.usage ?? null;
   }
 }
 
