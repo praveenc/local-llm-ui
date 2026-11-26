@@ -8,6 +8,12 @@ import {
   parseKiroSessionOpenResponse,
   parseKiroSessionsResponse,
 } from '../utils/kiroSessions';
+import type {
+  KiroFolderSetting,
+  KiroSettingsRequest,
+  KiroSettingsResponse,
+  KiroStatusResponse,
+} from '../utils/kiroSettings';
 import type { KiroStatus } from '../utils/kiroStatus';
 import type { KiroUsage } from '../utils/kiroUsage';
 import { type SessionOptionsSnapshot, parseSessionOptionsSnapshot } from '../utils/sessionOptions';
@@ -82,13 +88,36 @@ export class KiroService {
     this.sessionOptionsChanged();
   }
 
-  /** The state of kiro-cli on the computer that runs the app; `refresh` skips the server cache */
-  async getStatus(refresh = false): Promise<KiroStatus> {
+  /**
+   * The state of kiro-cli on the computer that runs the app, and the folder for new chats (D6);
+   * `refresh` skips the server cache
+   */
+  async getStatus(refresh = false): Promise<KiroStatusResponse> {
     const response = await fetch(`/api/kiro/status${refresh ? '?refresh=1' : ''}`);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    return (await response.json()) as KiroStatus;
+    return (await response.json()) as KiroStatusResponse;
+  }
+
+  /**
+   * Sets the folder for new Kiro chats; `null` goes back to the default folder (D6, SEC-21).
+   * Resolves with the folder that the server stored. Throws the server's message in words when
+   * it refuses the folder. The server never starts Kiro CLI for this call.
+   */
+  async setWorkspaceDir(workspaceDir: string | null): Promise<KiroFolderSetting> {
+    const body: KiroSettingsRequest = { workspaceDir };
+    const response = await fetch('/api/kiro/settings', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(await responseError(response));
+    const { folder } = (await response.json()) as Partial<KiroSettingsResponse>;
+    if (!folder || typeof folder.path !== 'string' || typeof folder.isDefault !== 'boolean') {
+      throw new Error('The server sent a folder that the app cannot read.');
+    }
+    return { path: folder.path, isDefault: folder.isDefault };
   }
 
   /**

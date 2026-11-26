@@ -35,6 +35,7 @@ import {
 } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
 import { KiroUsageLine } from '../chat/KiroUsageLine';
+import { KiroChatDefaults } from './KiroChatDefaults';
 import { KiroSessionsChoice } from './KiroSessionsChoice';
 import { KIRO_PANEL_ID, KiroSignInPanel } from './KiroSignInPanel';
 import type { KiroPanelMode } from './KiroSignInPanel';
@@ -133,6 +134,11 @@ export function ProviderSettings({ preferences, onUpdate, kiro }: ProviderSettin
                         signedIn={kiro.status?.state === 'signed-in'}
                         value={preferences.showKiroSessions}
                         onChange={(show) => onUpdate('showKiroSessions', show)}
+                      />
+                      <KiroChatDefaults
+                        signedIn={kiro.status?.state === 'signed-in'}
+                        defaultAgent={preferences.kiroDefaultAgent}
+                        onDefaultAgentChange={(id) => onUpdate('kiroDefaultAgent', id)}
                       />
                     </>
                   }
