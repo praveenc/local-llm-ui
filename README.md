@@ -228,6 +228,7 @@ Click **Default agent**, search the list if you want, and select an agent. The f
 - A chat that you already started, and a session that you open from the sidebar, keep their own agent.
 - An agent can have its own rules that run some tools without a question. When you pick an agent, you accept its rules.
 - If Kiro no longer lists the agent, the row says "This agent is no longer in Kiro's list." New chats then use Kiro's default.
+- An agent that you make in the terminal shows the next time that you open the list.
 
 The app keeps the default agent in your browser.
 
@@ -235,7 +236,7 @@ The app keeps the default agent in your browser.
 
 For a Kiro model, the right side of the chat input shows two controls. A control shows only when Kiro lists it.
 
-- **Agent** shows the agent that the chat uses. Click it to see a list with the name and the description of each agent, and **Current** on the agent that the chat uses. Type in **Search agents** to filter the list. Kiro's default agent is the first one. The list also has the agents that you made for Kiro in the terminal. When the name is long, the button cuts it, and the tooltip shows the full name.
+- **Agent** shows the agent that the chat uses. Click it to see a list with the name and the description of each agent, and **Current** on the agent that the chat uses. Type in **Search agents** to filter the list. Kiro's default agent is the first one. The list also has the agents that you made for Kiro in the terminal. In a new chat, an agent that you make in the terminal shows the next time that you open the list. The app asks Kiro again at most once a minute. A chat that you already started keeps the list of its own Kiro session. When the name is long, the button cuts it, and the tooltip shows the full name.
 - **Options** (the sliders button) opens a menu with the other options of the session. Each option has Kiro's name, Kiro's help text, and its values. **Current** shows on the value that the chat uses. Kiro 3.6 lists these options: Memory reflection, Autopilot, Session messaging, and Content Collection. The options depend on your Kiro CLI version.
 
 The model picker and the thinking button keep their own places. They are not in the **Options** menu.
@@ -243,8 +244,10 @@ The model picker and the thinking button keep their own places. They are not in 
 How a change works:
 
 - A change applies to the next message in the chat. The app sends the change with the message, and Kiro takes it before it answers.
-- A new chat starts with Kiro's own values.
+- A new chat starts with Kiro's own values, except Content Collection (see below).
 - The agent and the options stay with the Kiro session. After a reload, the chat shows the same values. A session that you open from the sidebar shows its own values.
+- A pick that you have not sent yet also stays with the chat after a reload.
+- Content Collection is one value for all Kiro chats. A change applies to all Kiro chats until Kiro CLI stops, and the **Options** menu says so under the option. A new chat does not set it back.
 - If you change an option in the terminal, the app does not change it back. After the next reply, the chat shows the value that Kiro reports.
 - If Kiro does not take a value, the reply fails and the chat shows a short message, for example "Kiro did not change Autopilot. Try again." The app sends only values that Kiro lists.
 

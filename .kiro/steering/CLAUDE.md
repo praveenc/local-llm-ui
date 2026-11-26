@@ -60,7 +60,7 @@ Vite middleware keeps credentials and SDK calls on the server. Each chat proxy u
   - `POST /api/kiro/login` runs `kiro-cli login --use-device-flow` and streams the code and the sign-in URL as SSE.
   - `POST /api/kiro/login/cancel` stops the sign-in.
   - `POST /api/kiro/logout` signs out.
-  - `POST /api/kiro/models` lists the Kiro models (a POST: a load can start Kiro CLI). It also returns `sessionOptions`: the agent (category `mode`) and the other session options of the short session, with Kiro's default values (`server/kiro/models.ts`).
+  - `POST /api/kiro/models` lists the Kiro models (a POST: a load can start Kiro CLI). It also returns `sessionOptions`: the agent (category `mode`) and the other session options of the short session, with Kiro's default values (`server/kiro/models.ts`). An option that Kiro keeps per process (`contentCollection`, named in `server/kiro/harness.ts`) has `scope: 'process'`. A body `{ refreshOptions: true }` (a strict boolean) loads the default options again with no status read; the browser throttles it to once a minute (`refreshDefaultSessionOptions` in `src/services/kiro.ts`).
   - `POST /api/kiro/sessions` lists the Kiro sessions from `session/list` (id, folder name, title, last change, status; never-used sessions are left out; kept 60 s). A POST: it can start Kiro CLI.
   - `POST /api/kiro/sessions/open` loads one session from Kiro's list with replay and returns it as compact messages (JSON, at most 16 MB). It is read only, and it closes the session after the replay (`server/kiro/sessions.ts`, `server/kiro/replay.ts`).
   - `POST /api/kiro/chat` streams a Kiro reply through one shared `kiro-cli acp` (`server/acp/agent.ts` with the Kiro harness in `server/kiro/harness.ts`; the route is `server/kiro/chat.ts`). It gets the new message, the earlier messages, and how many of them the Kiro session has seen (`src/utils/kiroChat.ts`). When Kiro asks to run a tool, it sends a `permission` event with a server-made `requestId` and Kiro's options, and a `permissionResult` event when the question ends (`src/utils/kiroPermissions.ts`). The body may also have `sessionOptions` (id → value, at most 20): the server sets only options that the session lists, to listed values, reads each one back, and sends a `sessionOptions` event with the current options (`server/kiro/chat-options.ts`, `server/acp/session-options.ts`, `src/utils/sessionOptions.ts`; SEC-20).
@@ -96,7 +96,7 @@ Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort
 - `useConversation.ts`, `useConversations.ts` - Conversation state/CRUD
 - `useSavedPrompts.ts` - Saved prompts with Dexie reactive queries
 - `useKiroSessions.ts` - The Kiro sessions list (focus and 60 s refresh), import, and sync of terminal turns
-- `useSessionOptions.ts` - The agent and options of the open chat: lists from the last snapshot, values from the conversation (`kiro.options`), the picks that no reply has applied yet, and for a new chat the default agent from `preferences.kiroDefaultAgent`
+- `useSessionOptions.ts` - The agent and options of the open chat: lists from the last snapshot, values from the conversation (`kiro.options`), the picks that no reply has applied yet (kept in the conversation as `kiroPicks`, so they survive a reload), and for a new chat the default agent from `preferences.kiroDefaultAgent`. `refreshLists()` asks for the default lists again for a chat with no Kiro session
 
 ## Code Conventions
 
