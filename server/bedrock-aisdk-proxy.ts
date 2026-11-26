@@ -207,11 +207,15 @@ async function handleMCPStatus(req: IncomingMessage, res: ServerResponse): Promi
   const body = await readBodyWithLimit(req, res);
   if (body === null) return; // 413 already sent
 
-  const { mcpServers } = JSON.parse(body || '{}') as {
+  const { mcpServers, closeOthers } = JSON.parse(body || '{}') as {
     mcpServers?: MCPServerConfig[];
+    closeOthers?: unknown;
   };
 
-  const servers = await getMCPServerStatus(mcpServers ?? []);
+  // closeOthers: the list is the full set of servers, so the other cached ones can close
+  const servers = await getMCPServerStatus(mcpServers ?? [], {
+    closeOthers: closeOthers === true,
+  });
 
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({ servers }));

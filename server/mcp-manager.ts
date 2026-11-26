@@ -19,6 +19,7 @@ import { createMCPClient } from '@ai-sdk/mcp';
 import type { MCPClient } from '@ai-sdk/mcp';
 import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
 import type { ChildProcess } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 
 import type {
   MCPHTTPConfig,
@@ -238,12 +239,26 @@ const STDERR_TAIL_BYTES = 4096;
 /** The error text shows at most this many lines and characters of that output */
 const OUTPUT_MAX_LINES = 6;
 const OUTPUT_MAX_CHARS = 400;
+/** The server name in front of each terminal line is cut to this length */
+const TERMINAL_NAME_MAX_CHARS = 60;
 /** A child that ignores SIGTERM after a close gets SIGKILL after this time (ms) */
-const KILL_GRACE_MS = 2000;
+const DEFAULT_KILL_GRACE_MS = 2000;
+let KILL_GRACE_MS = DEFAULT_KILL_GRACE_MS;
+
+/** Test only: set a shorter SIGKILL grace time. No argument restores the default. */
+export function setMCPKillGraceForTests(ms: number = DEFAULT_KILL_GRACE_MS): void {
+  KILL_GRACE_MS = ms;
+}
+
+const TRANSPORT_CHANGED_MESSAGE =
+  'The AI SDK stdio transport changed: the error output of MCP servers cannot be read.';
+let warnedTransportChanged = false;
 
 // ANSI escape sequences: CSI, OSC, and the short two-character forms
 // eslint-disable-next-line no-control-regex
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g;
+// eslint-disable-next-line no-control-regex
+const CONTROL_PATTERN = /[\x00-\x1f\x7f-\x9f]/g;
 
 /** The end of a child's error output as one short line for the error text */
 function summarizeOutput(raw: string): string {
@@ -256,6 +271,11 @@ function summarizeOutput(raw: string): string {
   const text = lines.join(' ');
   if (text.length <= OUTPUT_MAX_CHARS) return text;
   return `${text.slice(0, OUTPUT_MAX_CHARS - 1).trimEnd()}…`;
+}
+
+/** The name comes from the browser: no control characters, so it cannot forge terminal lines */
+function terminalName(name: string): string {
+  return name.replace(CONTROL_PATTERN, ' ').slice(0, TERMINAL_NAME_MAX_CHARS);
 }
 
 /** How a stdio child stopped */
@@ -282,6 +302,10 @@ interface ChildExit {
  * failed start (for example `npm error code E401`) reaches only the terminal. This
  * transport spawns with `stderr: 'pipe'`, keeps the last 4 KB, and copies each line
  * to the dev server's stderr with the server name in front.
+ *
+ * Limit: the SDK spawns without a process group, so a close stops the direct child
+ * only. A wrapper such as `npm exec` forwards the SIGTERM to the server it started; a
+ * wrapper that does not forward it leaves that server running.
  */
 class DiscoveryWaitingStdioTransport extends Experimental_StdioMCPTransport {
   readonly waitsForProtocolVersionDiscovery = true;
@@ -293,6 +317,8 @@ class DiscoveryWaitingStdioTransport extends Experimental_StdioMCPTransport {
 
   private readonly serverName: string;
   private stderrTail = Buffer.alloc(0);
+  /** Decodes the terminal copy, so a character split across two chunks stays whole */
+  private readonly decoder = new StringDecoder('utf8');
   private partialLine = '';
   private child: ChildProcess | undefined;
   private closing = false;
@@ -302,7 +328,7 @@ class DiscoveryWaitingStdioTransport extends Experimental_StdioMCPTransport {
     serverName: string
   ) {
     super({ ...params, stderr: 'pipe' });
-    this.serverName = serverName;
+    this.serverName = terminalName(serverName);
   }
 
   override async start(): Promise<void> {
@@ -310,11 +336,21 @@ class DiscoveryWaitingStdioTransport extends Experimental_StdioMCPTransport {
     // The SDK keeps the child in a `private process` field (no getter), and clears it
     // on close. This is the only read of it: once, right after the spawn.
     const child = (this as unknown as { process?: ChildProcess }).process;
-    if (!child) return;
+    if (!child) {
+      // Nobody would read the stderr pipe, and a server that writes a lot would block
+      // on it. So stop the child and say why, instead of running it half watched.
+      if (!warnedTransportChanged) {
+        warnedTransportChanged = true;
+        console.warn(`[MCP Manager] ${TRANSPORT_CHANGED_MESSAGE}`);
+      }
+      await this.close();
+      throw new Error(TRANSPORT_CHANGED_MESSAGE);
+    }
     this.child = child;
     // Read the pipe always, so a server that writes a lot cannot block on it
     child.stderr?.on('data', (chunk: Buffer) => this.onStderr(chunk));
     child.once('close', (code: number | null, signal: NodeJS.Signals | null) => {
+      this.partialLine += this.decoder.end();
       this.flushLine();
       this.exit = { code, signal, onItsOwn: !this.closing };
       if (!this.closing) this.onProcessExit?.();
@@ -343,7 +379,7 @@ class DiscoveryWaitingStdioTransport extends Experimental_StdioMCPTransport {
     const joined = Buffer.concat([this.stderrTail, chunk]);
     this.stderrTail = joined.subarray(Math.max(0, joined.length - STDERR_TAIL_BYTES));
 
-    const lines = (this.partialLine + chunk.toString('utf8')).split('\n');
+    const lines = (this.partialLine + this.decoder.write(chunk)).split('\n');
     this.partialLine = lines.pop() ?? '';
     for (const line of lines) this.writeLine(line);
     // A server that never ends a line still shows in the terminal
@@ -399,14 +435,16 @@ function hasErrorCode(error: unknown, code: string): boolean {
 function describeFailure(
   error: unknown,
   config: MCPServerConfig,
-  transport: DiscoveryWaitingStdioTransport | undefined
+  transport: DiscoveryWaitingStdioTransport | undefined,
+  phase: 'start' | 'listing' = 'start'
 ): Error {
   const output = transport?.outputSummary() ?? '';
   const lastOutput = output ? ` Last output: ${output}` : '';
 
   if (isTimeoutError(error)) {
+    const what = phase === 'listing' ? 'did not list its tools' : 'did not answer';
     return new Error(
-      `The server did not answer in ${formatSeconds(MCP_CONNECT_TIMEOUT_MS)}.${lastOutput}`,
+      `The server ${what} in ${formatSeconds(MCP_CONNECT_TIMEOUT_MS)}.${lastOutput}`,
       { cause: error }
     );
   }
@@ -436,15 +474,34 @@ interface CachedClient {
   transport: DiscoveryWaitingStdioTransport | undefined;
   /** Order of the starts: a slow, older start must not replace a newer client */
   seq: number;
+  /** Tool listings and chats that use this client now. A cleanup does not close it then. */
+  leases: number;
+  /** True when the app closed this client (not when its process stopped on its own) */
+  closedByApp: boolean;
 }
 
 /** Global client cache keyed by server ID */
 const clientCache = new Map<string, CachedClient>();
 
-/** Starts in progress, keyed by server ID. A second call with the same hash waits for it. */
-const startsInProgress = new Map<string, { configHash: string; promise: Promise<CachedClient> }>();
+/** A start in progress. A second call with the same id and hash waits for it. */
+interface StartInProgress {
+  id: string;
+  promise: Promise<CachedClient>;
+}
+
+/** Starts in progress, keyed by server ID and config hash (see startKey) */
+const startsInProgress = new Map<string, StartInProgress>();
 
 let startSeq = 0;
+
+const startKey = (id: string, configHash: string) => `${id}\0${configHash}`;
+
+function hasStartInProgress(id: string): boolean {
+  for (const start of startsInProgress.values()) {
+    if (start.id === id) return true;
+  }
+  return false;
+}
 
 /**
  * Compute a simple hash string from the transport-relevant parts of a config.
@@ -464,14 +521,29 @@ function computeConfigHash(config: MCPServerConfig): string {
   return parts.join('|');
 }
 
-/** Remove a client from the cache (only if it is still the cached one) and close it */
-async function dropClient(id: string, entry: CachedClient): Promise<void> {
+/**
+ * Remove a client from the cache (only if it is still the cached one) and close it.
+ * `byApp` is false when the client goes because its process stopped on its own.
+ */
+async function dropClient(id: string, entry: CachedClient, byApp = true): Promise<void> {
+  if (byApp) entry.closedByApp = true;
   if (clientCache.get(id) === entry) clientCache.delete(id);
   try {
     await entry.client.close();
   } catch {
     // Ignore close errors
   }
+}
+
+/**
+ * Close the cached clients whose id is not in `keepIds`. A client that is in use, or
+ * whose server has a start in progress, stays: its caller still needs it.
+ */
+async function closeClientsExcept(keepIds: Set<string>): Promise<void> {
+  const stale = [...clientCache.entries()].filter(
+    ([id, entry]) => !keepIds.has(id) && entry.leases === 0 && !hasStartInProgress(id)
+  );
+  await Promise.allSettled(stale.map(([id, entry]) => dropClient(id, entry)));
 }
 
 /**
@@ -501,9 +573,16 @@ async function createClient(config: MCPServerConfig, configHash: string): Promis
       } catch (error) {
         throw describeFailure(error, config, transport);
       }
-      const entry: CachedClient = { client, configHash, transport, seq };
+      const entry: CachedClient = {
+        client,
+        configHash,
+        transport,
+        seq,
+        leases: 0,
+        closedByApp: false,
+      };
       transport.onProcessExit = () => {
-        void dropClient(config.id, entry);
+        void dropClient(config.id, entry, false);
       };
       return entry;
     }
@@ -515,7 +594,7 @@ async function createClient(config: MCPServerConfig, configHash: string): Promis
           transport: { type: remote.transport, url: remote.url, headers: remote.headers },
           initializationOptions,
         });
-        return { client, configHash, transport: undefined, seq };
+        return { client, configHash, transport: undefined, seq, leases: 0, closedByApp: false };
       } catch (error) {
         throw describeFailure(error, config, undefined);
       }
@@ -523,13 +602,15 @@ async function createClient(config: MCPServerConfig, configHash: string): Promis
   }
 }
 
+const SETTINGS_CHANGED_MESSAGE = 'The server settings changed while it started.';
+
 /** Start a client, and put it in the cache unless a newer start already did */
 async function startClient(config: MCPServerConfig, configHash: string): Promise<CachedClient> {
   const entry = await createClient(config, configHash);
 
   // A stdio child that stopped between the connect and now
   if (entry.transport?.exit) {
-    await dropClient(config.id, entry);
+    await dropClient(config.id, entry, false);
     throw describeFailure(new Error('Connection closed'), config, entry.transport);
   }
 
@@ -537,7 +618,7 @@ async function startClient(config: MCPServerConfig, configHash: string): Promise
   if (current && current.seq > entry.seq) {
     // A start with newer settings won the race: this client is stale
     await dropClient(config.id, entry);
-    throw new Error('The server settings changed while it started.');
+    throw new Error(SETTINGS_CHANGED_MESSAGE);
   }
   clientCache.set(config.id, entry);
   // Config changed — close the old client now that the new one runs
@@ -545,61 +626,114 @@ async function startClient(config: MCPServerConfig, configHash: string): Promise
   return entry;
 }
 
+/** A client for one caller, with a lease that keeps a cleanup from closing it */
+interface LeasedClient {
+  entry: CachedClient;
+  /** False when the client came from the cache, true when this call waited for a start */
+  fresh: boolean;
+}
+
 /**
- * Get or create a cached MCP client for the given config.
+ * Get or create a cached MCP client for the given config, and take a lease on it.
  * Closes and replaces the client if the config has changed.
  * One start runs for each server and config at a time.
  */
-async function getOrCreateClient(config: MCPServerConfig): Promise<CachedClient> {
+async function getOrCreateClient(config: MCPServerConfig): Promise<LeasedClient> {
   // SEC-01/02/03/11: Validate before the hash and before any start
   validateMCPConfig(config);
   const hash = computeConfigHash(config);
   const cached = clientCache.get(config.id);
 
   if (cached && cached.configHash === hash && !cached.transport?.exit) {
-    return cached;
+    cached.leases++;
+    return { entry: cached, fresh: false };
   }
 
-  const pending = startsInProgress.get(config.id);
-  if (pending && pending.configHash === hash) {
-    return pending.promise;
+  const key = startKey(config.id, hash);
+  const pending = startsInProgress.get(key);
+  if (pending) {
+    const entry = await pending.promise;
+    entry.leases++;
+    return { entry, fresh: true };
   }
 
-  const promise = startClient(config, hash);
-  const start = { configHash: hash, promise };
-  startsInProgress.set(config.id, start);
+  const start: StartInProgress = { id: config.id, promise: startClient(config, hash) };
+  startsInProgress.set(key, start);
   try {
-    return await promise;
+    const entry = await start.promise;
+    // Taken before the start leaves the map, so no cleanup sees the client unused
+    entry.leases++;
+    return { entry, fresh: true };
   } finally {
-    if (startsInProgress.get(config.id) === start) startsInProgress.delete(config.id);
+    if (startsInProgress.get(key) === start) startsInProgress.delete(key);
   }
 }
 
 type MCPToolSet = ReturnType<MCPClient['toolsFromDefinitions']>;
 
-/**
- * Connect to a server and list its tools. The listing has the same timeout as
- * the start. A timeout in the listing closes the client and removes it from the
- * cache, so no process stays.
- */
-async function listServerTools(config: MCPServerConfig): Promise<MCPToolSet> {
-  const entry = await getOrCreateClient(config);
+/** The tools of one server, and the lease on its client */
+interface ListedTools {
+  tools: MCPToolSet;
+  /** Ends the lease. A second call does nothing. */
+  release: () => void;
+}
+
+function leaseRelease(entry: CachedClient): () => void {
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    entry.leases--;
+  };
+}
+
+/** List the tools of one connected client, within the same timeout as the start */
+async function listToolsOf(entry: CachedClient): Promise<MCPToolSet> {
   const deadline = Date.now() + MCP_CONNECT_TIMEOUT_MS;
   const timeout = () => Math.max(1, deadline - Date.now());
+  let definitions = await entry.client.listTools({ options: { timeout: timeout() } });
+  const tools = [...definitions.tools];
+  while (definitions.nextCursor != null) {
+    definitions = await entry.client.listTools({
+      params: { cursor: definitions.nextCursor },
+      options: { timeout: timeout() },
+    });
+    tools.push(...definitions.tools);
+  }
+  return entry.client.toolsFromDefinitions({ ...definitions, tools });
+}
+
+/**
+ * Connect to a server and list its tools. The caller keeps the lease on the client
+ * until it calls `release`. A timeout in the listing closes the client and removes it
+ * from the cache, so no process stays.
+ *
+ * The listing starts the server once more when the client came from the cache (its
+ * process can have stopped since), or when another path closed the client while it
+ * listed. A new start that fails is reported, so a broken server cannot loop.
+ */
+async function listServerTools(config: MCPServerConfig, retried = false): Promise<ListedTools> {
+  const { entry, fresh } = await getOrCreateClient(config);
+  const release = leaseRelease(entry);
   try {
-    let definitions = await entry.client.listTools({ options: { timeout: timeout() } });
-    const tools = [...definitions.tools];
-    while (definitions.nextCursor != null) {
-      definitions = await entry.client.listTools({
-        params: { cursor: definitions.nextCursor },
-        options: { timeout: timeout() },
-      });
-      tools.push(...definitions.tools);
-    }
-    return entry.client.toolsFromDefinitions({ ...definitions, tools });
+    return { tools: await listToolsOf(entry), release };
   } catch (error) {
-    if (isTimeoutError(error)) await dropClient(config.id, entry);
-    throw describeFailure(error, config, entry.transport);
+    release();
+    if (isTimeoutError(error)) {
+      await dropClient(config.id, entry);
+      throw describeFailure(error, config, entry.transport, 'listing');
+    }
+    if (!retried && (!fresh || entry.closedByApp)) {
+      await dropClient(config.id, entry);
+      // Newer settings replaced this client: a start with these would undo them
+      const hash = computeConfigHash(config);
+      const cached = clientCache.get(config.id);
+      if (cached && cached.configHash !== hash) {
+        throw new Error(SETTINGS_CHANGED_MESSAGE, { cause: error });
+      }
+      return listServerTools(config, true);
+    }
+    throw describeFailure(error, config, entry.transport, 'listing');
   }
 }
 
@@ -618,23 +752,26 @@ export async function getMCPTools(
 ): Promise<{ tools: Record<string, unknown>; cleanup: () => Promise<void> }> {
   const tools: Record<string, unknown> = {};
   const activeIds = new Set<string>();
+  const releases: Array<() => void> = [];
 
   // Connect to each server and gather tools in parallel
   const results = await Promise.allSettled(
     configs.map(async (config) => {
-      const serverTools = await listServerTools(config);
-      return { config, serverTools };
+      const listed = await listServerTools(config);
+      return { config, listed };
     })
   );
 
   results.forEach((result, i) => {
     if (result.status === 'fulfilled') {
-      const { config, serverTools } = result.value;
+      const { config, listed } = result.value;
       activeIds.add(config.id);
+      // The chat keeps its clients until its cleanup: another cleanup must not close them
+      releases.push(listed.release);
 
       // Namespace each tool with the server name
       const prefix = sanitizeName(config.name);
-      for (const [toolName, tool] of Object.entries(serverTools)) {
+      for (const [toolName, tool] of Object.entries(listed.tools)) {
         tools[`${prefix}${TOOL_NS_SEP}${toolName}`] = tool;
       }
     } else {
@@ -647,22 +784,34 @@ export async function getMCPTools(
   });
 
   /**
-   * Cleanup function: close clients that are no longer in the active config set.
-   * Cached clients that are still active are kept for reuse.
+   * Cleanup function: end this chat's leases, and close clients that are no longer in
+   * the active config set. Cached clients that are still active are kept for reuse.
    */
   const cleanup = async () => {
-    const stale = [...clientCache.entries()].filter(([id]) => !activeIds.has(id));
-    await Promise.allSettled(stale.map(([id, entry]) => dropClient(id, entry)));
+    for (const release of releases) release();
+    await closeClientsExcept(activeIds);
   };
 
   return { tools, cleanup };
 }
 
+export interface MCPServerStatusOptions {
+  /**
+   * True when `configs` is the full set of servers that the app can use: after the
+   * check, close every other cached client (the same rule as the chat cleanup).
+   */
+  closeOthers?: boolean;
+}
+
 /**
  * Check connectivity and list tools for each MCP server config.
  * Returns per-server status (connected/error) and tool names.
+ * A config with `enabled === false` is closed after its check: nothing else uses it.
  */
-export async function getMCPServerStatus(configs: MCPServerConfig[]): Promise<
+export async function getMCPServerStatus(
+  configs: MCPServerConfig[],
+  options: MCPServerStatusOptions = {}
+): Promise<
   Array<{
     name: string;
     id: string;
@@ -671,19 +820,35 @@ export async function getMCPServerStatus(configs: MCPServerConfig[]): Promise<
     error?: string;
   }>
 > {
-  if (!configs || configs.length === 0) return [];
+  if (!configs) configs = [];
 
   const results = await Promise.allSettled(
     configs.map(async (config) => {
-      const serverTools = await listServerTools(config);
+      const { tools, release } = await listServerTools(config);
+      release();
       return {
         name: config.name,
         id: config.id,
         status: 'connected' as const,
-        tools: Object.keys(serverTools),
+        tools: Object.keys(tools),
       };
     })
   );
+
+  const disabled = configs.filter((config) => config?.enabled === false);
+  await Promise.allSettled(
+    disabled.map((config) => {
+      const entry = clientCache.get(config.id);
+      return entry && entry.leases === 0 ? dropClient(config.id, entry) : undefined;
+    })
+  );
+  if (options.closeOthers) {
+    await closeClientsExcept(
+      new Set(
+        configs.map((config) => config?.id).filter((id): id is string => typeof id === 'string')
+      )
+    );
+  }
 
   return results.map((result, i) => {
     if (result.status === 'fulfilled') {

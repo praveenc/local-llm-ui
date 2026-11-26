@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,12 +12,14 @@ import {
   getMCPServerStatus,
   getMCPTools,
   setMCPConnectTimeoutForTests,
+  setMCPKillGraceForTests,
 } from '../mcp-manager';
 
 const fixture = (name: string) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 const SLOW = fixture('slow-mcp-server.mjs');
 const EXIT = fixture('exit-mcp-server.mjs');
 const SILENT = fixture('silent-mcp-server.mjs');
+const WRAPPER = fixture('wrapper-mcp-server.mjs');
 
 /** Longer than the 1 s that the AI SDK waits for `server/discover` on stdio */
 const SLOW_START_MS = 1500;
@@ -35,7 +38,11 @@ let tempDir: string;
 /** Fixture processes that were still alive after a test; checked in afterAll */
 const leftovers: number[] = [];
 
-const pidFile = () => join(tempDir, 'pids');
+const pidFile = (suffix = '') => join(tempDir, `pids${suffix}`);
+
+/** The lines that the manager copied to the terminal */
+const terminalLines = () =>
+  vi.mocked(process.stderr.write).mock.calls.map((call) => String(call[0]));
 
 function readPids(file: string): number[] {
   if (!existsSync(file)) return [];
@@ -69,6 +76,7 @@ beforeEach(() => {
 afterEach(async () => {
   await closeAllMCPClients();
   setMCPConnectTimeoutForTests();
+  setMCPKillGraceForTests();
   vi.restoreAllMocks();
   const pids = readdirSync(tempDir)
     .filter((name) => name.startsWith('pids'))
@@ -126,6 +134,24 @@ describe('a server that stops before it answers', () => {
     expect(status.error).not.toContain('\x1b');
     expect(status.error).not.toContain('first line that the summary drops');
     expect(status.error).toContain('npm error code E401 npm error Unable to authenticate');
+    // Each line also goes to the terminal, with the server name in front
+    expect(process.stderr.write).toHaveBeenCalledWith('[MCP npm] npm error final line E401\n');
+  }, 10_000);
+
+  it('puts no control characters in the terminal prefix, and cuts the name', async () => {
+    const name = `evil\n[MCP other] forged\x1b[2J${'n'.repeat(100)}`;
+    await getMCPServerStatus([{ ...stdio('evil', [EXIT, pidFile(), 'npm']), name }]);
+
+    const prefix = `[MCP ${`evil [MCP other] forged [2J${'n'.repeat(100)}`.slice(0, 60)}] `;
+    expect(terminalLines()).toContain(`${prefix}npm error final line E401\n`);
+    expect(terminalLines().every((line) => !line.slice(0, -1).includes('\n'))).toBe(true);
+  }, 10_000);
+
+  it('keeps a character whole when its bytes come in two chunks', async () => {
+    await getMCPServerStatus([stdio('split', [EXIT, pidFile(), 'split'])]);
+
+    expect(terminalLines()).toContain('[MCP split] café\n');
+    expect(terminalLines().join('')).not.toContain('\uFFFD');
   }, 10_000);
 
   it('says when the server wrote no error output', async () => {
@@ -172,9 +198,9 @@ describe('a server that stops after it connected', () => {
 
     const [firstPid] = readPids(pidFile());
     expect(await waitFor(() => !isAlive(firstPid))).toBe(true);
-    // Let the child's close event reach the manager
-    await new Promise((resolve) => setTimeout(resolve, 100));
 
+    // The close event may not have reached the manager yet: a client from the cache that
+    // fails is started once more, so the check connects either way
     const [second] = await getMCPServerStatus([config]);
     expect(second).toMatchObject({ status: 'connected', tools: ['echo'] });
     expect(readPids(pidFile())).toHaveLength(2);
@@ -222,14 +248,228 @@ describe('one start for each server', () => {
     expect(await waitFor(() => !isAlive(oldPid), 2000)).toBe(true);
   }, 10_000);
 
-  it('tries again after a failed start', async () => {
-    const config = stdio('retry', [EXIT, pidFile(), 'quiet']);
+  it('forgets a failed start at once, also while its process still closes', async () => {
+    setMCPConnectTimeoutForTests(300);
+    const config = stdio('retry', [SILENT, pidFile()]);
 
-    await getMCPServerStatus([config]);
-    await getMCPServerStatus([config]);
+    // The second call comes right after the timeout, before the first process is gone
+    const [first] = await getMCPServerStatus([config]);
+    const second = getMCPServerStatus([config]);
 
+    expect(first.status).toBe('error');
+    expect((await second)[0].status).toBe('error');
     expect(readPids(pidFile())).toHaveLength(2);
   }, 10_000);
+
+  it('waits for the start of an older config and keeps only the newest client', async () => {
+    const older = stdio('race', [SLOW, '600', 'modern', pidFile('-older')]);
+    const newer = stdio('race', [SLOW, '0', 'modern', pidFile('-newer')]);
+
+    // The newer config starts while the older one runs, and a third call has the older one
+    const [[a], [b], [c]] = await Promise.all([
+      getMCPServerStatus([older]),
+      getMCPServerStatus([newer]),
+      getMCPServerStatus([older]),
+    ]);
+
+    expect(readPids(pidFile('-older'))).toHaveLength(1);
+    expect(b).toMatchObject({ status: 'connected', tools: ['echo'] });
+    // The newer start overtook the older one: the older process ends
+    expect(a.error).toBe('The server settings changed while it started.');
+    expect(c.error).toBe('The server settings changed while it started.');
+    const [olderPid] = readPids(pidFile('-older'));
+    expect(await waitFor(() => !isAlive(olderPid))).toBe(true);
+    // The newer client stays in the cache
+    await getMCPServerStatus([newer]);
+    expect(readPids(pidFile('-newer'))).toHaveLength(1);
+    expect(isAlive(readPids(pidFile('-newer'))[0])).toBe(true);
+  }, 10_000);
+});
+
+describe('a server that stops right after it connected', () => {
+  it('says so, and the next call starts it again', async () => {
+    const config = stdio('gone', [SLOW, '0', 'modern', pidFile(), 'exit-after-connect']);
+
+    const [status] = await getMCPServerStatus([config]);
+
+    expect(status.error).toBe(
+      'The server stopped before it answered (exit code 0). It wrote no error output.'
+    );
+    await getMCPServerStatus([config]);
+    expect(readPids(pidFile())).toHaveLength(2);
+  }, 10_000);
+});
+
+describe('a server that does not list its tools', () => {
+  it('says the listing timed out and leaves no process', async () => {
+    setMCPConnectTimeoutForTests(500);
+
+    const [status] = await getMCPServerStatus([
+      stdio('no-list', [SLOW, '0', 'modern', pidFile(), 'no-list']),
+    ]);
+
+    expect(status.error).toBe('The server did not list its tools in 0.5 s.');
+    const [pid] = readPids(pidFile());
+    expect(await waitFor(() => !isAlive(pid))).toBe(true);
+  }, 10_000);
+});
+
+describe('a server that ignores SIGTERM', () => {
+  it('gets SIGKILL after the grace time', async () => {
+    setMCPConnectTimeoutForTests(300);
+    setMCPKillGraceForTests(300);
+
+    const [status] = await getMCPServerStatus([
+      stdio('stubborn', [SILENT, pidFile(), 'ignore-term']),
+    ]);
+
+    expect(status.error).toMatch(/^The server did not answer in 0.3 s\./);
+    const [pid] = readPids(pidFile());
+    expect(await waitFor(() => !isAlive(pid), 2000)).toBe(true);
+  }, 10_000);
+});
+
+describe('a wrapper that starts the server as its own child, like npx', () => {
+  it('leaves no process after a timeout when the wrapper passes SIGTERM on', async () => {
+    setMCPConnectTimeoutForTests(500);
+
+    const [status] = await getMCPServerStatus([
+      stdio('npx-like', [WRAPPER, pidFile('-wrapper'), 'forward', SILENT, pidFile()]),
+    ]);
+
+    expect(status.error).toBe(
+      'The server did not answer in 0.5 s. Last output: silent server is starting'
+    );
+    const pids = [...readPids(pidFile('-wrapper')), ...readPids(pidFile())];
+    expect(pids).toHaveLength(2);
+    expect(await waitFor(() => pids.every((pid) => !isAlive(pid)))).toBe(true);
+  }, 10_000);
+
+  it('leaves no process after a config change when the wrapper passes SIGTERM on', async () => {
+    const wrapped = (mode: string, suffix: string) =>
+      stdio('npx-change', [
+        WRAPPER,
+        pidFile(`-wrapper${suffix}`),
+        'forward',
+        SLOW,
+        '0',
+        mode,
+        pidFile(suffix),
+      ]);
+    const [first] = await getMCPServerStatus([wrapped('modern', '-old')]);
+    expect(first.status).toBe('connected');
+    const oldPids = [...readPids(pidFile('-wrapper-old')), ...readPids(pidFile('-old'))];
+    expect(oldPids).toHaveLength(2);
+
+    const [second] = await getMCPServerStatus([wrapped('legacy', '-new')]);
+
+    expect(second.status).toBe('connected');
+    expect(await waitFor(() => oldPids.every((pid) => !isAlive(pid)))).toBe(true);
+  }, 10_000);
+
+  // A limit, not a goal: the SDK spawns with no process group, so the app can stop only
+  // the wrapper. A wrapper that does not pass SIGTERM on leaves the server running.
+  it('leaves the server running when the wrapper does not pass SIGTERM on', async () => {
+    setMCPConnectTimeoutForTests(500);
+
+    await getMCPServerStatus([
+      stdio('no-forward', [WRAPPER, pidFile('-wrapper'), 'no-forward', SILENT, pidFile()]),
+    ]);
+
+    const [wrapperPid] = readPids(pidFile('-wrapper'));
+    const [serverPid] = readPids(pidFile());
+    expect(await waitFor(() => !isAlive(wrapperPid))).toBe(true);
+    expect(isAlive(serverPid)).toBe(true);
+    process.kill(serverPid, 'SIGKILL');
+    expect(await waitFor(() => !isAlive(serverPid))).toBe(true);
+  }, 10_000);
+});
+
+describe('which clients a check closes', () => {
+  it('closes a disabled server after its check, and keeps its tools in the result', async () => {
+    const config = { ...stdio('off', [SLOW, '0', 'modern', pidFile()]), enabled: false };
+
+    const [status] = await getMCPServerStatus([config]);
+
+    expect(status).toMatchObject({ status: 'connected', tools: ['echo'] });
+    const [pid] = readPids(pidFile());
+    expect(await waitFor(() => !isAlive(pid))).toBe(true);
+  }, 10_000);
+
+  it('with closeOthers, closes a server that is no longer in the list', async () => {
+    const kept = stdio('kept', [SLOW, '0', 'modern', pidFile('-kept')]);
+    const removed = stdio('removed', [SLOW, '0', 'modern', pidFile('-removed')]);
+    await getMCPServerStatus([kept, removed]);
+    const [removedPid] = readPids(pidFile('-removed'));
+
+    const [status] = await getMCPServerStatus([kept], { closeOthers: true });
+
+    expect(status.status).toBe('connected');
+    expect(await waitFor(() => !isAlive(removedPid))).toBe(true);
+    // The kept server was reused, not started again
+    expect(readPids(pidFile('-kept'))).toHaveLength(1);
+    expect(isAlive(readPids(pidFile('-kept'))[0])).toBe(true);
+  }, 10_000);
+
+  it('without closeOthers, leaves the other cached servers running', async () => {
+    const one = stdio('one', [SLOW, '0', 'modern', pidFile('-one')]);
+    const other = stdio('other', [SLOW, '0', 'modern', pidFile('-other')]);
+    await getMCPServerStatus([one, other]);
+
+    // The Check button of one server
+    await getMCPServerStatus([one]);
+
+    const [otherPid] = readPids(pidFile('-other'));
+    expect(isAlive(otherPid)).toBe(true);
+    await getMCPServerStatus([other]);
+    expect(readPids(pidFile('-other'))).toHaveLength(1);
+  }, 10_000);
+});
+
+describe('a client that another path closes while it lists its tools', () => {
+  const busy = () =>
+    stdio('busy', [SLOW, '500', 'modern', pidFile(), 'slow-list', join(tempDir, 'listing')]);
+
+  it('is not closed by the cleanup of a chat', async () => {
+    const check = getMCPServerStatus([busy()]);
+    expect(await waitFor(() => existsSync(join(tempDir, 'listing')))).toBe(true);
+
+    // A chat with no MCP servers ends while the check lists the tools
+    const { cleanup } = await getMCPTools([]);
+    await cleanup();
+
+    expect((await check)[0]).toMatchObject({ status: 'connected', tools: ['echo'] });
+    expect(readPids(pidFile())).toHaveLength(1);
+  }, 10_000);
+
+  it('starts once more when its client was closed', async () => {
+    const check = getMCPServerStatus([busy()]);
+    expect(await waitFor(() => existsSync(join(tempDir, 'listing')))).toBe(true);
+
+    await closeAllMCPClients();
+
+    const [status] = await check;
+    expect(status).toMatchObject({ status: 'connected', tools: ['echo'] });
+    expect(status.error).toBeUndefined();
+    expect(readPids(pidFile())).toHaveLength(2);
+  }, 10_000);
+});
+
+describe('an AI SDK whose stdio transport has no process field', () => {
+  it('warns once, and fails with a clear error', async () => {
+    vi.spyOn(Experimental_StdioMCPTransport.prototype, 'start').mockResolvedValue(undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const message =
+      'The AI SDK stdio transport changed: the error output of MCP servers cannot be read.';
+
+    const [first] = await getMCPServerStatus([stdio('changed-a', [SLOW, '0', 'modern'])]);
+    const [second] = await getMCPServerStatus([stdio('changed-b', [SLOW, '0', 'modern'])]);
+
+    expect(first.error).toBe(message);
+    expect(second.error).toBe(message);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(`[MCP Manager] ${message}`);
+  });
 });
 
 describe('a command that is not found', () => {
