@@ -5,7 +5,8 @@
  * last reply. The popover adds the token totals and the cost of the chat.
  *
  * Kiro reports a percentage and credits, not tokens: for a Kiro model the ring shows Kiro's
- * percentage after its last reply, and the popover the credits of the chat.
+ * percentage after its last reply, and the popover the credits of the chat and the plan and
+ * credits of the account.
  */
 import type { ChatUsage } from '@/utils/chatUsage';
 import { formatCredits } from '@/utils/kiroModels';
@@ -19,6 +20,7 @@ import {
   ContextContentHeader,
   ContextTrigger,
 } from '../ai-elements/context';
+import { KiroUsageLine } from './KiroUsageLine';
 import { composerChip } from './composerStyles';
 
 interface ContextIndicatorProps {
@@ -105,6 +107,9 @@ function KiroContextIndicator({ usage }: { usage: ChatUsage }) {
       <ContextTrigger className={`${composerChip} gap-1 px-2 tabular-nums has-[>svg]:px-2`} />
       <ContextContent side="top" align="end" className="z-[1100]">
         <ContextContentHeader showTokens={false} />
+        <ContextContentBody className="empty:hidden">
+          <KiroUsageLine label="Kiro account" className="text-xs" />
+        </ContextContentBody>
         <ContextContentFooter>
           <span className="text-muted-foreground">Credits in this chat</span>
           <span className="text-right tabular-nums">{formatCredits(usage.credits)}</span>

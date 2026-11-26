@@ -34,6 +34,7 @@ import {
   isThinkingEffort,
 } from '../../utils/thinkingEffort';
 import type { ThinkingEffort } from '../../utils/thinkingEffort';
+import { KiroUsageLine } from '../chat/KiroUsageLine';
 import { KiroSessionsChoice } from './KiroSessionsChoice';
 import { KIRO_PANEL_ID, KiroSignInPanel } from './KiroSignInPanel';
 import type { KiroPanelMode } from './KiroSignInPanel';
@@ -340,6 +341,7 @@ function KiroRow({
     >
       <div className="break-words border-t bg-muted/40 py-2 pl-10 pr-3 text-xs text-muted-foreground">
         <KiroDetail status={status} refresh={refresh} isRefreshing={isRefreshing} />
+        {signedIn && <KiroUsageLine className="mt-1" />}
       </div>
       <KiroSignInPanel
         signedIn={signedIn}

@@ -43,7 +43,7 @@ make fix                 # format + lint:fix
 | `mantle.ts` | Bedrock Mantle | `/api/mantle/models` |
 | `aisdk.ts` | Groq, Cerebras, Anthropic | `/api/aisdk/models` (Anthropic: static list) |
 | `openrouter.ts` | OpenRouter | `/api/openrouter/models` |
-| `kiro.ts` | Kiro | `POST /api/kiro/models` (a POST: a load can start Kiro CLI), `POST /api/kiro/sessions` and `/open` (the Kiro sessions section), `/api/kiro/status`, sign-in and sign-out |
+| `kiro.ts` | Kiro | `POST /api/kiro/models` (a POST: a load can start Kiro CLI), `POST /api/kiro/sessions` and `/open` (the Kiro sessions section), `/api/kiro/status`, sign-in and sign-out, `POST /api/kiro/usage` (account credits) |
 
 ### Server Proxies (vite.config.ts → server/)
 
@@ -65,6 +65,7 @@ Vite middleware keeps credentials and SDK calls on the server. Each chat proxy u
   - `POST /api/kiro/sessions/open` loads one session from Kiro's list with replay and returns it as compact messages (JSON, at most 16 MB). It is read only, and it closes the session after the replay (`server/kiro/sessions.ts`, `server/kiro/replay.ts`).
   - `POST /api/kiro/chat` streams a Kiro reply through one shared `kiro-cli acp` (`server/acp/agent.ts` with the Kiro harness in `server/kiro/harness.ts`; the route is `server/kiro/chat.ts`). It gets the new message, the earlier messages, and how many of them the Kiro session has seen (`src/utils/kiroChat.ts`). When Kiro asks to run a tool, it sends a `permission` event with a server-made `requestId` and Kiro's options, and a `permissionResult` event when the question ends (`src/utils/kiroPermissions.ts`).
   - `POST /api/kiro/permission` answers one open Kiro question with `{ requestId, optionId }` (JSON, 1 KB at most; 404 for an unknown or ended question, 400 for an option that the question does not list). The open questions are in `server/acp/permission-registry.ts`. It never starts Kiro CLI.
+  - `POST /api/kiro/usage` returns the account plan and credits (`server/kiro/usage.ts`, parser in `src/utils/kiroUsage.ts`). It calls `_kiro/account/getUsage`, keeps the result 5 min, and does not start Kiro CLI when the status says signed out. A POST: it can start Kiro CLI.
 
 Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`, `kiroStatus.ts`, `kiroLogin.ts`, `kiroModels.ts`, `kiroChat.ts`, `kiroPermissions.ts`, `kiroSessions.ts`). Keep these free of DOM and Node imports.
 

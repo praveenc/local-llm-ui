@@ -181,6 +181,8 @@ Kiro is an agent, not only a model. Each chat with Kiro is a Kiro session, the s
 - **Stop** stops the reply and ends an open question. A tool call that has already started can continue to its end.
 - When a chat still has its automatic title, Kiro's short title replaces it.
 
+The **Kiro** row in **Preferences → Providers** also shows your Kiro plan and your credits, for example `Kiro Power · 1,250 of 10,000 credits used · resets 1 Dec`. If you use more credits than the limit, the line also shows how many are over, for example `· 250 over the limit`. The app asks Kiro for these numbers and keeps them for 5 minutes. If Kiro does not give them, the line does not show.
+
 The first Kiro reply after a start takes a few seconds more: the app starts Kiro CLI, and Kiro CLI starts your MCP servers. The reply shows **Starting Kiro…** until then. Kiro CLI stops after 10 minutes without use.
 
 **Delete** removes a chat from the app only. The Kiro session stays on disk, and `kiro-cli --resume-picker` can still open it.
@@ -396,7 +398,7 @@ The context indicator in the chat input shows how full the context window of the
 - At 70%, the indicator changes color and says **Near the limit**.
 - At 90%, it says **Almost full**. A reply can fail when the window is full. Start a new chat.
 
-For a Kiro chat, the value is the percentage that Kiro reports. Kiro makes the session smaller by itself when it gets full.
+For a Kiro chat, the value is the percentage that Kiro reports. Kiro makes the session smaller by itself when it gets full. The popover also shows the plan and the credits of your Kiro account, above the credits of the chat.
 
 Click the indicator to see the input and output tokens of the chat, the tokens read from the prompt cache, the reasoning tokens, and the cost.
 
@@ -406,7 +408,7 @@ Under each reply, next to the rating buttons, the app shows the input and output
 
 - With tools on, one reply can have several model calls. The tokens and the cost include all of them.
 - Local models (Ollama and LM Studio) are free. The context popover shows **Free**.
-- Kiro counts credits, not tokens. Under a Kiro reply the app shows the credits and the time, for example `0.05 credits · 2.9 s`, and the context popover shows the credits of the chat.
+- Kiro counts credits, not tokens. Under a Kiro reply the app shows the credits and the time, for example `0.05 credits · 2.9 s`, and the context popover shows the credits of the chat and of your Kiro account.
 - If the app has no price for a model, it shows no cost under the reply and **No price data** in the popover.
 - Claude prices come from the Anthropic pricing page. For the prices and how the app applies them, see [docs/ANTHROPIC_PRICING.md](docs/ANTHROPIC_PRICING.md). The cost is an estimate. Your provider's bill is the real cost.
 
@@ -569,7 +571,7 @@ The React app runs in the browser. Vite middleware in `vite.config.ts` adds serv
 | `/api/anthropic` | Anthropic |
 | `/api/openrouter` | OpenRouter |
 | `/api/aisdk` | Groq and Cerebras |
-| `/api/kiro` | Kiro CLI on the computer that runs the app: status, sign-in, models, and chat |
+| `/api/kiro` | Kiro CLI on the computer that runs the app: status, sign-in, models, chat, and account credits |
 
 The routes accept requests only from the pages of the app. A request from a different website gets the error 403. A request with a body (`POST`, `PUT`, `PATCH`, or `DELETE`) that is not JSON gets the error 415. Scripts and `curl` can still call the routes: they do not send the headers of a browser, but a request with a body must send `Content-Type: application/json`.
 
