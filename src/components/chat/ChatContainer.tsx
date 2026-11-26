@@ -256,7 +256,10 @@ const ChatContainer = ({
   const otherOptions = isKiro ? (sessionOptions?.options ?? []) : [];
 
   // Context use and cost come from the usage stored with each reply, so they survive a reload
-  const chatUsage = useMemo(() => summarizeChatUsage(messages), [messages]);
+  const chatUsage = useMemo(
+    () => summarizeChatUsage(messages, selectedModel),
+    [messages, selectedModel]
+  );
   const modelSwitches = useMemo(() => findModelSwitches(messages), [messages]);
   const isEmpty = messages.length === 0;
 
@@ -278,9 +281,8 @@ const ChatContainer = ({
     selectedModel && !isKiro
       ? getModelContextLimits(selectedModel.id, selectedModel.provider)
       : null;
-  const showContext = isKiro
-    ? chatUsage.contextPercent !== undefined
-    : contextLimits !== null && chatUsage.contextTokens > 0;
+  // The totals show for any chat with replies, also with another model or no model selected
+  const showContext = chatUsage.totals.replies > 0;
 
   // "/" moves focus to the message box, unless the user is typing in another field
   const composerDisabled = isLoading || !selectedModel;
@@ -714,11 +716,12 @@ const ChatContainer = ({
                   </>
                 )}
                 {showContext && !isKiro && <span aria-hidden className="mx-1 h-5 w-px bg-border" />}
-                {(contextLimits || isKiro) && (
+                {showContext && (
                   <ContextIndicator
                     usage={chatUsage}
-                    maxTokens={contextLimits?.contextWindow ?? 100}
+                    maxTokens={contextLimits?.contextWindow}
                     kiro={isKiro}
+                    noModel={!selectedModel}
                   />
                 )}
                 <PromptInputSubmitWithAttachments

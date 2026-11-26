@@ -1,6 +1,6 @@
 # UI and UX improvements
 
-Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Item 19 is done. Item 20 is in review. Last updated 2026-11-26. See [Progress](#progress) for the state of each item.
+Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Items 19 and 20 are done. Item 21 is in review. Last updated 2026-11-26. See [Progress](#progress) for the state of each item.
 
 This document reviews the current chat UI and proposes changes, in order of impact. It also records the decisions made so far and the questions that are still open.
 
@@ -61,7 +61,8 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 17 | Web search on by default | 8 `feat/web-search-default` ([#72](https://github.com/praveenc/local-llm-ui/pull/72)) | Done, merged |
 | 18 | Rename a chat from the header | 9 `feat/rename-title` ([#73](https://github.com/praveenc/local-llm-ui/pull/73), stacked on #72) | Done, merged |
 | 19 | Current provider first in the model picker | `fix/model-picker-order` ([#85](https://github.com/praveenc/local-llm-ui/pull/85)) | Done, merged ([#85](https://github.com/praveenc/local-llm-ui/pull/85)) |
-| 20 | Replies keep running in their own chat | `fix/background-replies` | In review ([#88](https://github.com/praveenc/local-llm-ui/pull/88)) |
+| 20 | Replies keep running in their own chat | `fix/background-replies` | Done, merged ([#88](https://github.com/praveenc/local-llm-ui/pull/88)) |
+| 21 | Totals of the whole chat in the context popover | `feat/chat-totals` ([#89](https://github.com/praveenc/local-llm-ui/pull/89)) | In review (#89) |
 
 ### Found during the work
 
@@ -409,8 +410,8 @@ Decision (D5): approved, as a P3 item in PR 4, after items 1 to 5.
 
 | What | Where | When it shows |
 |---|---|---|
-| Context fill | The ring in the composer, with colour and words at 70% and 90% | When the chat has usage, also after a reload |
-| Cost | The usage text of each reply, and the chat total in the context popover | Only when the price is known. Never in the sidebar. |
+| Context fill | The ring in the composer, with colour and words at 70% and 90% | When the last reply came from the selected model, also after a reload. Otherwise the chip shows only the totals (item 20). |
+| Cost | The usage text of each reply, and the chat total of all models in the context popover | Only when the price is known. Unpriced replies are counted in words. Never in the sidebar. |
 | Web search | The "Search" chip in the composer, the current step in the work row, and the sources when the row is expanded | Chip: when search is on. Current step: while the reply runs. |
 | Coding steps (later) | The same work row, with steps such as `Read src/x.ts`, `Edit src/x.ts +12 −3`, and `Ran npm test` | Collapsed by default |
 | Diffs and long output (later) | A Sheet on the right, opened from a step | Closed by default, so the column keeps its width |
@@ -635,6 +636,24 @@ Conversations
   - A reload or a closed page still stops the running replies.
 - **Not changed:** the app still does not save the partial text of a stopped reply. This was so before this item.
 - **Done in this PR:** unit tests for the store and the toast rules, hook tests (switch chats, come back, two chats at once, New chat, Stop, Kiro question), sidebar tests (words, delete order), and a check with real Bedrock and Kiro replies in headless Chromium at 1440 and 390 px, light and dark.
+
+### 21. Totals of the whole chat in the context popover
+
+- **Categories:** Context and cost. **Effort:** M.
+- **Problem:** A chat can mix models, for example Kiro and Amazon Bedrock. The context popover follows the current model: it shows only the Kiro credits, or only the Bedrock tokens and cost, never the totals of the whole chat. In some cases the ring does not show at all, also for a saved chat with replies.
+- **Evidence (origin/main 4e05995):**
+  - `ChatContainer.tsx:717`: with no selected model, `contextLimits` is null and the indicator does not render.
+  - `ContextIndicator.tsx:61`: for a model that is not Kiro, the ring is hidden when the last reply came from Kiro, because Kiro replies have no tokens (`contextTokens` is 0).
+  - `ContextIndicator.tsx:104` and `chatUsage.ts:66`: for a Kiro model, the ring is hidden when the last reply came from another model (`contextPercent` is undefined).
+  - `chatUsage.ts:63`: the fill took the tokens of the last reply of any model and divided them by the window of the current model.
+  - `ContextIndicator.tsx:66` and `:103`: two popovers, one with tokens and cost, one with credits.
+- **Fix:**
+  - `summarizeChatUsage(messages, current)` calculates the sum of all replies. Kiro credits stay apart from tokens and dollars. `tokenReplies` counts the replies that bill tokens, and `allLocal` looks only at them, so a chat of local and Kiro replies shows **Free**.
+  - The fill is known only when the last reply with usage came from the current model (same provider and model ID). Otherwise the chip shows a chart icon with the name "Usage of this chat". After a reply from a different model, the popover says "Context use shows after the next reply from this model." With no model selected, it says "Select a model to see the context use." This is the option that is never wrong: the next request sends the whole chat to the current model, with its own tokenizer and window.
+  - Cost rule: the sum over the replies that have a price. Local replies count as 0. No priced reply: "No price data". Some unpriced: the known sum and "N replies have no price data". If the known sum is $0, because only local replies have a price, "No price data", not "$0.00".
+  - One popover: the fill or the note, "This chat" tokens, the Kiro account line (K8) when the current model is Kiro or the chat has Kiro replies, "Cost", and "Credits in this chat".
+  - `ChatContainer` shows the indicator when the chat has one or more replies with usage.
+- **Tests:** the summing (mixed Kiro and Bedrock, all local, local and Kiro, some unpriced, no replies, a chat read back from the database, the fill only for the current model) and the component and the chat (both totals in a mixed chat, the ring for a saved chat with a different current model, the ring with no model).
 
 ### Found during the planning
 

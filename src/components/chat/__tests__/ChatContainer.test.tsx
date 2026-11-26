@@ -128,6 +128,32 @@ describe('ChatContainer', () => {
     );
   });
 
+  it('shows the usage of a saved chat when no model is selected', async () => {
+    const user = userEvent.setup();
+    chatMessages.current = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
+      {
+        id: 'a1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Hello' }],
+        model: { provider: 'ollama', id: 'qwen3:8b' },
+        usage: { inputTokens: 900, outputTokens: 100 },
+      },
+    ];
+    renderChat();
+    await user.click(screen.getByRole('button', { name: 'Usage of this chat' }));
+    expect(await screen.findByText('900')).toBeInTheDocument();
+    expect(screen.getByText('Free')).toBeInTheDocument();
+    expect(screen.getByText('Select a model to see the context use.')).toBeInTheDocument();
+  });
+
+  it('shows no usage chip before the first reply', () => {
+    chatMessages.current = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }];
+    renderChat();
+    expect(screen.queryByRole('button', { name: 'Usage of this chat' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Context used/ })).not.toBeInTheDocument();
+  });
+
   it('marks the turn where the model changes, and shows no sticky model badge', () => {
     const text = (t: string) => [{ type: 'text', text: t }];
     const haiku = {

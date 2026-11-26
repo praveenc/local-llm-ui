@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -168,6 +168,79 @@ describe('ChatContainer with Kiro', () => {
     expect(screen.getByText('0.25 credits')).toBeInTheDocument();
     expect(screen.queryByText('No price data')).not.toBeInTheDocument();
     expect(screen.queryByText('Input')).not.toBeInTheDocument();
+  });
+
+  describe('the totals of a saved chat with Kiro and Bedrock replies', () => {
+    const saved = () => [
+      { id: 'u1', role: 'user', parts: text('hi') },
+      {
+        id: 'a1',
+        role: 'assistant',
+        parts: text('one'),
+        model: { provider: 'bedrock', id: bedrockModel.id, name: bedrockModel.name },
+        usage: { inputTokens: 1200, outputTokens: 300 },
+      },
+      { id: 'u2', role: 'user', parts: text('more') },
+      {
+        id: 'a2',
+        role: 'assistant',
+        parts: text('two'),
+        model: { provider: 'kiro', id: 'claude-opus-5.5' },
+        usage: { credits: 0.25, contextPercent: 40 },
+      },
+    ];
+
+    it('shows the ring and both totals when the current model did not reply last', async () => {
+      const user = userEvent.setup();
+      chat.messages = saved();
+      renderChat(bedrockModel);
+      // Bedrock did not reply last: no fill, but the totals of the whole chat
+      expect(screen.queryByRole('button', { name: /Context used/ })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Usage of this chat' }));
+      const popover = within(await screen.findByRole('dialog'));
+      expect(
+        popover.getByText('Context use shows after the next reply from this model.')
+      ).toBeInTheDocument();
+      expect(popover.getByText('1.2K')).toBeInTheDocument();
+      expect(popover.getByText('300')).toBeInTheDocument();
+      expect(popover.getByText('Cost')).toBeInTheDocument();
+      expect(popover.getByText('Credits in this chat')).toBeInTheDocument();
+      expect(popover.getByText('0.25 credits')).toBeInTheDocument();
+    });
+
+    it('shows the sum of the cost of every Bedrock reply', async () => {
+      const user = userEvent.setup();
+      const bedrock = { provider: 'bedrock', id: bedrockModel.id, name: bedrockModel.name };
+      chat.messages = [
+        ...saved(),
+        { id: 'u3', role: 'user', parts: text('again') },
+        {
+          id: 'a3',
+          role: 'assistant',
+          parts: text('three'),
+          model: bedrock,
+          usage: { inputTokens: 2000, outputTokens: 400 },
+        },
+      ];
+      renderChat(kiroModel);
+      await user.click(screen.getByRole('button', { name: 'Usage of this chat' }));
+      const popover = within(await screen.findByRole('dialog'));
+      // Haiku 5.5 at $0.1 / $0.5 per M: $0.00027 + $0.0004. The last reply alone is $0.0004.
+      expect(popover.getByText('$0.0007')).toBeInTheDocument();
+      expect(popover.queryByText('$0.0004')).not.toBeInTheDocument();
+    });
+
+    it('fills the ring for the Kiro model that replied last, with both totals', async () => {
+      const user = userEvent.setup();
+      chat.messages = saved();
+      renderChat(kiroModel);
+      await user.click(screen.getByRole('button', { name: 'Context used: 40%' }));
+      const popover = within(await screen.findByRole('dialog'));
+      expect(popover.getByText('40% of the context window')).toBeInTheDocument();
+      expect(popover.getByText('1.2K')).toBeInTheDocument();
+      expect(popover.getByText('Cost')).toBeInTheDocument();
+      expect(popover.getByText('0.25 credits')).toBeInTheDocument();
+    });
   });
 
   it('rounds the credits in the tooltip', () => {
