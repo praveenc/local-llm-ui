@@ -201,7 +201,7 @@ describe('useBedrockChat with replies in the background', () => {
     });
     expect(result.current.status).toBe('idle');
     expect(lastAssistant(result.current.messages)).toBe('while away');
-    // notifyReply shows no toast for the chat on screen (replyNotices.test.ts)
+    // notifyReply decides on the toast and the Open action (replyNotices.test.ts)
     expect(notifyReply).toHaveBeenCalledWith('A', 'done');
     expect(replyStore.get('A')?.status).toBe('idle');
   });

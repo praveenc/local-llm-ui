@@ -1,5 +1,6 @@
 /**
- * The toast when a reply ends, fails, or waits for an answer in a chat that is not on screen.
+ * The toast when a reply ends or fails, and when Kiro waits for an answer in a chat that is not
+ * on screen. A chat that is on screen gets no Open action: the chat is already open.
  * The rules are in src/utils/replyNotice.ts (REPLY_NOTICE_RULES).
  */
 import { toast } from 'sonner';
@@ -45,7 +46,8 @@ function isOnScreen(conversationId: string): boolean {
 
 /** Shows the toast of a reply event when the rules ask for one. Never throws. */
 export async function notifyReply(conversationId: string, event: ReplyEvent): Promise<void> {
-  const notice = replyNotice(event, conversationId, isOnScreen(conversationId));
+  const onScreen = isOnScreen(conversationId);
+  const notice = replyNotice(event, conversationId, onScreen);
   if (!notice) return;
   try {
     const conversation = await conversationService.get(conversationId).catch(() => undefined);
@@ -54,7 +56,8 @@ export async function notifyReply(conversationId: string, event: ReplyEvent): Pr
       // One toast per chat: a later event replaces the earlier one
       id: notice.toastId,
       description,
-      action: { label: 'Open', onClick: () => openChat(conversationId) },
+      // On screen the chat is already open, so there is nothing to open
+      action: onScreen ? undefined : { label: 'Open', onClick: () => openChat(conversationId) },
     });
   } catch (err) {
     // No titles in the log

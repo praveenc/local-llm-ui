@@ -27,7 +27,7 @@ const shown = (kind: keyof typeof toast) => {
   expect(toast[kind]).toHaveBeenCalledTimes(1);
   return toast[kind].mock.calls[0] as [
     string,
-    { id: string; description: string; action: { label: string; onClick: () => void } },
+    { id: string; description: string; action?: { label: string; onClick: () => void } },
   ];
 };
 
@@ -41,20 +41,33 @@ describe('notifyReply', () => {
     const [title, options] = shown('success');
     expect(title).toBe('Reply ready');
     expect(options).toMatchObject({ id: 'reply-A', description: 'Count to 150' });
-    expect(options.action.label).toBe('Open');
-    options.action.onClick();
+    expect(options.action?.label).toBe('Open');
+    options.action?.onClick();
     expect(open).toHaveBeenCalledWith('A');
     remove();
   });
 
-  it('shows no toast for the chat on screen, and one when the tab is hidden', async () => {
+  it('shows a toast without Open for the chat on screen', async () => {
     replyStore.setOnScreen('A');
     await notifyReply('A', 'done');
-    expect(toast.success).not.toHaveBeenCalled();
 
+    const [title, options] = shown('success');
+    expect(title).toBe('Reply ready');
+    expect(options).toMatchObject({ id: 'reply-A', description: 'Count to 150' });
+    expect(options.action).toBeUndefined();
+  });
+
+  it('shows a toast with Open when the tab is hidden', async () => {
+    replyStore.setOnScreen('A');
     visibility = 'hidden';
     await notifyReply('A', 'done');
-    expect(shown('success')[0]).toBe('Reply ready');
+    expect(shown('success')[1].action?.label).toBe('Open');
+  });
+
+  it('shows no toast for a Kiro question in the chat on screen', async () => {
+    replyStore.setOnScreen('A');
+    await notifyReply('A', 'waiting');
+    expect(toast.info).not.toHaveBeenCalled();
   });
 
   it('shows no toast for a stopped reply', async () => {
@@ -85,7 +98,7 @@ describe('notifyReply', () => {
     const removeSecond = setReplyOpener(second);
     replyStore.setOnScreen(null);
     await notifyReply('A', 'done');
-    const open = shown('success')[1].action.onClick;
+    const open = () => shown('success')[1].action?.onClick();
 
     open();
     expect(second).toHaveBeenCalledWith('A');

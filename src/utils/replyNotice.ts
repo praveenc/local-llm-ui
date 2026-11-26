@@ -1,6 +1,7 @@
 /**
  * Which reply events show a toast, and its text. The browser module `services/replyNotices.ts`
- * decides whether the chat is on screen, adds the chat title and the Open action, and shows it.
+ * decides whether the chat is on screen, adds the chat title and (off screen) the Open action,
+ * and shows it.
  *
  * Keep this file free of DOM and Node imports.
  */
@@ -13,13 +14,15 @@ export type NoticeRule = 'always' | 'off-screen' | 'never';
 
 /**
  * The one place for the toast rules. A chat is on screen when it is the open chat and the
- * browser tab shows. For a toast after every reply, set `done` to 'always'.
+ * browser tab shows. 'always' shows a toast on screen too, 'off-screen' only when the chat is
+ * not on screen.
  */
 export const REPLY_NOTICE_RULES: Readonly<Record<ReplyEvent, NoticeRule>> = {
-  done: 'off-screen',
-  failed: 'off-screen',
+  done: 'always',
+  failed: 'always',
   // You stopped it yourself
   stopped: 'never',
+  // In the open chat the work row already opens by itself with Kiro's buttons
   waiting: 'off-screen',
 };
 
