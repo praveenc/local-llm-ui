@@ -21,7 +21,12 @@ const SAVED_LABEL_MS = 2000;
 
 type Outcome = { kind: 'saved' } | { kind: 'error'; message: string };
 
-export function KiroFolderSetting() {
+interface KiroFolderSettingProps {
+  /** Called when a save ends with "Saved" in the row (the Preferences footer says it too) */
+  onSaved?: () => void;
+}
+
+export function KiroFolderSetting({ onSaved }: KiroFolderSettingProps = {}) {
   const { status, setFolder } = useKiroStatus();
   const folder = status?.folder;
   const fieldId = useId();
@@ -35,6 +40,11 @@ export function KiroFolderSetting() {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Only the newest request may change what the row shows
   const requestId = useRef(0);
+  // The latest callback: a save can end after Preferences closed, so it must not be stale
+  const onSavedRef = useRef(onSaved);
+  useEffect(() => {
+    onSavedRef.current = onSaved;
+  }, [onSaved]);
   const storedPath = useRef(folder?.path);
   useEffect(() => {
     storedPath.current = folder?.path;
@@ -60,6 +70,7 @@ export function KiroFolderSetting() {
         if (value !== null && draftRef.current?.trim() === value) changeDraft(null);
         if (id !== requestId.current) return;
         setOutcome({ kind: 'saved' });
+        onSavedRef.current?.();
       } catch (error) {
         if (id !== requestId.current) return;
         const message = error instanceof Error && error.message ? error.message : 'Try again.';

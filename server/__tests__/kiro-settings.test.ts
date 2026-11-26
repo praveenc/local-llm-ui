@@ -1,6 +1,7 @@
 // @vitest-environment node
 import {
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
@@ -21,7 +22,16 @@ import { KIRO_FOLDER_MESSAGES } from '../../src/utils/kiroSettings.ts';
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
 import { createKiroProxy } from '../kiro-proxy.ts';
 import type { KiroProxyOptions } from '../kiro-proxy.ts';
-import { KIRO_FOLDER_UNAVAILABLE, KiroFolderError, createKiroSettings } from '../kiro/settings.ts';
+import type { KiroEnvironment } from '../kiro/binary.ts';
+import {
+  KIRO_FOLDER_UNAVAILABLE,
+  KiroFolderError,
+  KiroPrivateDirError,
+  createKiroSettings,
+  ensurePrivateDir,
+  getKiroSettings,
+  kiroSettingsFor,
+} from '../kiro/settings.ts';
 import { createApiGuard } from '../security.ts';
 
 const SIGNED_IN: KiroStatus = {
@@ -302,6 +312,142 @@ describe('createKiroSettings', () => {
     await Promise.all([settings.set('~/work'), settings.set('~/other')]);
     expect(await h.readStored()).toEqual({ workspaceDir: path.join(h.home, 'other') });
     expect(await settings.workspaceDir()).toBe(path.join(h.home, 'other'));
+  });
+});
+
+describe('the settings folder mode (D28)', () => {
+  const mode = async (p: string) => (await stat(p)).mode & 0o777;
+  const SAVE_FAILED = { ok: false, error: 'Could not save the folder. Try again.' };
+
+  it('follows a symlinked ~/.local-llm-ui but keeps the mode of its target', async () => {
+    const h = await freshHome();
+    const target = path.join(h.home, 'dotfiles', 'lli');
+    await mkdir(target, { recursive: true });
+    await chmod(target, 0o755);
+    await symlink(target, path.join(h.home, '.local-llm-ui'));
+    const settings = createKiroSettings({ home: h.home, platform: 'linux' });
+    expect(await settings.set('~/work')).toMatchObject({ ok: true });
+    expect(await mode(target)).toBe(0o755);
+    expect((await lstat(path.join(h.home, '.local-llm-ui'))).isSymbolicLink()).toBe(true);
+    const file = path.join(target, 'kiro-settings.json');
+    expect(await mode(file)).toBe(0o600);
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ workspaceDir: h.work });
+  });
+
+  it('sets 0700 on a real ~/.local-llm-ui with a loose mode', async () => {
+    const h = await freshHome();
+    const dir = path.join(h.home, '.local-llm-ui');
+    await mkdir(dir);
+    await chmod(dir, 0o755);
+    const settings = createKiroSettings({ home: h.home, platform: 'linux' });
+    expect(await settings.set(null)).toMatchObject({ ok: true });
+    expect(await mode(dir)).toBe(0o700);
+    expect(await mode(h.file)).toBe(0o600);
+  });
+
+  it('makes a new ~/.local-llm-ui with 0700', async () => {
+    const h = await freshHome();
+    const settings = createKiroSettings({ home: h.home, platform: 'linux' });
+    expect(await settings.set(null)).toMatchObject({ ok: true });
+    expect(await mode(path.join(h.home, '.local-llm-ui'))).toBe(0o700);
+    expect(await mode(h.file)).toBe(0o600);
+  });
+
+  it('refuses a link to a folder of another owner and leaves its mode', async () => {
+    const h = await freshHome();
+    const target = path.join(h.home, 'dotfiles', 'lli');
+    await mkdir(target, { recursive: true });
+    await chmod(target, 0o755);
+    await symlink(target, path.join(h.home, '.local-llm-ui'));
+    // Another uid: the target, owned by this user, counts as a folder of another owner
+    const uid = (process.getuid?.() ?? 1000) + 1;
+    const settings = createKiroSettings({ home: h.home, platform: 'linux', uid });
+    expect(await settings.set(null)).toEqual(SAVE_FAILED);
+    expect(await mode(target)).toBe(0o755);
+    await expect(stat(path.join(target, 'kiro-settings.json'))).rejects.toThrow();
+  });
+
+  it('gives the plain error for a dangling ~/.local-llm-ui link', async () => {
+    const h = await freshHome();
+    await symlink(path.join(h.home, 'missing'), path.join(h.home, '.local-llm-ui'));
+    const settings = createKiroSettings({ home: h.home, platform: 'linux' });
+    expect(await settings.set(null)).toEqual(SAVE_FAILED);
+    await expect(stat(path.join(h.home, 'missing'))).rejects.toThrow();
+    const logged = vi.mocked(console.warn).mock.calls.flat().join(' ');
+    expect(logged).not.toContain(h.home);
+  });
+});
+
+describe('ensurePrivateDir', () => {
+  it('throws an lstat error that is not ENOENT, and makes nothing', async () => {
+    const h = await freshHome();
+    const file = path.join(h.home, 'a-file');
+    await writeFile(file, 'x');
+    // ENOTDIR: a path under a file is not "missing"
+    await expect(ensurePrivateDir(path.join(file, 'sub'), undefined)).rejects.toMatchObject({
+      code: 'ENOTDIR',
+    });
+    expect((await lstat(file)).isFile()).toBe(true);
+  });
+
+  it('throws ELOOP for a link loop, and does not chmod the link target', async () => {
+    const h = await freshHome();
+    const one = path.join(h.home, 'loop-one');
+    const two = path.join(h.home, 'loop-two');
+    await symlink(two, one);
+    await symlink(one, two);
+    await expect(ensurePrivateDir(path.join(one, 'sub'), undefined)).rejects.toMatchObject({
+      code: 'ELOOP',
+    });
+  });
+
+  it('treats only ENOENT as a missing path: it makes the folder with 0700', async () => {
+    const h = await freshHome();
+    const dir = path.join(h.home, 'new', 'deep');
+    await ensurePrivateDir(dir, undefined);
+    expect((await stat(dir)).mode & 0o777).toBe(0o700);
+  });
+
+  it('throws the mkdir error for a path that is a file', async () => {
+    const h = await freshHome();
+    const file = path.join(h.home, 'a-file');
+    await writeFile(file, 'x');
+    await expect(ensurePrivateDir(file, undefined)).rejects.toMatchObject({ code: 'EEXIST' });
+  });
+
+  it('exports a typed error for a folder of another owner', () => {
+    expect(new KiroPrivateDirError('not-owned').reason).toBe('not-owned');
+    expect(new KiroPrivateDirError('not-folder').message).toBe('is not a folder');
+  });
+
+  it('gives the plain save error when ~/.local-llm-ui sits under a file', async () => {
+    const h = await freshHome();
+    const home = path.join(h.home, 'blocked');
+    await writeFile(home, 'x');
+    const settings = createKiroSettings({ home, platform: 'linux' });
+    expect(await settings.set(null)).toEqual({
+      ok: false,
+      error: 'Could not save the folder. Try again.',
+    });
+  });
+});
+
+describe('kiroSettingsFor (S11)', () => {
+  const environment = (home: string): KiroEnvironment => ({ env: {}, home, platform: 'linux' });
+
+  it('gives the shared settings without an environment', () => {
+    expect(kiroSettingsFor()).toBe(getKiroSettings());
+  });
+
+  it('gives one settings object per environment object', async () => {
+    const h = await freshHome();
+    const first = environment(h.home);
+    expect(kiroSettingsFor(first)).toBe(kiroSettingsFor(first));
+    expect(kiroSettingsFor(first)).not.toBe(kiroSettingsFor(environment(h.home)));
+    expect(kiroSettingsFor(first)).not.toBe(getKiroSettings());
+    // A save through one call is seen by the next call for the same environment
+    await kiroSettingsFor(first).set('~/work');
+    expect(await kiroSettingsFor(first).workspaceDir()).toBe(h.work);
   });
 });
 

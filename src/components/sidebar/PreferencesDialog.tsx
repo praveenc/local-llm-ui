@@ -239,6 +239,8 @@ export function PreferencesDialog({
                   setMakeDefault: (value) => {
                     makeKiroDefault.current = value;
                   },
+                  // The folder is a server setting: its row says "Saved", and so does the footer
+                  onFolderSaved: () => setStatus('saved'),
                 }}
               />
             </TabsContent>

@@ -58,6 +58,8 @@ interface ProviderSettingsProps {
     signIn: KiroSignIn;
     /** Say whether Kiro becomes the default provider when the sign-in ends */
     setMakeDefault: (value: boolean) => void;
+    /** The folder for new Kiro chats saved: the footer says "Saved" too */
+    onFolderSaved?: () => void;
   };
 }
 
@@ -139,6 +141,7 @@ export function ProviderSettings({ preferences, onUpdate, kiro }: ProviderSettin
                         signedIn={kiro.status?.state === 'signed-in'}
                         defaultAgent={preferences.kiroDefaultAgent}
                         onDefaultAgentChange={(id) => onUpdate('kiroDefaultAgent', id)}
+                        onFolderSaved={kiro.onFolderSaved}
                       />
                     </>
                   }

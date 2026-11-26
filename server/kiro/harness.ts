@@ -2,8 +2,6 @@
  * The Kiro adapter of the ACP agent: how to start `kiro-cli acp`, Kiro's names, errors, folder,
  * signed-out rules, and the `_meta.kiro` fields that the agent keeps per session.
  */
-import { chmod, mkdir, stat } from 'fs/promises';
-
 import type { AcpHarness, AgentErrorKind } from '../acp/harness.ts';
 import { defaultKiroEnvironment, resolveKiroBinary } from './binary.ts';
 import type { KiroEnvironment } from './binary.ts';
@@ -17,7 +15,12 @@ import {
   KiroSessionError,
   KiroSignedOutError,
 } from './errors.ts';
-import { createKiroSettings, defaultKiroDir, getKiroSettings } from './settings.ts';
+import {
+  KiroPrivateDirError,
+  defaultKiroDir,
+  ensurePrivateDir,
+  kiroSettingsFor,
+} from './settings.ts';
 import type { KiroSettings } from './settings.ts';
 
 /**
@@ -77,29 +80,26 @@ export function createKiroHarness(options: KiroHarnessOptions = {}): AcpHarness<
   // The stored folder is not used with a fixed folder. The settings module keeps the value.
   const settings: Pick<KiroSettings, 'workspaceDir'> | undefined =
     options.settings ??
-    (options.workspaceDir !== undefined
-      ? undefined
-      : options.environment
-        ? createKiroSettings({
-            home: options.environment.home,
-            platform: options.environment.platform,
-          })
-        : getKiroSettings());
+    (options.workspaceDir !== undefined ? undefined : kiroSettingsFor(options.environment));
 
   /** The app's own folder: the process cwd, and new sessions when no folder is stored */
   const defaultDir = (): Promise<string> => {
     if (!defaultReady) {
       const dir = options.workspaceDir ?? defaultKiroDir(environment().home);
       defaultReady = (async () => {
-        await mkdir(dir, { recursive: true, mode: 0o700 });
-        const uid = process.getuid?.();
-        if (uid !== undefined && (await stat(dir)).uid !== uid) {
+        try {
+          await ensurePrivateDir(dir, process.getuid?.());
+        } catch (error) {
           // The path goes to the terminal only, never to the browser
-          console.warn(`[kiro] the Kiro folder ${dir} belongs to another user`);
-          throw new KiroError('The Kiro folder of the app belongs to another user');
+          if (error instanceof KiroPrivateDirError) {
+            console.warn(`[kiro] the Kiro folder ${dir} ${error.message}`);
+            // A folder that is not a folder keeps the generic error of the route
+            if (error.reason === 'not-owned') {
+              throw new KiroError('The Kiro folder of the app belongs to another user');
+            }
+          }
+          throw error;
         }
-        // mkdir sets the mode only on a folder that it creates
-        await chmod(dir, 0o700);
         return dir;
       })().catch((error: unknown) => {
         defaultReady = undefined;

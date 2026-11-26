@@ -350,6 +350,8 @@ describe('/api/kiro route', () => {
           throw new Error('boom');
         },
       },
+      // The stub of this block: never the settings file of the real home folder
+      settings,
     });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const failServer = createServer((req, res) => void failing(req, res, () => res.end()));
