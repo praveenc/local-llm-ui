@@ -248,6 +248,14 @@ describe('POST /api/kiro/sessions/open', () => {
     const close = log.find((m) => m.method === 'session/close');
     expect(close?.params).toEqual({ sessionId: USED });
     expect(log.some((m) => m.method === 'session/prompt')).toBe(false);
+    // The session's agent and options (K9): the config_option_update of the load is newer than
+    // the options of the load answer; the model has an app control
+    const options = json.sessionOptions as {
+      mode: { currentValue: string };
+      options: { id: string; currentValue: string }[];
+    };
+    expect(options.mode.currentValue).toBe('agent-b');
+    expect(options.options.map((o) => `${o.id}=${o.currentValue}`)).toEqual(['autopilot=off']);
   });
 
   it('returns only the turns after skipTurns', async () => {

@@ -72,6 +72,8 @@ describe('createKiroModelList', () => {
         { id: 'auto', name: 'Auto', rateMultiplier: 2 },
         { id: 'claude-opus-5.5', name: 'Claude Opus 5.5', rateMultiplier: 2 },
       ],
+      // The model has an app control: no session options
+      sessionOptions: { options: [] },
     });
     expect(c.agent.newSession).toHaveBeenCalledTimes(1);
     expect(c.agent.newSession).toHaveBeenCalledWith();
@@ -81,7 +83,11 @@ describe('createKiroModelList', () => {
   it('deletes the session also when there are no models, and does not keep the empty list', async () => {
     const c = setup();
     c.state.options = [];
-    expect(await c.list.list()).toEqual({ state: 'ok', models: [] });
+    expect(await c.list.list()).toEqual({
+      state: 'ok',
+      models: [],
+      sessionOptions: { options: [] },
+    });
     expect(c.agent.deleteSession).toHaveBeenCalledWith('sess_1');
     await c.list.list();
     expect(c.agent.newSession).toHaveBeenCalledTimes(2);
@@ -120,7 +126,76 @@ describe('createKiroModelList', () => {
     expect(await c.list.list()).toEqual({
       state: 'ok',
       models: [{ id: 'kimi-k3', name: 'Kimi K3', rateMultiplier: 2 }],
+      sessionOptions: { options: [] },
     });
+    expect(c.agent.newSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the agent and options of the new session as the defaults, and update() keeps them', async () => {
+    const c = setup();
+    c.state.options = [
+      ...modelOptions('auto'),
+      {
+        id: 'mode',
+        name: 'Mode',
+        category: 'mode',
+        type: 'select',
+        currentValue: 'agent-a',
+        options: [
+          { value: 'agent-a', name: 'Agent A', description: 'The default agent' },
+          { value: 'agent-b', name: 'Agent B', _meta: { kiro: { source: 'local' } } },
+        ],
+      },
+      {
+        id: 'level',
+        name: 'Level',
+        category: 'thought_level',
+        type: 'select',
+        currentValue: 'low',
+        options: [{ value: 'low', name: 'Low' }],
+      },
+      {
+        id: 'autopilot',
+        name: 'Autopilot',
+        type: 'select',
+        currentValue: 'on',
+        options: [
+          { value: 'on', name: 'Autopilot' },
+          { value: 'off', name: 'Supervised', description: 'Asks first' },
+        ],
+      },
+    ];
+    const defaults = {
+      mode: {
+        id: 'mode',
+        name: 'Mode',
+        category: 'mode',
+        currentValue: 'agent-a',
+        values: [
+          { value: 'agent-a', name: 'Agent A', description: 'The default agent' },
+          { value: 'agent-b', name: 'Agent B' },
+        ],
+      },
+      options: [
+        {
+          id: 'autopilot',
+          name: 'Autopilot',
+          currentValue: 'on',
+          values: [
+            { value: 'on', name: 'Autopilot' },
+            { value: 'off', name: 'Supervised', description: 'Asks first' },
+          ],
+        },
+      ],
+    };
+    expect(await c.list.list()).toMatchObject({ state: 'ok', sessionOptions: defaults });
+    // A chat session holds the user's values: they are not the defaults of a new chat
+    c.list.update([
+      ...modelOptions('auto'),
+      { ...c.state.options[1], currentValue: 'agent-b' },
+      { ...c.state.options[3], currentValue: 'off' },
+    ]);
+    expect(await c.list.list()).toMatchObject({ state: 'ok', sessionOptions: defaults });
     expect(c.agent.newSession).toHaveBeenCalledTimes(1);
   });
 

@@ -323,7 +323,17 @@ export class AcpAgent<TInfo extends object> {
     return promise;
   }
 
-  async setOption(sessionId: string, configId: string, value: string): Promise<ConfigOption[]> {
+  /**
+   * Sets one option and reads it back. By default the value is also kept and set again when the
+   * session is loaded again (a restarted process). `remember: false` leaves it to the agent:
+   * the agent keeps its own values, and a change that the user made elsewhere must stay.
+   */
+  async setOption(
+    sessionId: string,
+    configId: string,
+    value: string,
+    { remember = true }: { remember?: boolean } = {}
+  ): Promise<ConfigOption[]> {
     const { agent } = this.harness.names;
     if (this.harness.guard?.isLocked(configId)) {
       throw this.harness.createError('option', 'This option cannot be changed from the app');
@@ -343,9 +353,11 @@ export class AcpAgent<TInfo extends object> {
     if (after !== value) {
       throw this.harness.createError('option', `${agent} did not change ${configId} to ${value}`);
     }
-    let wanted = this.desired.get(sessionId);
-    if (!wanted) this.desired.set(sessionId, (wanted = new Map()));
-    wanted.set(configId, value);
+    if (remember) {
+      let wanted = this.desired.get(sessionId);
+      if (!wanted) this.desired.set(sessionId, (wanted = new Map()));
+      wanted.set(configId, value);
+    }
     return options;
   }
 

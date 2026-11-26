@@ -177,6 +177,38 @@ describe('POST /api/kiro/chat and session/close', () => {
     expect(log.filter((m) => m.method === 'session/close')).toHaveLength(2);
   });
 
+  it('does not set an agent option again after a load: a change from the terminal stays', async () => {
+    // The fake finds Autopilot on when it loads the closed session: the user turned it on in the terminal
+    const c = await setup({ FAKE_KIRO_LOAD_AUTOPILOT: 'on' });
+    const first = await chat(c.url, { prompt: 'one', sessionOptions: { autopilot: 'off' } });
+    const id = sessionOf(first.events)!;
+    expect(errorsOf(first.events)).toEqual([]);
+    const autopilotCalls = async () =>
+      (await c.log()).filter(
+        (m) =>
+          m.method === 'session/set_config_option' &&
+          (m.params as { configId: string }).configId === 'autopilot'
+      );
+    expect(await autopilotCalls()).toHaveLength(1);
+    await vi.waitFor(async () => {
+      expect((await c.log()).filter((m) => m.method === 'session/close')).toHaveLength(1);
+    });
+
+    const second = await chat(c.url, {
+      sessionId: id,
+      history: [
+        { role: 'user', content: 'one' },
+        { role: 'assistant', content: 'echo: one' },
+      ],
+      seenMessages: 2,
+      prompt: 'two',
+    });
+    expect(errorsOf(second.events)).toEqual([]);
+    expect((await c.log()).some((m) => m.method === 'session/load')).toBe(true);
+    // Still the one call from the first message: the app did not set "off" again
+    expect(await autopilotCalls()).toHaveLength(1);
+  });
+
   it("shows Kiro's lease text when another program holds the session, and does not close it", async () => {
     const c = await setup({ FAKE_KIRO_MODE: 'lease' });
     const { events, done } = await chat(c.url, { prompt: 'hello' });

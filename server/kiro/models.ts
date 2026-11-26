@@ -6,15 +6,26 @@
  * `kiro-cli acp` start runs the user's MCP servers (20 to 26 processes), and each load makes and
  * deletes a session. The chat route calls `update()` with the options of each session that it
  * opens, so a chat keeps the list fresh without new sessions.
+ *
+ * The session options (the agent, Autopilot, …) of the load's new session are Kiro's defaults
+ * for a new chat. Only a load sets them: a chat session holds the user's values, so `update()`
+ * keeps them as they are.
  */
 import { parseKiroModels } from '../../src/utils/kiroModels.ts';
 import type { KiroModel } from '../../src/utils/kiroModels.ts';
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
+import type { SessionOptionsSnapshot } from '../../src/utils/sessionOptions.ts';
 import { KiroSignedOutError } from './agent.ts';
 import type { KiroAgent } from './agent.ts';
+import { kiroSessionOptions } from './chat-options.ts';
 
 export type KiroModelListResult =
-  | { state: 'ok'; models: KiroModel[] }
+  | {
+      state: 'ok';
+      models: KiroModel[];
+      /** The agent and options of a new session: Kiro's defaults for a new chat (K9) */
+      sessionOptions?: SessionOptionsSnapshot;
+    }
   | { state: 'unavailable'; models: [] }
   | { state: 'signed-out'; models: [] }
   | { state: 'error'; message: string; models: [] };
@@ -36,20 +47,30 @@ export interface KiroModelListOptions {
   now?: () => number;
 }
 
+interface Loaded {
+  models: KiroModel[];
+  sessionOptions: SessionOptionsSnapshot;
+}
+
 export function createKiroModelList(options: KiroModelListOptions): KiroModelList {
   const { agent, statusReader } = options;
   const ttlMs = options.ttlMs ?? 3_600_000;
   const now = options.now ?? Date.now;
 
   let cached: { models: KiroModel[]; at: number } | undefined;
-  let loading: Promise<KiroModel[]> | undefined;
+  let loading: Promise<Loaded> | undefined;
+  /** Kiro's defaults for a new chat, from the last load */
+  let defaults: SessionOptionsSnapshot | undefined;
   /** The account of the cached list, to drop it when the account changes. Never logged. */
   let account: string | undefined;
 
-  async function load(): Promise<KiroModel[]> {
+  async function load(): Promise<Loaded> {
     const { sessionId, configOptions } = await agent.newSession();
     try {
-      return parseKiroModels(configOptions);
+      return {
+        models: parseKiroModels(configOptions),
+        sessionOptions: kiroSessionOptions(configOptions),
+      };
     } finally {
       try {
         await agent.deleteSession(sessionId);
@@ -68,11 +89,15 @@ export function createKiroModelList(options: KiroModelListOptions): KiroModelLis
       if (status.state !== 'signed-in') {
         // A sign-out, or a Kiro CLI that is gone: the next account may have other models
         cached = undefined;
+        defaults = undefined;
         account = undefined;
       } else {
         // The account type and email: an API key has no email
         const key = `${status.account.type}:${status.account.email ?? ''}`;
-        if (account !== undefined && key !== account) cached = undefined;
+        if (account !== undefined && key !== account) {
+          cached = undefined;
+          defaults = undefined;
+        }
         account = key;
       }
       if (status.state === 'not-installed' || status.state === 'unsupported') {
@@ -85,19 +110,25 @@ export function createKiroModelList(options: KiroModelListOptions): KiroModelLis
       }
 
       if (!refresh && !loading && cached && now() - cached.at < ttlMs) {
-        return { state: 'ok', models: cached.models };
+        return {
+          state: 'ok',
+          models: cached.models,
+          ...(defaults && { sessionOptions: defaults }),
+        };
       }
       loading ??= load()
-        .then((models) => {
+        .then((loaded) => {
           // An empty list is not kept: the next request tries again
-          cached = models.length > 0 ? { models, at: now() } : undefined;
-          return models;
+          cached = loaded.models.length > 0 ? { models: loaded.models, at: now() } : undefined;
+          defaults = loaded.sessionOptions;
+          return loaded;
         })
         .finally(() => {
           loading = undefined;
         });
       try {
-        return { state: 'ok', models: await loading };
+        const loaded = await loading;
+        return { state: 'ok', models: loaded.models, sessionOptions: loaded.sessionOptions };
       } catch (error) {
         if (error instanceof KiroSignedOutError) return { state: 'signed-out', models: [] };
         console.warn(

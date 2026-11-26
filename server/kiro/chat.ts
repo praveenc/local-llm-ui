@@ -1,12 +1,15 @@
 /**
  * POST /api/kiro/chat: one Kiro reply as SSE.
  *
- * The route opens the chat's Kiro session (or a new one), sets the model and the Thinking level
- * when they changed, sends the new message with the messages that Kiro has not seen (D12), and
+ * The route opens the chat's Kiro session (or a new one), sets the session options, the model, and
+ * the Thinking level when they changed, sends the new message with the messages that Kiro has not seen (D12), and
  * maps Kiro's updates to the app's SSE events. Kiro's permission questions go to the browser as
  * `permission` events (D16); the answer comes back through POST /api/kiro/permission and the shared
  * registry. Every question that was sent ends with a `permissionResult` event. While a question is
  * open, a `: ping` comment every 15 s keeps a tunnel from closing the idle stream.
+ *
+ * A `sessionOptions` event follows the `session` event and each config_option_update during the
+ * reply: the agent and the other options that Kiro lists, with their current values (K9).
  *
  * The `session` event comes right before session/prompt: after the session is open, after a
  * running or cancelling reply in it ended, and after the options are set. The browser counts the
@@ -47,7 +50,7 @@ import type { KiroAgent } from './agent.ts';
 import { kiroPermissionResult, kiroQuestion } from './approvals.ts';
 import { defaultKiroEnvironment } from './binary.ts';
 import type { KiroEnvironment } from './binary.ts';
-import { applyOptions } from './chat-options.ts';
+import { applyOptions, kiroSessionOptions } from './chat-options.ts';
 import { kiroLeaseErrorText } from './lease.ts';
 import type { KiroModelList } from './models.ts';
 import { createKiroReplyMeta, kiroToolName } from './reply-meta.ts';
@@ -276,13 +279,25 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
       // Right before session/prompt: the browser counts the message as seen only after this
       unused = undefined;
       send({ session });
+      // The session's agent and options, as Kiro reports them now (K9)
+      const sendOptions = () =>
+        send({ sessionOptions: kiroSessionOptions(agent.configOptions(id)) });
+      sendOptions();
 
       const meta = createKiroReplyMeta({
         prompt: request.prompt,
         title: agent.sessionInfo(id)?.title,
         send,
       });
-      const mapper = createUpdateMapper({ send, toolName: kiroToolName, onOther: meta.onUpdate });
+      const mapper = createUpdateMapper({
+        send,
+        toolName: kiroToolName,
+        onOther(update) {
+          // The agent has stored the new options before the update comes here
+          if (update.sessionUpdate === 'config_option_update') sendOptions();
+          meta.onUpdate(update);
+        },
+      });
       const onPermission: PromptPermissionHandler = (question) => {
         send({ permission: kiroQuestion(question) });
         const ping = setInterval(() => {
