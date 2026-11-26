@@ -14,6 +14,7 @@ import {
   countTextMessages,
   seenAfterSync,
 } from '../utils/kiroSessions';
+import { type SessionOptionValues, snapshotValues } from '../utils/sessionOptions';
 
 /** The longest title that Kiro may set, as for a Kiro title in a chat */
 const TITLE_MAX = 120;
@@ -36,6 +37,11 @@ export async function findConversationByKiroSession(
 function cleanTitle(title: string): string {
   const cleaned = title.trim().replace(/\s+/g, ' ').slice(0, TITLE_MAX);
   return cleaned || 'Kiro session';
+}
+
+/** The session's option values from the open answer (K9); the terminal may have changed them */
+function sessionValues(session: KiroSessionOpenResponse): { options?: SessionOptionValues } {
+  return session.sessionOptions ? { options: snapshotValues(session.sessionOptions) } : {};
 }
 
 /** Stored as `useBedrockChat` stores a reply: the thinking in `<think>` tags before the text */
@@ -115,6 +121,7 @@ export async function importKiroSession(
         seenMessages: countTextMessages(session.messages),
         updatedAt: session.updatedAt,
         turns: session.turns,
+        ...sessionValues(session),
       },
       titleFromKiro: true,
     };
@@ -142,7 +149,7 @@ export async function appendKiroTurns(
     if (session.turns <= kiro.turns || session.messages.length === 0) {
       // Nothing new, or a shorter history: keep the chat as it is and remember Kiro's time
       await db.conversations.update(conversationId, {
-        kiro: { ...kiro, updatedAt: session.updatedAt },
+        kiro: { ...kiro, updatedAt: session.updatedAt, ...sessionValues(session) },
       });
       return 0;
     }
@@ -182,6 +189,7 @@ export async function appendKiroTurns(
         seenMessages: seenAfterSync(kiro.seenMessages, textMessages, session.messages),
         updatedAt: session.updatedAt,
         turns: session.turns,
+        ...sessionValues(session),
       },
     });
     return added.length;

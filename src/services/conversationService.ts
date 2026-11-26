@@ -14,6 +14,7 @@ import type {
   MessageFeedback,
   Provider,
 } from '../db';
+import type { SessionOptionValues } from '../utils/sessionOptions';
 
 // Generate UUID for new records
 const generateId = (): string => {
@@ -100,10 +101,37 @@ export const conversationService = {
   },
 
   /**
-   * Store or clear the chat's Kiro session. Does not change updatedAt, like rename.
+   * Store or clear the chat's Kiro session. Does not change updatedAt, like rename. For the same
+   * session, the stored option values stay: only `setKiroSessionOptions` changes them (K9).
    */
   async setKiroSession(id: string, kiro: KiroConversationSession | undefined): Promise<void> {
-    await db.conversations.update(id, { kiro });
+    await db.transaction('rw', db.conversations, async () => {
+      const stored = (await db.conversations.get(id))?.kiro;
+      const next = kiro && { ...kiro };
+      if (next) {
+        delete next.options;
+        const options =
+          stored?.sessionId === next.sessionId && stored.options ? stored.options : kiro?.options;
+        if (options) next.options = options;
+      }
+      await db.conversations.update(id, { kiro: next });
+    });
+  },
+
+  /**
+   * The option values that the chat's Kiro session reported (K9). Ignored when the chat holds
+   * another session now.
+   */
+  async setKiroSessionOptions(
+    id: string,
+    sessionId: string,
+    options: SessionOptionValues
+  ): Promise<void> {
+    await db.transaction('rw', db.conversations, async () => {
+      const kiro = (await db.conversations.get(id))?.kiro;
+      if (kiro?.sessionId !== sessionId) return;
+      await db.conversations.update(id, { kiro: { ...kiro, options } });
+    });
   },
 
   /**

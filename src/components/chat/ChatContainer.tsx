@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import type { MessageUsage, Provider } from '../../db/types';
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
 import { useBedrockChat } from '../../hooks/useBedrockChat';
+import { useSessionOptions } from '../../hooks/useSessionOptions';
 import type { ToolCallPart, UIMessage } from '../../types/ai-messages';
 import { getReasoningContent, getTextContent, hasReasoning } from '../../types/ai-messages';
 import { summarizeChatUsage } from '../../utils/chatUsage';
@@ -82,6 +83,8 @@ import { ProviderChecklist } from './ProviderChecklist';
 import { QuoteRespondDialog } from './QuoteRespondDialog';
 import { type QuoteSelection, QuoteSelectionButton } from './QuoteSelectionButton';
 import { SavePromptDialog } from './SavePromptDialog';
+import { SessionAgentPicker } from './SessionAgentPicker';
+import { SessionOptionsMenu } from './SessionOptionsMenu';
 import { StreamStatusAnnouncer } from './StreamStatusAnnouncer';
 import { ThinkingEffortSelector } from './ThinkingEffortSelector';
 import { WebSearchToggle } from './WebSearchToggle';
@@ -244,6 +247,13 @@ const ChatContainer = ({
   });
 
   const isLoading = status === 'streaming' || status === 'submitted';
+
+  // The harness's agent and other session options (K9), picked by ACP category, not by id
+  const { snapshot: sessionOptions, pick: pickSessionOption } = useSessionOptions(
+    externalConversationId ?? null
+  );
+  const agentOption = isKiro ? sessionOptions?.mode : undefined;
+  const otherOptions = isKiro ? (sessionOptions?.options ?? []) : [];
 
   // Context use and cost come from the usage stored with each reply, so they survive a reload
   const chatUsage = useMemo(() => summarizeChatUsage(messages), [messages]);
@@ -668,6 +678,20 @@ const ChatContainer = ({
                   )}
               </PromptInputTools>
               <PromptInputTools className="ml-auto gap-1">
+                {agentOption && (
+                  <SessionAgentPicker
+                    option={agentOption}
+                    onChange={(value) => pickSessionOption(agentOption.id, value)}
+                    disabled={isLoading}
+                  />
+                )}
+                {otherOptions.length > 0 && (
+                  <SessionOptionsMenu
+                    options={otherOptions}
+                    onChange={pickSessionOption}
+                    disabled={isLoading}
+                  />
+                )}
                 {webSearch?.available && !isKiro && (
                   <WebSearchToggle
                     enabled={webSearch.on}

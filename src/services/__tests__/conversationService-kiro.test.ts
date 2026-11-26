@@ -101,6 +101,50 @@ describe('conversationService Kiro fields', () => {
     expect(store.conversations.get('c1')?.kiro).toBeUndefined();
   });
 
+  it('setKiroSession keeps the option values of the same session (K9)', async () => {
+    const OTHER = 'sess_00000000-0000-4000-8000-000000000002';
+    store.conversations.set('c1', {
+      ...conversation({
+        kiro: { sessionId: SESSION, seenMessages: 0, options: { autopilot: 'off' } },
+      }),
+    });
+    // A later save of the same session with older values keeps the stored ones
+    await conversationService.setKiroSession('c1', {
+      sessionId: SESSION,
+      seenMessages: 2,
+      options: { autopilot: 'on' },
+    });
+    expect(store.conversations.get('c1')?.kiro).toEqual({
+      sessionId: SESSION,
+      seenMessages: 2,
+      options: { autopilot: 'off' },
+    });
+
+    // A new session takes the values that come with it, or none
+    await conversationService.setKiroSession('c1', {
+      sessionId: OTHER,
+      seenMessages: 0,
+      options: { autopilot: 'on' },
+    });
+    expect(store.conversations.get('c1')?.kiro).toMatchObject({ options: { autopilot: 'on' } });
+    await conversationService.setKiroSession('c1', { sessionId: SESSION, seenMessages: 0 });
+    expect(store.conversations.get('c1')?.kiro).toEqual({ sessionId: SESSION, seenMessages: 0 });
+  });
+
+  it("setKiroSessionOptions stores the values only for the chat's session", async () => {
+    store.conversations.set('c1', {
+      ...conversation({ kiro: { sessionId: SESSION, seenMessages: 2 } }),
+    });
+    await conversationService.setKiroSessionOptions('c1', 'sess_other', { mode: 'agent-b' });
+    expect(store.conversations.get('c1')?.kiro).toEqual({ sessionId: SESSION, seenMessages: 2 });
+
+    await conversationService.setKiroSessionOptions('c1', SESSION, { mode: 'agent-b' });
+    expect(store.conversations.get('c1')).toMatchObject({
+      kiro: { sessionId: SESSION, seenMessages: 2, options: { mode: 'agent-b' } },
+      updatedAt: new Date('2026-11-02T00:00:00Z'),
+    });
+  });
+
   it('setTitleFromKiro replaces an automatic title, trimmed and capped at 120 characters', async () => {
     store.conversations.set('c1', { ...conversation() });
     store.messages.push({ ...message(1, 'user'), content: '  What is   the weather ' });

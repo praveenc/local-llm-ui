@@ -11,13 +11,19 @@ import { useCallback, useRef, useState } from 'react';
 
 import type { KiroConversationSession, MessageFeedback, Provider } from '../db/types';
 import { mantleService } from '../services';
+import { conversationService } from '../services/conversationService';
+import { kiroService } from '../services/kiro';
 import { runningKiroSync } from '../services/kiroSyncs';
 import type { KiroModelMeta } from '../services/types';
 import type { MessagePart, ToolCallPart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
 import { extractErrorMessage } from '../utils/errorMessage';
 import { normalizeMediaType } from '../utils/fileUtils';
-import type { KiroChatRequest, KiroHistoryMessage } from '../utils/kiroChat';
+import {
+  type KiroChatRequest,
+  type KiroHistoryMessage,
+  kiroSessionIsStale,
+} from '../utils/kiroChat';
 import {
   endApproval,
   openApproval,
@@ -26,6 +32,11 @@ import {
 } from '../utils/kiroPermissions';
 import { getMediaTypeFromFormat, lookupFormat } from '../utils/mediaTypes';
 import { loadPreferences } from '../utils/preferences';
+import {
+  parseSessionOptionsSnapshot,
+  sessionOptionsToSend,
+  snapshotValues,
+} from '../utils/sessionOptions';
 import { supportsThinkingEffort, thinkingEffortOptions, withoutMax } from '../utils/thinkingEffort';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
 import { toStoredToolCall } from '../utils/toolResults';
@@ -39,6 +50,12 @@ import {
   withQuestionEnded,
   withQuestionsEnded,
 } from './kiroApprovalState';
+import {
+  NEW_CHAT_KEY,
+  clearPendingSessionOptions,
+  movePendingSessionOptions,
+  pendingSessionOptions,
+} from './useSessionOptions';
 
 export type ChatStatus = 'idle' | 'streaming' | 'submitted' | 'error';
 
@@ -176,6 +193,8 @@ export function useBedrockChat({
       if (!currentConversationId) {
         const newConversation = await createConversation();
         currentConversationId = newConversation.id;
+        // Agent and option picks made before the chat existed go with its first message (K9)
+        movePendingSessionOptions(NEW_CHAT_KEY, currentConversationId);
         setInternalConversationId(currentConversationId);
         onConversationChange?.(currentConversationId);
       }
@@ -221,13 +240,21 @@ export function useBedrockChat({
           .filter((m): m is UIMessage & { role: 'user' | 'assistant' } => m.role !== 'system')
           .map((m) => ({ role: m.role, content: getTextContent(m) }))
           .filter((m) => m.content.trim().length > 0);
+        const seenMessages = stored?.kiro?.seenMessages ?? 0;
+        // The same session gets only the user's new picks; a new one also the stored values (K9)
+        const sessionOptions = sessionOptionsToSend({
+          stored: stored?.kiro?.options,
+          pending: pendingSessionOptions(currentConversationId),
+          newSession: !stored?.kiro?.sessionId || kiroSessionIsStale({ history, seenMessages }),
+        });
         kiroRequest = {
           ...(stored?.kiro?.sessionId && { sessionId: stored.kiro.sessionId }),
-          seenMessages: stored?.kiro?.seenMessages ?? 0,
+          seenMessages,
           history,
           prompt: content,
           model: modelId,
           ...(effort && { thinkingEffort: effort }),
+          ...(sessionOptions && { sessionOptions }),
         };
       }
       // The session of this reply, from its first event
@@ -527,10 +554,21 @@ export function useBedrockChat({
                   ...(parsed.session.created && { turns: 0 }),
                   ...(known && storedKiro?.turns !== undefined && { turns: storedKiro.turns }),
                   ...(known && storedKiro?.updatedAt && { updatedAt: storedKiro.updatedAt }),
+                  // The next sessionOptions event gives the session's values
+                  ...(storedKiro?.options && { options: storedKiro.options }),
                 };
                 await setKiroSession(currentConversationId, kiroSession);
                 // The server sends it right before Kiro gets the message: "Starting Kiro…" is over
                 setStreamStatus(null);
+              }
+              // Kiro: the session's agent and options, after the session event and on each change.
+              // The service keeps the lists for the controls; the chat's record keeps the values.
+              if (kiroRequest && kiroSession && parsed.sessionOptions !== undefined) {
+                await saveSessionOptionsEvent(
+                  parsed.sessionOptions,
+                  currentConversationId,
+                  kiroSession.sessionId
+                );
               }
               // Kiro: its short title replaces the automatic one
               if (kiroRequest && typeof parsed.title === 'string' && parsed.title.trim()) {
@@ -897,6 +935,27 @@ export function useBedrockChat({
 /** One more Kiro turn, when the chat knows how many turns its session has (K7) */
 function nextTurns(session: KiroConversationSession): { turns?: number } {
   return session.turns === undefined ? {} : { turns: session.turns + 1 };
+}
+
+/**
+ * The `sessionOptions` event of the Kiro route (K9): keeps its lists for the session's controls,
+ * stores its values with the chat, and ends the chat's picks. A bad event changes nothing.
+ */
+async function saveSessionOptionsEvent(
+  raw: unknown,
+  conversationId: string,
+  sessionId: string
+): Promise<void> {
+  const snapshot = parseSessionOptionsSnapshot(raw);
+  if (!snapshot) return;
+  kiroService.rememberSessionOptions(sessionId, snapshot);
+  await conversationService.setKiroSessionOptions(
+    conversationId,
+    sessionId,
+    snapshotValues(snapshot)
+  );
+  // The session shows what it took: the chat's picks are done
+  clearPendingSessionOptions(conversationId);
 }
 
 /** The `session` event of the Kiro route */
