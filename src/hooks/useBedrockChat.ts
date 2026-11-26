@@ -11,6 +11,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import type { KiroConversationSession, MessageFeedback, Provider } from '../db/types';
 import { mantleService } from '../services';
+import { runningKiroSync } from '../services/kiroSyncs';
 import type { KiroModelMeta } from '../services/types';
 import type { MessagePart, ToolCallPart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
@@ -200,11 +201,22 @@ export function useBedrockChat({
       // Kiro keeps its own history. Read what the session has seen, and the chat's earlier
       // messages, from the database now: the chat may be new, or a fork (D12).
       let kiroRequest: KiroChatRequest | undefined;
+      // The chat's Kiro record before this message, for the turn count (K7)
+      let storedKiro: KiroConversationSession | undefined;
       if (isKiro) {
+        // Opening the chat may still add the turns that Kiro made in the terminal: wait, so that
+        // the history and the turn count below include them (K7)
+        const sync = runningKiroSync(currentConversationId);
+        if (sync) {
+          setStatus('submitted');
+          setStreamStatus('Adding the new Kiro turns…');
+          await sync;
+        }
         const [stored, storedMessages] = await Promise.all([
           getConversation(currentConversationId),
           getMessages(currentConversationId),
         ]);
+        storedKiro = stored?.kiro;
         const history: KiroHistoryMessage[] = toUIMessages(storedMessages)
           .filter((m): m is UIMessage & { role: 'user' | 'assistant' } => m.role !== 'system')
           .map((m) => ({ role: m.role, content: getTextContent(m) }))
@@ -505,9 +517,16 @@ export function useBedrockChat({
 
               // Kiro: the session of this reply. A new session has seen none of the chat.
               if (kiroRequest && isKiroSessionEvent(parsed.session)) {
+                // A new session has no turns. A known one keeps its turn count, and its time
+                // of the last sync, so a later open adds only the turns made elsewhere (K7).
+                const known =
+                  !parsed.session.created && storedKiro?.sessionId === parsed.session.id;
                 kiroSession = {
                   sessionId: parsed.session.id,
                   seenMessages: parsed.session.created ? 0 : kiroRequest.seenMessages,
+                  ...(parsed.session.created && { turns: 0 }),
+                  ...(known && storedKiro?.turns !== undefined && { turns: storedKiro.turns }),
+                  ...(known && storedKiro?.updatedAt && { updatedAt: storedKiro.updatedAt }),
                 };
                 await setKiroSession(currentConversationId, kiroSession);
                 // The server sends it right before Kiro gets the message: "Starting Kiro…" is over
@@ -697,6 +716,7 @@ export function useBedrockChat({
           await setKiroSession(currentConversationId, {
             ...kiroSession,
             seenMessages: kiroRequest.history.length + 1 + (fullContent.trim() ? 1 : 0),
+            ...nextTurns(kiroSession),
           });
         }
 
@@ -714,6 +734,7 @@ export function useBedrockChat({
             await setKiroSession(currentConversationId, {
               ...kiroSession,
               seenMessages: kiroRequest.history.length + 1,
+              ...nextTurns(kiroSession),
             }).catch((saveErr: unknown) =>
               console.error('Failed to save the Kiro session:', saveErr)
             );
@@ -871,6 +892,11 @@ export function useBedrockChat({
     stopGeneration,
     clearMessages,
   };
+}
+
+/** One more Kiro turn, when the chat knows how many turns its session has (K7) */
+function nextTurns(session: KiroConversationSession): { turns?: number } {
+  return session.turns === undefined ? {} : { turns: session.turns + 1 };
 }
 
 /** The `session` event of the Kiro route */

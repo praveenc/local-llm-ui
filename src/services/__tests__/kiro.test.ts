@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { KiroStatus } from '../../utils/kiroStatus';
-import { KiroService } from '../kiro';
+import { KiroService, KiroSignedOutError } from '../kiro';
 
 const mockFetch = (response: { ok: boolean; status?: number; body?: KiroStatus }) => {
   const fetchMock = vi.fn().mockResolvedValue({
@@ -316,6 +316,78 @@ describe('KiroService.answerPermission', () => {
     fetchAnswer(400, { error: 'Kiro did not offer this option' });
     await expect(new KiroService().answerPermission(answer)).rejects.toThrow(
       'Kiro did not offer this option'
+    );
+  });
+});
+
+describe('KiroService sessions', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const SESSION = 'sess_00000000-0000-4000-8000-000000000001';
+
+  it('lists the sessions of the window with a JSON POST, and drops bad entries', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        sessions: [
+          {
+            sessionId: SESSION,
+            title: 'Fix the build',
+            folder: 'cwd',
+            updatedAt: '2026-11-25T10:00:00.000Z',
+            status: 'idle',
+          },
+          { sessionId: '../etc', title: 'x', folder: 'y', updatedAt: 'now', status: 'idle' },
+        ],
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const sessions = await new KiroService().listSessions(30);
+    expect(sessions.map((s) => s.sessionId)).toEqual([SESSION]);
+    expect(fetchMock).toHaveBeenCalledWith('/api/kiro/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"days":30}',
+    });
+  });
+
+  it('says when Kiro is signed out, and gives the server error in words', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 401 })));
+    await expect(new KiroService().listSessions(7)).rejects.toBeInstanceOf(KiroSignedOutError);
+
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json({ error: 'Kiro is answering in this session.' }, { status: 409 })
+        )
+    );
+    await expect(new KiroService().openSession(SESSION)).rejects.toThrow(
+      'Kiro is answering in this session.'
+    );
+  });
+
+  it('opens a session after the turns that the chat holds', async () => {
+    const body = {
+      title: 'Fix the build',
+      updatedAt: '2026-11-25T10:00:00.000Z',
+      messages: [{ role: 'user', content: 'hi' }],
+      turns: 3,
+      imagesLeftOut: 0,
+      turnsLeftOut: 0,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(Response.json(body));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(new KiroService().openSession(SESSION, 2)).resolves.toEqual(body);
+    expect(fetchMock.mock.calls[0][1].body).toBe(
+      JSON.stringify({ sessionId: SESSION, skipTurns: 2 })
+    );
+
+    fetchMock.mockResolvedValue(Response.json({ title: 'x' }));
+    await expect(new KiroService().openSession(SESSION)).rejects.toThrow(
+      'Kiro sent a session that the app cannot read.'
     );
   });
 });

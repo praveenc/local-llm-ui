@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- Kiro sessions in the sidebar: a **Kiro sessions** section lists the sessions that you made in the terminal, with date groups, the folder name, a Last 7 days, Last 30 days, or All menu, and **Search chats**. A click imports the session with its messages, thinking, tool steps, and credits, and you can continue it in the app or in the terminal. Turn it on in the Kiro row in **Preferences → Providers** ([#83])
 - Kiro tool approvals: when Kiro asks to run a shell command or write a file, the step above the answer opens and shows Kiro's own buttons (**Allow**, **Always allow**, **Deny**, **Always deny**, or **Accept changes** and **Reject changes**). The step then says your answer. A denied tool says **Denied** and the summary says "1 denied". **Stop**, a reload, and a 10-minute wait end an open question as **Not answered** ([#82])
 - Chat with Kiro: a **Kiro** group in the model picker with Kiro's models and credit rates, replies with thinking and tool steps, credits and the context percentage under each reply, a Max thinking level for Kiro models that have it, and Kiro's chat title. Each chat is a Kiro session in `~/.local-llm-ui/kiro`, and the app denies each tool question until the approval UI comes ([#80])
 - Sign in to Kiro from **Preferences → Providers** with AWS Builder ID or IAM Identity Center. The app opens the sign-in page in a new tab and shows the code to compare. **Sign out** is in the same row ([#78])
@@ -239,6 +240,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#83]: https://github.com/praveenc/local-llm-ui/pull/83
 [#82]: https://github.com/praveenc/local-llm-ui/pull/82
 [#81]: https://github.com/praveenc/local-llm-ui/pull/81
 [#80]: https://github.com/praveenc/local-llm-ui/pull/80

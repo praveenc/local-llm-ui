@@ -3,6 +3,8 @@
 //
 // FAKE_ACP_MODE: ok | signed-out
 // FAKE_ACP_LOG: file; each received message is appended as one JSON line
+// FAKE_ACP_SESSIONS=1: the agent lists and closes sessions, and session/load without `_meta`
+//   replays the session: two updates before the answer and one after it
 // Prompt text: TOOL sends a tool_call and asks for a permission, WAIT waits for session/cancel.
 import { appendFileSync } from 'node:fs';
 
@@ -12,6 +14,7 @@ if (process.argv.slice(2).join(' ') !== '--fake-acp') {
 }
 
 const mode = process.env.FAKE_ACP_MODE ?? 'ok';
+const withSessions = process.env.FAKE_ACP_SESSIONS === '1';
 const logFile = process.env.FAKE_ACP_LOG;
 const send = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
 const update = (sessionId, u) =>
@@ -87,7 +90,10 @@ process.stdin.on('data', (chunk) => {
         id,
         result: {
           protocolVersion: 1,
-          agentCapabilities: { loadSession: true },
+          agentCapabilities: {
+            loadSession: true,
+            ...(withSessions && { sessionCapabilities: { list: {}, close: {} } }),
+          },
           authMethods: mode === 'signed-out' ? [{ id: 'test-login' }] : [],
         },
       });
@@ -95,7 +101,30 @@ process.stdin.on('data', (chunk) => {
       sessions += 1;
       send({ id, result: { sessionId: `s${sessions}`, configOptions: OPTIONS } });
     } else if (method === 'session/load') {
-      send({ id, result: { configOptions: OPTIONS } });
+      if (withSessions && params._meta === undefined) {
+        const chunk = (text) => ({
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text },
+        });
+        update(params.sessionId, chunk('earlier one'));
+        update(params.sessionId, chunk('earlier two'));
+        send({ id, result: { configOptions: OPTIONS, _meta: { title: 'Old' } } });
+        setTimeout(() => update(params.sessionId, chunk('after the answer')), 20);
+      } else {
+        send({ id, result: { configOptions: OPTIONS } });
+      }
+    } else if (method === 'session/list' && withSessions) {
+      send({
+        id,
+        result: {
+          sessions: [
+            { sessionId: 'old-1', cwd: '/tmp/fake-acp', title: 'Old', updatedAt: '2026-01-01' },
+          ],
+        },
+      });
+      send({ method: '_test/changed', params: { ids: ['old-1'] } });
+    } else if (method === 'session/close' && withSessions) {
+      send({ id, result: {} });
     } else if (method === 'session/prompt') {
       void prompt(id, params);
     } else if (method === 'session/cancel') {
