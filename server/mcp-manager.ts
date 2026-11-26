@@ -10,10 +10,15 @@
  * - SSRF protection for HTTP/SSE URLs (SEC-03)
  * - Connection timeout on client creation (SEC-10)
  * - Runtime validation of MCP config structure (SEC-11)
+ *
+ * Lifecycle: one start for each server at a time, a timeout that closes the
+ * process, the end of the child's error output in the error text, and removal
+ * from the cache when a stdio process stops (the next call starts it again).
  */
 import { createMCPClient } from '@ai-sdk/mcp';
 import type { MCPClient } from '@ai-sdk/mcp';
 import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
+import type { ChildProcess } from 'node:child_process';
 
 import type {
   MCPHTTPConfig,
@@ -25,8 +30,14 @@ import type {
 /** Separator used to namespace tool names: serverName__toolName */
 const TOOL_NS_SEP = '__';
 
-/** SEC-10: Connection timeout for MCP client creation (ms) */
-const MCP_CONNECT_TIMEOUT_MS = 15_000;
+/** SEC-10: Connection timeout for MCP client creation and the tool listing (ms) */
+const DEFAULT_MCP_CONNECT_TIMEOUT_MS = 15_000;
+let MCP_CONNECT_TIMEOUT_MS = DEFAULT_MCP_CONNECT_TIMEOUT_MS;
+
+/** Test only: set a shorter connect timeout. No argument restores the default. */
+export function setMCPConnectTimeoutForTests(ms: number = DEFAULT_MCP_CONNECT_TIMEOUT_MS): void {
+  MCP_CONNECT_TIMEOUT_MS = ms;
+}
 
 // ─── Security: Command Allowlist (SEC-01) ────────────────────────────────────
 
@@ -201,9 +212,11 @@ function validateConfigStructure(config: unknown): config is MCPServerConfig {
  */
 function validateMCPConfig(config: unknown): asserts config is MCPServerConfig {
   if (!validateConfigStructure(config)) {
-    throw new Error(
-      `[MCP Security] Invalid MCP config structure: ${JSON.stringify(config)?.slice(0, 200)}`
-    );
+    // Name and id only: the config can hold environment values and headers (secrets)
+    const c = config && typeof config === 'object' ? (config as Record<string, unknown>) : {};
+    const name = typeof c.name === 'string' ? c.name.slice(0, 100) : '';
+    const id = typeof c.id === 'string' ? c.id.slice(0, 100) : '';
+    throw new Error(`[MCP Security] Invalid MCP config for server "${name}" (${id})`);
   }
 
   // Transport-specific security validation
@@ -218,16 +231,220 @@ function validateMCPConfig(config: unknown): asserts config is MCPServerConfig {
   }
 }
 
+// ─── Child process output (stdio) ────────────────────────────────────────────
+
+/** How much of a child's error output to keep (bytes) */
+const STDERR_TAIL_BYTES = 4096;
+/** The error text shows at most this many lines and characters of that output */
+const OUTPUT_MAX_LINES = 6;
+const OUTPUT_MAX_CHARS = 400;
+/** A child that ignores SIGTERM after a close gets SIGKILL after this time (ms) */
+const KILL_GRACE_MS = 2000;
+
+// ANSI escape sequences: CSI, OSC, and the short two-character forms
+// eslint-disable-next-line no-control-regex
+const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g;
+
+/** The end of a child's error output as one short line for the error text */
+function summarizeOutput(raw: string): string {
+  const lines = raw
+    .replace(ANSI_PATTERN, '')
+    .split(/\r\n|\r|\n/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(-OUTPUT_MAX_LINES);
+  const text = lines.join(' ');
+  if (text.length <= OUTPUT_MAX_CHARS) return text;
+  return `${text.slice(0, OUTPUT_MAX_CHARS - 1).trimEnd()}…`;
+}
+
+/** How a stdio child stopped */
+interface ChildExit {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  /** True when the child stopped before the app closed it */
+  onItsOwn: boolean;
+}
+
+/**
+ * Stdio transport that waits for the `server/discover` answer, and keeps the
+ * end of the child's error output.
+ *
+ * The AI SDK waits only 1 s for that answer on stdio. Then it falls back to the
+ * `initialize` handshake. A server that starts in more than 1 s (for example, `uvx`
+ * on a slow machine or on its first run) has already selected the 2026-07-28 protocol
+ * from the first request, so it rejects `initialize`: "connection is serving the
+ * 2026-07-28 protocol; the initialize handshake is not accepted". The SDK waits like
+ * this for Streamable HTTP. Legacy servers answer the unknown method with an error,
+ * and the client then falls back to `initialize`. MCP_CONNECT_TIMEOUT_MS limits the wait.
+ *
+ * The SDK spawns the child with `stderr: 'inherit'` by default, so the reason for a
+ * failed start (for example `npm error code E401`) reaches only the terminal. This
+ * transport spawns with `stderr: 'pipe'`, keeps the last 4 KB, and copies each line
+ * to the dev server's stderr with the server name in front.
+ */
+class DiscoveryWaitingStdioTransport extends Experimental_StdioMCPTransport {
+  readonly waitsForProtocolVersionDiscovery = true;
+
+  /** Set when the child stops; undefined while it runs or before it starts */
+  exit: ChildExit | undefined;
+  /** Called once when the child stops on its own after the client connected */
+  onProcessExit: (() => void) | undefined;
+
+  private readonly serverName: string;
+  private stderrTail = Buffer.alloc(0);
+  private partialLine = '';
+  private child: ChildProcess | undefined;
+  private closing = false;
+
+  constructor(
+    params: ConstructorParameters<typeof Experimental_StdioMCPTransport>[0],
+    serverName: string
+  ) {
+    super({ ...params, stderr: 'pipe' });
+    this.serverName = serverName;
+  }
+
+  override async start(): Promise<void> {
+    await super.start();
+    // The SDK keeps the child in a `private process` field (no getter), and clears it
+    // on close. This is the only read of it: once, right after the spawn.
+    const child = (this as unknown as { process?: ChildProcess }).process;
+    if (!child) return;
+    this.child = child;
+    // Read the pipe always, so a server that writes a lot cannot block on it
+    child.stderr?.on('data', (chunk: Buffer) => this.onStderr(chunk));
+    child.once('close', (code: number | null, signal: NodeJS.Signals | null) => {
+      this.flushLine();
+      this.exit = { code, signal, onItsOwn: !this.closing };
+      if (!this.closing) this.onProcessExit?.();
+    });
+  }
+
+  override async close(): Promise<void> {
+    this.closing = true;
+    const child = this.child;
+    await super.close();
+    if (child && !this.exit) {
+      const timer = setTimeout(() => {
+        if (!this.exit) child.kill('SIGKILL');
+      }, KILL_GRACE_MS);
+      timer.unref();
+      child.once('close', () => clearTimeout(timer));
+    }
+  }
+
+  /** The end of the error output as one short line, or '' */
+  outputSummary(): string {
+    return summarizeOutput(this.stderrTail.toString('utf8'));
+  }
+
+  private onStderr(chunk: Buffer): void {
+    const joined = Buffer.concat([this.stderrTail, chunk]);
+    this.stderrTail = joined.subarray(Math.max(0, joined.length - STDERR_TAIL_BYTES));
+
+    const lines = (this.partialLine + chunk.toString('utf8')).split('\n');
+    this.partialLine = lines.pop() ?? '';
+    for (const line of lines) this.writeLine(line);
+    // A server that never ends a line still shows in the terminal
+    if (this.partialLine.length > STDERR_TAIL_BYTES) this.flushLine();
+  }
+
+  private flushLine(): void {
+    if (this.partialLine) this.writeLine(this.partialLine);
+    this.partialLine = '';
+  }
+
+  private writeLine(line: string): void {
+    process.stderr.write(`[MCP ${this.serverName}] ${line.replace(/\r$/, '')}\n`);
+  }
+}
+
+// ─── Error text ──────────────────────────────────────────────────────────────
+
+function formatSeconds(ms: number): string {
+  return `${Number((ms / 1000).toFixed(1))} s`;
+}
+
+/**
+ * Errors from Node internals can come from another realm (for example under a test
+ * runner's VM context), where `instanceof Error` is false. So read fields, not the class.
+ */
+function errorField(error: unknown, field: 'message' | 'code'): string | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const value = (error as Record<string, unknown>)[field];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return /^(MCP client initialization timed out|Request timed out) after \d+ms$/.test(
+    errorField(error, 'message') ?? ''
+  );
+}
+
+/** True when the error, or an error in its `cause` chain, has this Node error code */
+function hasErrorCode(error: unknown, code: string): boolean {
+  let e: unknown = error;
+  for (let depth = 0; e && typeof e === 'object' && depth < 5; depth++) {
+    if (errorField(e, 'code') === code) return true;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
+ * Turn a failed start or tool listing into text that says what happened, with the
+ * end of the child's error output when there is some.
+ */
+function describeFailure(
+  error: unknown,
+  config: MCPServerConfig,
+  transport: DiscoveryWaitingStdioTransport | undefined
+): Error {
+  const output = transport?.outputSummary() ?? '';
+  const lastOutput = output ? ` Last output: ${output}` : '';
+
+  if (isTimeoutError(error)) {
+    return new Error(
+      `The server did not answer in ${formatSeconds(MCP_CONNECT_TIMEOUT_MS)}.${lastOutput}`,
+      { cause: error }
+    );
+  }
+  if (config.transport === 'stdio' && hasErrorCode(error, 'ENOENT')) {
+    return new Error(`Command not found: ${config.command}`, { cause: error });
+  }
+  const exit = transport?.exit;
+  if (exit?.onItsOwn) {
+    const how = exit.signal ? `signal ${exit.signal}` : `exit code ${exit.code}`;
+    return new Error(
+      output
+        ? `The server stopped before it answered (${how}): ${output}`
+        : `The server stopped before it answered (${how}). It wrote no error output.`,
+      { cause: error }
+    );
+  }
+  const message = errorField(error, 'message') ?? String(error);
+  return new Error(`${message}${lastOutput}`, { cause: error });
+}
+
 // ─── Client Caching ──────────────────────────────────────────────────────────
 
-/** Cached client entry */
+/** A connected client, with its stdio transport when it has one */
 interface CachedClient {
   client: MCPClient;
   configHash: string;
+  transport: DiscoveryWaitingStdioTransport | undefined;
+  /** Order of the starts: a slow, older start must not replace a newer client */
+  seq: number;
 }
 
 /** Global client cache keyed by server ID */
 const clientCache = new Map<string, CachedClient>();
+
+/** Starts in progress, keyed by server ID. A second call with the same hash waits for it. */
+const startsInProgress = new Map<string, { configHash: string; promise: Promise<CachedClient> }>();
+
+let startSeq = 0;
 
 /**
  * Compute a simple hash string from the transport-relevant parts of a config.
@@ -247,104 +464,143 @@ function computeConfigHash(config: MCPServerConfig): string {
   return parts.join('|');
 }
 
-/**
- * Stdio transport that waits for the `server/discover` answer.
- *
- * The AI SDK waits only 1 s for that answer on stdio. Then it falls back to the
- * `initialize` handshake. A server that starts in more than 1 s (for example, `uvx`
- * on a slow machine or on its first run) has already selected the 2026-07-28 protocol
- * from the first request, so it rejects `initialize`: "connection is serving the
- * 2026-07-28 protocol; the initialize handshake is not accepted". The SDK waits like
- * this for Streamable HTTP. Legacy servers answer the unknown method with an error,
- * and the client then falls back to `initialize`. MCP_CONNECT_TIMEOUT_MS limits the wait.
- */
-class DiscoveryWaitingStdioTransport extends Experimental_StdioMCPTransport {
-  readonly waitsForProtocolVersionDiscovery = true;
-}
-
-/**
- * SEC-10: Create an MCP client with a connection timeout.
- */
-async function createClientWithTimeout(config: MCPServerConfig): Promise<MCPClient> {
-  return Promise.race([
-    createClient(config),
-    new Promise<never>((_, reject) =>
-      setTimeout(
-        () =>
-          reject(
-            new Error(`[MCP] Connection timeout after ${MCP_CONNECT_TIMEOUT_MS}ms: ${config.name}`)
-          ),
-        MCP_CONNECT_TIMEOUT_MS
-      )
-    ),
-  ]);
+/** Remove a client from the cache (only if it is still the cached one) and close it */
+async function dropClient(id: string, entry: CachedClient): Promise<void> {
+  if (clientCache.get(id) === entry) clientCache.delete(id);
+  try {
+    await entry.client.close();
+  } catch {
+    // Ignore close errors
+  }
 }
 
 /**
  * Create an MCP client for the given server config.
- * Security validations run before client creation.
+ * getOrCreateClient validates the config first. SEC-10: the SDK's
+ * `initializationOptions.timeout` limits the start, and on any failure it closes
+ * the transport, which ends the child process.
  */
-async function createClient(config: MCPServerConfig): Promise<MCPClient> {
-  // SEC-01/02/03/11: Validate before creating
-  validateMCPConfig(config);
+async function createClient(config: MCPServerConfig, configHash: string): Promise<CachedClient> {
+  const initializationOptions = { timeout: MCP_CONNECT_TIMEOUT_MS };
+  const seq = ++startSeq;
 
   switch (config.transport) {
     case 'stdio': {
       const stdioConfig = config as MCPStdioConfig;
-      const transport = new DiscoveryWaitingStdioTransport({
-        command: stdioConfig.command,
-        args: stdioConfig.args,
-        env: { ...getSafeEnv(), ...stdioConfig.env },
-      });
-      return createMCPClient({ transport });
-    }
-    case 'sse': {
-      const sseConfig = config as MCPSSEConfig;
-      return createMCPClient({
-        transport: {
-          type: 'sse',
-          url: sseConfig.url,
-          headers: sseConfig.headers,
+      const transport = new DiscoveryWaitingStdioTransport(
+        {
+          command: stdioConfig.command,
+          args: stdioConfig.args,
+          env: { ...getSafeEnv(), ...stdioConfig.env },
         },
-      });
+        config.name
+      );
+      let client: MCPClient;
+      try {
+        client = await createMCPClient({ transport, initializationOptions });
+      } catch (error) {
+        throw describeFailure(error, config, transport);
+      }
+      const entry: CachedClient = { client, configHash, transport, seq };
+      transport.onProcessExit = () => {
+        void dropClient(config.id, entry);
+      };
+      return entry;
     }
+    case 'sse':
     case 'http': {
-      const httpConfig = config as MCPHTTPConfig;
-      return createMCPClient({
-        transport: {
-          type: 'http',
-          url: httpConfig.url,
-          headers: httpConfig.headers,
-        },
-      });
+      const remote = config as MCPHTTPConfig | MCPSSEConfig;
+      try {
+        const client = await createMCPClient({
+          transport: { type: remote.transport, url: remote.url, headers: remote.headers },
+          initializationOptions,
+        });
+        return { client, configHash, transport: undefined, seq };
+      } catch (error) {
+        throw describeFailure(error, config, undefined);
+      }
     }
   }
+}
+
+/** Start a client, and put it in the cache unless a newer start already did */
+async function startClient(config: MCPServerConfig, configHash: string): Promise<CachedClient> {
+  const entry = await createClient(config, configHash);
+
+  // A stdio child that stopped between the connect and now
+  if (entry.transport?.exit) {
+    await dropClient(config.id, entry);
+    throw describeFailure(new Error('Connection closed'), config, entry.transport);
+  }
+
+  const current = clientCache.get(config.id);
+  if (current && current.seq > entry.seq) {
+    // A start with newer settings won the race: this client is stale
+    await dropClient(config.id, entry);
+    throw new Error('The server settings changed while it started.');
+  }
+  clientCache.set(config.id, entry);
+  // Config changed — close the old client now that the new one runs
+  if (current) await dropClient(config.id, current);
+  return entry;
 }
 
 /**
  * Get or create a cached MCP client for the given config.
  * Closes and replaces the client if the config has changed.
+ * One start runs for each server and config at a time.
  */
-async function getOrCreateClient(config: MCPServerConfig): Promise<MCPClient> {
+async function getOrCreateClient(config: MCPServerConfig): Promise<CachedClient> {
+  // SEC-01/02/03/11: Validate before the hash and before any start
+  validateMCPConfig(config);
   const hash = computeConfigHash(config);
   const cached = clientCache.get(config.id);
 
-  if (cached && cached.configHash === hash) {
-    return cached.client;
+  if (cached && cached.configHash === hash && !cached.transport?.exit) {
+    return cached;
   }
 
-  // Config changed — close old client if it exists
-  if (cached) {
-    try {
-      await cached.client.close();
-    } catch {
-      // Ignore close errors
+  const pending = startsInProgress.get(config.id);
+  if (pending && pending.configHash === hash) {
+    return pending.promise;
+  }
+
+  const promise = startClient(config, hash);
+  const start = { configHash: hash, promise };
+  startsInProgress.set(config.id, start);
+  try {
+    return await promise;
+  } finally {
+    if (startsInProgress.get(config.id) === start) startsInProgress.delete(config.id);
+  }
+}
+
+type MCPToolSet = ReturnType<MCPClient['toolsFromDefinitions']>;
+
+/**
+ * Connect to a server and list its tools. The listing has the same timeout as
+ * the start. A timeout in the listing closes the client and removes it from the
+ * cache, so no process stays.
+ */
+async function listServerTools(config: MCPServerConfig): Promise<MCPToolSet> {
+  const entry = await getOrCreateClient(config);
+  const deadline = Date.now() + MCP_CONNECT_TIMEOUT_MS;
+  const timeout = () => Math.max(1, deadline - Date.now());
+  try {
+    let definitions = await entry.client.listTools({ options: { timeout: timeout() } });
+    const tools = [...definitions.tools];
+    while (definitions.nextCursor != null) {
+      definitions = await entry.client.listTools({
+        params: { cursor: definitions.nextCursor },
+        options: { timeout: timeout() },
+      });
+      tools.push(...definitions.tools);
     }
+    return entry.client.toolsFromDefinitions({ ...definitions, tools });
+  } catch (error) {
+    if (isTimeoutError(error)) await dropClient(config.id, entry);
+    throw describeFailure(error, config, entry.transport);
   }
-
-  const client = await createClientWithTimeout(config);
-  clientCache.set(config.id, { client, configHash: hash });
-  return client;
 }
 
 /**
@@ -366,13 +622,12 @@ export async function getMCPTools(
   // Connect to each server and gather tools in parallel
   const results = await Promise.allSettled(
     configs.map(async (config) => {
-      const client = await getOrCreateClient(config);
-      const serverTools = await client.tools();
+      const serverTools = await listServerTools(config);
       return { config, serverTools };
     })
   );
 
-  for (const result of results) {
+  results.forEach((result, i) => {
     if (result.status === 'fulfilled') {
       const { config, serverTools } = result.value;
       activeIds.add(config.id);
@@ -383,30 +638,21 @@ export async function getMCPTools(
         tools[`${prefix}${TOOL_NS_SEP}${toolName}`] = tool;
       }
     } else {
-      console.warn('[MCP Manager] Failed to connect to MCP server:', result.reason);
+      const reason: unknown = result.reason;
+      const message = errorField(reason, 'message') ?? String(reason);
+      console.warn(
+        `[MCP Manager] Failed to connect to MCP server "${String(configs[i]?.name)}": ${message}`
+      );
     }
-  }
+  });
 
   /**
    * Cleanup function: close clients that are no longer in the active config set.
    * Cached clients that are still active are kept for reuse.
    */
   const cleanup = async () => {
-    const staleIds: string[] = [];
-    for (const id of clientCache.keys()) {
-      if (!activeIds.has(id)) {
-        staleIds.push(id);
-      }
-    }
-    await Promise.allSettled(
-      staleIds.map(async (id) => {
-        const cached = clientCache.get(id);
-        if (cached) {
-          clientCache.delete(id);
-          await cached.client.close();
-        }
-      })
-    );
+    const stale = [...clientCache.entries()].filter(([id]) => !activeIds.has(id));
+    await Promise.allSettled(stale.map(([id, entry]) => dropClient(id, entry)));
   };
 
   return { tools, cleanup };
@@ -429,8 +675,7 @@ export async function getMCPServerStatus(configs: MCPServerConfig[]): Promise<
 
   const results = await Promise.allSettled(
     configs.map(async (config) => {
-      const client = await getOrCreateClient(config);
-      const serverTools = await client.tools();
+      const serverTools = await listServerTools(config);
       return {
         name: config.name,
         id: config.id,
@@ -461,11 +706,7 @@ export async function getMCPServerStatus(configs: MCPServerConfig[]): Promise<
 export async function closeAllMCPClients(): Promise<void> {
   const entries = [...clientCache.entries()];
   clientCache.clear();
-  await Promise.allSettled(
-    entries.map(async ([, { client }]) => {
-      await client.close();
-    })
-  );
+  await Promise.allSettled(entries.map(([id, entry]) => dropClient(id, entry)));
 }
 
 /**
