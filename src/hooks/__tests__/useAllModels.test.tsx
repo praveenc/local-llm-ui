@@ -10,12 +10,13 @@ const never = () => new Promise<never>(() => {});
 const kiroGetModels = vi.hoisted(() =>
   vi.fn<(refresh?: boolean) => Promise<unknown[]>>(() => Promise.resolve([]))
 );
+const kiroGetStatus = vi.hoisted(() => vi.fn<(refresh?: boolean) => Promise<unknown>>());
 const bedrockGetModels = vi.hoisted(() =>
   vi.fn<() => Promise<unknown[]>>(() => new Promise<never>(() => {}))
 );
 
 vi.mock('../../services', () => ({
-  kiroService: { getModels: kiroGetModels },
+  kiroService: { getModels: kiroGetModels, getStatus: kiroGetStatus },
   bedrockService: { getModels: bedrockGetModels },
   lmstudioService: { getModels: () => Promise.reject(new Error('LM Studio is not connected')) },
   ollamaService: {
@@ -117,5 +118,31 @@ describe('useAllModels', () => {
     const byProvider = Object.fromEntries(result.current.providers.map((p) => [p.provider, p]));
     expect(byProvider.bedrock.models.map((m) => m.id)).toEqual(['haiku']);
     expect(byProvider.kiro.status).toBe('loading');
+  });
+
+  it('reads the Kiro status without a query function error and without a fetch of its own', async () => {
+    localStorage.clear();
+    kiroGetModels.mockReset();
+    kiroGetModels.mockResolvedValue([]);
+    kiroGetStatus.mockReset();
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const prefs = loadPreferences();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useAllModels(prefs), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    });
+
+    await waitFor(() => expect(result.current.isKiroLoading).toBe(false));
+    act(() => {
+      client.setQueryData(KIRO_STATUS_QUERY_KEY, { state: 'signed-out', path: 'kiro-cli' });
+    });
+    await waitFor(() => expect(kiroGetModels).toHaveBeenCalled());
+
+    const messages = errorLog.mock.calls.map((call) => call.map(String).join(' '));
+    expect(messages.filter((message) => message.includes('No queryFn'))).toEqual([]);
+    expect(kiroGetStatus).not.toHaveBeenCalled();
+    errorLog.mockRestore();
   });
 });
