@@ -915,6 +915,9 @@ describe('/api/kiro login routes', () => {
   it('still answers /status', async () => {
     const response = await fetch(`${base}/api/kiro/status`);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(SIGNED_OUT);
+    expect(await response.json()).toEqual({
+      ...SIGNED_OUT,
+      folder: { path: '~/.local-llm-ui/kiro', isDefault: true },
+    });
   });
 });

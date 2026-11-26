@@ -27,6 +27,7 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 - Chat with models from Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Anthropic, OpenRouter, Groq, and Cerebras.
 - Chat with Kiro through the Kiro CLI on your computer, with Kiro's own models.
 - Pick the Kiro agent for each chat, and set the Kiro options, for example turn Autopilot off.
+- Choose the folder that new Kiro chats work in, and the agent that new Kiro chats start with.
 - Find a model in one searchable list, grouped by provider.
 - Start each new chat with the model that you used last.
 - See a checklist of the providers when no model is ready. Each row tells you what is missing.
@@ -176,7 +177,7 @@ When you are signed in, the model picker has a **Kiro** group with Kiro's models
 Kiro is an agent, not only a model. Each chat with Kiro is a Kiro session, the same as a session in the terminal:
 
 - Kiro keeps the history of the session. The app sends only your new message. When a chat has messages that Kiro has not seen (for example replies from a different model), the app sends them once, before your message.
-- Kiro works in the folder `~/.local-llm-ui/kiro`. Its tools can read and change files and run commands there.
+- Kiro works in a folder on your computer. New chats use `~/.local-llm-ui/kiro` unless you choose a different folder. Its tools can read and change files and run commands there. See [Choose the folder and the default agent](#choose-the-folder-and-the-default-agent).
 - Kiro asks before it runs some tools. The question shows in the step above the answer. See [Answer Kiro's questions](#answer-kiros-questions).
 - Kiro uses its own tools and MCP servers. For a Kiro model, the chat input does not show web search, MCP tools, inference settings, or **Add photos or files**.
 - The chat input shows **Agent** and **Options** for Kiro. See [Choose the agent and the options](#choose-the-agent-and-the-options).
@@ -191,6 +192,44 @@ The first Kiro reply after a start takes a few seconds more: the app starts Kiro
 **Delete** removes a chat from the app only. The Kiro session stays on disk, and `kiro-cli --resume-picker` can still open it.
 
 Kiro sessions that you made in the terminal can show in the sidebar. See [Kiro sessions](#kiro-sessions). After each reply, the app lets go of the session, so that you can continue it in the terminal. If a terminal holds the session, Kiro refuses the message, and the chat shows Kiro's own text, for example "This session is loaded in another program". Close the session in the terminal, then click **Retry**.
+
+#### Choose the folder and the default agent
+
+When you are signed in, the Kiro row in **Preferences → Providers** has two settings for new chats. Each setting saves when you change it.
+
+**Folder for new Kiro chats**
+
+Kiro's tools read files and run commands in this folder. Kiro asks before it runs a command or writes a file.
+
+1. Click the field and type the full path of a folder, for example `~/projects/demo`. A path that starts with `~/` is a folder in your home folder.
+2. Stop typing, push **Enter**, or click outside the field. The setting saves, and the row says **Saved**.
+3. To go back to `~/.local-llm-ui/kiro`, click **Use the default**.
+
+The rules for the folder:
+
+- The folder must exist. The app does not make it.
+- You must own the folder, and you must be able to write to it.
+- The folder cannot be your home folder itself. Choose a folder inside it.
+- The folder cannot be a system folder, for example `/etc`, `/usr`, or `/var`, or a folder inside one.
+- The folder cannot be inside `~/.kiro`, `~/.aws`, `~/.ssh`, `~/.config`, or `~/.local-llm-ui`, and it cannot hold one of them.
+- If a rule fails, the row says **Not saved.** and the reason. The app keeps the folder that it had.
+
+The app keeps the setting in `~/.local-llm-ui/kiro-settings.json` on the computer that runs `npm run dev`, not in your browser. If you delete the folder later, new Kiro chats show a message and ask you to choose a different folder.
+
+The folder is where Kiro starts. It is not a sandbox: Kiro's tools can reach other files, and reads run without a question (see [Answer Kiro's questions](#answer-kiros-questions)).
+
+The folder applies to new chats only. A chat that you already started, and a session that you open from the sidebar, keep the folder of their own Kiro session.
+
+**Default agent**
+
+Click **Default agent**, search the list if you want, and select an agent. The first entry, **Kiro's default**, means that you have no preference.
+
+- A new Kiro chat then starts with this agent. The **Agent** button in the chat input shows it before you send the first message. You can pick a different agent for that chat.
+- A chat that you already started, and a session that you open from the sidebar, keep their own agent.
+- An agent can have its own rules that run some tools without a question. When you pick an agent, you accept its rules.
+- If Kiro no longer lists the agent, the row says "This agent is no longer in Kiro's list." New chats then use Kiro's default.
+
+The app keeps the default agent in your browser.
 
 #### Choose the agent and the options
 
@@ -615,7 +654,7 @@ The React app runs in the browser. Vite middleware in `vite.config.ts` adds serv
 | `/api/anthropic` | Anthropic |
 | `/api/openrouter` | OpenRouter |
 | `/api/aisdk` | Groq and Cerebras |
-| `/api/kiro` | Kiro CLI on the computer that runs the app: status, sign-in, models, chat, and account credits |
+| `/api/kiro` | Kiro CLI on the computer that runs the app: status, sign-in, models, chat, the folder for new chats, and account credits |
 
 The routes accept requests only from the pages of the app. A request from a different website gets the error 403. A request with a body (`POST`, `PUT`, `PATCH`, or `DELETE`) that is not JSON gets the error 415. Scripts and `curl` can still call the routes: they do not send the headers of a browser, but a request with a body must send `Content-Type: application/json`.
 

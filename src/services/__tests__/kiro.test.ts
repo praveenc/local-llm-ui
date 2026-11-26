@@ -34,6 +34,79 @@ describe('KiroService', () => {
     mockFetch({ ok: false, status: 500 });
     await expect(new KiroService().getStatus()).rejects.toThrow('HTTP error! status: 500');
   });
+
+  it('gives the folder for new chats that the status carries (D6)', async () => {
+    mockFetch({
+      ok: true,
+      body: {
+        state: 'signed-out',
+        path: '~/.local/bin/kiro-cli',
+        version: '3.6.2',
+        folder: { path: '~/.local-llm-ui/kiro', isDefault: true },
+      } as KiroStatus,
+    });
+    const status = await new KiroService().getStatus();
+    expect(status).toMatchObject({ folder: { path: '~/.local-llm-ui/kiro', isDefault: true } });
+  });
+});
+
+describe('KiroService.setWorkspaceDir (D6)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('posts the folder as JSON and returns the stored folder', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ folder: { path: '~/work', isDefault: false } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(new KiroService().setWorkspaceDir('~/work')).resolves.toEqual({
+      path: '~/work',
+      isDefault: false,
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/kiro/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspaceDir: '~/work' }),
+    });
+  });
+
+  it('sends null to go back to the default folder', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ folder: { path: '~/.local-llm-ui/kiro', isDefault: true } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await new KiroService().setWorkspaceDir(null);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ workspaceDir: null });
+  });
+
+  it("throws the server's message in words when it refuses the folder", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: () => Promise.resolve({ error: 'Kiro cannot use a system folder.' }),
+      })
+    );
+    await expect(new KiroService().setWorkspaceDir('/etc')).rejects.toThrow(
+      'Kiro cannot use a system folder.'
+    );
+  });
+
+  it('refuses an answer that has no folder', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) })
+    );
+    await expect(new KiroService().setWorkspaceDir('~/work')).rejects.toThrow(
+      'The server sent a folder that the app cannot read.'
+    );
+  });
 });
 
 describe('KiroService.getModels', () => {

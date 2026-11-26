@@ -8,6 +8,7 @@ import {
   MAX_SESSION_OPTION_NAME_CHARS,
   compactSessionOption,
   currentValueName,
+  defaultModeValues,
   parseSessionOptionsRequest,
   parseSessionOptionsSnapshot,
   sessionOptionsToSend,
@@ -191,5 +192,38 @@ describe('sessionOptionsToSend', () => {
       })
     ).toEqual({ mode: 'agent-b', switch: 'off' });
     expect(sessionOptionsToSend({ newSession: true })).toBeUndefined();
+  });
+});
+
+describe('defaultModeValues', () => {
+  const snapshot: SessionOptionsSnapshot = {
+    mode: {
+      id: 'mode',
+      name: 'Mode',
+      category: 'mode',
+      currentValue: 'agent-a',
+      values: [
+        { value: 'agent-a', name: 'Agent A' },
+        { value: 'agent-b', name: 'Agent B' },
+      ],
+    },
+    options: [],
+  };
+
+  it('gives the listed agent as the mode value', () => {
+    expect(defaultModeValues(snapshot, 'agent-b')).toEqual({
+      values: { mode: 'agent-b' },
+      missing: false,
+    });
+  });
+
+  it('says when the agent is no longer listed', () => {
+    expect(defaultModeValues(snapshot, 'agent-gone')).toEqual({ missing: true });
+  });
+
+  it('gives nothing without an id or a list', () => {
+    expect(defaultModeValues(snapshot, undefined)).toEqual({ missing: false });
+    expect(defaultModeValues(null, 'agent-b')).toEqual({ missing: false });
+    expect(defaultModeValues({ options: [] }, 'agent-b')).toEqual({ missing: false });
   });
 });

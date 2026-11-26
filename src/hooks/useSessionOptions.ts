@@ -3,7 +3,8 @@
  * lists, with the values to show.
  * - Lists: the last snapshot of the chat's Kiro session in this tab, else Kiro's defaults from
  *   the models response (after a reload). Only values are stored with the conversation.
- * - Values: the lists' values, then the conversation's stored values, then the user's picks.
+ * - Values: the lists' values, then the conversation's stored values, then (a new chat only) the
+ *   default agent of Preferences (D9), then the user's picks.
  * - Picks: kept in memory per conversation (`NEW_CHAT_KEY` before the chat exists) until the
  *   next reply's snapshot shows what the session took. `useBedrockChat` sends them.
  */
@@ -13,8 +14,9 @@ import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
 import { db } from '../db';
 import { kiroService } from '../services/kiro';
+import { PREFERENCES_CHANGED_EVENT, loadPreferences } from '../utils/preferences';
 import type { SessionOptionValues, SessionOptionsSnapshot } from '../utils/sessionOptions';
-import { withValues } from '../utils/sessionOptions';
+import { defaultModeValues, withValues } from '../utils/sessionOptions';
 
 /** The key of the picks made in a chat that has no conversation yet */
 export const NEW_CHAT_KEY = 'new';
@@ -58,14 +60,39 @@ export function clearPendingSessionOptions(chatKey: string): void {
   if (pendingByChat.delete(chatKey)) pendingChanged();
 }
 
-/** Moves the picks of a new chat to its conversation, when the first message makes it */
+/**
+ * The values that a new chat starts with before the user picks anything (D9): the default agent
+ * of Preferences, when Kiro's agent list has it. Nothing when no list is loaded (not Kiro, or Kiro
+ * has not answered) or the agent is not listed any more.
+ */
+function newChatDefaults(): SessionOptionValues | undefined {
+  return defaultModeValues(kiroService.getSessionOptions(), loadPreferences().kiroDefaultAgent)
+    .values;
+}
+
+/**
+ * Moves the picks of a new chat to its conversation, when the first message makes it. The default
+ * agent of Preferences goes with them, under the picks, so the chat's first Kiro message sends it.
+ */
 export function movePendingSessionOptions(from: string, to: string): void {
   const picks = pendingByChat.get(from);
-  if (!picks) return;
+  const moved = from === NEW_CHAT_KEY ? { ...newChatDefaults(), ...picks } : picks;
+  if (!moved || Object.keys(moved).length === 0) return;
   pendingByChat.delete(from);
-  pendingByChat.set(to, { ...pendingByChat.get(to), ...picks });
+  pendingByChat.set(to, { ...pendingByChat.get(to), ...moved });
   pendingChanged();
 }
+
+const subscribeDefaultAgent = (listener: () => void) => {
+  window.addEventListener(PREFERENCES_CHANGED_EVENT, listener);
+  window.addEventListener('storage', listener);
+  return () => {
+    window.removeEventListener(PREFERENCES_CHANGED_EVENT, listener);
+    window.removeEventListener('storage', listener);
+  };
+};
+
+const readDefaultAgent = () => loadPreferences().kiroDefaultAgent;
 
 interface UseSessionOptionsResult {
   /** The lists with the values to show; null when the harness lists no session options */
@@ -88,21 +115,27 @@ export function useSessionOptions(conversationId: string | null): UseSessionOpti
     kiroService.getSessionOptions(sessionId)
   );
   const pending = useSyncExternalStore(subscribePending, () => pendingByChat.get(chatKey));
+  // A chat that exists keeps its own agent; only a new chat starts with the default (D9)
+  const defaultAgent = useSyncExternalStore(subscribeDefaultAgent, readDefaultAgent);
+  const defaults = useMemo(
+    () => (chatKey === NEW_CHAT_KEY ? defaultModeValues(lists, defaultAgent).values : undefined),
+    [chatKey, lists, defaultAgent]
+  );
 
   const snapshot = useMemo(
-    () => (lists ? withValues(lists, stored, pending) : null),
-    [lists, stored, pending]
+    () => (lists ? withValues(lists, stored, defaults, pending) : null),
+    [lists, stored, defaults, pending]
   );
 
   const pick = useCallback(
     (id: string, value: string) => {
       if (!lists) return;
-      const base = withValues(lists, stored);
+      const base = withValues(lists, stored, defaults);
       const option = base.mode?.id === id ? base.mode : base.options.find((o) => o.id === id);
       if (!option || !option.values.some((v) => v.value === value)) return;
       setPendingSessionOption(chatKey, id, value, option.currentValue);
     },
-    [chatKey, lists, stored]
+    [chatKey, lists, stored, defaults]
   );
 
   return { snapshot, pick };
