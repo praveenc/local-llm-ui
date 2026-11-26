@@ -136,15 +136,20 @@ export async function importKiroSession(
  * terminal) at the end of the chat. `session` must hold only the turns after the stored
  * `kiro.turns` (the open route with `skipTurns`). When Kiro's history is shorter than the stored
  * count, nothing is added: the chat keeps its messages. Returns how many messages were added.
+ *
+ * `skipTurns` is the count that the request sent. When the stored count differs now (another tab
+ * or a reply stored turns meanwhile), the answer is old and nothing is added or written.
  */
 export async function appendKiroTurns(
   conversationId: string,
-  session: KiroSessionOpenResponse
+  session: KiroSessionOpenResponse,
+  skipTurns: number
 ): Promise<number> {
   return db.transaction('rw', [db.conversations, db.messages], async () => {
     const conversation = await db.conversations.get(conversationId);
     const kiro = conversation?.kiro;
     if (!conversation || !kiro || kiro.turns === undefined) return 0;
+    if (kiro.turns !== skipTurns) return 0;
 
     if (session.turns <= kiro.turns || session.messages.length === 0) {
       // Nothing new, or a shorter history: keep the chat as it is and remember Kiro's time

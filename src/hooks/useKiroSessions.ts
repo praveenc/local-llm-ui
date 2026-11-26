@@ -8,12 +8,11 @@
  *
  * `importSession` makes a conversation from a session and opens it (a session that a
  * conversation already holds opens that conversation). `syncIfNewer` adds the turns that Kiro
- * made later (in the terminal) to an imported conversation. A session that is not in a list that
- * the browser holds is looked up in the All list (D23), and a chat with no turn count gets one
- * (D24). While the section is on, a send first adds the turns that a list in the browser already
- * shows (K11, `kiroSyncs.ts`).
+ * made later (in the terminal) to an imported conversation: it asks Kiro with the chat's stored
+ * time, so it does not depend on the list (K11, `kiroSyncs.ts`). A chat with no turn count gets
+ * one (D24). It runs only while the section is on, so an open never starts Kiro CLI otherwise.
  */
-import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLiveQuery } from 'dexie-react-hooks';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,21 +21,17 @@ import { db } from '../db';
 import { KiroSignedOutError, kiroService } from '../services/kiro';
 import {
   KIRO_AUTO_MODEL,
-  appendKiroTurns,
-  backfillKiroTurns,
   findConversationByKiroSession,
   importKiroSession,
 } from '../services/kiroImport';
-import { setKiroSendCheck, trackKiroSync } from '../services/kiroSyncs';
+import { syncKiroChatOnOpen } from '../services/kiroSyncs';
 import {
   DEFAULT_KIRO_SESSION_WINDOW,
-  KIRO_COUNT_ONLY_SKIP,
   KIRO_SESSIONS_TTL_MS,
   KIRO_SESSION_WINDOWS,
   type KiroSessionOpenResponse,
   type KiroSessionSummary,
   type KiroSessionWindow,
-  isNewerInKiro,
 } from '../utils/kiroSessions';
 import { PREFERENCES_CHANGED_EVENT, loadPreferences } from '../utils/preferences';
 import { KIRO_STATUS_QUERY_KEY, useKiroStatus } from './useKiroStatus';
@@ -97,28 +92,6 @@ export function importNotice(session: KiroSessionOpenResponse): string | null {
 
 const errorText = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
-
-/**
- * The session's entry in the session lists that the browser holds (any window), the newest one
- * when several lists have it. With `maxAgeMs`, only lists loaded that recently count. No call.
- */
-function cachedEntry(
-  queryClient: QueryClient,
-  sessionId: string,
-  maxAgeMs?: number
-): KiroSessionSummary | undefined {
-  const now = Date.now();
-  let found: KiroSessionSummary | undefined;
-  for (const query of queryClient.getQueryCache().findAll({ queryKey: KIRO_SESSIONS_QUERY_KEY })) {
-    const list = query.state.data as KiroSessionSummary[] | undefined;
-    if (!list || (maxAgeMs !== undefined && now - query.state.dataUpdatedAt > maxAgeMs)) continue;
-    const entry = list.find((s) => s.sessionId === sessionId);
-    if (entry && (!found || Date.parse(entry.updatedAt) > Date.parse(found.updatedAt))) {
-      found = entry;
-    }
-  }
-  return found;
-}
 
 export interface UseKiroSessionsResult {
   /** Kiro is signed in and the switch is on: the section shows */
@@ -236,81 +209,14 @@ export function useKiroSessions(onOpen: (conversationId: string) => void): UseKi
     [onOpen]
   );
 
-  /**
-   * The session's entry: from a list that the browser holds, else from the All list (D23). The
-   * All list uses the section's query key and stale time, so it loads at most once a minute.
-   */
-  const findEntry = useCallback(
-    async (sessionId: string) => {
-      const cached = cachedEntry(queryClient, sessionId);
-      if (cached) return cached;
-      const all = await queryClient.fetchQuery({
-        queryKey: [...KIRO_SESSIONS_QUERY_KEY, null],
-        queryFn: () => fetchList(null),
-        staleTime: KIRO_SESSIONS_TTL_MS,
-      });
-      return all.find((s) => s.sessionId === sessionId);
-    },
-    [queryClient, fetchList]
-  );
-
-  /** Adds the turns that Kiro made after the chat's count, or counts them (D24). Never rejects. */
-  const syncConversation = useCallback(
-    async (conversationId: string, known?: KiroSessionSummary) => {
-      try {
-        const kiro = (await db.conversations.get(conversationId))?.kiro;
-        if (!kiro) return;
-        const entry = known ?? (await findEntry(kiro.sessionId));
-        if (!entry) return;
-        if (kiro.turns !== undefined && !isNewerInKiro(entry.updatedAt, kiro)) return;
-        if (busy.current.has(kiro.sessionId)) return;
-        busy.current.add(kiro.sessionId);
-        try {
-          if (kiro.turns === undefined) {
-            // No count (D24): count Kiro's turns and add no message. Turns that the terminal made
-            // before this open are not imported; turns after it sync as usual.
-            const session = await kiroService.openSession(kiro.sessionId, KIRO_COUNT_ONLY_SKIP);
-            await backfillKiroTurns(conversationId, kiro.sessionId, session);
-          } else {
-            const session = await kiroService.openSession(kiro.sessionId, kiro.turns);
-            await appendKiroTurns(conversationId, session);
-          }
-        } finally {
-          busy.current.delete(kiro.sessionId);
-        }
-      } catch (error) {
-        // The chat keeps its messages; the next open tries again
-        console.error('Failed to add the new Kiro turns:', errorText(error, 'unknown error'));
-      }
-    },
-    [findEntry]
-  );
-
   const syncIfNewer = useCallback(
     (conversationId: string) => {
       if (!enabled) return;
-      // A send into this chat waits for the sync, also while the All list loads (see kiroSyncs)
-      void trackKiroSync(conversationId, syncConversation(conversationId));
+      // A send into this chat waits for the sync (see kiroSyncs)
+      void syncKiroChatOnOpen(conversationId);
     },
-    [enabled, syncConversation]
+    [enabled]
   );
-
-  // Before a send (K11): when a list that the browser holds already shows that Kiro has turns that
-  // the chat does not have, the send waits until they are added. Only the lists that the browser
-  // holds count, so the check adds no call to the send. A list older than its stale time does not
-  // count: the page was hidden. The turn count of the reply does not depend on this: the server's
-  // time of the session decides it.
-  useEffect(() => {
-    if (!enabled) return;
-    return setKiroSendCheck(async (conversationId, onSync) => {
-      const kiro = (await db.conversations.get(conversationId))?.kiro;
-      if (!kiro || kiro.turns === undefined) return;
-      const entry = cachedEntry(queryClient, kiro.sessionId, KIRO_SESSIONS_TTL_MS);
-      if (!entry || !isNewerInKiro(entry.updatedAt, kiro)) return;
-      onSync();
-      await trackKiroSync(conversationId, syncConversation(conversationId, entry));
-    });
-  }, [enabled, queryClient, syncConversation]);
 
   return {
     enabled,

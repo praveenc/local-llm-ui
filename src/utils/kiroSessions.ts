@@ -69,6 +69,12 @@ export interface KiroSessionOpenRequest {
    * turns after them. 0 for a new import.
    */
   skipTurns: number;
+  /**
+   * The conversation's stored `kiro.updatedAt` (K11): when Kiro's time of the session is still
+   * this instant, the route answers `{ unchanged: true }` with no replay. The route then finds the
+   * session from its own folder, not from the full list.
+   */
+  ifUpdatedAfter?: string;
 }
 
 /** A tool call of an imported reply. Same shape as a stored tool call (`StoredToolCall`). */
@@ -115,6 +121,13 @@ export interface KiroSessionOpenResponse {
   turnsLeftOut: number;
 }
 
+/** The open answer when Kiro's time of the session equals `ifUpdatedAfter`: nothing to add (K11) */
+export interface KiroSessionUnchangedResponse {
+  unchanged: true;
+  /** Kiro's time of the session now, ISO 8601 */
+  updatedAt: string;
+}
+
 /** What a conversation stores of its Kiro session for a later sync (in `Conversation.kiro`) */
 export interface KiroSessionSync {
   /** Kiro's `updatedAt` at the last import or sync */
@@ -134,8 +147,19 @@ type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
+/** The longest date text that the app keeps from Kiro */
+const ISO_MAX_CHARS = 40;
+
 const isIsoDate = (value: unknown): value is string =>
-  typeof value === 'string' && value.length <= 40 && !Number.isNaN(Date.parse(value));
+  typeof value === 'string' && value.length <= ISO_MAX_CHARS && !Number.isNaN(Date.parse(value));
+
+/**
+ * An ISO time with a date, a time, and a zone (`Z` or `+hh:mm`), as `toISOString()` writes it or
+ * with a zone offset. `Date.parse` alone also reads "1", "Nov 26 2026", and local times.
+ */
+const ISO_TIME = /^[+-]?\d{4,6}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+
+const isIsoTime = (value: unknown): value is string => isIsoDate(value) && ISO_TIME.test(value);
 
 const isCount = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0;
@@ -164,7 +188,18 @@ export function parseKiroSessionOpenRequest(value: unknown): Parsed<KiroSessionO
   }
   const skip = value.skipTurns ?? 0;
   if (!isCount(skip)) return { ok: false, error: 'skipTurns must be a whole number' };
-  return { ok: true, value: { sessionId: value.sessionId, skipTurns: skip } };
+  const after = value.ifUpdatedAfter;
+  if (after !== undefined && !isIsoTime(after)) {
+    return { ok: false, error: 'ifUpdatedAfter must be an ISO time' };
+  }
+  return {
+    ok: true,
+    value: {
+      sessionId: value.sessionId,
+      skipTurns: skip,
+      ...(after !== undefined && { ifUpdatedAfter: after }),
+    },
+  };
 }
 
 function parseSummary(value: unknown): KiroSessionSummary | undefined {
@@ -246,6 +281,25 @@ export function parseKiroSessionOpenResponse(value: unknown): KiroSessionOpenRes
   };
 }
 
+/**
+ * The browser's check of an open answer to a request with `ifUpdatedAfter` (K11): the unchanged
+ * answer, the full open answer, or null when it is neither
+ */
+export function parseKiroSessionCheckResponse(
+  value: unknown
+): KiroSessionUnchangedResponse | KiroSessionOpenResponse | null {
+  if (isRecord(value) && value.unchanged === true) {
+    return isIsoDate(value.updatedAt) ? { unchanged: true, updatedAt: value.updatedAt } : null;
+  }
+  return parseKiroSessionOpenResponse(value);
+}
+
+/** True when Kiro's time `kiroAt` is the same instant as the stored `stored` (K11) */
+export function isSameKiroTime(kiroAt: string, stored: string): boolean {
+  const at = Date.parse(stored);
+  return !Number.isNaN(at) && Date.parse(kiroAt) === at;
+}
+
 // --- rules ---
 
 /** The last part of a folder path, for the row. The full path never goes to the browser. */
@@ -292,12 +346,6 @@ export function isKiroChatInSync(
   if (sync?.turns === undefined || !sync.updatedAt || !before) return false;
   const stored = Date.parse(sync.updatedAt);
   return !Number.isNaN(stored) && stored === Date.parse(before);
-}
-
-/** True when Kiro changed the session after the conversation's last import or sync */
-export function isNewerInKiro(listUpdatedAt: string, sync: KiroSessionSync | undefined): boolean {
-  if (!sync?.updatedAt) return true;
-  return Date.parse(listUpdatedAt) > Date.parse(sync.updatedAt);
 }
 
 const CONTEXT_BLOCK = /^<conversation_context>\n[\s\S]*?\n<\/conversation_context>\n\n/;

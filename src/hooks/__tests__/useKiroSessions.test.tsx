@@ -25,6 +25,7 @@ vi.mock('../useKiroStatus', () => ({
 const service = vi.hoisted(() => ({
   listSessions: vi.fn(),
   openSession: vi.fn(),
+  checkSession: vi.fn(),
 }));
 vi.mock('../../services/kiro', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../services/kiro')>()),
@@ -69,6 +70,7 @@ beforeEach(async () => {
   kiroStatus.value = { state: 'signed-in' } as KiroStatus;
   service.listSessions.mockReset().mockResolvedValue([summary(1), summary(2)]);
   service.openSession.mockReset().mockResolvedValue(opened());
+  service.checkSession.mockReset();
   await db.conversations.clear();
   await db.messages.clear();
 });
@@ -212,7 +214,8 @@ describe('useKiroSessions', () => {
     const conversation = await db.conversations.where('kiro.sessionId').equals(id(1)).first();
     await waitFor(() => expect(result.current.sessions).toEqual([]));
 
-    service.openSession.mockResolvedValueOnce(
+    // The exact check (K11): Kiro's time is newer than the chat's, so the new turns come back
+    service.checkSession.mockResolvedValueOnce(
       opened({
         updatedAt: '2026-11-25T13:00:00.000Z',
         messages: [
@@ -228,16 +231,22 @@ describe('useKiroSessions', () => {
     expect(running).toBeDefined();
     await running;
     expect(await db.messages.count()).toBe(4);
-    expect(service.openSession).toHaveBeenLastCalledWith(id(1), 1);
+    expect(service.checkSession).toHaveBeenLastCalledWith(id(1), 1, NOW);
     expect((await db.conversations.get(conversation!.id))?.kiro).toMatchObject({
       turns: 2,
       updatedAt: '2026-11-25T13:00:00.000Z',
     });
 
-    // Not newer any more: no replay
+    // Not newer any more: Kiro answers unchanged, and nothing is added
+    service.checkSession.mockResolvedValueOnce({
+      unchanged: true,
+      updatedAt: '2026-11-25T13:00:00.000Z',
+    });
     act(() => result.current.syncIfNewer(conversation!.id));
-    await new Promise((r) => setTimeout(r, 20));
-    expect(service.openSession).toHaveBeenCalledTimes(2);
+    await runningKiroSync(conversation!.id);
+    expect(service.checkSession).toHaveBeenLastCalledWith(id(1), 2, '2026-11-25T13:00:00.000Z');
+    expect(service.openSession).toHaveBeenCalledTimes(1);
+    expect(await db.messages.count()).toBe(4);
   });
 });
 

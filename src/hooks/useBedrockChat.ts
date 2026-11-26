@@ -264,13 +264,18 @@ export function useBedrockChat({
         // Kiro: read what the session has seen, and the chat's earlier messages, from the database
         // now: the chat may be new, or a fork (D12).
         if (isKiro) {
-          // Opening the chat may still add the turns that Kiro made in the terminal: wait, so that
-          // the history and the turn count below include them (K7, K11)
+          // Add the turns that Kiro made in the terminal first (a running sync, or one exact check
+          // of Kiro's time): the history and the turn count below then include them (K7, K11)
           let sync = false;
-          await prepareKiroSend(currentConversationId, () => {
-            sync = true;
-            run.update({ streamStatus: 'Adding the new Kiro turns…' });
-          });
+          await prepareKiroSend(
+            currentConversationId,
+            () => {
+              sync = true;
+              run.update({ streamStatus: 'Adding the new Kiro turns…' });
+            },
+            // A slow check (it can start Kiro CLI) says so in words
+            () => run.update({ streamStatus: 'Checking the Kiro session…' })
+          );
           const [stored, storedMessages] = await Promise.all([
             getConversation(currentConversationId),
             getMessages(currentConversationId),

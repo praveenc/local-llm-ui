@@ -151,7 +151,7 @@ describe('Kiro session options of an import (K9)', () => {
     const id = await importKiroSession(SESSION, session({ sessionOptions: OPTIONS }), FALLBACK);
     const terminal = structuredClone(OPTIONS)!;
     terminal.options[0].currentValue = 'on';
-    await appendKiroTurns(id, session({ messages: [], sessionOptions: terminal }));
+    await appendKiroTurns(id, session({ messages: [], sessionOptions: terminal }), 2);
     expect((await db.conversations.get(id))?.kiro?.options).toEqual({
       mode: 'agent-b',
       autopilot: 'on',
@@ -164,7 +164,8 @@ describe('Kiro session options of an import (K9)', () => {
         messages: [{ role: 'user', content: 'More' }],
         turns: 3,
         sessionOptions: terminal,
-      })
+      }),
+      2
     );
     expect((await db.conversations.get(id))?.kiro?.options).toEqual({
       mode: 'agent-a',
@@ -174,7 +175,7 @@ describe('Kiro session options of an import (K9)', () => {
 
   it('keeps the stored values when the open answer has none', async () => {
     const id = await importKiroSession(SESSION, session({ sessionOptions: OPTIONS }), FALLBACK);
-    await appendKiroTurns(id, session({ messages: [] }));
+    await appendKiroTurns(id, session({ messages: [] }), 2);
     expect((await db.conversations.get(id))?.kiro?.options).toEqual({
       mode: 'agent-b',
       autopilot: 'off',
@@ -201,7 +202,7 @@ describe('appendKiroTurns', () => {
 
   it('adds the new turns at the end, and Kiro has seen them when it saw the whole chat', async () => {
     const id = await importKiroSession(SESSION, session(), FALLBACK);
-    expect(await appendKiroTurns(id, later())).toBe(2);
+    expect(await appendKiroTurns(id, later(), 2)).toBe(2);
     const messages = await messagesOf(id);
     expect(messages.map((m) => m.content).slice(4)).toEqual(['One more', 'Done.']);
     expect(messages.map((m) => m.sequence)).toEqual([0, 1, 2, 3, 4, 5]);
@@ -230,7 +231,7 @@ describe('appendKiroTurns', () => {
       modelId: 'claude',
       modelName: 'Claude',
     });
-    await appendKiroTurns(id, later());
+    await appendKiroTurns(id, later(), 2);
     const conversation = await db.conversations.get(id);
     expect(conversation?.kiro?.seenMessages).toBe(3);
     expect(conversation?.kiro?.turns).toBe(3);
@@ -239,7 +240,7 @@ describe('appendKiroTurns', () => {
 
   it('adds nothing when Kiro has a shorter history, and keeps the stored turns', async () => {
     const id = await importKiroSession(SESSION, session(), FALLBACK);
-    expect(await appendKiroTurns(id, later({ turns: 1, messages: [] }))).toBe(0);
+    expect(await appendKiroTurns(id, later({ turns: 1, messages: [] }), 2)).toBe(0);
     const conversation = await db.conversations.get(id);
     expect(await db.messages.count()).toBe(4);
     expect(conversation?.kiro).toMatchObject({ turns: 2, updatedAt: '2026-11-25T12:00:00.000Z' });
@@ -248,8 +249,18 @@ describe('appendKiroTurns', () => {
   it('adds nothing to a chat whose turn count is not known', async () => {
     const id = await importKiroSession(SESSION, session(), FALLBACK);
     await db.conversations.update(id, { kiro: { sessionId: SESSION, seenMessages: 3 } });
-    expect(await appendKiroTurns(id, later())).toBe(0);
+    expect(await appendKiroTurns(id, later(), 2)).toBe(0);
     expect(await db.messages.count()).toBe(4);
+  });
+
+  it('adds and writes nothing when the stored count moved after the request (two tabs, B5)', async () => {
+    const id = await importKiroSession(SESSION, session(), FALLBACK);
+    // The other tab added the same turn first: the stored count is 3, this answer skipped 2
+    expect(await appendKiroTurns(id, later(), 2)).toBe(2);
+    const before = await db.conversations.get(id);
+    expect(await appendKiroTurns(id, later({ updatedAt: '2026-11-25T12:30:00.000Z' }), 2)).toBe(0);
+    expect(await db.messages.count()).toBe(6);
+    expect(await db.conversations.get(id)).toEqual(before);
   });
 });
 

@@ -10,7 +10,8 @@ import {
   isInWindow,
   isKiroChatInSync,
   isNeverUsedSession,
-  isNewerInKiro,
+  isSameKiroTime,
+  parseKiroSessionCheckResponse,
   parseKiroSessionOpenRequest,
   parseKiroSessionOpenResponse,
   parseKiroSessionStamp,
@@ -188,12 +189,68 @@ describe('rules', () => {
     });
   });
 
-  it('isNewerInKiro compares with the stored sync', () => {
-    expect(isNewerInKiro('2026-11-25T10:00:00Z', undefined)).toBe(true);
-    expect(isNewerInKiro('2026-11-25T10:00:00Z', { updatedAt: '2026-11-25T09:00:00Z' })).toBe(true);
-    expect(isNewerInKiro('2026-11-25T10:00:00Z', { updatedAt: '2026-11-25T10:00:00Z' })).toBe(
-      false
-    );
+  it('takes ifUpdatedAfter as an ISO time, and rejects a bad one (K11)', () => {
+    const at = '2026-11-25T10:00:00.000Z';
+    expect(
+      parseKiroSessionOpenRequest({ sessionId: SESSION, skipTurns: 2, ifUpdatedAfter: at })
+    ).toEqual({ ok: true, value: { sessionId: SESSION, skipTurns: 2, ifUpdatedAfter: at } });
+    // The longest toISOString() is still accepted
+    const far = new Date(8.64e15).toISOString();
+    expect(far).toHaveLength(27);
+    expect(parseKiroSessionOpenRequest({ sessionId: SESSION, ifUpdatedAfter: far }).ok).toBe(true);
+    // A zone offset and more digits, as Kiro could write them (the same 40-character limit as
+    // the times that the app keeps)
+    for (const good of ['2026-11-26T10:00:00+00:00', '2026-11-26T10:00:00.123456-05:30']) {
+      expect(parseKiroSessionOpenRequest({ sessionId: SESSION, ifUpdatedAfter: good })).toEqual({
+        ok: true,
+        value: { sessionId: SESSION, skipTurns: 0, ifUpdatedAfter: good },
+      });
+    }
+    for (const bad of [
+      'yesterday',
+      '',
+      42,
+      null,
+      // Date.parse reads these, but they are not ISO times
+      '1',
+      '2026',
+      'Nov 26 2026',
+      '2026-11-26 10:00',
+      '2026-11-26T10:00:00',
+      `${at}${' '.repeat(10)}`,
+      // Over 40 characters
+      `2026-11-26T10:00:00.${'1'.repeat(30)}Z`,
+    ]) {
+      expect(parseKiroSessionOpenRequest({ sessionId: SESSION, ifUpdatedAfter: bad })).toEqual({
+        ok: false,
+        error: 'ifUpdatedAfter must be an ISO time',
+      });
+    }
+  });
+
+  it('isSameKiroTime compares instants', () => {
+    expect(isSameKiroTime('2026-11-25T10:00:00.000Z', '2026-11-25T10:00:00Z')).toBe(true);
+    expect(isSameKiroTime('2026-11-25T10:00:00.001Z', '2026-11-25T10:00:00Z')).toBe(false);
+    expect(isSameKiroTime('2026-11-25T10:00:00.000Z', 'not a date')).toBe(false);
+  });
+
+  it('parseKiroSessionCheckResponse reads the unchanged answer or a full open answer', () => {
+    const at = '2026-11-25T10:00:00.000Z';
+    expect(parseKiroSessionCheckResponse({ unchanged: true, updatedAt: at })).toEqual({
+      unchanged: true,
+      updatedAt: at,
+    });
+    expect(parseKiroSessionCheckResponse({ unchanged: true, updatedAt: 'x' })).toBeNull();
+    expect(parseKiroSessionCheckResponse({ unchanged: 'yes', updatedAt: at })).toBeNull();
+    const full = {
+      title: 'T',
+      updatedAt: at,
+      messages: [],
+      turns: 2,
+      imagesLeftOut: 0,
+      turnsLeftOut: 0,
+    };
+    expect(parseKiroSessionCheckResponse(full)).toEqual(full);
   });
 
   it('stripKiroContext removes the block of buildKiroPrompt only', () => {

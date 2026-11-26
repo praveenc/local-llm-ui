@@ -172,6 +172,7 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
     (sessions ??= createKiroSessionsHandler({
       agent: getAgent(),
       statusReader: getReader(),
+      environment: options.environment,
       stampWaitMs: options.stampWaitMs,
     }));
 
