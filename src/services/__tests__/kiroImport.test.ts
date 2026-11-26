@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { db } from '../../db';
 import type { KiroSessionOpenResponse } from '../../utils/kiroSessions';
-import { appendKiroTurns, findConversationByKiroSession, importKiroSession } from '../kiroImport';
+import {
+  appendKiroTurns,
+  backfillKiroTurns,
+  findConversationByKiroSession,
+  importKiroSession,
+} from '../kiroImport';
 
 const SESSION = 'sess_5f0c1d2e-3a4b-4c5d-8e6f-7a8b9c0d1e2f';
 const FALLBACK = { id: 'auto', name: 'Auto' };
@@ -245,5 +250,40 @@ describe('appendKiroTurns', () => {
     await db.conversations.update(id, { kiro: { sessionId: SESSION, seenMessages: 3 } });
     expect(await appendKiroTurns(id, later())).toBe(0);
     expect(await db.messages.count()).toBe(4);
+  });
+});
+
+describe('backfillKiroTurns (D24)', () => {
+  beforeEach(async () => {
+    await db.conversations.clear();
+    await db.messages.clear();
+  });
+
+  const counted = session({ updatedAt: '2026-11-25T12:00:00.000Z', messages: [], turns: 7 });
+
+  it('stores the count, the time, and the options, and adds no message', async () => {
+    const id = await importKiroSession(SESSION, session(), FALLBACK);
+    await db.conversations.update(id, { kiro: { sessionId: SESSION, seenMessages: 3 } });
+    expect(await backfillKiroTurns(id, SESSION, { ...counted, sessionOptions: OPTIONS })).toBe(
+      true
+    );
+    expect(await db.messages.count()).toBe(4);
+    expect((await db.conversations.get(id))?.kiro).toEqual({
+      sessionId: SESSION,
+      seenMessages: 3,
+      turns: 7,
+      updatedAt: '2026-11-25T12:00:00.000Z',
+      options: { mode: 'agent-b', autopilot: 'off' },
+    });
+  });
+
+  it('changes nothing when the chat has a count or another session now', async () => {
+    const id = await importKiroSession(SESSION, session(), FALLBACK);
+    expect(await backfillKiroTurns(id, SESSION, counted)).toBe(false);
+    expect((await db.conversations.get(id))?.kiro?.turns).toBe(2);
+    const other = 'sess_00000000-0000-4000-8000-000000000009';
+    await db.conversations.update(id, { kiro: { sessionId: other, seenMessages: 0 } });
+    expect(await backfillKiroTurns(id, SESSION, counted)).toBe(false);
+    expect((await db.conversations.get(id))?.kiro).toEqual({ sessionId: other, seenMessages: 0 });
   });
 });

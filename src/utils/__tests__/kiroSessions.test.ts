@@ -2,15 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import { buildKiroPrompt } from '../kiroChat';
 import {
+  KIRO_COUNT_ONLY_SKIP,
   KIRO_IMPORT_ARG_CHARS,
   countTextMessages,
   cutToolArgs,
   folderName,
   isInWindow,
+  isKiroChatInSync,
   isNeverUsedSession,
   isNewerInKiro,
   parseKiroSessionOpenRequest,
   parseKiroSessionOpenResponse,
+  parseKiroSessionStamp,
   parseKiroSessionsRequest,
   parseKiroSessionsResponse,
   seenAfterSync,
@@ -145,6 +148,44 @@ describe('rules', () => {
     expect(isInWindow('2026-11-18T11:59:59Z', 7, NOW)).toBe(false);
     expect(isInWindow('2026-10-30T00:00:00Z', 30, NOW)).toBe(true);
     expect(isInWindow('2020-01-01T00:00:00Z', null, NOW)).toBe(true);
+  });
+
+  it('parseKiroSessionStamp takes a date only (K11)', () => {
+    expect(parseKiroSessionStamp('2026-11-26T17:33:34.357Z')).toBe('2026-11-26T17:33:34.357Z');
+    expect(parseKiroSessionStamp('soon')).toBeUndefined();
+    expect(parseKiroSessionStamp(3)).toBeUndefined();
+    expect(parseKiroSessionStamp(undefined)).toBeUndefined();
+  });
+
+  it('isKiroChatInSync needs a count, a stored time, and the same instant before the send (K11)', () => {
+    const at = '2026-11-26T17:33:34.357Z';
+    expect(isKiroChatInSync({ turns: 2, updatedAt: at }, at)).toBe(true);
+    // The same instant in another ISO form
+    expect(isKiroChatInSync({ turns: 2, updatedAt: at }, '2026-11-26T18:33:34.357+01:00')).toBe(
+      true
+    );
+    // A terminal turn moved Kiro's time
+    expect(isKiroChatInSync({ turns: 2, updatedAt: at }, '2026-11-26T17:33:34.358Z')).toBe(false);
+    expect(isKiroChatInSync({ turns: 2, updatedAt: at }, undefined)).toBe(false);
+    expect(isKiroChatInSync({ updatedAt: at }, at)).toBe(false);
+    expect(isKiroChatInSync({ turns: 2 }, at)).toBe(false);
+    expect(isKiroChatInSync({ turns: 2, updatedAt: 'bad' }, 'bad')).toBe(false);
+    expect(isKiroChatInSync(undefined, at)).toBe(false);
+  });
+
+  it('KIRO_COUNT_ONLY_SKIP is a skipTurns that the open route accepts', () => {
+    expect(
+      parseKiroSessionOpenRequest({
+        sessionId: 'sess_00000000-0000-4000-8000-000000000001',
+        skipTurns: KIRO_COUNT_ONLY_SKIP,
+      })
+    ).toEqual({
+      ok: true,
+      value: {
+        sessionId: 'sess_00000000-0000-4000-8000-000000000001',
+        skipTurns: KIRO_COUNT_ONLY_SKIP,
+      },
+    });
   });
 
   it('isNewerInKiro compares with the stored sync', () => {

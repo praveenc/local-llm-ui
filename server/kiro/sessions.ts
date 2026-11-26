@@ -13,6 +13,9 @@
  * - Open takes a session id only: it must be in Kiro's list, and the load uses the folder from
  *   that list, never one from the browser. The replay is read only and ends with session/close.
  *   The response is at most KIRO_IMPORT_MAX_BYTES of JSON, with the session's agent and options.
+ *   Its `updatedAt` is read after the replay with a session/list of the session's own folder, so
+ *   it is the same instant that the chat route reports (K11), not the cached one (up to 60 s
+ *   old). When that read fails or takes more than 1 s, the cached value is used.
  *
  * Logs the size and the time only: never titles, folders, or text.
  */
@@ -51,6 +54,8 @@ export interface KiroSessionsHandlerOptions {
   statusReader: { read(refresh?: boolean): Promise<KiroStatus> };
   ttlMs?: number;
   now?: () => number;
+  /** How long an open waits for the session's exact time after the replay (K11). Default 1 s. */
+  stampWaitMs?: number;
 }
 
 /** The parts of a list entry that the app keeps; `cwd` stays on the server */
@@ -63,6 +68,7 @@ interface Entry {
 }
 
 const BODY_LIMIT = 1024;
+const STAMP_WAIT_MS = 1_000;
 export const KIRO_SESSIONS_FAILED =
   'Kiro could not list your sessions. See the terminal that runs npm run dev.';
 export const KIRO_SESSION_OPEN_FAILED =
@@ -128,6 +134,7 @@ export function createKiroSessionsHandler(options: KiroSessionsHandlerOptions) {
   const { agent, statusReader } = options;
   const ttlMs = options.ttlMs ?? KIRO_SESSIONS_TTL_MS;
   const now = options.now ?? Date.now;
+  const stampWaitMs = options.stampWaitMs ?? STAMP_WAIT_MS;
 
   let cached: { entries: Entry[]; at: number } | undefined;
   let loading: Promise<Entry[]> | undefined;
@@ -164,6 +171,32 @@ export function createKiroSessionsHandler(options: KiroSessionsHandlerOptions) {
         });
     }
     return loading;
+  }
+
+  /**
+   * The session's time now, from a list of its own folder (K11): the same instant as the chat
+   * route's. The cached time when the list fails or takes longer than the wait. Never rejects.
+   */
+  async function exactUpdatedAt(entry: Entry): Promise<string> {
+    let timer: NodeJS.Timeout | undefined;
+    const read = Promise.resolve()
+      .then(() => agent.listSessions({ cwd: entry.cwd }))
+      .then(
+        (result) =>
+          result.sessions.map(toEntry).find((e) => e?.sessionId === entry.sessionId)?.updatedAt,
+        (error: unknown) => {
+          console.warn(
+            `[kiro] could not read the session time: ${error instanceof Error ? error.name : 'unknown error'}`
+          );
+          return undefined;
+        }
+      );
+    const late = new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), stampWaitMs);
+      timer.unref();
+    });
+    const at = await Promise.race([read, late]).finally(() => clearTimeout(timer));
+    return at ?? entry.updatedAt;
   }
 
   /** Reads the JSON body; null when a reply was sent */
@@ -260,9 +293,11 @@ export function createKiroSessionsHandler(options: KiroSessionsHandlerOptions) {
         KIRO_IMPORT_MAX_BYTES - Buffer.byteLength(JSON.stringify(sessionOptions), 'utf8')
       );
       const title = asRecord(load._meta)?.title;
+      const updatedAt = await exactUpdatedAt(entry);
+      if (res.destroyed) return;
       const body: KiroSessionOpenResponse = {
         title: typeof title === 'string' && title.trim() ? title : entry.title,
-        updatedAt: entry.updatedAt,
+        updatedAt,
         ...result,
         sessionOptions,
       };

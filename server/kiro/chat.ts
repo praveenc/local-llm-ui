@@ -16,6 +16,19 @@
  * message as seen only when that event came. When the request ends before it, a session that this
  * request made is deleted again, so no empty session stays on disk.
  *
+ * Kiro's time of the session (`updatedAt` of session/list, K11) goes to the browser twice, so that
+ * it can tell exactly whether the chat holds every turn of the session (`src/utils/kiroSessions.ts`):
+ * - `sessionUpdatedBefore`, right after the `session` event of a known session: the time before
+ *   this message. It is read with a session/list of the session's own folder once the session is
+ *   loaded (the app holds it then, so no terminal turn can end before the prompt) and before the
+ *   options are set (an option change moves the time). The send waits for it at most 1 s; when it
+ *   is slow or fails, the event is left out.
+ * - `sessionUpdatedAt`, before `metadata`: the time after the turn, read the same way after the
+ *   prompt result (the time is final then; session/close does not change it). Also for a new
+ *   session. Left out when the reply was cancelled, or the list failed or was slow.
+ * A Stop ends either wait at once.
+ * Both are ISO times, as the sessions route reports them. The folder never goes to the browser.
+ *
  * The folder of a session never comes from the browser: a new session uses the app's Kiro folder,
  * and an existing one uses the folder in its own session.json. Logs lifecycle lines only: never
  * the prompt, the history, tool input or output, or the title.
@@ -33,6 +46,7 @@ import type { KiroChatEvent, KiroChatRequest } from '../../src/utils/kiroChat.ts
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
 import type { PermissionRegistry } from '../acp/permission-registry.ts';
 import type { PromptPermissionHandler } from '../acp/permissions.ts';
+import type { ListSessionsResult } from '../acp/types.ts';
 import { createUpdateMapper } from '../acp/updates.ts';
 import type { AcpStreamEvent } from '../acp/updates.ts';
 import { endStreamWithError, readBodyWithLimit } from '../security.ts';
@@ -57,6 +71,8 @@ import { createKiroReplyMeta, kiroToolName } from './reply-meta.ts';
 import { findKiroSessionCwd } from './session-files.ts';
 
 const PING_MS = 15_000;
+/** How long a send waits for Kiro's time of the session after the session is ready (K11) */
+const STAMP_WAIT_MS = 1_000;
 const BUSY_TEXT = 'Kiro is still answering in this chat. Wait for the reply, or click Stop.';
 /** The text for an error that the route does not know: the detail goes to the terminal only */
 export const KIRO_CHAT_FAILED = 'Kiro failed. See the terminal that runs npm run dev.';
@@ -75,6 +91,7 @@ export type KiroChatAgent = Pick<
   | 'isBusy'
   | 'waitForIdle'
   | 'cancelWaitMs'
+  | 'listSessions'
 >;
 
 export interface KiroChatHandlerOptions {
@@ -93,6 +110,8 @@ export interface KiroChatHandlerOptions {
    * Default: the agent's cancelWait (30 s). Tests make it short.
    */
   busyWaitMs?: number;
+  /** How long the route waits for Kiro's time of the session (K11). Default 1 s. */
+  stampWaitMs?: number;
 }
 
 type ChatEvent =
@@ -104,7 +123,36 @@ type ChatEvent =
         latencyMs?: number;
       };
     }
+  | { sessionUpdatedBefore: string }
+  | { sessionUpdatedAt: string }
   | { error: string };
+
+/**
+ * The session's `updatedAt` in a session/list result, as an ISO time like the sessions route
+ * keeps it (`server/kiro/sessions.ts`), or undefined (K11)
+ */
+export function kiroListedAt(result: ListSessionsResult, sessionId: string): string | undefined {
+  const entry = result.sessions.find((s) => s?.sessionId === sessionId);
+  const at = typeof entry?.updatedAt === 'string' ? Date.parse(entry.updatedAt) : NaN;
+  return Number.isNaN(at) ? undefined : new Date(at).toISOString();
+}
+
+/** The value of `promise`, or undefined when it takes longer than `ms` or `signal` aborts */
+function within<T>(
+  promise: Promise<T | undefined>,
+  ms: number,
+  signal: AbortSignal
+): Promise<T | undefined> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    promise,
+    new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), ms);
+      timer.unref();
+    }),
+    aborted(signal).then(() => undefined),
+  ]).finally(() => clearTimeout(timer));
+}
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
@@ -146,16 +194,36 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
   const { agent, statusReader, models } = options;
   /** Requests that use each session now: the last one closes it (K7) */
   const inUse = new Map<string, number>();
+  const home = () => (options.environment ?? defaultKiroEnvironment()).home;
+  const stampWaitMs = options.stampWaitMs ?? STAMP_WAIT_MS;
 
-  /** Opens the chat's session, or a new one. Returns the session and whether it is new. */
-  async function openSession(request: KiroChatRequest) {
+  /** Kiro's time of the session, from a list of its own folder. Never rejects (K11). */
+  const readStamp = (sessionId: string, cwd: string): Promise<string | undefined> =>
+    Promise.resolve()
+      .then(() => agent.listSessions({ cwd }))
+      .then(
+        (result) => kiroListedAt(result, sessionId),
+        (error: unknown) => {
+          console.warn(
+            `[kiro] could not read the session time: ${error instanceof Error ? error.name : 'unknown error'}`
+          );
+          return undefined;
+        }
+      );
+
+  /**
+   * Opens the chat's session, or a new one. Returns the session, whether it is new, and its
+   * folder (server only).
+   */
+  async function openSession(
+    request: KiroChatRequest
+  ): Promise<{ id: string; created: boolean; cwd: string }> {
     if (request.sessionId && !kiroSessionIsStale(request)) {
-      const home = (options.environment ?? defaultKiroEnvironment()).home;
-      const cwd = await findKiroSessionCwd(request.sessionId, { home });
+      const cwd = await findKiroSessionCwd(request.sessionId, { home: home() });
       if (cwd) {
         try {
           await agent.ensureSession(request.sessionId, cwd);
-          return { id: request.sessionId, created: false };
+          return { id: request.sessionId, created: false, cwd };
         } catch (error) {
           // A damaged session on disk fails session/load with an ACP error: start a new one
           if (!(error instanceof KiroSessionError) && !(error instanceof AcpError)) throw error;
@@ -163,8 +231,8 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
         }
       }
     }
-    const { sessionId } = await agent.newSession();
-    return { id: sessionId, created: true };
+    const { sessionId, cwd } = await agent.newSession();
+    return { id: sessionId, created: true, cwd };
   }
 
   return async function handleKiroChat(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -236,8 +304,10 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
       };
 
       if (!agent.state().running) send({ status: 'Starting Kiro…' });
-      const session = await openSession(request);
-      const { id } = session;
+      const opened = await openSession(request);
+      const { id } = opened;
+      // The event has the id and whether it is new: never the folder
+      const session = { id, created: opened.created };
       if (session.created) unused = id;
       using = id;
       inUse.set(id, (inUse.get(id) ?? 0) + 1);
@@ -265,6 +335,15 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
         stopReason = 'cancelled';
         return;
       }
+      // Kiro's time before this message (K11): after the load and after a running reply in the
+      // session ended (the app holds the session now), before the options are set (they move it)
+      const before = session.created
+        ? undefined
+        : await within(readStamp(id, opened.cwd), stampWaitMs, controller.signal);
+      if (controller.signal.aborted) {
+        stopReason = 'cancelled';
+        return;
+      }
 
       const optionError = await applyOptions(agent, id, request);
       if (optionError) {
@@ -279,6 +358,7 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
       // Right before session/prompt: the browser counts the message as seen only after this
       unused = undefined;
       send({ session });
+      if (before) send({ sessionUpdatedBefore: before });
       // The session's agent and options, as Kiro reports them now (K9)
       const sendOptions = () =>
         send({ sessionOptions: kiroSessionOptions(agent.configOptions(id)) });
@@ -332,6 +412,11 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
       if (stopReason !== 'end_turn' && stopReason !== 'cancelled') {
         const notice = KIRO_STOP_NOTICES[stopReason] ?? 'Kiro stopped the reply.';
         send({ content: `\n\n_${notice}_` });
+      }
+      // Kiro's time after the turn: final at the prompt result (K11, probe P1)
+      if (stopReason !== 'cancelled') {
+        const after = await within(readStamp(id, opened.cwd), stampWaitMs, controller.signal);
+        if (after) send({ sessionUpdatedAt: after });
       }
       const { credits, elapsedMs } = meta;
       const contextPercent = meta.contextPercent ?? agent.sessionInfo(id)?.contextPercent;

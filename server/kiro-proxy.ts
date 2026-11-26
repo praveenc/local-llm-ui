@@ -91,6 +91,8 @@ export interface KiroProxyOptions {
   chatBusyWaitMs?: number;
   /** How often a chat with an open question sends a `: ping` comment. Tests make it short. */
   chatPingMs?: number;
+  /** How long the chat and open routes wait for Kiro's time of a session (K11). Default 1 s. */
+  stampWaitMs?: number;
   /** The folder for new Kiro chats. Default: the settings of the environment's home folder. */
   settings?: KiroSettings;
 }
@@ -163,10 +165,15 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
       busyWaitMs: options.chatBusyWaitMs,
       permissions,
       pingMs: options.chatPingMs,
+      stampWaitMs: options.stampWaitMs,
     }));
 
   const getSessions = () =>
-    (sessions ??= createKiroSessionsHandler({ agent: getAgent(), statusReader: getReader() }));
+    (sessions ??= createKiroSessionsHandler({
+      agent: getAgent(),
+      statusReader: getReader(),
+      stampWaitMs: options.stampWaitMs,
+    }));
 
   async function handleLogin(req: Parameters<Connect.NextHandleFunction>[0], res: Res) {
     const body = await readBodyWithLimit(req, res, LOGIN_BODY_LIMIT);

@@ -13,7 +13,7 @@ import type { KiroConversationSession, MessageFeedback, Provider } from '../db/t
 import { mantleService } from '../services';
 import { conversationService } from '../services/conversationService';
 import { kiroService } from '../services/kiro';
-import { runningKiroSync } from '../services/kiroSyncs';
+import { prepareKiroSend } from '../services/kiroSyncs';
 import { notifyReply } from '../services/replyNotices';
 import type { KiroModelMeta } from '../services/types';
 import type { MessagePart, ToolCallPart, UIMessage } from '../types/ai-messages';
@@ -31,6 +31,7 @@ import {
   parseKiroPermissionQuestion,
   parseKiroPermissionResult,
 } from '../utils/kiroPermissions';
+import { isKiroChatInSync, parseKiroSessionStamp } from '../utils/kiroSessions';
 import { getMediaTypeFromFormat, lookupFormat } from '../utils/mediaTypes';
 import { loadPreferences } from '../utils/preferences';
 import { isRunningStatus, replyStore } from '../utils/replyStore';
@@ -213,8 +214,14 @@ export function useBedrockChat({
       let kiroRequest: KiroChatRequest | undefined;
       // The chat's Kiro record before this message, for the turn count (K7)
       let storedKiro: KiroConversationSession | undefined;
+      // Kiro's time of the session after the reply, stored when the chat counts its turns (K11)
+      let kiroUpdatedAt: string | undefined;
       // The session of this reply, from its first event
       let kiroSession: KiroConversationSession | undefined;
+      // Kiro started on the message: an event of the turn came after the session event (K11)
+      let kiroStarted = false;
+      // The server sends one sessionOptions event before the prompt; later ones are the turn's
+      let kiroOptionEvents = 0;
       // Set by the stream loop so the abort handler can flush text received so far
       let flushOnAbort: (() => void) | null = null;
 
@@ -258,12 +265,12 @@ export function useBedrockChat({
         // now: the chat may be new, or a fork (D12).
         if (isKiro) {
           // Opening the chat may still add the turns that Kiro made in the terminal: wait, so that
-          // the history and the turn count below include them (K7)
-          const sync = runningKiroSync(currentConversationId);
-          if (sync) {
+          // the history and the turn count below include them (K7, K11)
+          let sync = false;
+          await prepareKiroSend(currentConversationId, () => {
+            sync = true;
             run.update({ streamStatus: 'Adding the new Kiro turns…' });
-            await sync;
-          }
+          });
           const [stored, storedMessages] = await Promise.all([
             getConversation(currentConversationId),
             getMessages(currentConversationId),
@@ -567,30 +574,61 @@ export function useBedrockChat({
               // Kiro: the session of this reply. A new session has seen none of the chat.
               if (kiroRequest && isKiroSessionEvent(parsed.session)) {
                 // A new session has no turns. A known one keeps its turn count, and its time
-                // of the last sync, so a later open adds only the turns made elsewhere (K7).
+                // of the last sync, so a later open adds only the turns made elsewhere (K7). A
+                // known one counts its turns on only when the next event shows that the chat
+                // holds every turn: else the reply stores no count and the next open counts
+                // again, so no sync imports a turn twice or out of order (K11).
                 const known =
                   !parsed.session.created && storedKiro?.sessionId === parsed.session.id;
                 kiroSession = {
                   sessionId: parsed.session.id,
                   seenMessages: parsed.session.created ? 0 : kiroRequest.seenMessages,
                   ...(parsed.session.created && { turns: 0 }),
-                  ...(known && storedKiro?.turns !== undefined && { turns: storedKiro.turns }),
                   ...(known && storedKiro?.updatedAt && { updatedAt: storedKiro.updatedAt }),
                   // The next sessionOptions event gives the session's values
                   ...(storedKiro?.options && { options: storedKiro.options }),
                 };
-                await setKiroSession(currentConversationId, kiroSession);
+                // The database keeps the stored count until the reply ends: when Kiro refuses
+                // the message (another program holds the session), the next open still adds
+                // the terminal turns from it, in Kiro's order (K11)
+                await setKiroSession(currentConversationId, {
+                  ...kiroSession,
+                  ...(known && storedKiro?.turns !== undefined && { turns: storedKiro.turns }),
+                });
                 // The server sends it right before Kiro gets the message: "Starting Kiro…" is over
                 run.update({ streamStatus: null });
               }
               // Kiro: the session's agent and options, after the session event and on each change.
               // The service keeps the lists for the controls; the chat's record keeps the values.
               if (kiroRequest && kiroSession && parsed.sessionOptions !== undefined) {
+                kiroOptionEvents += 1;
                 await saveSessionOptionsEvent(
                   parsed.sessionOptions,
                   currentConversationId,
                   kiroSession.sessionId
                 );
+              }
+              // Kiro: its time of the session before this message. The same time as the chat's
+              // last sync: the chat holds every turn, so it counts on (K11). A new object, not the
+              // record: the React Compiler lint counts a passed record as changed.
+              if (
+                kiroSession &&
+                kiroSession.turns === undefined &&
+                storedKiro?.sessionId === kiroSession.sessionId &&
+                isKiroChatInSync(
+                  { turns: storedKiro.turns, updatedAt: storedKiro.updatedAt },
+                  parseKiroSessionStamp(parsed.sessionUpdatedBefore)
+                )
+              ) {
+                kiroSession = { ...kiroSession, turns: storedKiro.turns };
+              }
+              // Kiro: an event of the turn shows that Kiro took the message (K11)
+              if (kiroSession && !kiroStarted) {
+                kiroStarted = isKiroTurnEvent(parsed) || kiroOptionEvents > 1;
+              }
+              // Kiro: its time of the session after this turn (K11)
+              if (kiroRequest) {
+                kiroUpdatedAt = parseKiroSessionStamp(parsed.sessionUpdatedAt) ?? kiroUpdatedAt;
               }
               // Kiro: its short title replaces the automatic one
               if (kiroRequest && typeof parsed.title === 'string' && parsed.title.trim()) {
@@ -781,6 +819,8 @@ export function useBedrockChat({
             ...kiroSession,
             seenMessages: kiroRequest.history.length + 1 + (fullContent.trim() ? 1 : 0),
             ...nextTurns(kiroSession),
+            // The next open then runs no replay for this reply (D25)
+            ...(kiroSession.turns !== undefined && kiroUpdatedAt && { updatedAt: kiroUpdatedAt }),
           });
         }
 
@@ -811,6 +851,18 @@ export function useBedrockChat({
         }
 
         console.error('Bedrock chat error:', err);
+        // Kiro took the message and then failed (it stopped, or the connection broke): Kiro may
+        // have the turn, so the chat no longer knows its count, and the next open counts again
+        // (K11). When Kiro refused the message, the record keeps the count of the session event.
+        if (kiroRequest && kiroSession && kiroStarted) {
+          await setKiroSession(currentConversationId, {
+            ...kiroSession,
+            seenMessages: kiroRequest.history.length + 1,
+            turns: undefined,
+          }).catch((saveErr: unknown) =>
+            console.error('Failed to save the Kiro session:', saveErr)
+          );
+        }
         // Keep whatever streamed before the error
         flushOnAbort?.();
         if (run.isActive()) {
@@ -1003,6 +1055,21 @@ async function saveSessionOptionsEvent(
   );
   // The session shows what it took: the picks that it took are done, the others stay
   clearPendingSessionOptions(conversationId, snapshotValues(snapshot));
+}
+
+/** An event that only comes once Kiro works on the message (K11) */
+function isKiroTurnEvent(parsed: Record<string, unknown>): boolean {
+  return [
+    'content',
+    'reasoning',
+    'toolCall',
+    'toolResult',
+    'permission',
+    'permissionResult',
+    'title',
+    'sessionUpdatedAt',
+    'metadata',
+  ].some((key) => parsed[key] !== undefined);
 }
 
 /** The `session` event of the Kiro route */

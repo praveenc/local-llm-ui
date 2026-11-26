@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { runningKiroSync, trackKiroSync } from '../kiroSyncs';
+import { prepareKiroSend, runningKiroSync, setKiroSendCheck, trackKiroSync } from '../kiroSyncs';
 
 function gate() {
   let open: () => void = () => {};
@@ -41,5 +41,48 @@ describe('kiroSyncs', () => {
     first.open();
     await running;
     expect(ended).toBe(true);
+  });
+});
+
+describe('prepareKiroSend (K11)', () => {
+  it('ends at once with no check and no running sync', async () => {
+    const onSync = vi.fn();
+    await prepareKiroSend('k1', onSync);
+    expect(onSync).not.toHaveBeenCalled();
+  });
+
+  it('waits for a running sync, then runs the check', async () => {
+    const work = gate();
+    void trackKiroSync('k2', work.promise);
+    const check = vi.fn(async () => undefined);
+    const unset = setKiroSendCheck(check);
+    const onSync = vi.fn();
+    let ended = false;
+    const done = prepareKiroSend('k2', onSync).then(() => {
+      ended = true;
+    });
+    expect(onSync).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    expect(check).not.toHaveBeenCalled();
+    work.open();
+    await done;
+    expect(ended).toBe(true);
+    expect(check).toHaveBeenCalledWith('k2', onSync);
+    unset();
+    await prepareKiroSend('k2', onSync);
+    expect(check).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reject when the check fails, and an old check does not remove a newer one', async () => {
+    const unsetFirst = setKiroSendCheck(async () => {
+      throw new Error('no');
+    });
+    await expect(prepareKiroSend('k3', vi.fn())).resolves.toBeUndefined();
+    const check = vi.fn(async () => undefined);
+    const unset = setKiroSendCheck(check);
+    unsetFirst();
+    await prepareKiroSend('k3', vi.fn());
+    expect(check).toHaveBeenCalledTimes(1);
+    unset();
   });
 });

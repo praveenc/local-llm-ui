@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
+import { KIRO_COUNT_ONLY_SKIP } from '../../src/utils/kiroSessions.ts';
 import type { LoadSessionResult, SessionUpdate } from '../acp/types.ts';
 import {
   KIRO_REPLAY_NO_RESULT,
@@ -145,6 +146,11 @@ describe('createKiroReplayCollector', () => {
     expect(result.turns).toBe(2);
     expect(result.messages.map((m) => m.content)).toEqual(['Say hi', 'hi']);
     expect(result.imagesLeftOut).toBe(0);
+  });
+
+  it('maps no turn for a count-only skip, and still counts them all (D24)', () => {
+    const result = run(twoTurns(), KIRO_COUNT_ONLY_SKIP);
+    expect(result).toMatchObject({ messages: [], turns: 2, turnsLeftOut: 0, imagesLeftOut: 0 });
   });
 
   it('leaves out the oldest turns that do not fit the size cap', () => {

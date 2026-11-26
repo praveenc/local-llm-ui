@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises';
 import { createServer } from 'http';
 import type { IncomingMessage, RequestListener, Server } from 'http';
 import type { AddressInfo } from 'net';
@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { KIRO_COUNT_ONLY_SKIP } from '../../src/utils/kiroSessions.ts';
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
 import { createKiroProxy } from '../kiro-proxy.ts';
 import { KiroAgent, KiroBusyError } from '../kiro/agent.ts';
@@ -114,6 +115,7 @@ async function setup() {
   });
   return {
     url,
+    home,
     async log(): Promise<Record<string, unknown>[]> {
       try {
         return (await readFile(logFile, 'utf8'))
@@ -194,7 +196,12 @@ describe('POST /api/kiro/sessions', () => {
     });
     expect(await chat.text()).toContain('[DONE]');
     await post(c.url, '/api/kiro/sessions', {});
-    expect((await c.log()).filter((m) => m.method === 'session/list')).toHaveLength(2);
+    // The full lists only: the chat route reads one folder for Kiro's time (K11)
+    const full = (await c.log()).filter(
+      (m) =>
+        m.method === 'session/list' && (m.params as { cwd?: string } | undefined)?.cwd === undefined
+    );
+    expect(full).toHaveLength(2);
   });
 
   it('answers 405 to a GET and 403 to a cross-site POST', async () => {
@@ -271,6 +278,69 @@ describe('POST /api/kiro/sessions/open', () => {
     ]);
   });
 
+  it('answers a count-only open with no messages and all the turns (D24)', async () => {
+    const c = await setup();
+    const { json } = await post(c.url, '/api/kiro/sessions/open', {
+      sessionId: USED,
+      skipTurns: KIRO_COUNT_ONLY_SKIP,
+    });
+    expect(json.turns).toBe(2);
+    expect(json.messages).toEqual([]);
+    expect(json.turnsLeftOut).toBe(0);
+    expect(typeof json.updatedAt).toBe('string');
+  });
+
+  it("gives the same time as the chat route, and Kiro's time now, not the cached one (K11)", async () => {
+    const c = await setup();
+    const res = await fetch(`${c.url}/api/kiro/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ history: [], seenMessages: 0, model: 'claude-fake-1', prompt: 'hi' }),
+    });
+    const events = (await res.text())
+      .split('\n\n')
+      .map((b) => b.trim())
+      .filter((b) => b.startsWith('data: ') && b !== 'data: [DONE]')
+      .map((b) => JSON.parse(b.slice(6)) as Record<string, unknown>);
+    const id = (events.find((e) => 'session' in e)?.session as { id: string }).id;
+    const chatAt = events.find((e) => 'sessionUpdatedAt' in e)?.sessionUpdatedAt as string;
+    expect(typeof chatAt).toBe('string');
+    await vi.waitFor(async () => {
+      expect((await c.log()).some((m) => m.method === 'session/close')).toBe(true);
+    });
+    // The full list has the session with the same time as the list of its folder
+    const listed = (await post(c.url, '/api/kiro/sessions', {})).json.sessions as {
+      sessionId: string;
+      updatedAt: string;
+    }[];
+    expect(listed.find((s) => s.sessionId === id)?.updatedAt).toBe(chatAt);
+    const opened = await post(c.url, '/api/kiro/sessions/open', { sessionId: id });
+    expect(opened.status).toBe(200);
+    expect(opened.json.updatedAt).toBe(chatAt);
+
+    // A terminal turn: the cached list is now old, the open reports Kiro's time
+    const root = path.join(c.home, '.kiro', 'sessions');
+    const [bucket] = (await readdir(root)).filter((b) => b);
+    const file = path.join(root, bucket, id, 'session.json');
+    const json = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+    const terminal = new Date(Date.parse(chatAt) + 60_000).toISOString();
+    await writeFile(file, JSON.stringify({ ...json, updatedAt: terminal }));
+    const cachedAt = (
+      (await post(c.url, '/api/kiro/sessions', {})).json.sessions as {
+        sessionId: string;
+        updatedAt: string;
+      }[]
+    ).find((s) => s.sessionId === id)?.updatedAt;
+    expect(cachedAt).toBe(chatAt);
+    const again = await post(c.url, '/api/kiro/sessions/open', { sessionId: id });
+    expect(again.json.updatedAt).toBe(terminal);
+    // The time is read with a list of the session's folder; no folder goes to the browser
+    const lists = (await c.log()).filter((m) => m.method === 'session/list');
+    expect(lists.some((m) => typeof (m.params as { cwd?: unknown }).cwd === 'string')).toBe(true);
+    expect(again.text).not.toContain(c.home);
+    expect(again.text).not.toContain('cwd');
+  });
+
   it('refuses a bad id, and an id that is not in the list', async () => {
     const c = await setup();
     const bad = await post(c.url, '/api/kiro/sessions/open', { sessionId: '../etc' });
@@ -314,12 +384,14 @@ describe('createKiroSessionsHandler', () => {
   async function handlerUrl(
     agent: KiroSessionsAgent,
     status: KiroStatus = SIGNED_IN,
-    now?: () => number
+    now?: () => number,
+    stampWaitMs?: number
   ) {
     const handler = createKiroSessionsHandler({
       agent,
       statusReader: { read: async () => status },
       now,
+      stampWaitMs,
     });
     return serve((req, res) => {
       void (req.url === '/open' ? handler.open(req, res) : handler.list(req, res));
@@ -375,6 +447,42 @@ describe('createKiroSessionsHandler', () => {
     const failed = await post(await handlerUrl(failing.agent), '/open', { sessionId: USED });
     expect(failed.status).toBe(500);
     expect(failed.json).toEqual({ error: KIRO_SESSION_OPEN_FAILED });
+  });
+
+  it("reports the time from a list of the session's folder, else the cached one (K11)", async () => {
+    const cached = '2026-11-26T10:00:00.000Z';
+    const exact = '2026-11-26T10:05:00.000Z';
+    const { agent } = stub();
+    agent.listSessions.mockImplementation(async (params?: { cwd?: string }) => ({
+      sessions: [entry(USED, 'Used', params?.cwd ? exact : cached)],
+    }));
+    const url = await handlerUrl(agent);
+    expect((await post(url, '/open', { sessionId: USED })).json.updatedAt).toBe(exact);
+    expect(agent.listSessions).toHaveBeenLastCalledWith({ cwd: '/work/project' });
+
+    // The folder list fails: the cached time
+    const failing = stub();
+    failing.agent.listSessions.mockImplementation(async (params?: { cwd?: string }) => {
+      if (params?.cwd) throw new Error('list failed');
+      return { sessions: [entry(USED, 'Used', cached)] };
+    });
+    const failed = await post(await handlerUrl(failing.agent), '/open', { sessionId: USED });
+    expect(failed.status).toBe(200);
+    expect(failed.json.updatedAt).toBe(cached);
+
+    // The folder list hangs: the cached time after the wait
+    const hanging = stub();
+    hanging.agent.listSessions.mockImplementation((params?: { cwd?: string }) =>
+      params?.cwd
+        ? new Promise(() => undefined)
+        : Promise.resolve({ sessions: [entry(USED, 'Used', cached)] })
+    );
+    const started = Date.now();
+    const slow = await post(await handlerUrl(hanging.agent, SIGNED_IN, undefined, 100), '/open', {
+      sessionId: USED,
+    });
+    expect(slow.json.updatedAt).toBe(cached);
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 
   it('lists again for an id that a cached list does not have yet', async () => {
