@@ -19,6 +19,9 @@ PR numbers link to GitHub.
 - An agent that you make in the terminal now shows in the **Agent** list of a new chat, and in **Default agent**, the next time that you open the list. Before, the list could be up to 1 hour old. The app asks Kiro again at most once a minute ([#94])
 - An agent or option pick in a Kiro chat that you have not sent yet now stays after a reload. A pick of a value that Kiro no longer lists is dropped ([#94])
 - Content Collection is one value for all Kiro chats of a Kiro CLI process. A new Kiro chat no longer sets it back to the value of an older chat, and the **Options** menu says "Applies to all Kiro chats until Kiro CLI stops." under it ([#94])
+- A turn that you make in the terminal now shows in the Kiro chat of the app before your next message. Before each message, and when you open the chat, the app asks Kiro whether the session changed, and adds the new turns first, in Kiro's order. Before, a message that you sent right after a terminal turn could leave that turn out of the chat for good, a reply could be imported twice, and an open showed a terminal turn only after up to 2 minutes, or never for a session outside the window of the **Kiro sessions** menu. The chat says **Checking the Kiro session…** when the check takes more than a moment ([#95])
+- A Kiro chat from before 1.3.0 now counts its turns the first time that you open it, so the turns that you make in the terminal after that show in the chat ([#95])
+- When Kiro refuses a message, for example with "This session is loaded in another program", the chat now keeps its turn count, so the next open still adds the turns that you made in the terminal ([#95])
 
 ## [1.3.0] - 2026-11-26
 
@@ -263,6 +266,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#95]: https://github.com/praveenc/local-llm-ui/pull/95
 [#94]: https://github.com/praveenc/local-llm-ui/pull/94
 [#93]: https://github.com/praveenc/local-llm-ui/pull/93
 [#92]: https://github.com/praveenc/local-llm-ui/pull/92
