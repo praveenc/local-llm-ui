@@ -460,7 +460,7 @@ The context indicator in the chat input shows how full the context window of the
 - At 70%, the indicator changes color and says **Near the limit**.
 - At 90%, it says **Almost full**. A reply can fail when the window is full. Start a new chat.
 
-The indicator shows a percentage only when the last reply came from the selected model. If you select a different model, or no model, the indicator shows a chart icon and no percentage, and the popover says **Context use shows after the next reply from this model.** A different model counts the tokens of the chat in its own way, so the app does not guess.
+The indicator shows a percentage only when the last reply came from the selected model. If you select a different model, the indicator shows a chart icon and no percentage, and the popover says **Context use shows after the next reply from this model.** A different model counts the tokens of the chat in its own way, so the app does not guess. If no model is selected, the popover says **Select a model to see the context use.**
 
 For a Kiro chat, the value is the percentage that Kiro reports. Kiro makes the session smaller by itself when it gets full. The popover also shows the plan and the credits of your Kiro account.
 
@@ -481,7 +481,7 @@ The totals come from the replies that the app saves, so they are the same after 
 - With tools on, one reply can have several model calls. The tokens and the cost include all of them.
 - Local models (Ollama and LM Studio) are free. When all the replies that count tokens come from local models, the popover shows **Free**.
 - Kiro counts credits, not tokens. Under a Kiro reply the app shows the credits and the time, for example `0.05 credits · 2.9 s`. The context popover shows the credits of the chat and the credits of your Kiro account.
-- If the app has no price for a model, it shows no cost under the reply. If no reply in the chat has a price, the popover shows **No price data**. If some replies have no price, the popover shows the sum of the other replies and, for example, **2 replies have no price data**.
+- If the app has no price for a model, it shows no cost under the reply. If no reply in the chat has a price, the popover shows **No price data**. If some replies have no price, the popover shows the sum of the other replies and, for example, **2 replies have no price data**. If the other replies are all from local models, the popover shows **No price data**, not $0.00.
 - Claude prices come from the Anthropic pricing page. For the prices and how the app applies them, see [docs/ANTHROPIC_PRICING.md](docs/ANTHROPIC_PRICING.md). The cost is an estimate. Your provider's bill is the real cost.
 
 ### Find a chat
