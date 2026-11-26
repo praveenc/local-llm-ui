@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Conversation, Message } from '../../db/types';
+import { trackKiroSync } from '../../services/kiroSyncs';
 import type { ToolCallPart } from '../../types/ai-messages';
 import type { ChatModel } from '../useBedrockChat';
 import { useBedrockChat } from '../useBedrockChat';
@@ -141,14 +142,17 @@ describe('useBedrockChat with Kiro', () => {
     // No files, web search, MCP servers, max tokens, or tool steps for Kiro
     expect(JSON.stringify(body)).not.toMatch(/files|enableWebSearch|mcpServers|max_tokens|maxTool/);
 
+    // A new session has no turns yet (K7)
     expect(mutations.setKiroSession).toHaveBeenNthCalledWith(1, 'conv-1', {
       sessionId: SESSION,
       seenMessages: 0,
+      turns: 0,
     });
-    // After the reply: Kiro has seen the new message and its reply
+    // After the reply: Kiro has seen the new message and its reply, one turn
     expect(mutations.setKiroSession).toHaveBeenLastCalledWith('conv-1', {
       sessionId: SESSION,
       seenMessages: 2,
+      turns: 1,
     });
 
     const reply = mutations.addMessage.mock.calls.find(([m]) => m.role === 'assistant')?.[0];
@@ -223,10 +227,96 @@ describe('useBedrockChat with Kiro', () => {
     expect(mutations.setKiroSession).toHaveBeenNthCalledWith(1, 'conv-1', {
       sessionId: fresh,
       seenMessages: 0,
+      turns: 0,
     });
     expect(mutations.setKiroSession).toHaveBeenLastCalledWith('conv-1', {
       sessionId: fresh,
       seenMessages: 4,
+      turns: 1,
+    });
+  });
+
+  it("keeps an imported session's turn count and sync time, and adds the new turn", async () => {
+    db.conversation = {
+      id: 'conv-1',
+      kiro: { sessionId: SESSION, seenMessages: 2, turns: 3, updatedAt: '2026-11-25T10:00:00Z' },
+    } as Conversation;
+    db.messages = [dbMessage(1, 'user', 'a'), dbMessage(2, 'assistant', 'b')];
+    mockKiroFetch([{ session: { id: SESSION, created: false } }, { content: 'ok' }, '[DONE]']);
+    const { result } = renderHook(() => useBedrockChat(options({ conversationId: 'conv-1' })));
+
+    await act(async () => {
+      await result.current.sendMessage('c');
+    });
+
+    expect(mutations.setKiroSession).toHaveBeenNthCalledWith(1, 'conv-1', {
+      sessionId: SESSION,
+      seenMessages: 2,
+      turns: 3,
+      updatedAt: '2026-11-25T10:00:00Z',
+    });
+    expect(mutations.setKiroSession).toHaveBeenLastCalledWith('conv-1', {
+      sessionId: SESSION,
+      seenMessages: 4,
+      turns: 4,
+      updatedAt: '2026-11-25T10:00:00Z',
+    });
+  });
+
+  it('waits for a running sync of the chat, then sends with its turns and turn count', async () => {
+    db.conversation = {
+      id: 'conv-1',
+      kiro: { sessionId: SESSION, seenMessages: 2, turns: 3, updatedAt: '2026-11-25T10:00:00Z' },
+    } as Conversation;
+    db.messages = [dbMessage(1, 'user', 'a'), dbMessage(2, 'assistant', 'b')];
+    let endSync: () => void = () => {};
+    void trackKiroSync(
+      'conv-1',
+      new Promise<void>((resolve) => {
+        endSync = resolve;
+      })
+    );
+    const { fetchMock } = mockKiroFetch([
+      { session: { id: SESSION, created: false } },
+      { content: 'ok' },
+      '[DONE]',
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options({ conversationId: 'conv-1' })));
+
+    let sent: Promise<void> = Promise.resolve();
+    act(() => {
+      sent = result.current.sendMessage('c');
+    });
+    await waitFor(() => expect(result.current.status).toBe('submitted'));
+    expect(result.current.streamStatus).toBe('Adding the new Kiro turns…');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mutations.addMessage).not.toHaveBeenCalled();
+
+    // The sync adds a terminal turn
+    db.conversation = {
+      id: 'conv-1',
+      kiro: { sessionId: SESSION, seenMessages: 4, turns: 4, updatedAt: '2026-11-25T11:00:00Z' },
+    } as Conversation;
+    db.messages = [...db.messages, dbMessage(3, 'user', 't'), dbMessage(4, 'assistant', 'u')];
+    await act(async () => {
+      endSync();
+      await sent;
+    });
+
+    const { body } = requestOf(fetchMock);
+    expect(body.seenMessages).toBe(4);
+    expect(body.history).toHaveLength(4);
+    expect(mutations.setKiroSession).toHaveBeenNthCalledWith(1, 'conv-1', {
+      sessionId: SESSION,
+      seenMessages: 4,
+      turns: 4,
+      updatedAt: '2026-11-25T11:00:00Z',
+    });
+    expect(mutations.setKiroSession).toHaveBeenLastCalledWith('conv-1', {
+      sessionId: SESSION,
+      seenMessages: 6,
+      turns: 5,
+      updatedAt: '2026-11-25T11:00:00Z',
     });
   });
 
@@ -288,9 +378,11 @@ describe('useBedrockChat with Kiro', () => {
       await sending;
     });
 
+    // Kiro started the turn, so it counts
     expect(mutations.setKiroSession).toHaveBeenLastCalledWith('conv-1', {
       sessionId: SESSION,
       seenMessages: 1,
+      turns: 1,
     });
     // The partial reply is not stored
     expect(mutations.addMessage.mock.calls.some(([m]) => m.role === 'assistant')).toBe(false);
@@ -456,6 +548,7 @@ describe('useBedrockChat with Kiro', () => {
       expect(mutations.setKiroSession).toHaveBeenCalledWith('conv-1', {
         sessionId: SESSION,
         seenMessages: 0,
+        turns: 0,
       })
     );
     expect(result.current.streamStatus).toBeNull();

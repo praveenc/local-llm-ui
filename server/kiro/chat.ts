@@ -48,6 +48,7 @@ import { kiroPermissionResult, kiroQuestion } from './approvals.ts';
 import { defaultKiroEnvironment } from './binary.ts';
 import type { KiroEnvironment } from './binary.ts';
 import { applyOptions } from './chat-options.ts';
+import { kiroLeaseErrorText } from './lease.ts';
 import type { KiroModelList } from './models.ts';
 import { createKiroReplyMeta, kiroToolName } from './reply-meta.ts';
 import { findKiroSessionCwd } from './session-files.ts';
@@ -67,6 +68,7 @@ export type KiroChatAgent = Pick<
   | 'sessionInfo'
   | 'prompt'
   | 'deleteSession'
+  | 'closeSession'
   | 'isBusy'
   | 'waitForIdle'
   | 'cancelWaitMs'
@@ -110,6 +112,9 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 
 /** The clear text for an error after the stream started */
 function errorText(error: unknown): string {
+  // Another program holds the session: Kiro's own text says which one (K7)
+  const lease = kiroLeaseErrorText(error);
+  if (lease) return lease;
   if (error instanceof KiroSignedOutError) {
     return 'Kiro is not signed in. Sign in in Preferences → Providers.';
   }
@@ -136,6 +141,8 @@ const aborted = (signal: AbortSignal) =>
 
 export function createKiroChatHandler(options: KiroChatHandlerOptions) {
   const { agent, statusReader, models } = options;
+  /** Requests that use each session now: the last one closes it (K7) */
+  const inUse = new Map<string, number>();
 
   /** Opens the chat's session, or a new one. Returns the session and whether it is new. */
   async function openSession(request: KiroChatRequest) {
@@ -196,12 +203,20 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
 
     const started = Date.now();
     let stopReason = 'error';
+    let logged = false;
+    const logEnd = () => {
+      if (logged) return;
+      logged = true;
+      console.log(`[kiro] chat reply ended: ${stopReason} (${Date.now() - started} ms)`);
+    };
     const controller = new AbortController();
     // A session that this request made, until session/prompt is sent: deleted when the request
     // ends before that, so no empty session stays on disk
     let unused: string | undefined;
     // The ping timers of the open questions
     const pings = new Set<NodeJS.Timeout>();
+    // The session that this request counts in `inUse` (K7)
+    let using: string | undefined;
     try {
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/event-stream');
@@ -221,6 +236,8 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
       const session = await openSession(request);
       const { id } = session;
       if (session.created) unused = id;
+      using = id;
+      inUse.set(id, (inUse.get(id) ?? 0) + 1);
       models.update(agent.configOptions(id));
       const unseen = unseenMessages(request.history, request.seenMessages, session.created);
 
@@ -316,6 +333,15 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
         res.write('data: [DONE]\n\n');
         res.end();
       }
+      logEnd();
+      // Every question of this reply ended when the prompt ended (K6): stop its pings now
+      for (const ping of pings) clearInterval(ping);
+      pings.clear();
+      // Release the session so that the terminal can resume it (K7), unless another request
+      // waits for it. After the reply ends, so a slow close does not keep it streaming. Only
+      // after a prompt that ended here: after Kiro's lease error the session belongs to the
+      // other program.
+      if (inUse.get(id) === 1) await agent.closeSession(id).catch(() => undefined);
     } catch (error) {
       // The error's class and message only: never the request
       console.warn(
@@ -327,6 +353,11 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
     } finally {
       for (const ping of pings) clearInterval(ping);
       pings.clear();
+      if (using) {
+        const left = (inUse.get(using) ?? 1) - 1;
+        if (left > 0) inUse.set(using, left);
+        else inUse.delete(using);
+      }
       if (!res.writableEnded && !res.destroyed) res.end();
       if (unused) {
         try {
@@ -335,7 +366,7 @@ export function createKiroChatHandler(options: KiroChatHandlerOptions) {
           // The session stays on disk; no conversation refers to it
         }
       }
-      console.log(`[kiro] chat reply ended: ${stopReason} (${Date.now() - started} ms)`);
+      logEnd();
     }
   };
 }

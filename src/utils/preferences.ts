@@ -36,6 +36,8 @@ export interface UserPreferences extends WebSearchPreferences {
   thinkingEffortByProvider?: Partial<Record<Provider, ThinkingEffort>>;
   /** The Kiro sign-in method that you used last. The Kiro row starts with it. */
   kiroSignIn?: KiroSignInPreference;
+  /** Show your Kiro sessions in the sidebar (D11). Absent: the Kiro row has not asked yet. */
+  showKiroSessions?: boolean;
 }
 
 export interface KiroSignInPreference {

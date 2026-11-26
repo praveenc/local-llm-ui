@@ -23,11 +23,16 @@ import type {
 import { recordProcessGroups, spawnAgentProcess, stopProcessTree } from './process.ts';
 import type { AgentChild } from './process.ts';
 import type {
+  CloseSessionParams,
   ConfigOption,
   ContentBlock,
   InitializeParams,
   InitializeResult,
+  ListSessionsParams,
+  ListSessionsResult,
+  LoadSessionParams,
   LoadSessionResult,
+  Loose,
   NewSessionResult,
   PermissionOutcome,
   PermissionRequest,
@@ -44,8 +49,13 @@ export interface AgentTimeouts {
   loadSession: number;
   configOption: number;
   deleteSession: number;
+  listSessions: number;
+  closeSession: number;
   cancelWait: number;
 }
+
+/** A notification from the agent other than session/update, from any of its processes */
+export type AgentNotificationListener = (method: string, params: unknown) => void;
 
 export interface AcpAgentOptions {
   idleMs?: number;
@@ -71,6 +81,8 @@ const DEFAULT_TIMEOUTS: AgentTimeouts = {
   loadSession: 120_000,
   configOption: 30_000,
   deleteSession: 30_000,
+  listSessions: 30_000,
+  closeSession: 30_000,
   cancelWait: 30_000,
 };
 
@@ -100,6 +112,8 @@ interface Generation<TInfo> {
   conn: AcpConnection;
   sessions: Map<string, Session>;
   info: Map<string, TInfo>;
+  /** `agentCapabilities.sessionCapabilities` of the initialize result */
+  sessionCapabilities?: Loose;
   /** The app stops this process; a close is then expected */
   stopRequested: boolean;
   stopping?: Promise<void>;
@@ -113,6 +127,14 @@ interface ActivePrompt<TInfo> {
   cancelled: boolean;
   cancelTimedOut: boolean;
   controller: AbortController;
+  done: Promise<void>;
+}
+
+/** A session/load with replay that runs now */
+interface Replay<TInfo> {
+  /** The process that replays; cleared when the load answers */
+  gen: Generation<TInfo> | undefined;
+  onUpdate: (update: SessionUpdate) => void;
   done: Promise<void>;
 }
 
@@ -130,6 +152,8 @@ export class AcpAgent<TInfo extends object> {
   private starting: Promise<Generation<TInfo>> | undefined;
   private readonly prompts = new Map<string, ActivePrompt<TInfo>>();
   private readonly loading = new Map<string, Promise<void>>();
+  private readonly replays = new Map<string, Replay<TInfo>>();
+  private readonly notificationListeners = new Set<AgentNotificationListener>();
   /** Options that the user set, applied again after a session/load */
   private readonly desired = new Map<string, Map<string, string>>();
   private pendingRequests = 0;
@@ -282,6 +306,8 @@ export class AcpAgent<TInfo extends object> {
       }
       this.desired.set(sessionId, wanted);
     }
+    // A replay of this session ends first: it closes the session at its end
+    await this.replays.get(sessionId)?.done;
     const held = this.gen?.sessions.get(sessionId)?.held;
     if (held) await held;
     if (this.isLive(sessionId)) {
@@ -409,6 +435,116 @@ export class AcpAgent<TInfo extends object> {
     );
     active.cancelTimedOut = true;
     await this.stopGeneration(active.gen);
+  }
+
+  /**
+   * session/list: the agent's sessions, as it returns them. Throws the 'session' error when the
+   * agent does not list sessions.
+   */
+  async listSessions(params: ListSessionsParams = {}): Promise<ListSessionsResult> {
+    const gen = await this.start();
+    if (!gen.sessionCapabilities?.list) {
+      throw this.harness.createError('session', `${this.harness.names.cli} cannot list sessions`);
+    }
+    const result = await this.call<ListSessionsResult | null>(
+      gen,
+      'session/list',
+      params,
+      this.timeouts.listSessions
+    );
+    return { ...result, sessions: Array.isArray(result?.sessions) ? result.sessions : [] };
+  }
+
+  /**
+   * Reads a session without opening it for prompts: session/load with no `_meta`, so the agent
+   * replays the session as session/update notifications before it answers. Each update goes to
+   * `onUpdate` as it comes (not kept). Updates that come in the same read as the answer can
+   * also reach it: the harness tells replayed updates apart by its own fields. Then
+   * session/close. The session is not live afterwards.
+   *
+   * `cwd` must come from the agent's own session list, never from the browser. Throws the
+   * 'busy' error while a prompt, a load, or another replay runs in the session.
+   */
+  async replaySession(
+    sessionId: string,
+    cwd: string,
+    onUpdate: (update: SessionUpdate) => void
+  ): Promise<LoadSessionResult> {
+    if (this.prompts.has(sessionId) || this.loading.has(sessionId) || this.replays.has(sessionId)) {
+      throw this.harness.createError(
+        'busy',
+        `${this.harness.names.agent} is still answering in this chat`
+      );
+    }
+    let finish!: () => void;
+    const replay: Replay<TInfo> = {
+      gen: undefined,
+      onUpdate,
+      done: new Promise<void>((resolve) => (finish = resolve)),
+    };
+    this.replays.set(sessionId, replay);
+    try {
+      // Open on this process for prompts: close it first, so that the load replays it
+      if (this.gen?.sessions.has(sessionId)) await this.closeSession(sessionId);
+      const gen = await this.start();
+      replay.gen = gen;
+      const params: LoadSessionParams = { sessionId, cwd, mcpServers: [] };
+      let result: LoadSessionResult | null;
+      try {
+        result = await this.call<LoadSessionResult | null>(
+          gen,
+          'session/load',
+          params,
+          this.timeouts.loadSession
+        );
+      } finally {
+        replay.gen = undefined;
+        if (!gen.sessions.has(sessionId)) gen.info.delete(sessionId);
+      }
+      // Only the session that this call loaded
+      if (gen.sessionCapabilities?.close) {
+        try {
+          await this.call(gen, 'session/close', { sessionId }, this.timeouts.closeSession);
+        } catch (error) {
+          console.warn(
+            `[${this.harness.names.log}] could not close a replayed session: ${error instanceof Error ? error.message : 'unknown error'}`
+          );
+        }
+      }
+      return result ?? {};
+    } finally {
+      this.replays.delete(sessionId);
+      finish();
+    }
+  }
+
+  /**
+   * session/close of a session that is open on the current process: the agent keeps its files
+   * and lets other programs use it. The session is then not live; the next ensureSession loads
+   * it again with the same wanted options. A no-op when the agent cannot close sessions or the
+   * session is not open here. Throws the 'busy' error while a prompt runs in it.
+   */
+  async closeSession(sessionId: string): Promise<void> {
+    if (this.prompts.has(sessionId)) {
+      throw this.harness.createError(
+        'busy',
+        `${this.harness.names.agent} is still answering in this chat`
+      );
+    }
+    const gen = this.gen;
+    if (!gen?.sessionCapabilities?.close || !gen.sessions.has(sessionId)) return;
+    if (this.loading.has(sessionId)) return;
+    // Not live from now on: a load that starts meanwhile is sent after the close
+    gen.sessions.delete(sessionId);
+    gen.info.delete(sessionId);
+    const params: CloseSessionParams = { sessionId };
+    await this.call(gen, 'session/close', params, this.timeouts.closeSession);
+  }
+
+  /** Listens to the agent's notifications other than session/update. Returns the unsubscribe. */
+  onAgentNotification(listener: AgentNotificationListener): () => void {
+    this.notificationListeners.add(listener);
+    return () => void this.notificationListeners.delete(listener);
   }
 
   async deleteSession(sessionId: string): Promise<void> {
@@ -539,6 +675,7 @@ export class AcpAgent<TInfo extends object> {
       throw this.harness.createError('session', `This ${cli} cannot load sessions`);
     }
     if (conn.closed) throw this.harness.createError('crashed', `${cli} stopped while it started`);
+    gen.sessionCapabilities = result.agentCapabilities.sessionCapabilities;
     console.log(`[${log}] agent started pid ${proc.pid}`);
     this.gen = gen;
     this.scheduleIdle();
@@ -753,10 +890,26 @@ export class AcpAgent<TInfo extends object> {
   // --- from the agent ---
 
   private onNotification(gen: Generation<TInfo>, method: string, params: unknown): void {
-    if (method !== 'session/update') return;
+    if (method !== 'session/update') {
+      for (const listener of this.notificationListeners) {
+        try {
+          listener(method, params);
+        } catch (error) {
+          console.warn(
+            `[${this.harness.names.log}] notification listener failed: ${error instanceof Error ? error.message : 'unknown error'}`
+          );
+        }
+      }
+      return;
+    }
     const { sessionId, update } = (params ?? {}) as Partial<SessionNotification>;
     if (typeof sessionId !== 'string' || !update || typeof update.sessionUpdate !== 'string')
       return;
+    const replay = this.replays.get(sessionId);
+    if (replay && replay.gen === gen) {
+      replay.onUpdate(update);
+      return;
+    }
     if (update.sessionUpdate === 'config_option_update') {
       const session = gen.sessions.get(sessionId);
       const options = (update as { configOptions?: unknown }).configOptions;

@@ -41,4 +41,12 @@ db.version(2).stores({
   savedPrompts: 'id, name, category, createdAt',
 });
 
+// Version 3: index the Kiro session of a conversation, so an imported Kiro session (K7) finds
+// its conversation. No data changes: chats without `kiro` are not in the index.
+db.version(3).stores({
+  conversations: 'id, createdAt, updatedAt, status, *providers, *models, kiro.sessionId',
+  messages: 'id, conversationId, [conversationId+sequence], createdAt',
+  savedPrompts: 'id, name, category, createdAt',
+});
+
 export { db };
