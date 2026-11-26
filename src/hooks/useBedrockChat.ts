@@ -7,13 +7,14 @@
  */
 import { toast } from 'sonner';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { KiroConversationSession, MessageFeedback, Provider } from '../db/types';
 import { mantleService } from '../services';
 import { conversationService } from '../services/conversationService';
 import { kiroService } from '../services/kiro';
 import { runningKiroSync } from '../services/kiroSyncs';
+import { notifyReply } from '../services/replyNotices';
 import type { KiroModelMeta } from '../services/types';
 import type { MessagePart, ToolCallPart, UIMessage } from '../types/ai-messages';
 import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
@@ -32,6 +33,7 @@ import {
 } from '../utils/kiroPermissions';
 import { getMediaTypeFromFormat, lookupFormat } from '../utils/mediaTypes';
 import { loadPreferences } from '../utils/preferences';
+import { isRunningStatus, replyStore } from '../utils/replyStore';
 import {
   parseSessionOptionsSnapshot,
   sessionOptionsToSend,
@@ -50,6 +52,7 @@ import {
   withQuestionEnded,
   withQuestionsEnded,
 } from './kiroApprovalState';
+import { useReply } from './useReplies';
 import {
   NEW_CHAT_KEY,
   clearPendingSessionOptions,
@@ -116,16 +119,26 @@ export function useBedrockChat({
   enableWebSearch = false,
   onConversationChange,
 }: UseBedrockChatOptions): UseBedrockChatReturn {
+  // The open chat as the database has it. A reply of the open chat shows from the reply store.
   const [messages, setMessages] = useState<UIMessage[]>([]);
-  const [status, setStatus] = useState<ChatStatus>('idle');
-  const [error, setError] = useState<string | null>(null);
   const [internalConversationId, setInternalConversationId] = useState<string | null>(null);
-  const [wasInterrupted, setWasInterrupted] = useState(false);
-  const [streamStatus, setStreamStatus] = useState<string | null>(null);
-
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   const activeConversationId = externalConversationId ?? internalConversationId;
+
+  // The reply of the open chat: running, or ended and not yet dismissed. A reply of another chat
+  // keeps running in the store and never shows here.
+  const reply = useReply(activeConversationId);
+  const shownMessages = reply?.messages ?? messages;
+  const status: ChatStatus = reply?.status ?? 'idle';
+
+  // The toasts need the chat on screen. Leaving a chat drops its ended reply: the chat then
+  // reads the database when it opens again.
+  useEffect(() => {
+    replyStore.setOnScreen(activeConversationId);
+    return () => {
+      if (activeConversationId) replyStore.dismiss(activeConversationId);
+    };
+  }, [activeConversationId]);
 
   // Load conversation from DB
   const { messages: dbMessages } = useConversation(activeConversationId);
@@ -151,21 +164,14 @@ export function useBedrockChat({
     }
   }
 
-  // Stop generation
+  // Stop the reply of the open chat only
   const stopGeneration = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-      setWasInterrupted(true);
-      setStatus('idle');
-    }
-  }, []);
+    if (activeConversationId) void replyStore.stop(activeConversationId);
+  }, [activeConversationId]);
 
-  // Clear messages
+  // New chat: the reply of the chat that was open keeps running in its own chat
   const clearMessages = useCallback(() => {
     setMessages([]);
-    setError(null);
-    setWasInterrupted(false);
     setInternalConversationId(null);
     onConversationChange?.(null);
   }, [onConversationChange]);
@@ -178,10 +184,7 @@ export function useBedrockChat({
       // Used by forkAndSend: send into a conversation that state does not show yet
       target?: { conversationId: string; history: UIMessage[] }
     ) => {
-      if (!content.trim() || !selectedModel || status === 'streaming') return;
-
-      // Reset interrupted state when starting a new message
-      setWasInterrupted(false);
+      if (!content.trim() || !selectedModel || isRunningStatus(status)) return;
 
       const { provider, id: modelId, name: modelName } = selectedModel;
       const isKiro = provider === 'kiro';
@@ -198,6 +201,38 @@ export function useBedrockChat({
         setInternalConversationId(currentConversationId);
         onConversationChange?.(currentConversationId);
       }
+      // One reply per chat
+      if (replyStore.isRunning(currentConversationId)) return;
+      // A new chat or a fork is on screen now, also before the view renders it
+      if (target || !activeConversationId) replyStore.setOnScreen(currentConversationId);
+      // The messages before this one
+      const baseMessages = target?.history ?? shownMessages;
+
+      // Kiro keeps its own history: what the session has seen, and the chat's earlier messages (D12)
+      let kiroRequest: KiroChatRequest | undefined;
+      // The chat's Kiro record before this message, for the turn count (K7)
+      let storedKiro: KiroConversationSession | undefined;
+      // The session of this reply, from its first event
+      let kiroSession: KiroConversationSession | undefined;
+      // Set by the stream loop so the abort handler can flush text received so far
+      let flushOnAbort: (() => void) | null = null;
+
+      // Create user message
+      const userMessage = createUIMessage('user', content);
+      // Kiro takes no files in this version
+      if (!isKiro && files && files.length > 0) {
+        for (const file of files) {
+          userMessage.parts.push({
+            type: 'file',
+            filename: file.name,
+            mediaType: getMediaTypeFromFormat(file.format),
+            data: file.bytes,
+          } as MessagePart);
+        }
+      }
+
+      // The chat shows the new message at once; the reply writes only to its own chat's entry
+      const run = replyStore.start(currentConversationId, [...baseMessages, userMessage]);
 
       // Send (and record) the thinking effort only when the user chose one the model offers.
       // Max is a Kiro level; other providers get XHigh for it.
@@ -217,98 +252,81 @@ export function useBedrockChat({
         ...(effort && { thinkingEffort: effort }),
       };
 
-      // Kiro keeps its own history. Read what the session has seen, and the chat's earlier
-      // messages, from the database now: the chat may be new, or a fork (D12).
-      let kiroRequest: KiroChatRequest | undefined;
-      // The chat's Kiro record before this message, for the turn count (K7)
-      let storedKiro: KiroConversationSession | undefined;
-      if (isKiro) {
-        // Opening the chat may still add the turns that Kiro made in the terminal: wait, so that
-        // the history and the turn count below include them (K7)
-        const sync = runningKiroSync(currentConversationId);
-        if (sync) {
-          setStatus('submitted');
-          setStreamStatus('Adding the new Kiro turns…');
-          await sync;
-        }
-        const [stored, storedMessages] = await Promise.all([
-          getConversation(currentConversationId),
-          getMessages(currentConversationId),
-        ]);
-        storedKiro = stored?.kiro;
-        const history: KiroHistoryMessage[] = toUIMessages(storedMessages)
-          .filter((m): m is UIMessage & { role: 'user' | 'assistant' } => m.role !== 'system')
-          .map((m) => ({ role: m.role, content: getTextContent(m) }))
-          .filter((m) => m.content.trim().length > 0);
-        const seenMessages = stored?.kiro?.seenMessages ?? 0;
-        // The same session gets only the user's new picks; a new one also the stored values (K9)
-        const sessionOptions = sessionOptionsToSend({
-          stored: stored?.kiro?.options,
-          pending: pendingSessionOptions(currentConversationId),
-          newSession: !stored?.kiro?.sessionId || kiroSessionIsStale({ history, seenMessages }),
-        });
-        kiroRequest = {
-          ...(stored?.kiro?.sessionId && { sessionId: stored.kiro.sessionId }),
-          seenMessages,
-          history,
-          prompt: content,
-          model: modelId,
-          ...(effort && { thinkingEffort: effort }),
-          ...(sessionOptions && { sessionOptions }),
-        };
-      }
-      // The session of this reply, from its first event
-      let kiroSession: KiroConversationSession | undefined;
-
-      // Create user message
-      const userMessage = createUIMessage('user', content);
-      // Kiro takes no files in this version
-      if (!isKiro && files && files.length > 0) {
-        for (const file of files) {
-          userMessage.parts.push({
-            type: 'file',
-            filename: file.name,
-            mediaType: getMediaTypeFromFormat(file.format),
-            data: file.bytes,
-          } as MessagePart);
-        }
-      }
-
-      setMessages((prev) => [...prev, userMessage]);
-      setStatus('streaming');
-      setError(null);
-      setStreamStatus(null);
-
-      // Persist user message to DB
-      const userSequence = await getNextSequence(currentConversationId);
-      await addMessage({
-        conversationId: currentConversationId,
-        role: 'user',
-        content,
-        sequence: userSequence,
-        createdAt: new Date(),
-        provider,
-        modelId,
-        modelName,
-        parameters,
-      });
-
-      // Create abort controller
-      abortControllerRef.current = new AbortController();
-
-      // Create streaming assistant message
-      const assistantMessage: UIMessage = {
-        id: `msg-${Date.now()}-assistant`,
-        role: 'assistant',
-        parts: [],
-        createdAt: new Date(),
-        model: { provider, id: modelId, name: modelName },
-      };
-
-      // Set by the stream loop so the abort handler can flush text received so far
-      let flushOnAbort: (() => void) | null = null;
-
       try {
+        // Kiro: read what the session has seen, and the chat's earlier messages, from the database
+        // now: the chat may be new, or a fork (D12).
+        if (isKiro) {
+          // Opening the chat may still add the turns that Kiro made in the terminal: wait, so that
+          // the history and the turn count below include them (K7)
+          const sync = runningKiroSync(currentConversationId);
+          if (sync) {
+            run.update({ streamStatus: 'Adding the new Kiro turns…' });
+            await sync;
+          }
+          const [stored, storedMessages] = await Promise.all([
+            getConversation(currentConversationId),
+            getMessages(currentConversationId),
+          ]);
+          // The sync added turns to the database: the chat shows them before the new message
+          if (sync) run.setMessages(() => [...toUIMessages(storedMessages), userMessage]);
+          storedKiro = stored?.kiro;
+          const history: KiroHistoryMessage[] = toUIMessages(storedMessages)
+            .filter((m): m is UIMessage & { role: 'user' | 'assistant' } => m.role !== 'system')
+            .map((m) => ({ role: m.role, content: getTextContent(m) }))
+            .filter((m) => m.content.trim().length > 0);
+          const seenMessages = stored?.kiro?.seenMessages ?? 0;
+          // The same session gets only the user's new picks; a new one also the stored values (K9)
+          const sessionOptions = sessionOptionsToSend({
+            stored: stored?.kiro?.options,
+            pending: pendingSessionOptions(currentConversationId),
+            newSession: !stored?.kiro?.sessionId || kiroSessionIsStale({ history, seenMessages }),
+          });
+          kiroRequest = {
+            ...(stored?.kiro?.sessionId && { sessionId: stored.kiro.sessionId }),
+            seenMessages,
+            history,
+            prompt: content,
+            model: modelId,
+            ...(effort && { thinkingEffort: effort }),
+            ...(sessionOptions && { sessionOptions }),
+          };
+        }
+      } catch (err) {
+        // The chat's Kiro record could not be read: the run ends before the request
+        console.error('Bedrock chat error:', err);
+        run.end('failed', (err as Error).message || 'Failed to send message');
+        run.finish();
+        void notifyReply(currentConversationId, 'failed');
+        return;
+      }
+
+      // Every path below ends the run: done, failed, or stopped
+      try {
+        run.update({ status: 'streaming', streamStatus: null });
+
+        // Persist user message to DB
+        const userSequence = await getNextSequence(currentConversationId);
+        await addMessage({
+          conversationId: currentConversationId,
+          role: 'user',
+          content,
+          sequence: userSequence,
+          createdAt: new Date(),
+          provider,
+          modelId,
+          modelName,
+          parameters,
+        });
+
+        // Create streaming assistant message
+        const assistantMessage: UIMessage = {
+          id: `msg-${Date.now()}-assistant`,
+          role: 'assistant',
+          parts: [],
+          createdAt: new Date(),
+          model: { provider, id: modelId, name: modelName },
+        };
+
         // Route to appropriate endpoint based on provider
         let endpoint: string;
         const headers: Record<string, string> = {
@@ -322,7 +340,7 @@ export function useBedrockChat({
           requestBody = { ...kiroRequest };
         } else {
           // Build request - filter out messages with empty content
-          const chatMessages = [...(target?.history ?? messages), userMessage]
+          const chatMessages = [...baseMessages, userMessage]
             .filter((m) => {
               const textContent = getTextContent(m);
               return textContent.trim().length > 0;
@@ -418,7 +436,7 @@ export function useBedrockChat({
           method: 'POST',
           headers,
           body: JSON.stringify(requestBody),
-          signal: abortControllerRef.current.signal,
+          signal: run.signal,
         });
 
         if (!response.ok) {
@@ -475,7 +493,7 @@ export function useBedrockChat({
         // Push the assistant message's current parts into state (replaces the streaming one)
         const flushAssistantMessage = (change?: (parts: MessagePart[]) => MessagePart[]) => {
           assistantMessage.parts = change ? change(buildParts()) : buildParts();
-          setMessages((prev) => {
+          run.setMessages((prev) => {
             const newMessages = [...prev];
             const lastIdx = newMessages.length - 1;
             if (lastIdx >= 0 && newMessages[lastIdx].role === 'assistant') {
@@ -559,7 +577,7 @@ export function useBedrockChat({
                 };
                 await setKiroSession(currentConversationId, kiroSession);
                 // The server sends it right before Kiro gets the message: "Starting Kiro…" is over
-                setStreamStatus(null);
+                run.update({ streamStatus: null });
               }
               // Kiro: the session's agent and options, after the session event and on each change.
               // The service keeps the lists for the controls; the chat's record keeps the values.
@@ -578,7 +596,7 @@ export function useBedrockChat({
               }
               // Progress before the first output; the first output clears it
               if (typeof parsed.status === 'string') {
-                setStreamStatus(parsed.status || null);
+                run.update({ streamStatus: parsed.status || null });
               } else if (
                 parsed.content ||
                 parsed.reasoning ||
@@ -586,7 +604,7 @@ export function useBedrockChat({
                 parsed.toolResult ||
                 parsed.permission
               ) {
-                setStreamStatus(null);
+                run.update({ streamStatus: null });
               }
 
               // Handle explicit error payloads in stream
@@ -634,6 +652,9 @@ export function useBedrockChat({
                 });
                 openQuestions.set(question.requestId, id);
                 showAssistantMessage();
+                // The sidebar says "Waiting for your answer"; off screen, a toast says it too
+                run.update({ waiting: true });
+                void notifyReply(currentConversationId, 'waiting');
               }
               const answer = kiroRequest
                 ? parseKiroPermissionResult(parsed.permissionResult)
@@ -651,6 +672,7 @@ export function useBedrockChat({
                   ),
                 });
                 showAssistantMessage();
+                run.update({ waiting: openQuestions.size > 0 });
               }
 
               // Handle tool result
@@ -718,7 +740,7 @@ export function useBedrockChat({
         if (usageData) {
           const usage = usageData;
           assistantMessage.usage = usage;
-          setMessages((prev) =>
+          run.setMessages((prev) =>
             prev.map((m) => (m.id === assistantMessage.id ? { ...m, usage } : m))
           );
         }
@@ -744,7 +766,7 @@ export function useBedrockChat({
           ...(assistantMessage.reasoningMs && { reasoningMs: assistantMessage.reasoningMs }),
         });
         // Give the shown message the stored id, so feedback on it finds the DB row
-        setMessages((prev) =>
+        run.setMessages((prev) =>
           prev.map((m) => (m.id === assistantMessage.id ? { ...m, id: saved.id } : m))
         );
 
@@ -758,13 +780,17 @@ export function useBedrockChat({
           });
         }
 
-        setStatus('idle');
+        // A stopped run has already ended: no toast for it
+        if (run.isActive()) {
+          run.end('done');
+          void notifyReply(currentConversationId, 'done');
+        }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
           console.log('Generation stopped by user');
-          // Keep the text received before the abort
+          // Keep the text received before the abort (the store keeps it until finish)
           flushOnAbort?.();
-          setStatus('idle');
+          run.end('stopped');
           // The server sends the session event right before Kiro gets the message, so with it
           // Kiro got the new message (the app does not store the partial reply). Without it,
           // Kiro never got the message and the chat's Kiro record stays as it was.
@@ -783,18 +809,20 @@ export function useBedrockChat({
         console.error('Bedrock chat error:', err);
         // Keep whatever streamed before the error
         flushOnAbort?.();
-        setError((err as Error).message || 'Failed to send message');
-        setStatus('error');
+        if (run.isActive()) {
+          run.end('failed', (err as Error).message || 'Failed to send message');
+          void notifyReply(currentConversationId, 'failed');
+        }
       } finally {
-        abortControllerRef.current = null;
-        setStreamStatus(null);
+        // After the last database write: a stop or a delete waits for it
+        run.finish();
       }
     },
     [
       selectedModel,
       status,
       activeConversationId,
-      messages,
+      shownMessages,
       maxTokens,
       maxToolSteps,
       thinkingEffort,
@@ -813,7 +841,8 @@ export function useBedrockChat({
   // Regenerate response
   const regenerate = useCallback(
     async (assistantMessageIndex: number) => {
-      if (status === 'streaming' || !selectedModel || !activeConversationId) return;
+      if (isRunningStatus(status) || !selectedModel || !activeConversationId) return;
+      const messages = shownMessages;
 
       // Find the user message that preceded this assistant message
       let userMessageIndex = -1;
@@ -835,17 +864,26 @@ export function useBedrockChat({
       // Drop the user message and everything after it (DB sequences are 1-based): sendMessage
       // adds the user message again, so the chat holds it once and sends it once
       await deleteMessagesFromSequence(activeConversationId, userMessageIndex + 1);
+      replyStore.dismiss(activeConversationId);
       setMessages(history);
 
       // Re-send the user message (without files for regeneration)
       await sendMessage(userContent, undefined, { conversationId: activeConversationId, history });
     },
-    [status, selectedModel, messages, activeConversationId, deleteMessagesFromSequence, sendMessage]
+    [
+      status,
+      selectedModel,
+      shownMessages,
+      activeConversationId,
+      deleteMessagesFromSequence,
+      sendMessage,
+    ]
   );
 
   // Resend the last user message after a failed reply. Files are not resent (as in regenerate).
   const retryLast = useCallback(async () => {
-    if (status === 'streaming' || !selectedModel || !activeConversationId) return;
+    if (isRunningStatus(status) || !selectedModel || !activeConversationId) return;
+    const messages = shownMessages;
     let lastUserIndex = -1;
     messages.forEach((m, i) => {
       if (m.role === 'user') lastUserIndex = i;
@@ -855,13 +893,14 @@ export function useBedrockChat({
     const history = messages.slice(0, lastUserIndex);
     // Drop the failed turn (DB sequences are 1-based) so it is not sent twice
     await deleteMessagesFromSequence(activeConversationId, lastUserIndex + 1);
+    replyStore.dismiss(activeConversationId);
     setMessages(history);
     await sendMessage(content, undefined, { conversationId: activeConversationId, history });
   }, [
     status,
     selectedModel,
     activeConversationId,
-    messages,
+    shownMessages,
     deleteMessagesFromSequence,
     sendMessage,
   ]);
@@ -870,27 +909,29 @@ export function useBedrockChat({
   // conversation, switch to it, and send content there
   const forkAndSend = useCallback(
     async (messageIndex: number, content: string) => {
-      if (!activeConversationId || !selectedModel || status === 'streaming') return;
+      if (!activeConversationId || !selectedModel || isRunningStatus(status)) return;
 
-      const history = messages.slice(0, messageIndex + 1);
+      const history = shownMessages.slice(0, messageIndex + 1);
       try {
         const forked = await forkConversation(activeConversationId, history.length);
         setInternalConversationId(forked.id);
         onConversationChange?.(forked.id);
         setMessages(history);
-        setWasInterrupted(false);
         await sendMessage(content, undefined, { conversationId: forked.id, history });
       } catch (err) {
         console.error('Fork failed:', err);
-        setError((err as Error).message || 'Failed to fork conversation');
-        setStatus('error');
+        replyStore.fail(
+          activeConversationId,
+          shownMessages,
+          (err as Error).message || 'Failed to fork conversation'
+        );
       }
     },
     [
       activeConversationId,
       selectedModel,
       status,
-      messages,
+      shownMessages,
       forkConversation,
       onConversationChange,
       sendMessage,
@@ -900,11 +941,13 @@ export function useBedrockChat({
   // Rate a message. The same rating again clears it. The UI updates first; the DB follows.
   const rateMessage = useCallback(
     async (messageId: string, feedback: MessageFeedback) => {
-      const current = messages.find((m) => m.id === messageId)?.feedback;
+      const current = shownMessages.find((m) => m.id === messageId)?.feedback;
       const next = current === feedback ? null : feedback;
-      setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, feedback: next ?? undefined } : m))
-      );
+      const change = (prev: UIMessage[]) =>
+        prev.map((m) => (m.id === messageId ? { ...m, feedback: next ?? undefined } : m));
+      setMessages(change);
+      // An ended reply that the chat still shows from the store
+      if (activeConversationId) replyStore.editMessages(activeConversationId, change);
       try {
         await setMessageFeedback(messageId, next);
         toast.success(next ? 'Feedback saved' : 'Feedback removed');
@@ -913,15 +956,15 @@ export function useBedrockChat({
         toast.error('Could not save feedback');
       }
     },
-    [messages, setMessageFeedback]
+    [shownMessages, activeConversationId, setMessageFeedback]
   );
 
   return {
-    messages,
+    messages: shownMessages,
     status,
-    error,
-    wasInterrupted,
-    streamStatus,
+    error: reply?.error ?? null,
+    wasInterrupted: reply?.wasInterrupted ?? false,
+    streamStatus: reply?.streamStatus ?? null,
     sendMessage,
     regenerate,
     retryLast,

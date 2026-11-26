@@ -35,6 +35,7 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 **Answers**
 
 - See replies as they stream.
+- Start a new chat while a reply is still running. The reply stays in its own chat, and a toast tells you when it is ready. A reply that ends in the open chat also shows a toast.
 - See what the model did before it answered (thinking, web searches, tool calls) in one line above the answer. Click the line to see each step.
 - Set the thinking effort, from Off to XHigh (Max for some Kiro models).
 - See the tokens, time, and cost of each reply, or the Kiro credits.
@@ -259,7 +260,7 @@ Kiro works as it does in the terminal. Its default agent runs Autopilot, so thes
 - Kiro asks before it runs a shell command.
 - Kiro asks before it writes a file.
 
-When Kiro asks, the step above the answer opens by itself. Its line says what Kiro wants, for example "Kiro wants to run" and the command. Under the tool line are Kiro's own buttons, in Kiro's order. A shell command or a file write shows **Allow**, **Always allow**, **Deny**, and **Always deny**. Click one button to answer. Kiro waits for your answer, and the reply continues after it.
+When Kiro asks, the step above the answer opens by itself. If you are in a different chat, a toast tells you that Kiro waits, and **Open** takes you to the question. Its line says what Kiro wants, for example "Kiro wants to run" and the command. Under the tool line are Kiro's own buttons, in Kiro's order. A shell command or a file write shows **Allow**, **Always allow**, **Deny**, and **Always deny**. Click one button to answer. Kiro waits for your answer, and the reply continues after it.
 
 After your answer, the step says what you chose: **Allowed**, **Always allowed**, **Denied**, or **Always denied**. When you deny a tool, the step does not say **Failed**, and the line above the answer says, for example, `1 denied`. A tool that fails for a different reason still says **Failed**.
 
@@ -296,9 +297,9 @@ The chat input has two groups of controls below the text box:
 - **Left:** the **+** menu (add photos or files, save the text as a prompt), the model picker, and the thinking effort.
 - **Right:** web search (when a search key is set), MCP tools, and inference settings. After the first reply, this group also shows the context usage. For a Kiro model, this group shows **Agent** and **Options** instead of web search, MCP tools, and inference settings. On a narrow window, the word **Agent** is hidden and the button shows only the agent name.
 
-To start a new chat, click **New chat** (the pencil button in the header) or **New Conversation** in the sidebar.
+To start a new chat, click **New chat** (the pencil button in the header) or **New Conversation** in the sidebar. You can do this while a reply is running. See [Run more than one chat](#run-more-than-one-chat).
 
-The send button is at the end. While a reply streams, the send button changes to a stop button. When web search is on, its button says **Search**. When one or more MCP servers are connected, the MCP button shows the number of tools in the theme color.
+The send button is at the end. While the open chat has a running reply, the send button changes to a stop button. When web search is on, its button says **Search**. When one or more MCP servers are connected, the MCP button shows the number of tools in the theme color.
 
 ### Model picker
 
@@ -483,6 +484,27 @@ The totals come from the replies that the app saves, so they are the same after 
 - Kiro counts credits, not tokens. Under a Kiro reply the app shows the credits and the time, for example `0.05 credits · 2.9 s`. The context popover shows the credits of the chat and the credits of your Kiro account.
 - If the app has no price for a model, it shows no cost under the reply. If no reply in the chat has a price, the popover shows **No price data**. If some replies have no price, the popover shows the sum of the other replies and, for example, **2 replies have no price data**. If the other replies are all from local models, the popover shows **No price data**, not $0.00.
 - Claude prices come from the Anthropic pricing page. For the prices and how the app applies them, see [docs/ANTHROPIC_PRICING.md](docs/ANTHROPIC_PRICING.md). The cost is an estimate. Your provider's bill is the real cost.
+
+### Run more than one chat
+
+A reply belongs to the chat that you sent it from. You do not need to wait for a reply to end:
+
+- Click **New chat**, or click a different chat, while a reply streams. The reply keeps running and the app saves it in its own chat. It does not show in the other chat.
+- Send a message in the new chat. Each chat can have one running reply, so several chats can reply at the same time.
+- In the sidebar, a chat with a running reply says **Replying…** next to a small spinner. The spinner stops moving when your system asks for reduced motion. A Kiro chat that waits for your answer to a tool question says **Waiting for your answer**.
+- Go back to a chat with a running reply to see the reply as it streams. The send button is the stop button there. **Stop** stops only the reply of the open chat.
+- Go back after the reply ended to see the saved reply.
+
+A toast shows when a reply ends or fails, in any chat:
+
+- **Reply ready**: the reply ended.
+- **Reply failed**: the reply failed.
+
+A third toast, **Kiro is waiting for your answer**, shows when Kiro asks a question about a tool in a chat that is not on screen. A chat is not on screen when you have a different chat open or the browser tab is hidden. In the open chat, the step above the answer already shows the question.
+
+Each toast shows the title of the chat. A toast for a chat that is not on screen also has an **Open** button that opens that chat. A chat has one toast at a time, and a new event of the chat replaces it. The app shows no toast for a reply that you stop. If you miss a toast, the sidebar row still tells you the state.
+
+When you delete a chat with a running reply, the app stops the reply first. A reload or a closed page stops all running replies.
 
 ### Find a chat
 

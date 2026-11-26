@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 
 - Totals of the whole chat in the context popover: the tokens, the cost, and the Kiro credits of all the replies, from all models, together. Credits have their own line. When some replies have no price, the cost shows the known sum and "N replies have no price data". The context ring now shows for each chat with replies, also with no model selected or after a model change. Its percentage shows only when the last reply came from the selected model; otherwise the chip shows a chart icon and the popover says that the context use shows after the next reply ([#89])
+- Toast when a reply ends: **Reply ready** or **Reply failed**. A toast shows also in the open chat. **Kiro is waiting for your answer** shows when a Kiro tool question opens in a chat that you do not look at. Each toast shows the chat title. A toast for a chat that you do not look at also has an **Open** button. A reply that you stop shows no toast. In the sidebar, a chat with a running reply says **Replying…**, and a Kiro chat with a question says **Waiting for your answer**. Each chat can now have its own running reply ([#88])
 - Kiro defaults in **Preferences → Providers**: **Folder for new Kiro chats** sets the folder in which new Kiro chats run (the default is `~/.local-llm-ui/kiro`), and **Default agent** sets the agent that new Kiro chats start with. The app keeps the folder on the server, checks it (it must exist, you must own it, and it cannot be your home folder, a system folder, or a settings folder such as `~/.ssh`), and never takes a folder from the chat request. A chat that you already started keeps its folder and its agent. The new route is `POST /api/kiro/settings` ([#87])
 - Kiro agent and options in the chat input: the **Agent** button lists the Kiro agents with their descriptions and a search box, and the **Options** menu shows the other Kiro options, for example Autopilot, with Kiro's names and help text. A change applies to the next message, and the values stay with the Kiro session. Select **Supervised** under **Autopilot** to turn Autopilot off for a chat: a file write then asks twice, for the write and for **Review changes**. The chat request has a new `sessionOptions` field, and the server sends only values that Kiro lists ([#86])
 - Kiro account credits: the Kiro row in **Preferences → Providers** and the context popover of a Kiro chat show your plan and your credits, for example `Kiro Power · 1,250 of 10,000 credits used · resets 1 Dec`. The app asks Kiro for them with a new `POST /api/kiro/usage` route and keeps them for 5 minutes ([#84])
@@ -28,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- A reply no longer moves into the new chat when you click **New chat** or a different chat while it streams. The reply keeps running, and the app saves it in its own chat. You can start a new chat during a reply, and **Stop** stops only the reply of the open chat. **Delete** on a chat with a running reply stops the reply first ([#88])
 - The Kiro account credits could show for the wrong account when you changed the account while the app read them. Each read now keeps its own account, and its result is kept only when that account is still the current one ([#87])
 - The model picker now lists the group of the selected model's provider first, so a selected Kiro model no longer sits below 92 Amazon Bedrock models. With no model selected, your default provider shows first. The other groups keep their order, also during a search ([#85])
 - A web page on a different site could send requests to the `/api` routes: a form post could start a chat with your AWS credentials or API keys, or start an MCP server command. The routes now accept requests only from the app's own pages, and a request with a body must be JSON ([#76])
@@ -247,6 +249,7 @@ PR numbers link to GitHub.
 - ESLint for code quality
 
 [#89]: https://github.com/praveenc/local-llm-ui/pull/89
+[#88]: https://github.com/praveenc/local-llm-ui/pull/88
 [#87]: https://github.com/praveenc/local-llm-ui/pull/87
 [#86]: https://github.com/praveenc/local-llm-ui/pull/86
 [#85]: https://github.com/praveenc/local-llm-ui/pull/85

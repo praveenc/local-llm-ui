@@ -23,6 +23,12 @@ vi.mock('../../../hooks', () => ({
 
 vi.mock('../../prompts', () => ({ ViewPromptsModal: () => null }));
 
+const removeOpener = vi.hoisted(() => vi.fn());
+const setReplyOpener = vi.hoisted(() =>
+  vi.fn<(open: (id: string) => void) => () => void>(() => removeOpener)
+);
+vi.mock('../../../services/replyNotices', () => ({ setReplyOpener }));
+
 const kiro = vi.hoisted(() => ({ value: undefined as unknown as UseKiroSessionsResult }));
 vi.mock('../../../hooks/useKiroSessions', () => ({ useKiroSessions: () => kiro.value }));
 
@@ -95,5 +101,16 @@ describe('Sidebar', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Deploy the app' }));
     expect(onSelect).toHaveBeenCalledWith('c1');
     expect(kiro.value.syncIfNewer).toHaveBeenCalledWith('c1');
+  });
+
+  it('opens the chat of a reply toast as a click on its row does, until it unmounts', () => {
+    const onSelect = vi.fn();
+    const { unmount } = renderSidebar(onSelect);
+    const open = setReplyOpener.mock.calls.at(-1)![0];
+    open('c2');
+    expect(onSelect).toHaveBeenCalledWith('c2');
+    expect(kiro.value.syncIfNewer).toHaveBeenCalledWith('c2');
+    unmount();
+    expect(removeOpener).toHaveBeenCalled();
   });
 });

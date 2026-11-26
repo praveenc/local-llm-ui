@@ -1,4 +1,12 @@
-import { AlertTriangle, MessageSquare, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Loader2,
+  MessageCircleQuestion,
+  MessageSquare,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 
 import { useRef, useState } from 'react';
 
@@ -22,6 +30,7 @@ import { EditableTitleInput } from '@/components/ui/editable-title-input';
 import { cn } from '@/lib/utils';
 
 import { useConversationMutations, useConversations } from '../../hooks';
+import { useReplyActivity } from '../../hooks/useReplies';
 import {
   type GroupOpenState,
   formatFullDateTime,
@@ -31,6 +40,7 @@ import {
   loadGroupOpenState,
   saveGroupOpenState,
 } from '../../utils/conversationGroups';
+import { replyStore } from '../../utils/replyStore';
 import { GroupHeader } from './sidebarParts';
 
 const CHATS = { one: 'chat', other: 'chats' };
@@ -51,6 +61,8 @@ export function ConversationList({
 }: ConversationListProps) {
   const { conversations } = useConversations();
   const { deleteConversation, updateConversationTitle } = useConversationMutations();
+  // Chats with a running reply say so in words
+  const activity = useReplyActivity();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [conversationToDelete, setConversationToDelete] = useState<{
@@ -87,7 +99,10 @@ export function ConversationList({
       const ids = grouped.flatMap((g) => g.items.map((c) => c.id));
       const index = ids.indexOf(conversationToDelete.id);
       focusAfterDelete.current = ids[index + 1] ?? ids[index - 1] ?? null;
+      // Stop a running reply first and wait for its last write, so it saves nothing after the delete
+      await replyStore.stop(conversationToDelete.id);
       await deleteConversation(conversationToDelete.id);
+      replyStore.remove(conversationToDelete.id);
       if (activeConversationId === conversationToDelete.id) {
         onNewChat();
       }
@@ -143,6 +158,13 @@ export function ConversationList({
                 {group.items.map((conv) => {
                   const updatedAt = new Date(conv.updatedAt);
                   const isActive = activeConversationId === conv.id;
+                  const replyActivity = activity.get(conv.id);
+                  // The same place and style as the time, so the options button still covers it
+                  const timeCellClass = cn(
+                    'col-start-1 row-start-1 justify-self-end text-xs tabular-nums whitespace-nowrap group-focus-within:invisible group-hover:invisible group-has-[[data-state=open]]:invisible pointer-coarse:visible!',
+                    // Muted grey is below 4.5:1 on the active row in some themes
+                    isActive ? 'text-tint-text' : 'text-muted-foreground'
+                  );
                   return (
                     <div
                       key={conv.id}
@@ -181,17 +203,32 @@ export function ConversationList({
                               its width when the button replaces the time. On touch screens the
                               button always shows, next to the time. */}
                           <div className="grid shrink-0 items-center gap-1 font-normal">
-                            <time
-                              dateTime={updatedAt.toISOString()}
-                              title={formatFullDateTime(updatedAt)}
-                              className={cn(
-                                'col-start-1 row-start-1 justify-self-end text-xs tabular-nums whitespace-nowrap group-focus-within:invisible group-hover:invisible group-has-[[data-state=open]]:invisible pointer-coarse:visible!',
-                                // Muted grey is below 4.5:1 on the active row in some themes
-                                isActive ? 'text-tint-text' : 'text-muted-foreground'
-                              )}
-                            >
-                              {formatRowTime(updatedAt, group.key)}
-                            </time>
+                            {replyActivity ? (
+                              <span
+                                className={cn(timeCellClass, 'flex items-center gap-1')}
+                                data-reply-activity={replyActivity}
+                              >
+                                {replyActivity === 'waiting' ? (
+                                  <MessageCircleQuestion className="size-3" aria-hidden="true" />
+                                ) : (
+                                  <Loader2
+                                    className="size-3 animate-spin motion-reduce:animate-none"
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                {replyActivity === 'waiting'
+                                  ? 'Waiting for your answer'
+                                  : 'Replying…'}
+                              </span>
+                            ) : (
+                              <time
+                                dateTime={updatedAt.toISOString()}
+                                title={formatFullDateTime(updatedAt)}
+                                className={timeCellClass}
+                              >
+                                {formatRowTime(updatedAt, group.key)}
+                              </time>
+                            )}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button

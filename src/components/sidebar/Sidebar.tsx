@@ -1,12 +1,13 @@
 import { FileText, Plus, Settings } from 'lucide-react';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 
 import { useKiroSessions } from '../../hooks/useKiroSessions';
+import { setReplyOpener } from '../../services/replyNotices';
 import { ViewPromptsModal } from '../prompts';
 import { ConversationList } from './ConversationList';
 import { KiroSessionList } from './KiroSessionList';
@@ -47,6 +48,8 @@ export function Sidebar({
     },
     [onSelectConversation, syncIfNewer]
   );
+  // The Open action of a reply toast opens the chat as a click on its row does
+  useEffect(() => setReplyOpener(selectConversation), [selectConversation]);
 
   return (
     <div className="flex h-full flex-col">
