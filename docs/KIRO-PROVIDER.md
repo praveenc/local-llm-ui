@@ -1,6 +1,6 @@
 # Kiro provider
 
-Status: approved, in progress. All decisions take the recommended option (2026-11-24). On 2026-11-25 the direction became: Kiro is the provider and kiro-cli is the harness (D15 to D20). See [Progress](#progress) for the state of each PR. Last updated 2026-11-25.
+Status: approved, in progress. All decisions take the recommended option (2026-11-24). On 2026-11-25 the direction became: Kiro is the provider and kiro-cli is the harness (D15 to D20). See [Progress](#progress) for the state of each PR. Last updated 2026-11-26.
 
 This document plans Kiro as a provider. Kiro is not an HTTP API. It is a local agent (`kiro-cli`) that the app starts as a child process and talks to with the Agent Client Protocol (ACP): JSON-RPC, one message per line, on stdin and stdout. Kiro keeps its own login, model list, sessions on disk, tools, and credits. The app must fit these into its existing patterns: one model picker, one chat view, one work row, one SSE format.
 
@@ -56,8 +56,8 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 | H1 | `refactor/acp-harness` | D15 | Done, merged ([#81](https://github.com/praveenc/local-llm-ui/pull/81)) |
 | K6 | `feat/kiro-approvals` | 6 | Done, merged ([#82](https://github.com/praveenc/local-llm-ui/pull/82)) |
 | K7 | `feat/kiro-sessions` | 7 | Done, merged ([#83](https://github.com/praveenc/local-llm-ui/pull/83)) |
-| K8 | `feat/kiro-credits` | 8 | In review ([#84](https://github.com/praveenc/local-llm-ui/pull/84)) |
-| K9 | `feat/kiro-session-options` | 9 | Planned |
+| K8 | `feat/kiro-credits` | 8 | Done, merged ([#84](https://github.com/praveenc/local-llm-ui/pull/84)) |
+| K9 | `feat/kiro-session-options` | 9 | In review ([#86](https://github.com/praveenc/local-llm-ui/pull/86)) |
 
 ### Found during the work
 
@@ -121,6 +121,15 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 - **`getUsage` can show more credits than the limit (K8).** The test account was over its limit, and `percentage` was above 100. The app shows the number that Kiro reports and adds `· N over the limit`. `bonusCredits` and `addOnCredits` have no known item shape, so the app ignores them.
 - **The first usage call starts Kiro CLI (K8).** It took 2.7 s on a cold start, not the 300 ms of the probe. A later call from the cache took 3 ms. The server does not start Kiro CLI when the status says signed out.
 - **The usage cache has no account key per running call (K8, open).** If the account changes while a call runs (about 300 ms), the old account's credits can go into the cache for up to 5 minutes. A later change can store the account key with each call.
+- **Kiro takes an unlisted value without an error (K9 probe, kiro-cli 3.6.2).** `set_config_option` with `autopilot` set to a value that is not listed made Kiro turn Autopilot off. An unlisted `mode` reset the session to the default agent. An unknown option id changed nothing. A read-back comes too late, so the server checks the value against the current list before it sends (SEC-20).
+- **An agent change sends several updates (K9 probe).** Setting `mode` on a live session gave two `config_option_update` messages with the full list, and also `_kiro/policy/changed`, `tools/didChange`, `steering/documents_changed`, and `mcp/status`. The model, the effort, and Autopilot did not change for a built-in agent. The next prompt used the new agent (`_meta.kiro.agentMode` on the turn updates). An agent that sets its own model was not tried. The order (options, then model) sets the model that the user picked after it.
+- **Other options stay when one changes (K9 probe).** A `mode` change did not reset Autopilot. A `model` change after `mode` kept the agent. After `session/close` and `session/load`, Autopilot stayed off, and a new session started with Autopilot on and the default agent.
+- **`thinking` has a category in 3.6.2 (K9 probe).** In 3.6.0 it had none. The category `thinking` is not an ACP category, so the Kiro harness owns the option by its id, and the generic split owns only `model` and `thought_level`.
+- **A remembered value undid a terminal change (K9 review).** `AcpAgent.setOption` records each value, and `session/load` sets the recorded values again. For the model and the effort this is right, because each request sends them. For the agent and Autopilot, it set the app's old value again after the user changed it in the terminal. `applySessionOptions` now passes `remember: false`. A real check with a second `kiro-cli` process confirmed it: the terminal change stayed, and the app then showed Kiro's values.
+- **The toolbar wrapped at 1440 px (K9 e2e).** With the context ring, the word **Options**, and a long agent name, the toolbar had two rows. The **Options** button is now an icon (the word stays in the tooltip and the aria-label), and the agent name is at most 6 rem wide. The toolbar is one row at 1440, 1280, and 1024 px. At 390 px it wraps to two rows, as the Thinking button already does.
+- **The write that asks twice, checked in the browser (K9).** With **Supervised** selected, a file write asked for the write (**Allow**, **Always allow**, **Deny**, **Always deny**) and then for "Review changes" (**Accept changes**, **Reject changes**). Both showed in one row, and the file had its text after both answers. This was the open check of K6.
+- **Small points left (K9).** The models response with the default options is kept 1 hour with the models, so an agent that you make in the terminal shows after a refresh or after the first reply of a chat. A pick that you did not send is lost on a reload. The app does not check whether Kiro keeps `contentCollection` for the session or for the account. It shows the value that Kiro reports after each reply.
+- **Kiro 3.6.2, not 3.6.1 (K9).** The probe and the real checks ran on kiro-cli 3.6.2, the version that the host got during the work.
 
 ## What kiro-cli 3 does
 
@@ -196,6 +205,7 @@ The ACP code is in `server/acp/`. It is generic and has no Kiro names (D15). A t
 | `permission-registry.ts` | The open questions, each under a random request id. It accepts one answer, and only an option that the question lists (K6) |
 | `updates.ts` | Map `session/update` messages to the app's SSE events. Pure functions, tested with recorded probe messages |
 | `config-options.ts` | Helpers for the config options of a session |
+| `session-options.ts` | Split the options of a session by ACP category into the agent (`mode`), the options that an app control sets, and the rest. Check that a requested change names a listed option and a listed value (K9) |
 
 `server/kiro/`:
 
@@ -215,7 +225,7 @@ The ACP code is in `server/acp/`. It is generic and has no Kiro names (D15). A t
 | `replay.ts` | Turns the replayed `session/update` messages into compact messages, with the size limits (K7) |
 | `lease.ts` | Kiro's own "loaded in another program" text, for the chat error (K7) |
 | `reply-meta.ts` | The `_meta.kiro` fields of a reply: title, context, credits, display error |
-| `chat-options.ts` | Set the model and the Thinking level on a session |
+| `chat-options.ts` | Set the session options, the model, and the Thinking level on a session. Build the options snapshot for the browser (K9) |
 | `approvals.ts` | Turns a permission question into the SSE event: Kiro's options, the command, the files of a "Review changes" question, and how a question ended (K6) |
 | `permission-route.ts` | The `POST /api/kiro/permission` route (K6) |
 
@@ -226,7 +236,7 @@ Routes:
 | `GET /api/kiro/status` | Installed, path, version, supported, signed in, account | K2 |
 | `POST /api/kiro/login` | Start sign-in. SSE: code and URL, then done or error | K3 |
 | `POST /api/kiro/login/cancel`, `POST /api/kiro/logout` | Stop sign-in, sign out | K3 |
-| `POST /api/kiro/models` | Model list with levels and credit rate. A `POST`, because a load can start Kiro CLI and make a session | K5 |
+| `POST /api/kiro/models` | Model list with levels and credit rate, and Kiro's default session options. A `POST`, because a load can start Kiro CLI and make a session | K5, K9 |
 | `POST /api/kiro/chat` | One reply, as SSE | K5 |
 | `POST /api/kiro/permission` | The answer to an approval question. It never starts Kiro CLI | K6 |
 | `POST /api/kiro/sessions` | The list of Kiro sessions. A `POST`, because the list can start Kiro CLI | K7 |
@@ -240,6 +250,7 @@ The chat route sends the existing events, and new ones. `useBedrockChat.ts` igno
 | Kiro | App SSE event |
 |---|---|
 | `session/new` result | `{session: {id, cwd}}`, first, new |
+| The session's options after `session`, and each `config_option_update` | `{sessionOptions: {mode?, options}}`, new (K9) |
 | `agent_message_chunk` | `{content}` |
 | `agent_thought_chunk` | `{reasoning}` |
 | `tool_call` | `{toolCall: {id, name: title, args: rawInput}}` |
@@ -258,7 +269,7 @@ The chat route sends the existing events, and new ones. `useBedrockChat.ts` igno
 
 ### Data
 
-- `Conversation.kiro` is `{ sessionId, seenMessages }` today. `seenMessages` is how many messages Kiro has seen (D12). K7 adds `updatedAt` (the Kiro last change of the last import or sync) and `turns` (how many turns of the session the chat holds).
+- `Conversation.kiro` is `{ sessionId, seenMessages }` today. `seenMessages` is how many messages Kiro has seen (D12). K7 adds `updatedAt` (the Kiro last change of the last import or sync) and `turns` (how many turns of the session the chat holds). K9 adds `options`: the current value of each session option, as `{ id: value }` (the agent too). The lists of values are not stored.
 - Dexie version 3 adds an index on `kiro.sessionId`, so K7 can find a session that is already imported. The other tables do not change.
 - `MessageUsage` gets `credits` and `contextPercent`.
 
@@ -384,14 +395,22 @@ Kiro runs its own tools and its own MCP servers. For a Kiro model, the chat inpu
 ### 9. Session options
 
 - **Change:**
-  - The chat input shows the session options that Kiro lists, with Kiro's names and descriptions (D20).
-  - The option with the category `mode` shows as an agent picker.
-  - The options with no ACP category, for example Autopilot, show in one menu.
-  - The model and the Thinking level keep their own controls. The app picks each control by the ACP category (`mode`, `model`, `thought_level`), not by a Kiro id, so a different harness works the same way.
-  - The chat request gets an `options` field. The server sets only options that the session lists, to values that the option lists, and reads each one back (SEC-16).
-  - An imported session shows its current values.
-  - K9 waits on K6, because `mode` is locked until K6 merges.
-- **Tests:** Unit tests for the choice of controls by category. The fake process lists a `mode` option and an option with no category. A real chat with an agent change and with Autopilot off, in headless Chromium at 1440, 1024, and 390 px.
+  - The chat input shows the session options that Kiro lists, with Kiro's names and descriptions (D20). Nothing shows for another provider, or when Kiro lists no such option.
+  - The option with the category `mode` shows as the **Agent** picker. A popover lists each agent with its name and description, has a **Search agents** box, and marks the current agent with a check and **Current**.
+  - The other select options show in one **Options** menu. Each option is a labelled group with Kiro's name, Kiro's help text, and its values as radio items. **Current** shows on the checked value. The tooltip and the aria-label say the current values in words, for example "Autopilot: Supervised".
+  - The model and the Thinking level keep their own controls. The app picks each control by the ACP category (`mode`, `model`, `thought_level`), never by a Kiro id. The Kiro harness also names `thinking` as owned by the Thinking menu (`KIRO_APP_OWNED_OPTION_IDS`), because kiro-cli 3.6.2 gives it the category `thinking`, which ACP does not define.
+  - `server/acp/session-options.ts` (generic, no Kiro names) has two pure functions. `splitSessionOptions` splits the options into `mode`, the options that an app control sets, and the rest. `checkOptionChange` says `unknown` (no such select option), `owned` (an app control sets it), or `value` (the option does not list the value).
+  - The chat request gets `sessionOptions?: Record<string, string>`. `parseSessionOptionsRequest` (`src/utils/sessionOptions.ts`) keeps at most 20 entries with ids and values of 1 to 200 characters, and drops any other entry.
+  - `server/kiro/chat-options.ts` checks every value against the current list of the session before it sends anything (SEC-20). A value that the option does not list fails the reply with a plain text and sends nothing to Kiro. An unknown or owned id is dropped, and the log shows the count only.
+  - The order is: the agent first (it can change the option list), then the other options in Kiro's order, then the model, then the Thinking level. A value that equals the current value is not sent. Each change is read back. If Kiro did not take it, the reply fails with "Kiro did not change Autopilot. Try again.", with Kiro's name of the option.
+  - A request on a live session sends only the picks that differ from the stored values (`sessionOptionsToSend`), so a change that the user made in the terminal stays (D15). A request that starts a new session sends the stored values and the picks.
+  - The generic agent does not remember these values (`setOption(…, { remember: false })`). It remembers only the model and the Thinking level, which each request sends again. Without this, the next `session/load` would set the app's old agent or Autopilot value again and undo a terminal change.
+  - The browser gets the options in three places. The models response has `sessionOptions` with Kiro's default values (from the short session; a later `update()` does not change them). The chat stream sends `{ sessionOptions: { mode?, options } }` after `{ session }` and on each `config_option_update`. `POST /api/kiro/sessions/open` returns the current values of the loaded session.
+  - The conversation stores only the values (`kiro.options`). After a reload, the lists come from the models response, and the stored values show on them. A pick that no reply has applied yet lives in memory and goes away on a reload. The pick goes into the next request and is cleared when the snapshot of the reply shows the value.
+  - The controls are off while a reply streams. A pick stays pending when a reply fails before Kiro sends its options.
+  - The toolbar keeps one row at 1024 and 1440 px. The **Options** button is an icon, and the agent name is at most 6 rem wide. At narrow widths the word **Agent** is hidden, as the word on the Thinking button is.
+- **Tests:** Unit tests for the split, the validator, the request parser, and the snapshot helpers with generic fixtures. The fake Kiro process lists a `mode` option with three placeholder agents and Autopilot, stores each `set_config_option`, sends `config_option_update` (two for a `mode` change, as Kiro does), and can ignore a value or act as a terminal change. Server tests: options applied in order and read back, an unlisted value and an owned id never reach Kiro (call count), a failed read-back gives a plain error, the stream carries the snapshots, the models response carries the lists, `update()` keeps them, an imported session returns its values, and no option is set again after a load. Browser tests: both controls render from a fixture, a pick goes into the next request, stored values show after a reload, and nothing shows for another provider.
+- **Done:** `make check` passes (110 files, 1209 tests) and `make build` passes. A break test (the `remember: false` line put back to `true`) fails the new test with two Autopilot calls instead of one. A real run with kiro-cli 3.6.2 in headless Chromium at 1440, 1024, and 390 px, light and dark, with no sideways scroll: the Agent picker listed 55 agents with descriptions. **Supervised** made a file write ask twice in one row, and the file was made after both answers. The next message after an agent change sent no pick. An unlisted value failed with a plain error, and the session did not change. A cross-site `POST` got 403.
 
 ## Found during the planning
 
