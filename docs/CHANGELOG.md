@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- Kiro agent and options in the chat input: the **Agent** button lists the Kiro agents with their descriptions and a search box, and the **Options** menu shows the other Kiro options, for example Autopilot, with Kiro's names and help text. A change applies to the next message, and the values stay with the Kiro session. Select **Supervised** under **Autopilot** to turn Autopilot off for a chat: a file write then asks twice, for the write and for **Review changes**. The chat request has a new `sessionOptions` field, and the server sends only values that Kiro lists ([#86])
 - Kiro account credits: the Kiro row in **Preferences → Providers** and the context popover of a Kiro chat show your plan and your credits, for example `Kiro Power · 1,250 of 10,000 credits used · resets 1 Dec`. The app asks Kiro for them with a new `POST /api/kiro/usage` route and keeps them for 5 minutes ([#84])
 - Kiro sessions in the sidebar: a **Kiro sessions** section lists the sessions that you made in the terminal, with date groups, the folder name, a Last 7 days, Last 30 days, or All menu, and **Search chats**. A click imports the session with its messages, thinking, tool steps, and credits, and you can continue it in the app or in the terminal. Turn it on in the Kiro row in **Preferences → Providers** ([#83])
 - Kiro tool approvals: when Kiro asks to run a shell command or write a file, the step above the answer opens and shows Kiro's own buttons (**Allow**, **Always allow**, **Deny**, **Always deny**, or **Accept changes** and **Reject changes**). The step then says your answer. A denied tool says **Denied** and the summary says "1 denied". **Stop**, a reload, and a 10-minute wait end an open question as **Not answered** ([#82])
@@ -242,6 +243,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#86]: https://github.com/praveenc/local-llm-ui/pull/86
 [#85]: https://github.com/praveenc/local-llm-ui/pull/85
 [#84]: https://github.com/praveenc/local-llm-ui/pull/84
 [#83]: https://github.com/praveenc/local-llm-ui/pull/83

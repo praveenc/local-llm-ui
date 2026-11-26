@@ -12,7 +12,7 @@
  *   Kiro reports a change (`_kiro/sessions/changed`, also after each app reply).
  * - Open takes a session id only: it must be in Kiro's list, and the load uses the folder from
  *   that list, never one from the browser. The replay is read only and ends with session/close.
- *   The response is at most KIRO_IMPORT_MAX_BYTES of JSON.
+ *   The response is at most KIRO_IMPORT_MAX_BYTES of JSON, with the session's agent and options.
  *
  * Logs the size and the time only: never titles, folders, or text.
  */
@@ -20,6 +20,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 
 import { KIRO_SESSION_ID } from '../../src/utils/kiroChat.ts';
 import {
+  KIRO_IMPORT_MAX_BYTES,
   KIRO_SESSIONS_MAX,
   KIRO_SESSIONS_TTL_MS,
   folderName,
@@ -37,6 +38,7 @@ import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
 import { readBodyWithLimit } from '../security.ts';
 import { KiroBusyError, KiroSignedOutError } from './agent.ts';
 import type { KiroAgent } from './agent.ts';
+import { kiroSessionOptions } from './chat-options.ts';
 import { createKiroReplayCollector } from './replay.ts';
 
 export type KiroSessionsAgent = Pick<
@@ -240,15 +242,29 @@ export function createKiroSessionsHandler(options: KiroSessionsHandlerOptions) {
         return;
       }
       const collector = createKiroReplayCollector(skipTurns);
-      const load = await agent.replaySession(sessionId, entry.cwd, collector.onUpdate);
+      // A config_option_update during the load is newer than the load answer's options
+      let latestOptions: unknown;
+      const load = await agent.replaySession(sessionId, entry.cwd, (update) => {
+        if (update.sessionUpdate === 'config_option_update') {
+          const options = (update as { configOptions?: unknown }).configOptions;
+          if (Array.isArray(options)) latestOptions = options;
+        }
+        collector.onUpdate(update);
+      });
       // The browser left during the replay: nobody reads the answer
       if (res.destroyed) return;
-      const result = collector.finish(load);
+      // The session's agent and options (K9): their size comes off the size of the turns
+      const sessionOptions = kiroSessionOptions(latestOptions ?? load.configOptions);
+      const result = collector.finish(
+        load,
+        KIRO_IMPORT_MAX_BYTES - Buffer.byteLength(JSON.stringify(sessionOptions), 'utf8')
+      );
       const title = asRecord(load._meta)?.title;
       const body: KiroSessionOpenResponse = {
         title: typeof title === 'string' && title.trim() ? title : entry.title,
         updatedAt: entry.updatedAt,
         ...result,
+        sessionOptions,
       };
       const bytes = sendJson(res, 200, body);
       console.log(

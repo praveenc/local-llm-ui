@@ -8,6 +8,8 @@
  * app does not read Kiro's files for them.
  */
 import { KIRO_SESSION_ID } from './kiroChat.ts';
+import { parseSessionOptionsSnapshot } from './sessionOptions.ts';
+import type { SessionOptionsSnapshot } from './sessionOptions.ts';
 
 /** Kiro's title of a session that was never used (D19) */
 export const KIRO_NEW_SESSION_TITLE = 'New Session';
@@ -95,6 +97,8 @@ export interface KiroSessionOpenResponse {
   updatedAt: string;
   /** The session's model from its config options */
   model?: { id: string; name: string };
+  /** The session's agent and other options from the load answer (K9) */
+  sessionOptions?: SessionOptionsSnapshot;
   /** The turns after `skipTurns`, oldest first */
   messages: KiroImportedMessage[];
   /** All turns of the session in Kiro: stored as `kiro.turns` */
@@ -205,6 +209,9 @@ function parseMessage(value: unknown): KiroImportedMessage | undefined {
 export function parseKiroSessionOpenResponse(value: unknown): KiroSessionOpenResponse | null {
   if (!isRecord(value) || !Array.isArray(value.messages)) return null;
   const { title, updatedAt, model, turns, imagesLeftOut, turnsLeftOut } = value;
+  // A bad snapshot is left out: the import still works without the options
+  const sessionOptions =
+    value.sessionOptions === undefined ? null : parseSessionOptionsSnapshot(value.sessionOptions);
   if (typeof title !== 'string' || !isIsoDate(updatedAt)) return null;
   if (!isCount(turns) || !isCount(imagesLeftOut) || !isCount(turnsLeftOut)) return null;
   const messages: KiroImportedMessage[] = [];
@@ -221,6 +228,7 @@ export function parseKiroSessionOpenResponse(value: unknown): KiroSessionOpenRes
     title,
     updatedAt,
     ...(validModel && { model: validModel }),
+    ...(sessionOptions && { sessionOptions }),
     messages,
     turns,
     imagesLeftOut,

@@ -19,6 +19,14 @@ import {
   KiroSignedOutError,
 } from './errors.ts';
 
+/**
+ * The options that the app's controls set by id (chat-options.ts): the model picker sets `model`,
+ * and the Thinking menu sets `effortLevel` and `thinking` (D8). Kiro gives the first two the ACP
+ * categories `model` and `thought_level`; kiro-cli 3.6.2 gives `thinking` the category
+ * `thinking`, which ACP does not define. The ids cover every version.
+ */
+export const KIRO_APP_OWNED_OPTION_IDS: readonly string[] = ['model', 'effortLevel', 'thinking'];
+
 export const KIRO_ACP_ARGS = ['acp', '--agent-engine', 'v3', '--auth-method', 'cli'];
 
 /** The Kiro extension methods that `extension()` may call */

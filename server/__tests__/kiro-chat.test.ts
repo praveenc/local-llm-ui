@@ -773,6 +773,114 @@ describe('POST /api/kiro/permission', () => {
   });
 });
 
+interface Snapshot {
+  mode?: { id: string; currentValue: string; values: { value: string; name: string }[] };
+  options: { id: string; name: string; currentValue: string }[];
+}
+const snapshots = (events: Event[]) => ofKind(events, 'sessionOptions') as Snapshot[];
+
+describe('POST /api/kiro/chat session options (K9)', () => {
+  it('sends the agent and the options without an app control right after the session', async () => {
+    const c = await setup();
+    const { events } = await chat(c, { ...base, prompt: 'hello' });
+    const at = events.findIndex((e) => e !== '[DONE]' && 'session' in e);
+    expect(events[at + 1]).toHaveProperty('sessionOptions');
+    const [snapshot] = snapshots(events);
+    expect(snapshot.mode).toMatchObject({ id: 'mode', currentValue: 'vibe' });
+    expect(snapshot.mode?.values.map((v) => v.name)).toEqual(['Default', 'Agent B', 'Agent C']);
+    // model, effortLevel, and thinking have app controls
+    expect(snapshot.options).toEqual([
+      expect.objectContaining({ id: 'autopilot', name: 'Autopilot', currentValue: 'on' }),
+    ]);
+    // `_meta` never reaches the browser
+    expect(JSON.stringify(snapshot)).not.toContain('_meta');
+  });
+
+  it('sets the agent first, then the other options, then the model, and only what changed', async () => {
+    const c = await setup();
+    const first = await chat(c, {
+      ...base,
+      prompt: 'a',
+      sessionOptions: { autopilot: 'off', mode: 'agent-b' },
+    });
+    expect(ofKind(first.events, 'error')).toEqual([]);
+    expect(await configCalls(c)).toEqual(['mode=agent-b', 'autopilot=off', 'model=claude-fake-1']);
+    const id = (first.events[1] as { session: { id: string } }).session.id;
+    const last = snapshots(first.events).at(-1)!;
+    expect(last.mode?.currentValue).toBe('agent-b');
+    expect(last.options[0].currentValue).toBe('off');
+
+    // The same values again: nothing to set
+    await chat(c, {
+      ...base,
+      sessionId: id,
+      prompt: 'b',
+      sessionOptions: { mode: 'agent-b', autopilot: 'off' },
+    });
+    expect(await configCalls(c)).toHaveLength(3);
+  });
+
+  it('fails the reply for an unlisted value before anything reaches Kiro', async () => {
+    const c = await setup();
+    const { events } = await chat(c, {
+      ...base,
+      prompt: 'x',
+      sessionOptions: { mode: 'agent-b', autopilot: 'maybe' },
+    });
+    expect(ofKind(events, 'error')).toEqual([
+      'Kiro does not offer this value for Autopilot. Pick another value.',
+    ]);
+    expect(events.at(-1)).toBe('[DONE]');
+    // Not even the listed mode: the check comes before any send
+    expect(await configCalls(c)).toEqual([]);
+    expect((await c.log()).some((m) => m.method === 'session/prompt')).toBe(false);
+    // An unlisted agent is refused the same way (Kiro would reset it to the default)
+    const agent = await chat(c, { ...base, prompt: 'y', sessionOptions: { mode: 'agent-z' } });
+    expect(ofKind(agent.events, 'error')).toEqual([
+      'Kiro does not offer this value for Mode. Pick another value.',
+    ]);
+    expect(await configCalls(c)).toEqual([]);
+  });
+
+  it('drops an unknown id and an option that an app control sets, and logs only the count', async () => {
+    const c = await setup();
+    const { events } = await chat(c, {
+      ...base,
+      prompt: 'x',
+      sessionOptions: { nope: 'on', thinking: 'off', model: 'auto', effortLevel: 'low' },
+    });
+    expect(ofKind(events, 'error')).toEqual([]);
+    expect(contentOf(events)).toBe('echo: x');
+    // Only the request's model (base: claude-fake-1); never `thinking=off` or `effortLevel=low`
+    expect(await configCalls(c)).toEqual(['model=claude-fake-1']);
+    const logged = JSON.stringify(vi.mocked(console.warn).mock.calls);
+    expect(logged).toContain(
+      '[kiro] dropped 4 session options that the session does not list or that an app control sets'
+    );
+    expect(logged).not.toContain('nope');
+  });
+
+  it('fails the reply with a plain error when Kiro does not take the value', async () => {
+    const c = await setup({ env: { FAKE_KIRO_STUCK_OPTION: 'autopilot' } });
+    const { events } = await chat(c, {
+      ...base,
+      prompt: 'x',
+      sessionOptions: { autopilot: 'off' },
+    });
+    expect(ofKind(events, 'error')).toEqual(['Kiro did not change Autopilot. Try again.']);
+    expect((await c.log()).some((m) => m.method === 'session/prompt')).toBe(false);
+  });
+
+  it('sends the options again on a config_option_update during the reply', async () => {
+    const c = await setup();
+    const { events } = await chat(c, { ...base, prompt: 'OPTIONUPDATE' });
+    const values = snapshots(events).map((s) => s.options[0].currentValue);
+    expect(values[0]).toBe('on');
+    expect(values.at(-1)).toBe('off');
+    expect(contentOf(events)).toBe('echo: OPTIONUPDATE');
+  });
+});
+
 const postModels = (c: Setup, body?: unknown) =>
   fetch(`${c.url}/api/kiro/models`, {
     method: 'POST',
@@ -785,8 +893,16 @@ describe('POST /api/kiro/models', () => {
     const c = await setup();
     const res = await postModels(c, {});
     expect(res.status).toBe(200);
-    const { models } = (await res.json()) as { models: { id: string }[] };
+    const { models, sessionOptions } = (await res.json()) as {
+      models: { id: string }[];
+      sessionOptions?: Snapshot;
+    };
     expect(models.map((m) => m.id)).toEqual(['auto', 'claude-fake-1', 'think-fake']);
+    // Kiro's defaults for a new chat (K9)
+    expect(sessionOptions?.mode?.currentValue).toBe('vibe');
+    expect(sessionOptions?.options.map((o) => `${o.id}=${o.currentValue}`)).toEqual([
+      'autopilot=on',
+    ]);
     expect(models[1]).toMatchObject({
       name: 'Claude Fake 1',
       effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],

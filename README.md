@@ -26,6 +26,7 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 
 - Chat with models from Ollama, LM Studio, Amazon Bedrock, Bedrock Mantle, Anthropic, OpenRouter, Groq, and Cerebras.
 - Chat with Kiro through the Kiro CLI on your computer, with Kiro's own models.
+- Pick the Kiro agent for each chat, and set the Kiro options, for example turn Autopilot off.
 - Find a model in one searchable list, grouped by provider.
 - Start each new chat with the model that you used last.
 - See a checklist of the providers when no model is ready. Each row tells you what is missing.
@@ -177,6 +178,7 @@ Kiro is an agent, not only a model. Each chat with Kiro is a Kiro session, the s
 - Kiro works in the folder `~/.local-llm-ui/kiro`. Its tools can read and change files and run commands there.
 - Kiro asks before it runs some tools. The question shows in the step above the answer. See [Answer Kiro's questions](#answer-kiros-questions).
 - Kiro uses its own tools and MCP servers. For a Kiro model, the chat input does not show web search, MCP tools, inference settings, or **Add photos or files**.
+- The chat input shows **Agent** and **Options** for Kiro. See [Choose the agent and the options](#choose-the-agent-and-the-options).
 - **Regenerate** does not show on Kiro replies, because Kiro cannot remove a reply from its session.
 - **Stop** stops the reply and ends an open question. A tool call that has already started can continue to its end.
 - When a chat still has its automatic title, Kiro's short title replaces it.
@@ -188,6 +190,27 @@ The first Kiro reply after a start takes a few seconds more: the app starts Kiro
 **Delete** removes a chat from the app only. The Kiro session stays on disk, and `kiro-cli --resume-picker` can still open it.
 
 Kiro sessions that you made in the terminal can show in the sidebar. See [Kiro sessions](#kiro-sessions). After each reply, the app lets go of the session, so that you can continue it in the terminal. If a terminal holds the session, Kiro refuses the message, and the chat shows Kiro's own text, for example "This session is loaded in another program". Close the session in the terminal, then click **Retry**.
+
+#### Choose the agent and the options
+
+For a Kiro model, the right side of the chat input shows two controls. A control shows only when Kiro lists it.
+
+- **Agent** shows the agent that the chat uses. Click it to see a list with the name and the description of each agent, and **Current** on the agent that the chat uses. Type in **Search agents** to filter the list. Kiro's default agent is the first one. The list also has the agents that you made for Kiro in the terminal. When the name is long, the button cuts it, and the tooltip shows the full name.
+- **Options** (the sliders button) opens a menu with the other options of the session. Each option has Kiro's name, Kiro's help text, and its values. **Current** shows on the value that the chat uses. Kiro 3.6 lists these options: Memory reflection, Autopilot, Session messaging, and Content Collection. The options depend on your Kiro CLI version.
+
+The model picker and the thinking button keep their own places. They are not in the **Options** menu.
+
+How a change works:
+
+- A change applies to the next message in the chat. The app sends the change with the message, and Kiro takes it before it answers.
+- A new chat starts with Kiro's own values.
+- The agent and the options stay with the Kiro session. After a reload, the chat shows the same values. A session that you open from the sidebar shows its own values.
+- If you change an option in the terminal, the app does not change it back. After the next reply, the chat shows the value that Kiro reports.
+- If Kiro does not take a value, the reply fails and the chat shows a short message, for example "Kiro did not change Autopilot. Try again." The app sends only values that Kiro lists.
+
+To turn Autopilot off for a chat, open **Options** and select **Supervised** under **Autopilot**. Supervised is Kiro's name for Autopilot off. See [Answer Kiro's questions](#answer-kiros-questions) for what changes.
+
+An agent can have its own rules that run some tools without a question. This is the same as in the terminal. When you pick an agent, you accept its rules.
 
 #### Answer Kiro's questions
 
@@ -204,7 +227,7 @@ After your answer, the step says what you chose: **Allowed**, **Always allowed**
 Some points to know:
 
 - Kiro keeps the **Always** rules, not the app. A rule holds for that Kiro session only. A new chat starts a new session and asks again. A rule can be narrow: **Always allow** for `echo hi` does not cover every command.
-- With Autopilot off, a file write asks twice. First Kiro asks for the write. Then it asks **Review changes**, with **Accept changes** and **Reject changes**. Both questions show in the step of the write. This version does not turn Autopilot off.
+- With Autopilot off, a file write asks twice. First Kiro asks for the write. Then it asks **Review changes**, with **Accept changes** and **Reject changes**. Both questions show in the step of the write. To turn Autopilot off for a chat, see [Choose the agent and the options](#choose-the-agent-and-the-options).
 - **Stop** ends an open question. The step says **Not answered**, and Kiro counts it as one **Deny**. A reload or a closed page ends the question in the same way, and the app does not save that reply.
 - A question that has no answer for 10 minutes also ends. Kiro then gets a **Deny**, and the step says **Not answered**.
 - Kiro asks one question at a time in a session.
@@ -232,7 +255,7 @@ In a new chat, the chat input is in the middle of the window, below the question
 The chat input has two groups of controls below the text box:
 
 - **Left:** the **+** menu (add photos or files, save the text as a prompt), the model picker, and the thinking effort.
-- **Right:** web search (when a search key is set), MCP tools, and inference settings. After the first reply, this group also shows the context usage.
+- **Right:** web search (when a search key is set), MCP tools, and inference settings. After the first reply, this group also shows the context usage. For a Kiro model, this group shows **Agent** and **Options** instead of web search, MCP tools, and inference settings. On a narrow window, the word **Agent** is hidden and the button shows only the agent name.
 
 To start a new chat, click **New chat** (the pencil button in the header) or **New Conversation** in the sidebar.
 
@@ -439,7 +462,7 @@ The list comes from Kiro, not from files that the app reads. Kiro CLI also lists
 To open a session:
 
 1. Click the session. The row says **Importing…** while Kiro sends the session.
-2. The chat shows the messages, the thinking, the tool steps, and the credits of each reply. The session moves to **Conversations**.
+2. The chat shows the messages, the thinking, the tool steps, and the credits of each reply. The session moves to **Conversations**. **Agent** and **Options** show the values of the session.
 3. Type a message. The chat continues the same Kiro session in its own folder, and Kiro knows the earlier messages.
 
 Some limits apply to an import:

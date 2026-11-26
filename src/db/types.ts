@@ -2,6 +2,7 @@
  * Database types for conversation persistence
  */
 import type { KiroSessionSync } from '../utils/kiroSessions';
+import type { SessionOptionValues } from '../utils/sessionOptions';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
 import type { StoredToolCall } from '../utils/toolResults';
 import type { MessageUsage } from '../utils/usage';
@@ -83,6 +84,8 @@ export interface KiroConversationSession extends KiroSessionSync {
   sessionId: string;
   /** How many of the chat's messages (with text, from the start) the session has seen */
   seenMessages: number;
+  /** The session's agent and other option values as Kiro last reported them (K9) */
+  options?: SessionOptionValues;
 }
 
 // Input types for creating new records (id is auto-generated)

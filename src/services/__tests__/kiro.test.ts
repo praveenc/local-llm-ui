@@ -89,6 +89,30 @@ describe('KiroService.getModels', () => {
     expect(models[1]).toMatchObject({ supportsThinking: false, kiro: { rateMultiplier: 1 } });
   });
 
+  it("keeps Kiro's default session options from the models response (K9)", async () => {
+    const sessionOptions = {
+      mode: {
+        id: 'mode',
+        name: 'Mode',
+        category: 'mode',
+        currentValue: 'agent-a',
+        values: [{ value: 'agent-a', name: 'Agent A', description: 'The default agent' }],
+      },
+      options: [],
+    };
+    fetchModels(200, { models: [], sessionOptions });
+    const service = new KiroService();
+    await service.getModels();
+    // A session that the tab has not seen shows the defaults
+    expect(service.getSessionOptions()).toEqual(sessionOptions);
+    expect(service.getSessionOptions('sess_unknown')).toEqual(sessionOptions);
+
+    // A bad snapshot shows no session controls
+    fetchModels(200, { models: [], sessionOptions: { options: 'x' } });
+    await service.getModels();
+    expect(service.getSessionOptions()).toBeNull();
+  });
+
   it('sends refresh: true to skip the server cache', async () => {
     const fetchMock = fetchModels(200, { models: [] });
     await new KiroService().getModels(true);
@@ -432,5 +456,66 @@ describe('KiroService sessions', () => {
     await expect(new KiroService().openSession(SESSION)).rejects.toThrow(
       'Kiro sent a session that the app cannot read.'
     );
+  });
+
+  it("keeps the opened session's option lists for its controls (K9)", async () => {
+    const sessionOptions = {
+      options: [
+        {
+          id: 'autopilot',
+          name: 'Autopilot',
+          currentValue: 'off',
+          values: [
+            { value: 'on', name: 'Autopilot' },
+            { value: 'off', name: 'Supervised' },
+          ],
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        Response.json({
+          title: 'Fix the build',
+          updatedAt: '2026-11-25T10:00:00.000Z',
+          messages: [],
+          turns: 0,
+          imagesLeftOut: 0,
+          turnsLeftOut: 0,
+          sessionOptions,
+        })
+      )
+    );
+    const service = new KiroService();
+    const listener = vi.fn();
+    service.subscribeSessionOptions(listener);
+    await service.openSession(SESSION);
+    expect(service.getSessionOptions(SESSION)).toEqual(sessionOptions);
+    expect(service.getSessionOptions('sess_other')).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('KiroService session option store (K9)', () => {
+  const snapshot = (value: string) => ({
+    options: [{ id: 'o', name: 'O', currentValue: value, values: [{ value, name: value }] }],
+  });
+
+  it('keeps the newest sessions and drops the oldest after 50', () => {
+    const service = new KiroService();
+    for (let i = 0; i < 51; i++) service.rememberSessionOptions(`s${i}`, snapshot(`v${i}`));
+    expect(service.getSessionOptions('s0')).toBeNull();
+    expect(service.getSessionOptions('s1')).toEqual(snapshot('v1'));
+    expect(service.getSessionOptions('s50')).toEqual(snapshot('v50'));
+  });
+
+  it('stops calling a listener after it unsubscribes', () => {
+    const service = new KiroService();
+    const listener = vi.fn();
+    const stop = service.subscribeSessionOptions(listener);
+    service.rememberSessionOptions('s1', snapshot('a'));
+    stop();
+    service.rememberSessionOptions('s1', snapshot('b'));
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });

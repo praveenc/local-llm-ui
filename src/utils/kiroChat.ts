@@ -8,6 +8,8 @@
  * puts the ones that Kiro has not seen in front of the new message, once.
  */
 import type { KiroPermissionEvent } from './kiroPermissions.ts';
+import { parseSessionOptionsRequest } from './sessionOptions.ts';
+import type { SessionOptionValues, SessionOptionsSnapshot } from './sessionOptions.ts';
 import { type ThinkingEffort, isThinkingEffort } from './thinkingEffort.ts';
 
 /** A Kiro session id: sess_ and a UUID */
@@ -37,6 +39,12 @@ export interface KiroChatRequest {
   /** A Kiro model id */
   model: string;
   thinkingEffort?: ThinkingEffort;
+  /**
+   * Session options to set before the message (K9): option id → value. Bad entries are dropped
+   * (`parseSessionOptionsRequest`); the server sends only ids and values that the session lists
+   * and that no app control owns.
+   */
+  sessionOptions?: SessionOptionValues;
 }
 
 /**
@@ -51,6 +59,8 @@ export type KiroChatEvent =
   | { status: string }
   /** Kiro's short title for the chat */
   | { title: string }
+  /** The session's options: after the `session` event, and on each change during the reply */
+  | { sessionOptions: SessionOptionsSnapshot }
   /** Kiro asks a permission question, and the question ended (`kiroPermissions.ts`) */
   | KiroPermissionEvent;
 
@@ -109,6 +119,8 @@ export function parseKiroChatRequest(value: unknown): Parsed {
     return { ok: false, error: 'The thinking effort is not valid' };
   }
 
+  const sessionOptions = parseSessionOptionsRequest(body.sessionOptions);
+
   return {
     ok: true,
     value: {
@@ -120,6 +132,7 @@ export function parseKiroChatRequest(value: unknown): Parsed {
       ...(body.thinkingEffort !== undefined && {
         thinkingEffort: body.thinkingEffort as ThinkingEffort,
       }),
+      ...(sessionOptions && { sessionOptions }),
     },
   };
 }

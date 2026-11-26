@@ -271,7 +271,9 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
         } else if (result.state === 'error') {
           sendJson(res, 503, { error: result.message });
         } else {
-          sendJson(res, 200, { models: result.models });
+          // Kiro's agent and options for a new chat (K9)
+          const sessionOptions = result.state === 'ok' ? result.sessionOptions : undefined;
+          sendJson(res, 200, { models: result.models, ...(sessionOptions && { sessionOptions }) });
         }
         return;
       }

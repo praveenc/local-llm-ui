@@ -41,6 +41,30 @@ const session = (over: Partial<KiroSessionOpenResponse> = {}): KiroSessionOpenRe
   ...over,
 });
 
+const OPTIONS: KiroSessionOpenResponse['sessionOptions'] = {
+  mode: {
+    id: 'mode',
+    name: 'Mode',
+    category: 'mode',
+    currentValue: 'agent-b',
+    values: [
+      { value: 'agent-a', name: 'Agent A' },
+      { value: 'agent-b', name: 'Agent B' },
+    ],
+  },
+  options: [
+    {
+      id: 'autopilot',
+      name: 'Autopilot',
+      currentValue: 'off',
+      values: [
+        { value: 'on', name: 'Autopilot' },
+        { value: 'off', name: 'Supervised' },
+      ],
+    },
+  ],
+};
+
 const messagesOf = (id: string) =>
   db.messages.where('conversationId').equals(id).sortBy('sequence');
 
@@ -101,6 +125,55 @@ describe('importKiroSession', () => {
     const id = await importKiroSession(SESSION, session({ model: undefined }), FALLBACK);
     expect((await db.conversations.get(id))?.models).toEqual(['auto']);
     expect((await messagesOf(id))[0]).toMatchObject({ modelId: 'auto', modelName: 'Auto' });
+  });
+});
+
+describe('Kiro session options of an import (K9)', () => {
+  beforeEach(async () => {
+    await db.conversations.clear();
+    await db.messages.clear();
+  });
+
+  it('stores the values of the session, not the lists', async () => {
+    const id = await importKiroSession(SESSION, session({ sessionOptions: OPTIONS }), FALLBACK);
+    expect((await db.conversations.get(id))?.kiro?.options).toEqual({
+      mode: 'agent-b',
+      autopilot: 'off',
+    });
+  });
+
+  it('takes the values that the terminal set, also when no turn is new', async () => {
+    const id = await importKiroSession(SESSION, session({ sessionOptions: OPTIONS }), FALLBACK);
+    const terminal = structuredClone(OPTIONS)!;
+    terminal.options[0].currentValue = 'on';
+    await appendKiroTurns(id, session({ messages: [], sessionOptions: terminal }));
+    expect((await db.conversations.get(id))?.kiro?.options).toEqual({
+      mode: 'agent-b',
+      autopilot: 'on',
+    });
+
+    terminal.mode!.currentValue = 'agent-a';
+    await appendKiroTurns(
+      id,
+      session({
+        messages: [{ role: 'user', content: 'More' }],
+        turns: 3,
+        sessionOptions: terminal,
+      })
+    );
+    expect((await db.conversations.get(id))?.kiro?.options).toEqual({
+      mode: 'agent-a',
+      autopilot: 'on',
+    });
+  });
+
+  it('keeps the stored values when the open answer has none', async () => {
+    const id = await importKiroSession(SESSION, session({ sessionOptions: OPTIONS }), FALLBACK);
+    await appendKiroTurns(id, session({ messages: [] }));
+    expect((await db.conversations.get(id))?.kiro?.options).toEqual({
+      mode: 'agent-b',
+      autopilot: 'off',
+    });
   });
 });
 

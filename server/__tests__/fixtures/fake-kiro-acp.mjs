@@ -17,6 +17,11 @@
 // FAKE_KIRO_USAGE: getUsage answers `full` (placeholder credits), `error` (an ACP error), or `bad`
 //   (a result with no plan). Default: a plan with no credits.
 // FAKE_KIRO_SLOW_CONFIG_MS: set_config_option answers after this delay
+// FAKE_KIRO_LOAD_AUTOPILOT: session/load of a closed session finds this Autopilot value, as if
+//   the user had changed it in the terminal while the session was closed
+// FAKE_KIRO_STUCK_OPTION: set_config_option of this id answers with no change (a failed read-back)
+// The `mode` option lists 3 placeholder agents; set_config_option sends config_option_update
+//   after its answer (twice for `mode`, like kiro-cli 3.6.2) and, like Kiro, takes any value
 // FAKE_KIRO_SESSIONS=1 (K7): session/list with used, never-used, failed, and old sessions and a
 //   1 MB `customAgents` in each entry; session/load without `noReplay` of a listed session
 //   replays it (updates with `replay: true` before the answer, one without after it); every
@@ -26,7 +31,8 @@
 // Prompt text: TOOL asks a shell question and waits for the answer, WRITE asks for a file write and
 //   then "Review changes" (like Autopilot off), WAIT waits for session/cancel, SLOW streams slowly,
 //   TOOLOK runs a tool that completes, MCPTOOL runs an MCP tool, MAXTOKENS ends with max_tokens,
-//   CRASH exits during the reply, DISPLAYERR sends a display_error and no text, MCPERR sends an
+//   CRASH exits during the reply, OPTIONUPDATE sends a config_option_update (Autopilot off) during
+//   the reply, DISPLAYERR sends a display_error and no text, MCPERR sends an
 //   MCP connection display_error and no text.
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
@@ -98,6 +104,7 @@ const DEFAULT_EFFORT = { 'claude-fake-1': 'medium' };
 
 const noEffort = process.env.FAKE_KIRO_NO_EFFORT === '1';
 const slowConfigMs = Number(process.env.FAKE_KIRO_SLOW_CONFIG_MS ?? '0');
+const stuckOption = process.env.FAKE_KIRO_STUCK_OPTION;
 
 const chatOptions = (s) => [
   {
@@ -142,7 +149,11 @@ const options = (s) => [
     name: 'Mode',
     category: 'mode',
     currentValue: s.mode,
-    options: [{ value: 'vibe', name: 'Default', description: 'General coding assistance' }],
+    options: [
+      { value: 'vibe', name: 'Default', description: 'General coding assistance' },
+      { value: 'agent-b', name: 'Agent B', description: 'A placeholder agent' },
+      { value: 'agent-c', name: 'Agent C', _meta: { kiro: { source: 'local' } } },
+    ],
   },
   ...(chat
     ? chatOptions(s)
@@ -197,6 +208,9 @@ function open(sessionId) {
     effortLevel: 'high',
     thinking: 'on',
   };
+  if (process.env.FAKE_KIRO_LOAD_AUTOPILOT && closedSessions.has(sessionId)) {
+    s.autopilot = process.env.FAKE_KIRO_LOAD_AUTOPILOT;
+  }
   closedSessions.delete(sessionId);
   sessions.set(sessionId, s);
   notify('_kiro/mcp/status', { sessionId, servers: [{ name: 'fake', status: 'connecting' }] });
@@ -275,6 +289,11 @@ async function runPrompt(id, { sessionId, prompt }) {
     });
     setTimeout(() => process.exit(3), 20);
     return;
+  }
+  if (text.includes('OPTIONUPDATE')) {
+    // Like a change in Kiro during the reply
+    s.autopilot = 'off';
+    update(sessionId, { sessionUpdate: 'config_option_update', configOptions: options(s) });
   }
   if (text.includes('WAIT')) {
     while (!cancelled.has(sessionId)) await sleep(10);
@@ -498,6 +517,12 @@ function replay(sessionId) {
   const user = (messageId, content) =>
     r({ sessionUpdate: 'user_message_chunk', content, _meta: { kiro: { messageId } } });
   const toolCallId = 'run_command_toolu_bdrk_01REPLAY';
+  // Like a load of a session whose values changed: a config_option_update before the answer, newer
+  // than the options in the answer (agent B, Autopilot off)
+  update(sessionId, {
+    sessionUpdate: 'config_option_update',
+    configOptions: options({ mode: 'agent-b', model: 'claude-fake-1', autopilot: 'off' }),
+  });
   // Turn 1: a prompt from the app with its context block, a tool call, and an image
   user('m1', {
     type: 'text',
@@ -653,7 +678,7 @@ const handlers = {
     const s = sessions.get(sessionId);
     if (!s) throw { code: -32602, message: 'Session not found' };
     // Like Kiro: no validation
-    if (value !== 'stuck-model') {
+    if (value !== 'stuck-model' && configId !== stuckOption) {
       s[configId] = value;
       if (chat && configId === 'model') {
         // Like Kiro: a model change resets the effort to the model's default
@@ -661,6 +686,12 @@ const handlers = {
         s.thinking = 'on';
       }
     }
+    // Like Kiro: config_option_update after the answer, twice for an agent change
+    setTimeout(() => {
+      for (let i = 0; i < (configId === 'mode' ? 2 : 1); i += 1) {
+        update(sessionId, { sessionUpdate: 'config_option_update', configOptions: options(s) });
+      }
+    }, 0);
     return { configOptions: options(s) };
   },
   '_kiro/account/getUsage'() {

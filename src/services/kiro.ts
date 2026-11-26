@@ -10,6 +10,7 @@ import {
 } from '../utils/kiroSessions';
 import type { KiroStatus } from '../utils/kiroStatus';
 import type { KiroUsage } from '../utils/kiroUsage';
+import { type SessionOptionsSnapshot, parseSessionOptionsSnapshot } from '../utils/sessionOptions';
 import type { ModelInfo } from './types';
 
 /** The text of an error response ({ error }), or a short message for its status */
@@ -39,7 +40,48 @@ export class KiroSignedOutError extends Error {
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
+/** The most sessions whose option lists the tab keeps in memory */
+const MAX_REMEMBERED_SESSIONS = 50;
+
 export class KiroService {
+  /** Kiro's default session options, from the models response (a new session) */
+  private defaultSessionOptions: SessionOptionsSnapshot | null = null;
+  /** The option lists of each Kiro session that this tab has seen (chat or open), in memory */
+  private sessionOptions = new Map<string, SessionOptionsSnapshot>();
+  private sessionOptionsListeners = new Set<() => void>();
+
+  private sessionOptionsChanged() {
+    for (const listener of this.sessionOptionsListeners) listener();
+  }
+
+  /** For useSyncExternalStore: called when the defaults or a session's lists change */
+  subscribeSessionOptions = (listener: () => void): (() => void) => {
+    this.sessionOptionsListeners.add(listener);
+    return () => {
+      this.sessionOptionsListeners.delete(listener);
+    };
+  };
+
+  /**
+   * The option lists of this Kiro session, when the tab has seen them; else Kiro's defaults from
+   * the models response; null when Kiro listed none. The lists are not stored (K9): after a
+   * reload, the defaults give the lists and the conversation gives the values.
+   */
+  getSessionOptions(sessionId?: string): SessionOptionsSnapshot | null {
+    return (sessionId && this.sessionOptions.get(sessionId)) || this.defaultSessionOptions;
+  }
+
+  /** Keeps the option lists that Kiro reported for a session (chat event or open answer) */
+  rememberSessionOptions(sessionId: string, snapshot: SessionOptionsSnapshot): void {
+    this.sessionOptions.delete(sessionId);
+    this.sessionOptions.set(sessionId, snapshot);
+    if (this.sessionOptions.size > MAX_REMEMBERED_SESSIONS) {
+      const oldest = this.sessionOptions.keys().next().value;
+      if (oldest !== undefined) this.sessionOptions.delete(oldest);
+    }
+    this.sessionOptionsChanged();
+  }
+
   /** The state of kiro-cli on the computer that runs the app; `refresh` skips the server cache */
   async getStatus(refresh = false): Promise<KiroStatus> {
     const response = await fetch(`/api/kiro/status${refresh ? '?refresh=1' : ''}`);
@@ -157,7 +199,14 @@ export class KiroService {
     });
     if (response.status === 401) throw new Error(KIRO_SIGN_IN_MESSAGE);
     if (!response.ok) throw new Error(await responseError(response));
-    const body = (await response.json()) as { models?: unknown };
+    const body = (await response.json()) as { models?: unknown; sessionOptions?: unknown };
+    // Kiro's defaults of a new session (K9); a bad snapshot shows no session controls
+    const defaults =
+      body.sessionOptions === undefined ? null : parseSessionOptionsSnapshot(body.sessionOptions);
+    if (JSON.stringify(defaults) !== JSON.stringify(this.defaultSessionOptions)) {
+      this.defaultSessionOptions = defaults;
+      this.sessionOptionsChanged();
+    }
     const models = Array.isArray(body.models) ? (body.models as KiroModel[]) : [];
     return models
       .filter((m) => m && typeof m.id === 'string' && typeof m.name === 'string')
@@ -202,6 +251,7 @@ export class KiroService {
     if (!response.ok) throw new Error(await responseError(response));
     const session = parseKiroSessionOpenResponse(await response.json());
     if (!session) throw new Error('Kiro sent a session that the app cannot read.');
+    if (session.sessionOptions) this.rememberSessionOptions(sessionId, session.sessionOptions);
     return session;
   }
 
