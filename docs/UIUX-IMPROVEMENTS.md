@@ -1,6 +1,6 @@
 # UI and UX improvements
 
-Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Item 19 is done. Last updated 2026-11-26. See [Progress](#progress) for the state of each item.
+Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Item 19 is done. Item 20 is in review. Last updated 2026-11-26. See [Progress](#progress) for the state of each item.
 
 This document reviews the current chat UI and proposes changes, in order of impact. It also records the decisions made so far and the questions that are still open.
 
@@ -61,6 +61,7 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 17 | Web search on by default | 8 `feat/web-search-default` ([#72](https://github.com/praveenc/local-llm-ui/pull/72)) | Done, merged |
 | 18 | Rename a chat from the header | 9 `feat/rename-title` ([#73](https://github.com/praveenc/local-llm-ui/pull/73), stacked on #72) | Done, merged |
 | 19 | Current provider first in the model picker | `fix/model-picker-order` ([#85](https://github.com/praveenc/local-llm-ui/pull/85)) | Done, merged ([#85](https://github.com/praveenc/local-llm-ui/pull/85)) |
+| 20 | Replies keep running in their own chat | `fix/background-replies` | In review ([#88](https://github.com/praveenc/local-llm-ui/pull/88)) |
 
 ### Found during the work
 
@@ -616,6 +617,25 @@ Conversations
   - `AppShell` passes `preferredProvider` to the picker through `ChatContainer`.
 - **Done in this PR:** unit tests for the order function and for the picker (selected model, default provider, no provider, and a search where another group matches better).
 
+### 20. Replies keep running in their own chat
+
+- **Categories:** Core flows. **Effort:** M.
+- **Problem:** A reply that streams moves into the new chat when you click **New chat**. The new chat shows Stop and the reply text of the other chat. A click on a different chat overwrites the last reply of that chat. You cannot start a second chat while a reply runs, and nothing tells you when a reply ends in a chat that you do not look at.
+- **Evidence:**
+  - `useBedrockChat.ts` kept one `messages`, one `status`, one `wasInterrupted`, one `streamStatus`, and one `abortControllerRef` for the whole view. The stream loop wrote into "the chat that is shown" (`flushAssistantMessage`, then `setMessages(prev => …)`).
+  - **New chat** calls `clearMessages` and does not stop the run, so the next frame pushed the reply of chat A into the empty chat.
+  - The database writes were already right: they used the id that the run captured. Only the view state was shared.
+  - `ConversationList.tsx` deleted a chat with no stop, so a running reply could write into a deleted chat.
+- **Fix:**
+  - `src/utils/replyStore.ts` holds the state of each running reply by chat id, at module level, and the hook reads it with `useSyncExternalStore` (`src/hooks/useReplies.ts`). A run writes only through its own handle, and the writes of an older run are ignored. The store has no DOM code and has its own tests.
+  - The view shows only the reply of the open chat. **Stop** and the send guard use the open chat only, so each chat can have one running reply.
+  - The sidebar row of a running chat says "Replying…" with a spinner that stops for reduced motion, or "Waiting for your answer" for a Kiro question.
+  - A toast ("Reply ready", "Reply failed", "Kiro is waiting for your answer") shows when the chat is not on screen, with the chat title and an **Open** action. One constant, `REPLY_NOTICE_RULES` in `src/utils/replyNotice.ts`, holds the rules. To get a toast after every reply, change `done` to `always`.
+  - **Delete** stops the running reply first, then deletes the chat.
+  - A reload or a closed page still stops the running replies.
+- **Not changed:** the app still does not save the partial text of a stopped reply. This was so before this item.
+- **Done in this PR:** unit tests for the store and the toast rules, hook tests (switch chats, come back, two chats at once, New chat, Stop, Kiro question), sidebar tests (words, delete order), and a check with real Bedrock and Kiro replies in headless Chromium at 1440 and 390 px, light and dark.
+
 ### Found during the planning
 
 - **Stale text in Saved Prompts.** The empty Saved Prompts dialog says "click the bookmark button to save it" (`ViewPromptsModal.tsx:192`, screenshot 2). PR 4 moved that button into the **+** menu as "Save as prompt". PR 6 changes the text to "Type a prompt in the chat input, click +, and then click Save as prompt."
@@ -623,6 +643,7 @@ Conversations
 - **Titles cut in the middle of a word** (`conversationService.ts:26`). Plan 2 does not change this. A later item can cut at a space, or ask the model for a short title.
 - **The navigation sheet stays open after you select a chat (PR 9 testing).** Below 1024 px, a click on a chat in the sheet opens the chat but does not close the sheet. This was so before Plan 2. Not in PR 9.
 - **A search that fails on all providers did not say "failed" (PR 8 testing).** With a key that the provider rejects, the work row said "2 searches" and nothing about the failure. The search tool returns the errors as its output (`server/web-search.ts:131`, `error` field) instead of sending `tool-error`, so the step kept the status `success`, and `workSummary.ts:63` counted only steps with the status `error`. Each step already said "Failed" (`tool-call.tsx:40`). Fixed in PR 8: `isToolCallFailed` in `src/utils/toolResults.ts` holds the rule, and the summary and the step both use it.
+- **The toast time is the normal time (item 20 testing).** The "Kiro is waiting for your answer" toast goes away after about 4 s. A busy page, for example while you open the navigation sheet at 390 px, can hide it before you click. The question stays open, and the sidebar row still says "Waiting for your answer". A later item can keep this toast until you act.
 - **Reply text from two model calls runs together (PR 8 testing).** When the model writes text, calls a tool, and writes again, the two texts join with no space, for example "…a different query.I couldn't find…". PR 8 does not change how reply text is joined. Not fixed.
 
 ### Delivery plan for Plan 2
