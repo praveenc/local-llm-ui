@@ -13,12 +13,12 @@ PR numbers link to GitHub.
 
 #### Fixed
 
-- A Kiro tool question now shows the whole command, up to 2,000 characters, as code that keeps its line breaks, wraps on a narrow screen, and scrolls after about 10 lines. Before, the question cut the command at 80 characters and showed backticks as text, so the end of a long command was hidden. When Kiro sends a longer command, a line under it says that only the start shows. While the question is open, the line above the answer says **Waiting for your answer**, so the question shows only once ([#92])
-- When `~/.local-llm-ui` or the Kiro work folder is a symlink, for example from a dotfiles manager, the app no longer changes the mode of the linked folder. It still checks that you own it. A folder that the app makes, or a real folder, still gets mode 0700, and the settings file stays 0600 ([#93])
-- The Preferences footer now says **Saved** when the folder for new Kiro chats saves, as it does for the other settings ([#93])
-- An agent that you make in the terminal now shows in the **Agent** list of a new chat, and in **Default agent**, the next time that you open the list. Before, the list could be up to 1 hour old. The app asks Kiro again at most once a minute ([#94])
-- An agent or option pick in a Kiro chat that you have not sent yet now stays after a reload. A pick of a value that Kiro no longer lists is dropped ([#94])
-- Content Collection is one value for all Kiro chats of a Kiro CLI process. A new Kiro chat no longer sets it back to the value of an older chat, and the **Options** menu says "Applies to all Kiro chats until Kiro CLI stops." under it ([#94])
+- A Kiro tool question now shows the whole command, up to 2,000 characters, as code that keeps its line breaks, wraps on a narrow screen, and scrolls after about 10 lines. Before, the question cut the command at 80 characters and showed backticks as text, so the end of a long command was hidden. When Kiro sends a longer command, a line under it says that only the start shows. While the question is open, the line above the answer says **Waiting for your answer**, so the question shows only once ([#94])
+- When `~/.local-llm-ui` or the Kiro work folder is a symlink, for example from a dotfiles manager, the app no longer changes the mode of the linked folder. It still checks that you own it. A folder that the app makes, or a real folder, still gets mode 0700, and the settings file stays 0600 ([#95])
+- The Preferences footer now says **Saved** when the folder for new Kiro chats saves, as it does for the other settings ([#95])
+- An agent that you make in the terminal now shows in the **Agent** list of a new chat, and in **Default agent**, the next time that you open the list. Before, the list could be up to 1 hour old. The app asks Kiro again at most once a minute ([#96])
+- An agent or option pick in a Kiro chat that you have not sent yet now stays after a reload. A pick of a value that Kiro no longer lists is dropped ([#96])
+- Content Collection is one value for all Kiro chats of a Kiro CLI process. A new Kiro chat no longer sets it back to the value of an older chat, and the **Options** menu says "Applies to all Kiro chats until Kiro CLI stops." under it ([#96])
 
 ## [1.3.0] - 2026-11-26
 
@@ -263,9 +263,9 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#96]: https://github.com/praveenc/local-llm-ui/pull/96
+[#95]: https://github.com/praveenc/local-llm-ui/pull/95
 [#94]: https://github.com/praveenc/local-llm-ui/pull/94
-[#93]: https://github.com/praveenc/local-llm-ui/pull/93
-[#92]: https://github.com/praveenc/local-llm-ui/pull/92
 [#90]: https://github.com/praveenc/local-llm-ui/pull/90
 [#89]: https://github.com/praveenc/local-llm-ui/pull/89
 [#88]: https://github.com/praveenc/local-llm-ui/pull/88
