@@ -35,7 +35,7 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 **Answers**
 
 - See replies as they stream.
-- Start a new chat while a reply is still running. The reply stays in its own chat, and a toast tells you when it is ready.
+- Start a new chat while a reply is still running. The reply stays in its own chat, and a toast tells you when it is ready. A reply that ends in the open chat also shows a toast.
 - See what the model did before it answered (thinking, web searches, tool calls) in one line above the answer. Click the line to see each step.
 - Set the thinking effort, from Off to XHigh (Max for some Kiro models).
 - See the tokens, time, and cost of each reply, or the Kiro credits.
@@ -485,13 +485,14 @@ A reply belongs to the chat that you sent it from. You do not need to wait for a
 - Go back to a chat with a running reply to see the reply as it streams. The send button is the stop button there. **Stop** stops only the reply of the open chat.
 - Go back after the reply ended to see the saved reply.
 
-A toast shows when something happens in a chat that is not on screen. A chat is not on screen when you have a different chat open or the browser tab is hidden:
+A toast shows when a reply ends or fails, in any chat:
 
 - **Reply ready**: the reply ended.
 - **Reply failed**: the reply failed.
-- **Kiro is waiting for your answer**: Kiro asks a question about a tool.
 
-Each toast shows the title of the chat and an **Open** button. **Open** opens that chat. A chat has one toast at a time, and a new event of the chat replaces it. The app shows no toast for a reply that you stop, or for a reply that ends in the chat that you look at. If you miss a toast, the sidebar row still tells you the state.
+A third toast, **Kiro is waiting for your answer**, shows when Kiro asks a question about a tool in a chat that is not on screen. A chat is not on screen when you have a different chat open or the browser tab is hidden. In the open chat, the step above the answer already shows the question.
+
+Each toast shows the title of the chat. A toast for a chat that is not on screen also has an **Open** button that opens that chat. A chat has one toast at a time, and a new event of the chat replaces it. The app shows no toast for a reply that you stop. If you miss a toast, the sidebar row still tells you the state.
 
 When you delete a chat with a running reply, the app stops the reply first. A reload or a closed page stops all running replies.
 

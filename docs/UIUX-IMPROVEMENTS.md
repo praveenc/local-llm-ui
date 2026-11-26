@@ -630,7 +630,7 @@ Conversations
   - `src/utils/replyStore.ts` holds the state of each running reply by chat id, at module level, and the hook reads it with `useSyncExternalStore` (`src/hooks/useReplies.ts`). A run writes only through its own handle, and the writes of an older run are ignored. The store has no DOM code and has its own tests.
   - The view shows only the reply of the open chat. **Stop** and the send guard use the open chat only, so each chat can have one running reply.
   - The sidebar row of a running chat says "Replying…" with a spinner that stops for reduced motion, or "Waiting for your answer" for a Kiro question.
-  - A toast ("Reply ready", "Reply failed", "Kiro is waiting for your answer") shows when the chat is not on screen, with the chat title and an **Open** action. One constant, `REPLY_NOTICE_RULES` in `src/utils/replyNotice.ts`, holds the rules. To get a toast after every reply, change `done` to `always`.
+  - A toast ("Reply ready", "Reply failed") shows for every reply that ends, also in the open chat, with the chat title. "Kiro is waiting for your answer" shows only when the chat is not on screen, because the work row of the open chat already shows Kiro's buttons. The **Open** action shows only when the chat is not on screen. A stopped reply shows no toast. One constant, `REPLY_NOTICE_RULES` in `src/utils/replyNotice.ts`, holds the rules.
   - **Delete** stops the running reply first, then deletes the chat.
   - A reload or a closed page still stops the running replies.
 - **Not changed:** the app still does not save the partial text of a stopped reply. This was so before this item.
