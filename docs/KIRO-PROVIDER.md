@@ -67,10 +67,10 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 | K8 | `feat/kiro-credits` | 8 | Done, merged ([#84](https://github.com/praveenc/local-llm-ui/pull/84)) |
 | K9 | `feat/kiro-session-options` | 9 | Done, merged ([#86](https://github.com/praveenc/local-llm-ui/pull/86)) |
 | KD | `feat/kiro-defaults` | D6, D9, 10 | Done, merged ([#87](https://github.com/praveenc/local-llm-ui/pull/87)) |
-| K11a | `fix/kiro-question-line` | 11 (D21, D22) | In review ([#92](https://github.com/praveenc/local-llm-ui/pull/92)) |
-| K11b | `fix/kiro-settings-folder` | 11 (D28) | In review ([#93](https://github.com/praveenc/local-llm-ui/pull/93)) |
-| K11c | `fix/kiro-session-options` | 11 (D26, D27) | In review ([#94](https://github.com/praveenc/local-llm-ui/pull/94)) |
-| K11d | `fix/kiro-session-sync` | 11 (D23, D24, D25) | In review ([#95](https://github.com/praveenc/local-llm-ui/pull/95)) |
+| K11a | `fix/kiro-question-line` | 11 (D21, D22) | In review ([#94](https://github.com/praveenc/local-llm-ui/pull/94)) |
+| K11b | `fix/kiro-settings-folder` | 11 (D28) | In review ([#95](https://github.com/praveenc/local-llm-ui/pull/95)) |
+| K11c | `fix/kiro-session-options` | 11 (D26, D27) | In review ([#96](https://github.com/praveenc/local-llm-ui/pull/96)) |
+| K11d | `fix/kiro-session-sync` | 11 (D23, D24, D25) | In review ([#97](https://github.com/praveenc/local-llm-ui/pull/97)) |
 
 ### Found during the work
 
@@ -119,7 +119,7 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 - **Real check of K6 (kiro-cli 3.6.1, Claude Haiku 5.5, 2026-11-25).** The question showed after about 8 s with Kiro's four options. **Allow** made the file, and **Deny** did not. **Always allow** gave no second question for the same command. A write with Autopilot on asked once, with no "Review changes". **Stop** ended the open question and the next message worked. A read asked nothing. The two-question path is not reachable in the browser with Autopilot on, so a fake-process test covers it. K9 can check it with Autopilot off.
 - **An "Always" rule is narrow (K6).** After **Always allow** for one `echo` command, a later `echo` command with another start asked again. The rule is Kiro's. The app shows the question as Kiro sends it.
 - **A stopped reply is not saved (found in K6).** The app does not store a reply that **Stop** ended, so a reload does not show its **Not answered** row. The stored form is covered by unit tests. This was the case before K6.
-- **Small points left (K6).** The question line shows the command between backticks as plain text, and the line shows once in the row summary and once under the tool line. At 390 px the tool line cuts the command, and the question line under it shows the whole command. Fixed in K11a (#92).
+- **Small points left (K6).** The question line shows the command between backticks as plain text, and the line shows once in the row summary and once under the tool line. At 390 px the tool line cuts the command, and the question line under it shows the whole command. Fixed in K11a (#94).
 - **The list and the import come from Kiro (K7).** The server reads `session/list` and keeps only the id, folder, title, last change, and status of each session. `_meta.kiro.customAgents` is 13 MB of 14 MB, and the server drops it at once. `POST /api/kiro/sessions/open` runs `session/load` with replay, collects the replayed updates, and closes the session. The replay of the largest session is 64.6 MB of updates, but the collector keeps only compact turns. The app never reads `~/.kiro/sessions` for the list or the transcript (D18).
 - **Real import of the largest session (K7).** The largest idle session had 22 MB on disk, 58 turns, and 3,595 tool calls. The server took 2.6 s, and the chat showed after 3.7 s. The response was 7.9 MB, so the 16 MB limit did not apply. The app stored 116 messages, and the browser storage went from 253 KB to 5.3 MB. The two session files, the file count, and the file times did not change. **Delete** removed the chat from the app only.
 - **Kiro lists more than chats (K7).** The list has sessions that Kiro makes for itself (memory consolidation, prompt optimiser) and sessions whose first message is a system prompt. The app hides only "New Session" (D19) and shows the rest as Kiro lists them. In a list of about 2,300 sessions, Last 7 days shows 85 rows and All shows 275 rows.
