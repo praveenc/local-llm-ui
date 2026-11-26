@@ -455,23 +455,33 @@ Supported formats: PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX, and images.
 
 ### Context window
 
-The context indicator in the chat input shows how full the context window of the selected model is. The value is the size of the chat after the last reply, because the model gets the whole chat again with each new message. The indicator also shows after you open a saved chat.
+The context indicator in the chat input shows how full the context window of the selected model is. The value is the size of the chat after the last reply, because the model gets the whole chat again with each new message. The indicator shows when the chat has one or more replies, also after you open a saved chat.
 
 - At 70%, the indicator changes color and says **Near the limit**.
 - At 90%, it says **Almost full**. A reply can fail when the window is full. Start a new chat.
 
-For a Kiro chat, the value is the percentage that Kiro reports. Kiro makes the session smaller by itself when it gets full. The popover also shows the plan and the credits of your Kiro account, above the credits of the chat.
+The indicator shows a percentage only when the last reply came from the selected model. If you select a different model, or no model, the indicator shows a chart icon and no percentage, and the popover says **Context use shows after the next reply from this model.** A different model counts the tokens of the chat in its own way, so the app does not guess.
 
-Click the indicator to see the input and output tokens of the chat, the tokens read from the prompt cache, the reasoning tokens, and the cost.
+For a Kiro chat, the value is the percentage that Kiro reports. Kiro makes the session smaller by itself when it gets full. The popover also shows the plan and the credits of your Kiro account.
+
+Click the indicator to see the totals of the whole chat, from all models: the input and output tokens, the tokens read from the prompt cache, the reasoning tokens, the cost, and the Kiro credits. See [Usage and cost](#usage-and-cost).
 
 ### Usage and cost
 
 Under each reply, next to the rating buttons, the app shows the input and output tokens, the time, and the cost of that reply. For example: `1.2K in · 342 out · 2.1 s · $0.0029`. Put the pointer on it to see the exact numbers.
 
+The context popover shows the totals of the whole chat. A chat can have replies from more than one model, for example from Kiro and from Amazon Bedrock. The popover adds up all of them:
+
+- **This chat** shows the input and output tokens of all the replies that count tokens.
+- **Cost** shows the sum of the cost of these replies.
+- **Credits in this chat** shows the sum of the Kiro credits. The app does not add credits to tokens or to the cost.
+
+The totals come from the replies that the app saves, so they are the same after a reload.
+
 - With tools on, one reply can have several model calls. The tokens and the cost include all of them.
-- Local models (Ollama and LM Studio) are free. The context popover shows **Free**.
-- Kiro counts credits, not tokens. Under a Kiro reply the app shows the credits and the time, for example `0.05 credits · 2.9 s`, and the context popover shows the credits of the chat and of your Kiro account.
-- If the app has no price for a model, it shows no cost under the reply and **No price data** in the popover.
+- Local models (Ollama and LM Studio) are free. When all the replies that count tokens come from local models, the popover shows **Free**.
+- Kiro counts credits, not tokens. Under a Kiro reply the app shows the credits and the time, for example `0.05 credits · 2.9 s`. The context popover shows the credits of the chat and the credits of your Kiro account.
+- If the app has no price for a model, it shows no cost under the reply. If no reply in the chat has a price, the popover shows **No price data**. If some replies have no price, the popover shows the sum of the other replies and, for example, **2 replies have no price data**.
 - Claude prices come from the Anthropic pricing page. For the prices and how the app applies them, see [docs/ANTHROPIC_PRICING.md](docs/ANTHROPIC_PRICING.md). The cost is an estimate. Your provider's bill is the real cost.
 
 ### Find a chat
