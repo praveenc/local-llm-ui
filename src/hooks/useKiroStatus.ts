@@ -9,14 +9,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 
 import { kiroService } from '../services';
-import type { KiroStatus } from '../utils/kiroStatus';
+import type { KiroFolderSetting, KiroStatusResponse } from '../utils/kiroSettings';
 
 export const KIRO_STATUS_QUERY_KEY = ['kiro-status'] as const;
 
 interface UseKiroStatusResult {
-  status: KiroStatus | undefined;
+  status: KiroStatusResponse | undefined;
   refresh: () => Promise<void>;
   isRefreshing: boolean;
+  /** Puts the folder that the server stored into the status, so every view shows it at once */
+  setFolder: (folder: KiroFolderSetting) => void;
 }
 
 export function useKiroStatus(): UseKiroStatusResult {
@@ -42,5 +44,14 @@ export function useKiroStatus(): UseKiroStatusResult {
     }
   }, [queryClient]);
 
-  return { status: data, refresh, isRefreshing };
+  const setFolder = useCallback(
+    (folder: KiroFolderSetting) => {
+      queryClient.setQueryData<KiroStatusResponse>(KIRO_STATUS_QUERY_KEY, (old) =>
+        old ? { ...old, folder } : old
+      );
+    },
+    [queryClient]
+  );
+
+  return { status: data, refresh, isRefreshing, setFolder };
 }

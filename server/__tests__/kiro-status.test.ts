@@ -273,6 +273,13 @@ describe('/api/kiro route', () => {
   let base: string;
   const calls: Array<boolean | undefined> = [];
   const status: KiroStatus = { state: 'not-installed' };
+  const folder = { path: '~/projects/demo', isDefault: false };
+  // A stub, so that the route does not read the settings file of the real home folder
+  const settings = {
+    folder: async () => folder,
+    workspaceDir: async () => undefined,
+    set: async () => ({ ok: true as const, folder }),
+  };
 
   beforeAll(async () => {
     const proxy = createKiroProxy({
@@ -282,6 +289,7 @@ describe('/api/kiro route', () => {
           return status;
         },
       },
+      settings,
     });
     server = createServer((req, res) => {
       void proxy(req, res, () => {
@@ -302,7 +310,8 @@ describe('/api/kiro route', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('application/json');
     expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(await response.json()).toEqual(status);
+    // The folder for new Kiro chats, for display (D6)
+    expect(await response.json()).toEqual({ ...status, folder });
     expect(calls.at(-1)).toBe(false);
   });
 

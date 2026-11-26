@@ -56,7 +56,7 @@ Vite middleware keeps credentials and SDK calls on the server. Each chat proxy u
 - `/api/lmstudio-sdk` → LM Studio SDK (model list)
 - `/api/lmstudio`, `/api/ollama` → plain HTTP proxies
 - `/api/kiro` → Kiro CLI (`server/kiro-proxy.ts`). Two layers sit behind it: `server/acp/` is the generic ACP harness layer (agent process, process groups, permissions, update mapping; it has no harness names, and a test checks this), and `server/kiro/` is the Kiro harness adapter. A new harness adds its own adapter folder next to `server/kiro/`.
-  - `GET /api/kiro/status` runs `kiro-cli --version` and `kiro-cli whoami -f json` with `execFile` (no shell) and keeps the result 30 s.
+  - `GET /api/kiro/status` runs `kiro-cli --version` and `kiro-cli whoami -f json` with `execFile` (no shell) and keeps the result 30 s. It also returns `folder` (`{ path, isDefault }`, the folder for new chats, written as `~/…`).
   - `POST /api/kiro/login` runs `kiro-cli login --use-device-flow` and streams the code and the sign-in URL as SSE.
   - `POST /api/kiro/login/cancel` stops the sign-in.
   - `POST /api/kiro/logout` signs out.
@@ -65,9 +65,10 @@ Vite middleware keeps credentials and SDK calls on the server. Each chat proxy u
   - `POST /api/kiro/sessions/open` loads one session from Kiro's list with replay and returns it as compact messages (JSON, at most 16 MB). It is read only, and it closes the session after the replay (`server/kiro/sessions.ts`, `server/kiro/replay.ts`).
   - `POST /api/kiro/chat` streams a Kiro reply through one shared `kiro-cli acp` (`server/acp/agent.ts` with the Kiro harness in `server/kiro/harness.ts`; the route is `server/kiro/chat.ts`). It gets the new message, the earlier messages, and how many of them the Kiro session has seen (`src/utils/kiroChat.ts`). When Kiro asks to run a tool, it sends a `permission` event with a server-made `requestId` and Kiro's options, and a `permissionResult` event when the question ends (`src/utils/kiroPermissions.ts`). The body may also have `sessionOptions` (id → value, at most 20): the server sets only options that the session lists, to listed values, reads each one back, and sends a `sessionOptions` event with the current options (`server/kiro/chat-options.ts`, `server/acp/session-options.ts`, `src/utils/sessionOptions.ts`; SEC-20).
   - `POST /api/kiro/permission` answers one open Kiro question with `{ requestId, optionId }` (JSON, 1 KB at most; 404 for an unknown or ended question, 400 for an option that the question does not list). The open questions are in `server/acp/permission-registry.ts`. It never starts Kiro CLI.
-  - `POST /api/kiro/usage` returns the account plan and credits (`server/kiro/usage.ts`, parser in `src/utils/kiroUsage.ts`). It calls `_kiro/account/getUsage`, keeps the result 5 min, and does not start Kiro CLI when the status says signed out. A POST: it can start Kiro CLI.
+  - `POST /api/kiro/usage` returns the account plan and credits (`server/kiro/usage.ts`, parser in `src/utils/kiroUsage.ts`). It calls `_kiro/account/getUsage`, keeps the result 5 min for each account (a call stores its result only when its account is still the current one), and does not start Kiro CLI when the status says signed out. A POST: it can start Kiro CLI.
+  - `POST /api/kiro/settings` sets the folder for new Kiro chats: `{ workspaceDir: string | null }` (JSON, 4 KB at most; `null` is the default `~/.local-llm-ui/kiro`). The server checks the real path (exists, a folder, owned, writable, not `/`, the home folder, a system folder, or a settings folder) and stores it in `~/.local-llm-ui/kiro-settings.json` (mode 600). The chat body never has a folder (SEC-16, SEC-21). `server/kiro/settings.ts`, shared checks in `src/utils/kiroSettings.ts`. It never starts Kiro CLI.
 
-Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`, `kiroStatus.ts`, `kiroLogin.ts`, `kiroModels.ts`, `kiroChat.ts`, `kiroPermissions.ts`, `kiroSessions.ts`, `sessionOptions.ts`). Keep these free of DOM and Node imports.
+Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort.ts`, `toolSteps.ts`, `webSearch.ts`, `mediaTypes.ts`, `errorMessage.ts`, `kiroStatus.ts`, `kiroLogin.ts`, `kiroModels.ts`, `kiroChat.ts`, `kiroPermissions.ts`, `kiroSessions.ts`, `sessionOptions.ts`, `kiroSettings.ts`). Keep these free of DOM and Node imports.
 
 ### Data Persistence (Dexie.js/IndexedDB)
 
@@ -81,7 +82,8 @@ Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort
 - `src/layout/AppShell.tsx` - Main orchestrator, manages state
 - `src/layout/AppLayout.tsx` - Layout wrapper with sidebar
 - `src/components/chat/ChatContainer.tsx` - Chat UI container
-- `src/components/chat/SessionAgentPicker.tsx`, `SessionOptionsMenu.tsx` - The **Agent** picker (ACP category `mode`) and the **Options** menu for a Kiro chat (K9)
+- `src/components/chat/SessionAgentPicker.tsx`, `SessionOptionsMenu.tsx` - The **Agent** picker (ACP category `mode`) and the **Options** menu for a Kiro chat (K9). `SessionAgentList.tsx` is the agent list that the picker and the default agent row share
+- `src/components/sidebar/KiroFolderSetting.tsx`, `KiroDefaultAgent.tsx` - The "Folder for new Kiro chats" and "Default agent" rows of the Kiro row in Preferences (KD, `KiroChatDefaults.tsx` renders both)
 - `src/components/ai-elements/` - Reusable AI UI components (prompt-input, message, model-selector, reasoning, context)
 - `src/components/sidebar/Sidebar.tsx` - Conversation list, saved prompts, preferences
 - `src/components/ui/` - shadcn/ui components
@@ -93,7 +95,7 @@ Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort
 - `useConversation.ts`, `useConversations.ts` - Conversation state/CRUD
 - `useSavedPrompts.ts` - Saved prompts with Dexie reactive queries
 - `useKiroSessions.ts` - The Kiro sessions list (focus and 60 s refresh), import, and sync of terminal turns
-- `useSessionOptions.ts` - The agent and options of the open chat: lists from the last snapshot, values from the conversation (`kiro.options`), and the picks that no reply has applied yet
+- `useSessionOptions.ts` - The agent and options of the open chat: lists from the last snapshot, values from the conversation (`kiro.options`), the picks that no reply has applied yet, and for a new chat the default agent from `preferences.kiroDefaultAgent`
 
 ## Code Conventions
 

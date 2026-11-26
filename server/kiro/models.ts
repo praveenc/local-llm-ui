@@ -18,6 +18,7 @@ import type { SessionOptionsSnapshot } from '../../src/utils/sessionOptions.ts';
 import { KiroSignedOutError } from './agent.ts';
 import type { KiroAgent } from './agent.ts';
 import { kiroSessionOptions } from './chat-options.ts';
+import { KiroFolderError } from './settings.ts';
 
 export type KiroModelListResult =
   | {
@@ -131,6 +132,10 @@ export function createKiroModelList(options: KiroModelListOptions): KiroModelLis
         return { state: 'ok', models: loaded.models, sessionOptions: loaded.sessionOptions };
       } catch (error) {
         if (error instanceof KiroSignedOutError) return { state: 'signed-out', models: [] };
+        // The stored folder for new chats is gone: say so, as the chat does (SEC-21)
+        if (error instanceof KiroFolderError) {
+          return { state: 'error', message: error.message, models: [] };
+        }
         console.warn(
           `[kiro] model list failed: ${error instanceof Error ? `${error.name}: ${error.message}` : 'unknown error'}`
         );

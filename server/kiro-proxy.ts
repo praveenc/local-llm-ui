@@ -1,7 +1,10 @@
 /**
  * Kiro CLI routes:
  *
- * - GET  /api/kiro/status: installed, version, signed in or out (cached for 30 s)
+ * - GET  /api/kiro/status: installed, version, signed in or out (cached for 30 s), and the folder
+ *   for new Kiro chats for display (it only reads the settings file)
+ * - POST /api/kiro/settings: sets the folder for new Kiro chats, `{ workspaceDir: string | null }`
+ *   (server/kiro/settings.ts, SEC-21). It never starts Kiro CLI.
  * - POST /api/kiro/login: signs in. Streams `data: {"login": <event>}` lines, then `[DONE]`, with
  *   a `: ping` comment every 15 s so that a tunnel does not close the idle stream
  * - POST /api/kiro/login/cancel: stops the sign-in whose `runId` (from the `started` event) the
@@ -27,14 +30,15 @@
  * a GET that changes nothing. Every route that changes state is a POST. The models route makes
  * and deletes a session in the app's own Kiro folder, which the user never sees.
  *
- * The chat route never takes a folder from the browser: a new session uses the app's Kiro folder,
- * and an existing session uses the folder in its own session.json. It does not log prompts or
+ * The chat route never takes a folder from the browser: a new session uses the folder of the
+ * server setting (the app's Kiro folder by default), and an existing session uses the folder in its own session.json. It does not log prompts or
  * replies.
  */
 import type { Connect } from 'vite';
 
 import { parseKiroLoginMethod } from '../src/utils/kiroLogin.ts';
 import type { KiroLoginEvent } from '../src/utils/kiroLogin.ts';
+import { KIRO_SETTINGS_BODY_LIMIT, parseKiroSettingsRequest } from '../src/utils/kiroSettings.ts';
 import type { KiroStatus } from '../src/utils/kiroStatus.ts';
 import { createPermissionRegistry } from './acp/permission-registry.ts';
 import { getKiroAgent, shutdownKiroAgent } from './kiro/agent.ts';
@@ -53,6 +57,8 @@ import type { KiroModelList } from './kiro/models.ts';
 import { createKiroPermissionHandler } from './kiro/permission-route.ts';
 import { createKiroSessionsHandler } from './kiro/sessions.ts';
 import type { KiroSessionsAgent } from './kiro/sessions.ts';
+import { createKiroSettings, getKiroSettings } from './kiro/settings.ts';
+import type { KiroSettings } from './kiro/settings.ts';
 import { createKiroStatusReader } from './kiro/status.ts';
 import { createKiroUsage } from './kiro/usage.ts';
 import type { KiroUsageReader } from './kiro/usage.ts';
@@ -85,6 +91,8 @@ export interface KiroProxyOptions {
   chatBusyWaitMs?: number;
   /** How often a chat with an open question sends a `: ping` comment. Tests make it short. */
   chatPingMs?: number;
+  /** The folder for new Kiro chats. Default: the settings of the environment's home folder. */
+  settings?: KiroSettings;
 }
 
 const LOGIN_BODY_LIMIT = 16 * 1024;
@@ -125,6 +133,16 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
     usedSharedAgent = true;
     return getKiroAgent();
   };
+
+  let settings = options.settings;
+  // The same settings as the shared agent's harness: both use getKiroSettings() by default
+  const getSettings = (): KiroSettings =>
+    (settings ??= options.environment
+      ? createKiroSettings({
+          home: options.environment.home,
+          platform: options.environment.platform,
+        })
+      : getKiroSettings());
 
   const getReader = (): KiroStatusSource =>
     (reader ??= createKiroStatusReader({ environment: options.environment }));
@@ -243,7 +261,36 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
           return;
         }
         const status = await getReader().read(url.searchParams.get('refresh') === '1');
-        sendJson(res, 200, status);
+        // Reads the settings file only: it creates no folder and starts no Kiro CLI
+        const folder = await getSettings()
+          .folder()
+          .catch(() => undefined);
+        sendJson(res, 200, { ...status, ...(folder && { folder }) });
+        return;
+      }
+
+      if (pathname === '/api/kiro/settings') {
+        // A POST: it changes the folder for new chats (SEC-13, SEC-21). It never starts Kiro CLI.
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { error: 'Method not allowed' }, { Allow: 'POST' });
+          return;
+        }
+        const body = await readBodyWithLimit(req, res, KIRO_SETTINGS_BODY_LIMIT);
+        if (body === null) return;
+        let json: unknown;
+        try {
+          json = JSON.parse(body);
+        } catch {
+          sendJson(res, 400, { error: 'The request body is not valid JSON' });
+          return;
+        }
+        const parsed = parseKiroSettingsRequest(json);
+        const result = parsed.ok
+          ? await getSettings().set(parsed.value.workspaceDir)
+          : { ok: false as const, error: parsed.error };
+        console.log(`[kiro] settings: ${result.ok ? 'saved' : 'refused'}`);
+        if (result.ok) sendJson(res, 200, { folder: result.folder });
+        else sendJson(res, 400, { error: result.error });
         return;
       }
 

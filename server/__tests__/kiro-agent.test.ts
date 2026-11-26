@@ -1,6 +1,16 @@
 // @vitest-environment node
 import { spawn } from 'child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'fs/promises';
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readlink,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -22,6 +32,7 @@ import {
   shutdownKiroAgent,
 } from '../kiro/agent.ts';
 import type { KiroAgentOptions, PermissionEnd, PermissionQuestion } from '../kiro/agent.ts';
+import { KIRO_FOLDER_UNAVAILABLE, KiroFolderError } from '../kiro/settings.ts';
 
 const FAKE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -185,6 +196,97 @@ describe('KiroAgent start', () => {
     expect(pids).toHaveLength(2);
     expect(alive(pids[0])).toBe(false);
     expect(c.agent.state().pid).toBe(pids[1]);
+  });
+});
+
+describe('KiroAgent folder for new chats (D6, SEC-21)', () => {
+  const processCwd = (pid: number) => readlink(`/proc/${pid}/cwd`);
+
+  it('starts new sessions in the stored folder and keeps the process in the default one', async () => {
+    const chosen = path.join(root, `chosen-${counter + 1}`);
+    await mkdir(chosen, { recursive: true });
+    const settings = { workspaceDir: vi.fn(async () => chosen as string | undefined) };
+    const c = await setup({}, { settings });
+    const { sessionId } = await c.agent.newSession();
+    const created = (await c.log()).find((l) => l.msg.method === 'session/new')!.msg.params;
+    expect(created).toEqual({ cwd: chosen, mcpServers: [] });
+    expect(settings.workspaceDir).toHaveBeenCalled();
+    const home = path.join(c.dir, 'home');
+    const defaultDir = path.join(home, '.local-llm-ui', 'kiro');
+    expect((await stat(defaultDir)).mode & 0o777).toBe(0o700);
+    if (process.platform === 'linux') {
+      expect(await processCwd(c.agent.state().pid!)).toBe(defaultDir);
+    }
+
+    // A loaded session keeps its own folder, not the stored one
+    const own = path.join(root, `own-${counter}`);
+    await mkdir(own, { recursive: true });
+    await c.agent.stop();
+    await c.agent.ensureSession(sessionId, own);
+    const load = (await c.log()).find((l) => l.msg.method === 'session/load')!.msg.params;
+    expect(load).toMatchObject({ sessionId, cwd: own });
+  });
+
+  it('uses the default folder when no folder is stored', async () => {
+    const settings = { workspaceDir: vi.fn(async () => undefined) };
+    const c = await setup({}, { settings });
+    await c.agent.newSession();
+    const created = (await c.log()).find((l) => l.msg.method === 'session/new')!.msg.params;
+    expect(created).toEqual({
+      cwd: path.join(c.dir, 'home', '.local-llm-ui', 'kiro'),
+      mcpServers: [],
+    });
+  });
+
+  it('reads the settings file of the home folder by default', async () => {
+    const { home } = await caseDir().then(async (d) => {
+      const chosen = path.join(d.home, 'projects', 'demo');
+      await mkdir(chosen, { recursive: true });
+      await mkdir(path.join(d.home, '.local-llm-ui'), { recursive: true, mode: 0o700 });
+      await writeFile(
+        path.join(d.home, '.local-llm-ui', 'kiro-settings.json'),
+        JSON.stringify({ workspaceDir: await realpath(chosen) }),
+        { mode: 0o600 }
+      );
+      return d;
+    });
+    const agent = new KiroAgent({
+      environment: {
+        env: {
+          HOME: home,
+          PATH: '',
+          LOCAL_LLM_UI_KIRO_CLI: binary,
+          FAKE_KIRO_LOG: path.join(home, '..', 'messages.log'),
+          FAKE_KIRO_PIDS: path.join(home, '..', 'pids.json'),
+          FAKE_KIRO_STATE_DIR: path.join(home, '..'),
+        },
+        home,
+        platform: 'linux',
+      },
+      stopTimings: { graceMs: 200, killMs: 1000 },
+    });
+    agents.push(agent);
+    await agent.newSession();
+    const log = (await readFile(path.join(home, '..', 'messages.log'), 'utf8'))
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { msg: Record<string, unknown> });
+    const created = log.find((l) => l.msg.method === 'session/new')!.msg.params;
+    expect(created).toEqual({
+      cwd: await realpath(path.join(home, 'projects', 'demo')),
+      mcpServers: [],
+    });
+  });
+
+  it('fails a new session with the plain message when the stored folder is gone', async () => {
+    const settings = {
+      workspaceDir: vi.fn(async (): Promise<string | undefined> => {
+        throw new KiroFolderError(KIRO_FOLDER_UNAVAILABLE);
+      }),
+    };
+    const c = await setup({}, { settings });
+    await expect(c.agent.newSession()).rejects.toThrow(KIRO_FOLDER_UNAVAILABLE);
+    expect(methods(await c.log())).not.toContain('session/new');
   });
 });
 

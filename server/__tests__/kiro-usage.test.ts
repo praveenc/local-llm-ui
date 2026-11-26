@@ -122,6 +122,62 @@ describe('createKiroUsage', () => {
     expect(c.extension).toHaveBeenCalledTimes(3);
   });
 
+  it('keeps a result only for the account that is current when its call ends', async () => {
+    const c = setup();
+    const other: KiroStatus = {
+      ...SIGNED_IN,
+      account: { type: 'builder-id', email: 'you@example.com' },
+    };
+    const resultFor = (planName: string) => ({
+      ...rawResult,
+      data: { ...rawResult.data, planName },
+    });
+    const calls: ((value: unknown) => void)[] = [];
+    c.extension.mockImplementation(() => new Promise((resolve) => calls.push(resolve)));
+
+    const forA = c.reader.read();
+    await vi.waitFor(() => expect(calls).toHaveLength(1));
+    // The account changes while the call for A runs: B gets its own call, not A's
+    c.state.status = other;
+    const forB = c.reader.read();
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+
+    calls[0](resultFor('PLAN A'));
+    expect((await forA)?.planName).toBe('PLAN A');
+    calls[1](resultFor('PLAN B'));
+    expect((await forB)?.planName).toBe('PLAN B');
+
+    // Only B's result is kept: a read under B makes no new call
+    expect((await c.reader.read())?.planName).toBe('PLAN B');
+    expect(c.extension).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps nothing from a call whose account changed before it ended', async () => {
+    const c = setup();
+    const other: KiroStatus = {
+      ...SIGNED_IN,
+      account: { type: 'builder-id', email: 'you@example.com' },
+    };
+    let finish: (value: unknown) => void = () => undefined;
+    c.extension.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+
+    const forA = c.reader.read();
+    await vi.waitFor(() => expect(c.extension).toHaveBeenCalledTimes(1));
+    c.state.status = other;
+    // B's read starts its own call (the mock now answers at once with the default result)
+    expect((await c.reader.read())?.planName).toBe('KIRO POWER');
+    finish({ ...rawResult, data: { ...rawResult.data, planName: 'PLAN A' } });
+    expect((await forA)?.planName).toBe('PLAN A');
+
+    // A's late result did not replace B's
+    expect((await c.reader.read())?.planName).toBe('KIRO POWER');
+    expect(c.extension).toHaveBeenCalledTimes(2);
+    // Back to A: A's result was never kept, so a new call runs
+    c.state.status = SIGNED_IN;
+    await c.reader.read();
+    expect(c.extension).toHaveBeenCalledTimes(3);
+  });
+
   it('gives null for an error or an unusable result, keeps nothing, and logs no account data', async () => {
     const c = setup();
     c.extension.mockRejectedValueOnce(new Error('plan KIRO POWER me@example.com'));

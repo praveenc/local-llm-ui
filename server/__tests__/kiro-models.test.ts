@@ -5,6 +5,7 @@ import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
 import type { ConfigOption } from '../acp/types.ts';
 import { KiroSignedOutError } from '../kiro/agent.ts';
 import { KIRO_MODELS_FAILED, createKiroModelList } from '../kiro/models.ts';
+import { KIRO_FOLDER_UNAVAILABLE, KiroFolderError } from '../kiro/settings.ts';
 
 const SIGNED_IN: KiroStatus = {
   state: 'signed-in',
@@ -222,6 +223,17 @@ describe('createKiroModelList', () => {
     expect(console.warn).toHaveBeenCalledWith('[kiro] model list failed: Error: Kiro is slow');
     expect((await c.list.list()).state).toBe('ok');
     expect(c.agent.newSession).toHaveBeenCalledTimes(3);
+  });
+
+  it('shows the plain message when the folder for new chats is not available (SEC-21)', async () => {
+    const c = setup();
+    c.agent.newSession.mockRejectedValueOnce(new KiroFolderError(KIRO_FOLDER_UNAVAILABLE));
+    expect(await c.list.list()).toEqual({
+      state: 'error',
+      message: KIRO_FOLDER_UNAVAILABLE,
+      models: [],
+    });
+    expect((await c.list.list()).state).toBe('ok');
   });
 
   it('drops the cache after a sign-out and when the account changes', async () => {

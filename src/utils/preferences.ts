@@ -38,6 +38,8 @@ export interface UserPreferences extends WebSearchPreferences {
   kiroSignIn?: KiroSignInPreference;
   /** Show your Kiro sessions in the sidebar (D11). Absent: the Kiro row has not asked yet. */
   showKiroSessions?: boolean;
+  /** The id of the agent that a new Kiro chat starts with (D9). Absent: Kiro's own default. */
+  kiroDefaultAgent?: string;
 }
 
 export interface KiroSignInPreference {

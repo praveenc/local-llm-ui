@@ -28,10 +28,10 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 | D3 | How does sign-in work? | Approved: (a). Always the device flow (`kiro-cli login --use-device-flow`). The app opens the sign-in page in a new tab with the code in the URL. It works on this computer and through a tunnel. | K3 |
 | D4 | Which sign-in choices show? | Approved: (a). AWS Builder ID and IAM Identity Center (start URL and Region). | K3 |
 | D5 | One Kiro process or one per chat? | Approved: (a). One shared `kiro-cli acp` process for all Kiro chats. It starts on the first Kiro request and stops after 10 idle minutes. One process holds many sessions (checked: `session/new` and `session/load` on one connection). A crash stops all live Kiro replies, and the next message reloads each session. | K4 |
-| D6 | Which folder does a new Kiro chat use? | Approved: (a). One app folder, `~/.local-llm-ui/kiro`, with a Preferences field to change it. A folder chip per chat can come later. Imported sessions always use their own folder. | K5 |
+| D6 | Which folder does a new Kiro chat use? | Approved: (a). One app folder, `~/.local-llm-ui/kiro`, with a Preferences field to change it. A folder chip per chat can come later. Imported sessions always use their own folder. Done in item 10: the folder is a server setting, never a field of the chat request (SEC-21). | K5, KD |
 | D7 | Does Kiro ask before it runs a tool? | Approved: (a). Ask by default. The work row shows the request with Allow, Always allow, and Deny. Preferences can change it to Autopilot. Until K6 merges, K5 denies every request, so no tool runs without a question. Changed by D16 and D17. | K5, K6 |
 | D8 | How does the Thinking menu map to Kiro? | Approved: (a). Add **Max** to the menu, shown only for models that have it. Other levels map to the nearest level of the model, as today. **Off** turns thinking off, or sends `none`, or the lowest level. | K5 |
-| D9 | Which Kiro agent do chats use? | Approved: (a). Kiro's default agent. A **Default agent** select in Preferences is a later item. D17 removes the lock on `mode`, and D20 adds an agent picker. | K5 |
+| D9 | Which Kiro agent do chats use? | Approved: (a). Kiro's default agent. A **Default agent** select in Preferences is a later item. D17 removes the lock on `mode`, and D20 adds an agent picker. Done in item 10: **Default agent** is a row in the Kiro row of Preferences. | K5, KD |
 | D10 | Where do Kiro chats show in the sidebar? | Approved: (a). **Conversations** holds every chat that you used in this app, also Kiro chats. A **Kiro sessions** section lists the sessions on disk that you have not opened here yet. When you open one, the app imports it and it moves to **Conversations**. Every chat has one place, and the Kiro section works as an import list. D18 changes how the list and the import work, not what they show. | K7 |
 | D11 | When does the app ask about the sessions on disk? | Approved: (a). After sign-in, the Kiro row in Preferences asks "Show your Kiro sessions in the sidebar?" with **Show** and **Not now**. A switch below keeps the choice. | K7 |
 | D12 | How do mixed chats, fork, and regenerate work? | Approved: (a). Before each Kiro prompt, the app sends the earlier messages that Kiro has not seen, once, as context. This covers a switch to Kiro in the middle of a chat, **Send to Fork**, and a switch back after another model. **Regenerate** and edit are hidden on Kiro replies. | K5 |
@@ -57,7 +57,8 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 | K6 | `feat/kiro-approvals` | 6 | Done, merged ([#82](https://github.com/praveenc/local-llm-ui/pull/82)) |
 | K7 | `feat/kiro-sessions` | 7 | Done, merged ([#83](https://github.com/praveenc/local-llm-ui/pull/83)) |
 | K8 | `feat/kiro-credits` | 8 | Done, merged ([#84](https://github.com/praveenc/local-llm-ui/pull/84)) |
-| K9 | `feat/kiro-session-options` | 9 | In review ([#86](https://github.com/praveenc/local-llm-ui/pull/86)) |
+| K9 | `feat/kiro-session-options` | 9 | Done, merged ([#86](https://github.com/praveenc/local-llm-ui/pull/86)) |
+| KD | `feat/kiro-defaults` | D6, D9, 10 | In review ([#87](https://github.com/praveenc/local-llm-ui/pull/87)) |
 
 ### Found during the work
 
@@ -120,7 +121,7 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 - **Kiro tells the server when the list changes (K7).** The server drops its list cache on `_kiro/sessions/changed`. Kiro sends it on each app reply, so the cache is new after each reply. It does not report a change from a terminal. A change from a terminal shows after the 60 s cache.
 - **`getUsage` can show more credits than the limit (K8).** The test account was over its limit, and `percentage` was above 100. The app shows the number that Kiro reports and adds `· N over the limit`. `bonusCredits` and `addOnCredits` have no known item shape, so the app ignores them.
 - **The first usage call starts Kiro CLI (K8).** It took 2.7 s on a cold start, not the 300 ms of the probe. A later call from the cache took 3 ms. The server does not start Kiro CLI when the status says signed out.
-- **The usage cache has no account key per running call (K8, open).** If the account changes while a call runs (about 300 ms), the old account's credits can go into the cache for up to 5 minutes. A later change can store the account key with each call.
+- **The usage cache had no account key per running call (K8, fixed in KD).** If the account changed while a call ran (about 300 ms), the old account's credits could go into the cache for up to 5 minutes. Now each call keeps the account key that was current when it started. Its result goes into the cache only under that key, and only when that account is still the current one at the end. A read under a different account starts its own call. Two tests switch the account while a call runs.
 - **Kiro takes an unlisted value without an error (K9 probe, kiro-cli 3.6.2).** `set_config_option` with `autopilot` set to a value that is not listed made Kiro turn Autopilot off. An unlisted `mode` reset the session to the default agent. An unknown option id changed nothing. A read-back comes too late, so the server checks the value against the current list before it sends (SEC-20).
 - **An agent change sends several updates (K9 probe).** Setting `mode` on a live session gave two `config_option_update` messages with the full list, and also `_kiro/policy/changed`, `tools/didChange`, `steering/documents_changed`, and `mcp/status`. The model, the effort, and Autopilot did not change for a built-in agent. The next prompt used the new agent (`_meta.kiro.agentMode` on the turn updates). An agent that sets its own model was not tried. The order (options, then model) sets the model that the user picked after it.
 - **Other options stay when one changes (K9 probe).** A `mode` change did not reset Autopilot. A `model` change after `mode` kept the agent. After `session/close` and `session/load`, Autopilot stayed off, and a new session started with Autopilot on and the default agent.
@@ -130,6 +131,13 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 - **The write that asks twice, checked in the browser (K9).** With **Supervised** selected, a file write asked for the write (**Allow**, **Always allow**, **Deny**, **Always deny**) and then for "Review changes" (**Accept changes**, **Reject changes**). Both showed in one row, and the file had its text after both answers. This was the open check of K6.
 - **Small points left (K9).** The models response with the default options is kept 1 hour with the models, so an agent that you make in the terminal shows after a refresh or after the first reply of a chat. A pick that you did not send is lost on a reload. The app does not check whether Kiro keeps `contentCollection` for the session or for the account. It shows the value that Kiro reports after each reply.
 - **Kiro 3.6.2, not 3.6.1 (K9).** The probe and the real checks ran on kiro-cli 3.6.2, the version that the host got during the work.
+- **A symlinked settings folder passed the first folder rule (KD review).** The first rule compared the real path of the chosen folder with the literal paths `~/.ssh`, `~/.kiro`, and the others. With `~/.ssh` as a link to a dotfiles folder, typing `~/.ssh` resolved to the target and passed, and so did a folder that holds the target. The server now also resolves the real path of each settings folder (`settingsDirs`). It refuses a folder inside one of them and a folder that holds one. Four tests cover the cases, and a break test made them fail. The default folder is exempt only from the `~/.local-llm-ui` rule: a default folder that is a symlink to a folder that holds the real `~/.ssh` is refused (two tests).
+- **The place rules run before the owner check (KD).** `/etc` and a link to `/etc` give "Kiro cannot use a system folder." and not "Choose a folder that you own.", because the system folders belong to root.
+- **A home folder in `/var/home` or `/private` (KD).** A strict "inside a system folder" rule would refuse every folder of such a home. The server skips the system list for a path inside the real home folder, and the browser repeats only the Linux part of the list without `/var`. On macOS, `/tmp` is `/private/tmp`, so a folder in `/tmp` is refused there.
+- **A stored folder can go away (KD).** The server checks the stored folder again at each new session. If it fails, the chat shows "The folder for new Kiro chats is not available. Choose a different folder in Preferences." and the model list shows the same text. It does not fall back to the default folder, because that would run tools in a folder that the user did not pick.
+- **The tools use the session folder, not the process folder (KD e2e, kiro-cli 3.6.2).** The Kiro process starts in the default folder, and only `session/new` gets the stored folder. A new chat ran `pwd` in the stored folder, a new chat after **Use the default** ran in the default folder, and an old chat kept its own folder. So a change needs no restart. `pwd` ran without a question, because Kiro treats it as a read.
+- **The default agent goes through the pending picks of K9 (KD).** `movePendingSessionOptions` moves the picks of the new-chat key to the new conversation, and it now also moves the default agent. `useBedrockChat.ts` is not changed. With a non-Kiro model, the value stays in memory unused. Nothing sends it, because only the Kiro path reads pending options. The e2e check showed a Bedrock chat with no `sessionOptions` in its request.
+- **Small points left (KD).** When `~/.local-llm-ui` is a symlink, the app follows it when it writes the setting and sets its target to mode 0700. With a custom `environment` and no `agent` option, the proxy makes its own settings object. Only tests do this. The Preferences footer does not say "Saved" for the folder: the folder row says it in words.
 
 ## What kiro-cli 3 does
 
@@ -228,12 +236,13 @@ The ACP code is in `server/acp/`. It is generic and has no Kiro names (D15). A t
 | `chat-options.ts` | Set the session options, the model, and the Thinking level on a session. Build the options snapshot for the browser (K9) |
 | `approvals.ts` | Turns a permission question into the SSE event: Kiro's options, the command, the files of a "Review changes" question, and how a question ended (K6) |
 | `permission-route.ts` | The `POST /api/kiro/permission` route (K6) |
+| `settings.ts` | The folder for new chats: read and write `~/.local-llm-ui/kiro-settings.json`, check a folder, check the stored folder again at each new session (KD) |
 
 Routes:
 
 | Route | Job | PR |
 |---|---|---|
-| `GET /api/kiro/status` | Installed, path, version, supported, signed in, account | K2 |
+| `GET /api/kiro/status` | Installed, path, version, supported, signed in, account, and the folder for new chats | K2, KD |
 | `POST /api/kiro/login` | Start sign-in. SSE: code and URL, then done or error | K3 |
 | `POST /api/kiro/login/cancel`, `POST /api/kiro/logout` | Stop sign-in, sign out | K3 |
 | `POST /api/kiro/models` | Model list with levels and credit rate, and Kiro's default session options. A `POST`, because a load can start Kiro CLI and make a session | K5, K9 |
@@ -242,6 +251,7 @@ Routes:
 | `POST /api/kiro/sessions` | The list of Kiro sessions. A `POST`, because the list can start Kiro CLI | K7 |
 | `POST /api/kiro/sessions/open` | Import a session with replay, or the turns after a known count. JSON | K7 |
 | `POST /api/kiro/usage` | Account credits. A `POST`, because it can start Kiro CLI | K8 |
+| `POST /api/kiro/settings` | Set the folder for new Kiro chats, or go back to the default. It never starts Kiro CLI | KD |
 
 ### SSE events
 
@@ -270,6 +280,7 @@ The chat route sends the existing events, and new ones. `useBedrockChat.ts` igno
 ### Data
 
 - `Conversation.kiro` is `{ sessionId, seenMessages }` today. `seenMessages` is how many messages Kiro has seen (D12). K7 adds `updatedAt` (the Kiro last change of the last import or sync) and `turns` (how many turns of the session the chat holds). K9 adds `options`: the current value of each session option, as `{ id: value }` (the agent too). The lists of values are not stored.
+- The folder for new chats is a server file, `~/.local-llm-ui/kiro-settings.json` (`{ workspaceDir }`, mode 600), not browser data (item 10). The default agent is one browser preference, `kiroDefaultAgent` (an agent id).
 - Dexie version 3 adds an index on `kiro.sessionId`, so K7 can find a session that is already imported. The other tables do not change.
 - `MessageUsage` gets `credits` and `contextPercent`.
 
@@ -412,6 +423,21 @@ Kiro runs its own tools and its own MCP servers. For a Kiro model, the chat inpu
 - **Tests:** Unit tests for the split, the validator, the request parser, and the snapshot helpers with generic fixtures. The fake Kiro process lists a `mode` option with three placeholder agents and Autopilot, stores each `set_config_option`, sends `config_option_update` (two for a `mode` change, as Kiro does), and can ignore a value or act as a terminal change. Server tests: options applied in order and read back, an unlisted value and an owned id never reach Kiro (call count), a failed read-back gives a plain error, the stream carries the snapshots, the models response carries the lists, `update()` keeps them, an imported session returns its values, and no option is set again after a load. Browser tests: both controls render from a fixture, a pick goes into the next request, stored values show after a reload, and nothing shows for another provider.
 - **Done:** `make check` passes (110 files, 1209 tests) and `make build` passes. A break test (the `remember: false` line put back to `true`) fails the new test with two Autopilot calls instead of one. A real run with kiro-cli 3.6.2 in headless Chromium at 1440, 1024, and 390 px, light and dark, with no sideways scroll: the Agent picker listed 55 agents with descriptions. **Supervised** made a file write ask twice in one row, and the file was made after both answers. The next message after an agent change sent no pick. An unlisted value failed with a plain error, and the session did not change. A cross-site `POST` got 403.
 
+### 10. Kiro defaults (KD)
+
+- **Change:**
+  - **Folder for new Kiro chats (D6).** The Kiro row in Preferences has a text field with the current folder, help text, and **Use the default**. The folder is a server setting, not a field of the chat request (SEC-16). `POST /api/kiro/settings` takes `{ workspaceDir: string | null }` (JSON, 4 KB at most, never starts Kiro CLI). `GET /api/kiro/status` also returns the folder, written as `~/…` inside the home folder.
+  - The server stores the real path in `~/.local-llm-ui/kiro-settings.json` (mode 600, folder mode 700). No file, or `null`, means `~/.local-llm-ui/kiro`. The server never creates a folder other than the default.
+  - The server checks the value (SEC-21): at most 1,024 characters, no control or format characters, an absolute path or a path that starts with `~/`, and after `realpath`: it exists, is a folder, is owned by the user, and is writable. It is not `/`, the home folder, a system folder, or inside `~/.kiro`, `~/.aws`, `~/.ssh`, `~/.config`, or `~/.local-llm-ui` (also when one of these is a symlink). The browser repeats only the text checks, to show the message early.
+  - The folder applies to new chats only. Existing chats and imported sessions keep the folder of their own Kiro session. The short session for the model list uses the stored folder too.
+  - The field saves 700 ms after typing stops, on blur, and on Enter. The row says **Saved**, or **Not saved.** with the reason, and never stores a bad value.
+  - **Default agent (D9).** The Kiro row has a **Default agent** list with the agents from `POST /api/kiro/models` (`sessionOptions.mode.values`), with **Kiro's default** first. The list is the same component as the **Agent** picker (`SessionAgentList.tsx`). The choice is one browser preference, `kiroDefaultAgent`. It is not a security boundary: the server accepts only listed values (SEC-20).
+  - A new Kiro chat starts with that agent. The **Agent** picker shows it before the first message, and the first message sends it in `sessionOptions.mode` through the K9 path. The second message does not send it again. If Kiro no longer lists the id, the new chat uses Kiro's default, and the row says "This agent is no longer in Kiro's list."
+  - Existing chats and imported sessions keep their own agent. Nothing changes for another provider.
+  - **Fix (K8).** The usage cache keeps the account key of each running call (see "Found during the work").
+- **Tests:** Server: the usage cache with an account switch during a call; the settings route (200, a 400 for each rule with a real temporary folder layout, a symlink to a system folder, a symlinked settings folder, `~/` expansion, `null`, 405, 413, 415, 403); the harness uses the stored folder for a new session and not for a loaded one; the chat body with `cwd` or `workspaceDir` changes nothing. Browser: the folder field (save, error words, **Use the default**), the default agent list from a fixture, a new chat gets the pick, an unlisted id is ignored with the note, and `movePendingSessionOptions` moves the default.
+- **Done:** `make check` passes (115 files, 1306 tests) and `make build` passes. A break test (the system-folder rule returns nothing) fails 3 tests, and a second one (the `settingsDirs` field removed) fails 4. A real run with kiro-cli 3.6.2: a new chat ran `pwd` in the chosen folder, a new chat after **Use the default** ran in `~/.local-llm-ui/kiro`, and an old chat kept its folder. `/etc`, `~`, `~/.ssh`, a folder that does not exist, a link to `/etc`, `/`, and a relative path each showed a message and wrote no settings file. The default agent showed in the picker before the first message, worked with the reply "pong", and showed after a reload. A cross-site `POST` got 403, a `GET` 405, a `text/plain` body 415, and a 5 KB body 413. Headless Chromium at 1440, 1024, and 390 px, light and dark: no sideways scroll and no page errors.
+
 ## Found during the planning
 
 - **Cross-site POSTs reach the proxies (item 1).** This is true today for all providers, not only Kiro. K1 fixes it first, because Kiro makes the risk larger.
@@ -434,8 +460,9 @@ Kiro runs its own tools and its own MCP servers. For a Kiro model, the chat inpu
 | K7 | `feat/kiro-sessions` | 7 | H1 |
 | K8 | `feat/kiro-credits` | 8 | H1 |
 | K9 | `feat/kiro-session-options` | 9 | K6 |
+| KD | `feat/kiro-defaults` | D6, D9, 10 | K9 |
 
-Merge order: K1 to K5 (merged), then H1, K6, K7, K8, K9. Plan 2 (PRs 6 to 9) is merged in v1.2.0, so no PR waits on it. K6, K7, and K8 are built at the same time after H1. H1 splits `server/kiro/` so that the three PRs edit different files. K9 starts when K6 is merged.
+Merge order: K1 to K5 (merged), then H1, K6, K7, K8, K9. Plan 2 (PRs 6 to 9) is merged in v1.2.0, so no PR waits on it. K6, K7, and K8 are built at the same time after H1. H1 splits `server/kiro/` so that the three PRs edit different files. K9 starts when K6 is merged. KD starts after K9 is merged.
 
 Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes:
 
@@ -447,6 +474,7 @@ Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes:
 - K7: "Kiro sessions" under "Find a chat".
 - K8: account credits.
 - K9: session options in the chat input.
+- KD: the folder for new Kiro chats and the default agent in the Kiro row, and a note in the `CLAUDE.md` files and `docs/SECURITY-LEARNINGS.md` (SEC-21).
 
 K2 also updates `.kiro/steering/CLAUDE.md` (provider and proxy tables) and `docs/SECURITY.md` (how the app starts Kiro and what it sends). H1 updates both `CLAUDE.md` files and `docs/SECURITY-LEARNINGS.md` (paths only).
 
@@ -454,7 +482,7 @@ Each PR is tested as the UI guidelines say. Before each push, the app runs in th
 
 ## Not in this plan
 
-- A folder chip per chat (D6 (b)) and an agent picker (D9 (b) and (c)).
+- A folder chip per chat (D6 (b)).
 - Images and files for Kiro. Kiro accepts images and embedded text (`promptCapabilities`), but the app's attachments are Bedrock only today.
 - Regenerate with `session/fork`. Kiro can fork a session at a message, so regenerate can come back later.
 - Diffs for file edits in the work row ("coding steps" in `docs/UIUX-IMPROVEMENTS.md`).

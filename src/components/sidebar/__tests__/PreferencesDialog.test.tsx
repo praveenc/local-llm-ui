@@ -1,7 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { KiroSignInOptions, KiroSignInPhase } from '../../../hooks/useKiroSignIn';
+import { kiroService } from '../../../services/kiro';
 import type { KiroStatus } from '../../../utils/kiroStatus';
 import type { KiroUsage } from '../../../utils/kiroUsage';
 import { PreferencesDialog } from '../PreferencesDialog';
@@ -352,6 +353,83 @@ describe('PreferencesDialog Kiro', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Not saved');
     expect(stored().contentDensity).toBe(undefined);
     expect(stored().preferredProvider).toBe('kiro');
+  });
+
+  describe('defaults for new chats (D6, D9)', () => {
+    const lists = {
+      mode: {
+        id: 'mode',
+        name: 'Mode',
+        category: 'mode',
+        currentValue: 'agent-a',
+        values: [
+          { value: 'agent-a', name: 'Agent A' },
+          { value: 'agent-b', name: 'Agent B' },
+        ],
+      },
+      options: [],
+    };
+
+    const loadLists = async (sessionOptions: unknown) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ models: [], sessionOptions }),
+        })
+      );
+      await kiroService.getModels();
+    };
+
+    beforeEach(async () => {
+      await loadLists(lists);
+    });
+
+    afterEach(async () => {
+      await loadLists(undefined);
+      vi.unstubAllGlobals();
+    });
+
+    it('shows the folder and the default agent in the signed-in Kiro row', () => {
+      kiro.status = signedIn();
+      renderDialog({});
+      expect(
+        screen.getByRole('textbox', { name: 'Folder for new Kiro chats' })
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Default agent/ })).toHaveTextContent(
+        "Kiro's default"
+      );
+    });
+
+    it('shows neither while Kiro is signed out or not installed', () => {
+      kiro.status = { state: 'signed-out', path: '~/.local/bin/kiro-cli', version: '3.6.1' };
+      renderDialog({});
+      expect(screen.queryByText('Folder for new Kiro chats')).not.toBeInTheDocument();
+      expect(screen.queryByText('Default agent')).not.toBeInTheDocument();
+      cleanup();
+      kiro.status = { state: 'not-installed' };
+      renderDialog({});
+      expect(screen.queryByText('Default agent')).not.toBeInTheDocument();
+    });
+
+    it("stores the picked agent at once, and removes it for Kiro's default", async () => {
+      kiro.status = signedIn();
+      renderDialog({});
+      fireEvent.click(screen.getByRole('button', { name: /Default agent/ }));
+      fireEvent.click(await screen.findByRole('option', { name: /Agent B/ }));
+      await waitFor(() => expect(stored().kiroDefaultAgent).toBe('agent-b'));
+
+      fireEvent.click(screen.getByRole('button', { name: /Default agent/ }));
+      fireEvent.click(await screen.findByRole('option', { name: /Kiro's default/ }));
+      await waitFor(() => expect(stored()).not.toHaveProperty('kiroDefaultAgent'));
+    });
+
+    it('names a stored agent that Kiro does not list any more', () => {
+      kiro.status = signedIn();
+      renderDialog({ kiroDefaultAgent: 'agent-gone' });
+      expect(screen.getByText("This agent is no longer in Kiro's list.")).toBeInTheDocument();
+    });
   });
 });
 

@@ -3,7 +3,6 @@
  * signed-out rules, and the `_meta.kiro` fields that the agent keeps per session.
  */
 import { chmod, mkdir, stat } from 'fs/promises';
-import path from 'path';
 
 import type { AcpHarness, AgentErrorKind } from '../acp/harness.ts';
 import { defaultKiroEnvironment, resolveKiroBinary } from './binary.ts';
@@ -18,6 +17,8 @@ import {
   KiroSessionError,
   KiroSignedOutError,
 } from './errors.ts';
+import { createKiroSettings, defaultKiroDir, getKiroSettings } from './settings.ts';
+import type { KiroSettings } from './settings.ts';
 
 /**
  * The options that the app's controls set by id (chat-options.ts): the model picker sets `model`,
@@ -45,7 +46,10 @@ export interface KiroSessionInfo {
 export interface KiroHarnessOptions {
   environment?: KiroEnvironment;
   resolveBinary?: typeof resolveKiroBinary;
+  /** A fixed default folder (tests). With it, the stored setting is not read. */
   workspaceDir?: string;
+  /** The folder for new chats (D6, SEC-21). Default: the settings of the environment's home. */
+  settings?: Pick<KiroSettings, 'workspaceDir'>;
 }
 
 const ERRORS: Record<AgentErrorKind, new (message: string) => KiroError> = {
@@ -68,13 +72,25 @@ const asNumber = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
 export function createKiroHarness(options: KiroHarnessOptions = {}): AcpHarness<KiroSessionInfo> {
-  let workspaceReady: Promise<string> | undefined;
+  let defaultReady: Promise<string> | undefined;
+  const environment = () => options.environment ?? defaultKiroEnvironment();
+  // The stored folder is not used with a fixed folder. The settings module keeps the value.
+  const settings: Pick<KiroSettings, 'workspaceDir'> | undefined =
+    options.settings ??
+    (options.workspaceDir !== undefined
+      ? undefined
+      : options.environment
+        ? createKiroSettings({
+            home: options.environment.home,
+            platform: options.environment.platform,
+          })
+        : getKiroSettings());
 
-  const workspaceDir = (): Promise<string> => {
-    if (!workspaceReady) {
-      const environment = options.environment ?? defaultKiroEnvironment();
-      const dir = options.workspaceDir ?? path.join(environment.home, '.local-llm-ui', 'kiro');
-      workspaceReady = (async () => {
+  /** The app's own folder: the process cwd, and new sessions when no folder is stored */
+  const defaultDir = (): Promise<string> => {
+    if (!defaultReady) {
+      const dir = options.workspaceDir ?? defaultKiroDir(environment().home);
+      defaultReady = (async () => {
         await mkdir(dir, { recursive: true, mode: 0o700 });
         const uid = process.getuid?.();
         if (uid !== undefined && (await stat(dir)).uid !== uid) {
@@ -86,23 +102,30 @@ export function createKiroHarness(options: KiroHarnessOptions = {}): AcpHarness<
         await chmod(dir, 0o700);
         return dir;
       })().catch((error: unknown) => {
-        workspaceReady = undefined;
+        defaultReady = undefined;
         throw error;
       });
     }
-    return workspaceReady;
+    return defaultReady;
   };
+
+  /**
+   * The cwd of session/new: the folder that the user stored in Preferences, else the default.
+   * Loaded sessions keep their own folder (chat.ts, session-files.ts).
+   */
+  const workspaceDir = async (): Promise<string> =>
+    (await settings?.workspaceDir()) ?? (await defaultDir());
 
   return {
     names: { agent: 'Kiro', cli: 'Kiro CLI', log: 'kiro' },
 
     async launch() {
-      const environment = options.environment ?? defaultKiroEnvironment();
-      const binary = await (options.resolveBinary ?? resolveKiroBinary)(environment);
+      const binary = await (options.resolveBinary ?? resolveKiroBinary)(environment());
       if (!binary) throw new KiroNotInstalledError('Kiro CLI is not installed');
       if ('error' in binary) throw new KiroNotInstalledError(binary.error);
-      const cwd = await workspaceDir();
-      return { command: binary.path, args: KIRO_ACP_ARGS, cwd, env: environment.env };
+      // The process stays in the app's own folder, so that a change of the setting needs no restart
+      const cwd = await defaultDir();
+      return { command: binary.path, args: KIRO_ACP_ARGS, cwd, env: environment().env };
     },
 
     workspaceDir,
