@@ -78,6 +78,30 @@ export interface LoadSessionResult extends Loose, Meta {
   configOptions?: ConfigOption[];
 }
 
+export interface ListSessionsParams {
+  /** Only the sessions of this folder */
+  cwd?: string;
+  cursor?: string;
+  _meta?: Loose;
+}
+
+/** One entry of session/list. Agents add their own fields in `_meta`. */
+export interface AgentSessionInfo extends Loose, Meta {
+  sessionId: string;
+  cwd: string;
+  title?: string;
+  updatedAt?: string;
+}
+
+export interface ListSessionsResult extends Loose, Meta {
+  sessions: AgentSessionInfo[];
+  nextCursor?: string;
+}
+
+export interface CloseSessionParams {
+  sessionId: string;
+}
+
 export interface SetConfigOptionParams {
   sessionId: string;
   configId: string;

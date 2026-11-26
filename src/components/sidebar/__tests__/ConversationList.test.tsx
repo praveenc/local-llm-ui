@@ -2,8 +2,11 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useState } from 'react';
+
 import { GROUP_STATE_STORAGE_KEY } from '../../../utils/conversationGroups';
 import { ConversationList } from '../ConversationList';
+import { ChatSearchInput } from '../sidebarParts';
 
 const updateConversationTitle = vi.fn();
 const onSelectConversation = vi.fn();
@@ -37,14 +40,24 @@ function mockConversations() {
   ];
 }
 
-const renderList = (activeConversationId: string | null = null) =>
-  render(
-    <ConversationList
-      activeConversationId={activeConversationId}
-      onSelectConversation={onSelectConversation}
-      onNewChat={vi.fn()}
-    />
+/** The list with the Search chats field, as the Sidebar renders them */
+function ListWithSearch({ activeConversationId }: { activeConversationId: string | null }) {
+  const [query, setQuery] = useState('');
+  return (
+    <>
+      <ChatSearchInput value={query} onChange={setQuery} />
+      <ConversationList
+        query={query}
+        activeConversationId={activeConversationId}
+        onSelectConversation={onSelectConversation}
+        onNewChat={vi.fn()}
+      />
+    </>
   );
+}
+
+const renderList = (activeConversationId: string | null = null) =>
+  render(<ListWithSearch activeConversationId={activeConversationId} />);
 
 const startRename = async () => {
   const user = userEvent.setup();

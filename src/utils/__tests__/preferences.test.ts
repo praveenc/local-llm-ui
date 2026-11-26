@@ -6,7 +6,20 @@ import {
   loadLastSelectedModel,
   loadPreferences,
   saveLastSelectedModel,
+  savePreferences,
 } from '../preferences';
+
+describe('showKiroSessions', () => {
+  it('is absent until the Kiro row asks, then keeps the choice', () => {
+    localStorage.clear();
+    expect(loadPreferences().showKiroSessions).toBeUndefined();
+    savePreferences({ ...loadPreferences(), showKiroSessions: false });
+    expect(loadPreferences().showKiroSessions).toBe(false);
+    savePreferences({ ...loadPreferences(), showKiroSessions: true });
+    expect(loadPreferences().showKiroSessions).toBe(true);
+    localStorage.clear();
+  });
+});
 
 describe('last selected model', () => {
   it('saves, loads, and clears the model', () => {

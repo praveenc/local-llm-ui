@@ -1,6 +1,7 @@
 /**
  * Database types for conversation persistence
  */
+import type { KiroSessionSync } from '../utils/kiroSessions';
 import type { ThinkingEffort } from '../utils/thinkingEffort';
 import type { StoredToolCall } from '../utils/toolResults';
 import type { MessageUsage } from '../utils/usage';
@@ -68,7 +69,7 @@ export interface Conversation {
   models: string[];
   /**
    * The Kiro session of this chat and how many of its messages the session has seen (D12).
-   * Not indexed, so no schema version change.
+   * `kiro.sessionId` is indexed (schema version 3), so an imported session finds its chat.
    */
   kiro?: KiroConversationSession;
   /** The user renamed the chat, so Kiro's title does not replace it */
@@ -77,7 +78,8 @@ export interface Conversation {
   titleFromKiro?: boolean;
 }
 
-export interface KiroConversationSession {
+/** Also Kiro's `updatedAt` and turn count at the last import or sync (K7) */
+export interface KiroConversationSession extends KiroSessionSync {
   sessionId: string;
   /** How many of the chat's messages (with text, from the start) the session has seen */
   seenMessages: number;

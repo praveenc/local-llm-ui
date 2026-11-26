@@ -96,6 +96,8 @@ export function formatFullDateTime(date: Date, locale?: string): string {
 
 // Open state of each group: UI state kept in the browser, not a user preference
 export const GROUP_STATE_STORAGE_KEY = 'local-llm-ui-sidebar-groups';
+/** The Kiro sessions section keeps its own open groups */
+export const KIRO_GROUP_STATE_STORAGE_KEY = 'local-llm-ui-sidebar-kiro-groups';
 
 export type GroupOpenState = Record<string, boolean>;
 
@@ -106,9 +108,9 @@ export function isGroupOpen(state: GroupOpenState, key: string): boolean {
   return state[key] ?? OPEN_BY_DEFAULT.has(key);
 }
 
-export function loadGroupOpenState(): GroupOpenState {
+export function loadGroupOpenState(key: string = GROUP_STATE_STORAGE_KEY): GroupOpenState {
   try {
-    const stored = localStorage.getItem(GROUP_STATE_STORAGE_KEY);
+    const stored = localStorage.getItem(key);
     if (!stored) return {};
     const parsed: unknown = JSON.parse(stored);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
@@ -122,9 +124,12 @@ export function loadGroupOpenState(): GroupOpenState {
   }
 }
 
-export function saveGroupOpenState(state: GroupOpenState): void {
+export function saveGroupOpenState(
+  state: GroupOpenState,
+  key: string = GROUP_STATE_STORAGE_KEY
+): void {
   try {
-    localStorage.setItem(GROUP_STATE_STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(key, JSON.stringify(state));
   } catch (error) {
     console.error('Failed to save the sidebar groups:', error);
   }
