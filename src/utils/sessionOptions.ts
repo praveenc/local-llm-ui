@@ -202,3 +202,22 @@ export function sessionOptionsToSend(input: {
   }
   return parseSessionOptionsRequest(out);
 }
+
+/**
+ * The default agent of a new chat (D9): the user's preferred agent id against the agent list of
+ * a new session (the `mode` option of the models response).
+ * - `values`: `{ [mode.id]: agentId }` when the list has the id. A new chat puts it under the
+ *   user's picks, so a pick in the chat input still wins.
+ * - `missing`: true when the list is known and does not have the id. The app then uses the
+ *   agent's own default, and Preferences says so.
+ * No id, or no list yet: no values, and `missing` is false.
+ */
+export function defaultModeValues(
+  snapshot: SessionOptionsSnapshot | null | undefined,
+  agentId: string | undefined
+): { values?: SessionOptionValues; missing: boolean } {
+  if (!agentId || !snapshot?.mode) return { missing: false };
+  const { mode } = snapshot;
+  if (!mode.values.some((v) => v.value === agentId)) return { missing: true };
+  return { values: { [mode.id]: agentId }, missing: false };
+}
