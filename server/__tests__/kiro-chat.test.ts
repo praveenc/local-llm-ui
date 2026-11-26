@@ -962,6 +962,31 @@ describe('POST /api/kiro/models', () => {
     expect((await c.log()).filter((m) => m.method === 'session/new')).toHaveLength(2);
   });
 
+  it('loads the defaults again for refreshOptions, and concurrent requests share one load (D26)', async () => {
+    const c = await setup();
+    const newSessions = async () =>
+      (await c.log()).filter((m) => m.method === 'session/new').length;
+    expect((await postModels(c, {})).status).toBe(200);
+    expect(await newSessions()).toBe(1);
+    // Cached for the models, but refreshOptions makes and deletes one new session
+    const res = await postModels(c, { refreshOptions: true });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { sessionOptions?: Snapshot };
+    expect(body.sessionOptions?.mode?.currentValue).toBe('vibe');
+    expect(await newSessions()).toBe(2);
+    const [a, b] = await Promise.all([
+      postModels(c, { refreshOptions: true }),
+      postModels(c, { refreshOptions: true }),
+    ]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(await newSessions()).toBe(3);
+    const log = await c.log();
+    expect(log.filter((m) => m.method === 'session/delete')).toHaveLength(3);
+    // A value other than true is no refresh
+    expect((await postModels(c, { refreshOptions: 'yes' })).status).toBe(200);
+    expect(await newSessions()).toBe(3);
+  });
+
   it('sends plain text for a failed list', async () => {
     const c = await setup();
     c.status.current = { state: 'error', path: '~/x', message: 'spawn failed at /some/path' };

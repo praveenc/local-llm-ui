@@ -49,7 +49,21 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
 /** The most sessions whose option lists the tab keeps in memory */
 const MAX_REMEMBERED_SESSIONS = 50;
 
+/** The shortest time between two loads of Kiro's default session options (D26) */
+export const KIRO_OPTIONS_REFRESH_MS = 60_000;
+
 export class KiroService {
+  private readonly now: () => number;
+
+  /** `now`: the clock of the refresh throttle (tests) */
+  constructor(now: () => number = Date.now) {
+    this.now = now;
+  }
+
+  /** When the last refresh of the default session options started (D26) */
+  private optionsRefreshAt: number | undefined;
+  private optionsRefresh: Promise<void> | undefined;
+
   /** Kiro's default session options, from the models response (a new session) */
   private defaultSessionOptions: SessionOptionsSnapshot | null = null;
   /** The option lists of each Kiro session that this tab has seen (chat or open), in memory */
@@ -75,6 +89,52 @@ export class KiroService {
    */
   getSessionOptions(sessionId?: string): SessionOptionsSnapshot | null {
     return (sessionId && this.sessionOptions.get(sessionId)) || this.defaultSessionOptions;
+  }
+
+  /** Takes Kiro's defaults of a new session from a models response; a bad snapshot is null */
+  private setDefaultSessionOptions(raw: unknown): void {
+    const defaults = raw === undefined ? null : parseSessionOptionsSnapshot(raw);
+    if (JSON.stringify(defaults) !== JSON.stringify(this.defaultSessionOptions)) {
+      this.defaultSessionOptions = defaults;
+      this.sessionOptionsChanged();
+    }
+  }
+
+  /**
+   * Asks the server to load Kiro's default session options again (D26): a running kiro-cli
+   * reads its agent files again for each new session, so an agent made in the terminal shows.
+   * At most one load per KIRO_OPTIONS_REFRESH_MS for the whole tab, and calls during a load share
+   * it. The server makes and deletes one short session and does not read the status again. A
+   * failed load keeps the old lists. Never throws.
+   */
+  refreshDefaultSessionOptions(): Promise<void> {
+    if (this.optionsRefresh) return this.optionsRefresh;
+    const at = this.now();
+    if (
+      this.optionsRefreshAt !== undefined &&
+      at - this.optionsRefreshAt < KIRO_OPTIONS_REFRESH_MS
+    ) {
+      return Promise.resolve();
+    }
+    this.optionsRefreshAt = at;
+    this.optionsRefresh = (async () => {
+      try {
+        const response = await fetch('/api/kiro/models', {
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify({ refreshOptions: true }),
+        });
+        if (!response.ok) return;
+        const body = (await response.json()) as { sessionOptions?: unknown };
+        // No lists (Kiro gone or signed out): the model query shows that; keep the old lists
+        if (body.sessionOptions !== undefined) this.setDefaultSessionOptions(body.sessionOptions);
+      } catch (error) {
+        console.warn('Could not load the Kiro agent list again:', error);
+      } finally {
+        this.optionsRefresh = undefined;
+      }
+    })();
+    return this.optionsRefresh;
   }
 
   /** Keeps the option lists that Kiro reported for a session (chat event or open answer) */
@@ -230,12 +290,7 @@ export class KiroService {
     if (!response.ok) throw new Error(await responseError(response));
     const body = (await response.json()) as { models?: unknown; sessionOptions?: unknown };
     // Kiro's defaults of a new session (K9); a bad snapshot shows no session controls
-    const defaults =
-      body.sessionOptions === undefined ? null : parseSessionOptionsSnapshot(body.sessionOptions);
-    if (JSON.stringify(defaults) !== JSON.stringify(this.defaultSessionOptions)) {
-      this.defaultSessionOptions = defaults;
-      this.sessionOptionsChanged();
-    }
+    this.setDefaultSessionOptions(body.sessionOptions);
     const models = Array.isArray(body.models) ? (body.models as KiroModel[]) : [];
     return models
       .filter((m) => m && typeof m.id === 'string' && typeof m.name === 'string')

@@ -64,6 +64,37 @@ describe('SessionOptionsMenu', () => {
     expect(onChange).toHaveBeenCalledWith('autopilot', 'off');
   });
 
+  it('says in words that a process-wide option applies to all chats, only under that option', async () => {
+    const user = userEvent.setup();
+    const withProcessWide: SessionOption[] = [
+      ...options,
+      {
+        id: 'contentCollection',
+        name: 'Content Collection',
+        currentValue: 'enabled',
+        scope: 'process',
+        values: [
+          { value: 'enabled', name: 'enabled' },
+          { value: 'disabled', name: 'disabled' },
+        ],
+      },
+    ];
+    render(<SessionOptionsMenu options={withProcessWide} onChange={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: /Session options/ }));
+    const notes = screen.getAllByText('Applies to all Kiro chats until Kiro CLI stops.');
+    expect(notes).toHaveLength(1);
+    // The note sits in the label of Content Collection
+    expect(notes[0].parentElement).toHaveTextContent('Content Collection');
+    expect(notes[0].parentElement).not.toHaveTextContent('Autopilot');
+  });
+
+  it('shows no note when no option is process-wide', async () => {
+    const user = userEvent.setup();
+    render(<SessionOptionsMenu options={options} onChange={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: /Session options/ }));
+    expect(screen.queryByText(/Applies to all Kiro chats/)).not.toBeInTheDocument();
+  });
+
   it('opens from the keyboard and cannot be opened while disabled', async () => {
     const user = userEvent.setup();
     const { rerender } = render(<SessionOptionsMenu options={options} onChange={vi.fn()} />);

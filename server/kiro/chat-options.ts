@@ -15,18 +15,25 @@ import { checkOptionChange, splitSessionOptions } from '../acp/session-options.t
 import type { ConfigOption } from '../acp/types.ts';
 import type { KiroAgent } from './agent.ts';
 import { KiroOptionError } from './errors.ts';
-import { KIRO_APP_OWNED_OPTION_IDS } from './harness.ts';
+import { KIRO_APP_OWNED_OPTION_IDS, KIRO_PROCESS_WIDE_OPTION_IDS } from './harness.ts';
 
 export type KiroOptionsAgent = Pick<KiroAgent, 'configOptions' | 'setOption'>;
+
+/** A compact option, marked `scope: 'process'` when Kiro keeps its value per process */
+function compactKiroOption(raw: ConfigOption): SessionOption | undefined {
+  const option = compactSessionOption(raw);
+  if (!option || !KIRO_PROCESS_WIDE_OPTION_IDS.includes(option.id)) return option;
+  return { ...option, scope: 'process' };
+}
 
 /** The session options of a Kiro session for the browser: the agent and the options without an app control */
 export function kiroSessionOptions(configOptions: unknown): SessionOptionsSnapshot {
   const list = Array.isArray(configOptions) ? (configOptions as ConfigOption[]) : [];
   const { mode, rest } = splitSessionOptions(list, KIRO_APP_OWNED_OPTION_IDS);
-  const compactMode = mode && compactSessionOption(mode);
+  const compactMode = mode && compactKiroOption(mode);
   return {
     ...(compactMode && { mode: compactMode }),
-    options: rest.map(compactSessionOption).filter((o): o is SessionOption => o !== undefined),
+    options: rest.map(compactKiroOption).filter((o): o is SessionOption => o !== undefined),
   };
 }
 

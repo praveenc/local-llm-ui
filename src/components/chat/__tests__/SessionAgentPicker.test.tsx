@@ -66,6 +66,40 @@ describe('SessionAgentPicker', () => {
     expect(await screen.findByPlaceholderText('Search agents')).toBeInTheDocument();
   });
 
+  it('calls onOpen each time the list opens, not when it closes', async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    render(<SessionAgentPicker option={mode} onChange={vi.fn()} onOpen={onOpen} />);
+    await user.click(screen.getByRole('button', { name: 'Agent: Agent A' }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByPlaceholderText('Search agents')).not.toBeInTheDocument();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: 'Agent: Agent A' }));
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+
+  it('takes a new list while open, without closing or moving the focus (D26)', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<SessionAgentPicker option={mode} onChange={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Agent: Agent A' }));
+    const search = screen.getByPlaceholderText('Search agents');
+    await user.type(search, 'agent');
+    expect(search).toHaveFocus();
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+
+    const refreshed: SessionOption = {
+      ...mode,
+      values: [...mode.values, { value: 'agent-new', name: 'Agent New', description: 'Made now' }],
+    };
+    rerender(<SessionAgentPicker option={refreshed} onChange={vi.fn()} />);
+    expect(screen.getByPlaceholderText('Search agents')).toBe(search);
+    expect(search).toHaveFocus();
+    expect(search).toHaveValue('agent');
+    expect(screen.getAllByRole('option')).toHaveLength(4);
+    expect(screen.getByRole('option', { name: /Agent New/ })).toBeInTheDocument();
+  });
+
   it('cannot be opened while disabled', () => {
     render(<SessionAgentPicker option={mode} onChange={vi.fn()} disabled />);
     expect(screen.getByRole('button', { name: 'Agent: Agent A' })).toBeDisabled();

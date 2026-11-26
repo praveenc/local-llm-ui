@@ -249,9 +249,11 @@ const ChatContainer = ({
   const isLoading = status === 'streaming' || status === 'submitted';
 
   // The harness's agent and other session options (K9), picked by ACP category, not by id
-  const { snapshot: sessionOptions, pick: pickSessionOption } = useSessionOptions(
-    externalConversationId ?? null
-  );
+  const {
+    snapshot: sessionOptions,
+    pick: pickSessionOption,
+    refreshLists: refreshSessionLists,
+  } = useSessionOptions(externalConversationId ?? null);
   const agentOption = isKiro ? sessionOptions?.mode : undefined;
   const otherOptions = isKiro ? (sessionOptions?.options ?? []) : [];
 
@@ -685,6 +687,7 @@ const ChatContainer = ({
                     option={agentOption}
                     onChange={(value) => pickSessionOption(agentOption.id, value)}
                     disabled={isLoading}
+                    onOpen={refreshSessionLists}
                   />
                 )}
                 {otherOptions.length > 0 && (

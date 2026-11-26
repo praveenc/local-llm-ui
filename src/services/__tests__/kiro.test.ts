@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { KiroStatus } from '../../utils/kiroStatus';
-import { KiroService, KiroSignedOutError } from '../kiro';
+import { KIRO_OPTIONS_REFRESH_MS, KiroService, KiroSignedOutError } from '../kiro';
 
 const mockFetch = (response: { ok: boolean; status?: number; body?: KiroStatus }) => {
   const fetchMock = vi.fn().mockResolvedValue({
@@ -590,5 +590,89 @@ describe('KiroService session option store (K9)', () => {
     stop();
     service.rememberSessionOptions('s1', snapshot('b'));
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('KiroService.refreshDefaultSessionOptions (D26)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const agents = (...ids: string[]) => ({
+    mode: {
+      id: 'mode',
+      name: 'Mode',
+      category: 'mode',
+      currentValue: ids[0],
+      values: ids.map((value) => ({ value, name: value })),
+    },
+    options: [],
+  });
+
+  function setup(sessionOptions: unknown = agents('vibe', 'new-agent')) {
+    const clock = { now: 0 };
+    const service = new KiroService(() => clock.now);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ models: [], sessionOptions }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return { clock, service, fetchMock };
+  }
+
+  it('asks for the default options again, without a status refresh, and keeps the new lists', async () => {
+    const { service, fetchMock } = setup();
+    const listener = vi.fn();
+    service.subscribeSessionOptions(listener);
+    await service.refreshDefaultSessionOptions();
+    expect(fetchMock).toHaveBeenCalledWith('/api/kiro/models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshOptions: true }),
+    });
+    expect(service.getSessionOptions()?.mode?.values.map((v) => v.value)).toEqual([
+      'vibe',
+      'new-agent',
+    ]);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads at most once per 60 s, and calls during a load share it', async () => {
+    const { clock, service, fetchMock } = setup();
+    await Promise.all([
+      service.refreshDefaultSessionOptions(),
+      service.refreshDefaultSessionOptions(),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    clock.now = KIRO_OPTIONS_REFRESH_MS - 1;
+    await service.refreshDefaultSessionOptions();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    clock.now = KIRO_OPTIONS_REFRESH_MS;
+    await service.refreshDefaultSessionOptions();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the old lists when the load fails or has no lists, and never throws', async () => {
+    const { clock, service, fetchMock } = setup();
+    await service.refreshDefaultSessionOptions();
+    const before = service.getSessionOptions();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    fetchMock.mockRejectedValueOnce(new Error('offline'));
+    clock.now += KIRO_OPTIONS_REFRESH_MS;
+    await expect(service.refreshDefaultSessionOptions()).resolves.toBeUndefined();
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503, json: () => Promise.resolve({}) });
+    clock.now += KIRO_OPTIONS_REFRESH_MS;
+    await service.refreshDefaultSessionOptions();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ models: [] }),
+    });
+    clock.now += KIRO_OPTIONS_REFRESH_MS;
+    await service.refreshDefaultSessionOptions();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(service.getSessionOptions()).toBe(before);
+    vi.restoreAllMocks();
   });
 });

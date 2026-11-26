@@ -135,6 +135,20 @@ export const conversationService = {
   },
 
   /**
+   * The chat's picks that no Kiro reply has applied yet (D27); undefined or empty removes them.
+   * Writes nothing when the stored picks are the same, or the chat does not exist.
+   */
+  async setKiroPicks(id: string, picks: SessionOptionValues | undefined): Promise<void> {
+    const next = picks && Object.keys(picks).length ? { ...picks } : undefined;
+    await db.transaction('rw', db.conversations, async () => {
+      const conversation = await db.conversations.get(id);
+      if (!conversation) return;
+      if (JSON.stringify(conversation.kiroPicks) === JSON.stringify(next)) return;
+      await db.conversations.update(id, { kiroPicks: next });
+    });
+  },
+
+  /**
    * Kiro's short title replaces the automatic one, never a title that the user set. A title
    * counts as automatic when it is not marked as edited and still equals the title made from the
    * first user message (a chat renamed before `titleEdited` existed has no flag), or when it is

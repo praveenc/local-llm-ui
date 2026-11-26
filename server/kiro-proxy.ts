@@ -297,16 +297,22 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
         const body = await readBodyWithLimit(req, res, MODELS_BODY_LIMIT);
         if (body === null) return;
         let refresh = false;
+        let refreshOptions = false;
         try {
           // An empty body or {} is fine
           const json: unknown = body.trim() ? JSON.parse(body) : {};
           refresh =
             !!json && typeof json === 'object' && (json as { refresh?: unknown }).refresh === true;
+          // D26: Kiro's agent list again, without a status re-read
+          refreshOptions =
+            !!json &&
+            typeof json === 'object' &&
+            (json as { refreshOptions?: unknown }).refreshOptions === true;
         } catch {
           sendJson(res, 400, { error: 'The request body is not valid JSON' });
           return;
         }
-        const result = await getModels().list(refresh);
+        const result = await getModels().list(refresh, { refreshOptions });
         if (result.state === 'signed-out') {
           sendJson(res, 401, { error: 'Not signed in to Kiro', code: 'signed-out' });
         } else if (result.state === 'error') {

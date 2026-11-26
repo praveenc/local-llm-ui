@@ -33,6 +33,12 @@ export interface SessionOption {
   category?: string;
   currentValue: string;
   values: SessionOptionValue[];
+  /**
+   * `process`: the harness keeps the value per agent process, not per session (Kiro's
+   * `contentCollection`): a set changes every chat at once, until the process stops. Unset is
+   * per session; the browser reads an unknown scope as per session.
+   */
+  scope?: 'process';
 }
 
 /**
@@ -136,7 +142,9 @@ export function parseSessionOptionsSnapshot(value: unknown): SessionOptionsSnaps
   const check = (raw: unknown): SessionOption | undefined => {
     if (!isRecord(raw) || !Array.isArray(raw.values)) return undefined;
     // The same shape as an agent option, so the same checks apply
-    return compactSessionOption({ ...raw, type: 'select', options: raw.values });
+    const option = compactSessionOption({ ...raw, type: 'select', options: raw.values });
+    // An older server sends no scope, and an unknown scope is per session
+    return option && raw.scope === 'process' ? { ...option, scope: 'process' } : option;
   };
   const mode = value.mode === undefined ? undefined : check(value.mode);
   if (value.mode !== undefined && !mode) return null;
@@ -174,6 +182,32 @@ export function withValues(
   };
 }
 
+/**
+ * The values that the snapshot lists: a value of an option that the lists do not have, or that
+ * the option does not list, is left out. Undefined when nothing is left.
+ */
+export function listedValues(
+  snapshot: SessionOptionsSnapshot,
+  values: SessionOptionValues | undefined
+): SessionOptionValues | undefined {
+  if (!values) return undefined;
+  const all = snapshot.mode ? [snapshot.mode, ...snapshot.options] : snapshot.options;
+  const out: SessionOptionValues = {};
+  for (const [id, value] of Object.entries(values)) {
+    if (all.some((o) => o.id === id && o.values.some((v) => v.value === value))) out[id] = value;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** The ids of the options that the harness keeps per process (`scope: 'process'`) */
+export function processWideOptionIds(
+  snapshot: SessionOptionsSnapshot | null | undefined
+): string[] {
+  if (!snapshot) return [];
+  const all = snapshot.mode ? [snapshot.mode, ...snapshot.options] : snapshot.options;
+  return all.filter((o) => o.scope === 'process').map((o) => o.id);
+}
+
 /** The agent's name of an option's current value; the value itself when the option lists none */
 export function currentValueName(option: SessionOption): string {
   return option.values.find((v) => v.value === option.currentValue)?.name ?? option.currentValue;
@@ -185,16 +219,23 @@ export function currentValueName(option: SessionOption): string {
  *   from what the session reported. The agent keeps the session's values (also changes made in
  *   the terminal), so the app does not send them again.
  * - The request starts a new session (no session yet, or `kiroSessionIsStale`): the stored values
- *   with the picks on top, so a new session keeps the chat's choices.
+ *   with the picks on top, so a new session keeps the chat's choices. A stored value of a
+ *   `processWide` option is left out: the process already has a value, maybe from another chat
+ *   or the terminal, and a replay would undo it. A pick of such an option is still sent.
  * Undefined when there is nothing to send.
  */
 export function sessionOptionsToSend(input: {
   stored?: SessionOptionValues;
   pending?: SessionOptionValues;
   newSession: boolean;
+  /** The ids of the options that the harness keeps per process (`processWideOptionIds`) */
+  processWide?: readonly string[];
 }): SessionOptionValues | undefined {
-  const { stored = {}, pending = {}, newSession } = input;
-  const out: SessionOptionValues = newSession ? { ...stored, ...pending } : {};
+  const { stored = {}, pending = {}, newSession, processWide = [] } = input;
+  const replay = Object.fromEntries(
+    Object.entries(stored).filter(([id]) => !processWide.includes(id))
+  );
+  const out: SessionOptionValues = newSession ? { ...replay, ...pending } : {};
   if (!newSession) {
     for (const [id, value] of Object.entries(pending)) {
       if (stored[id] !== value) out[id] = value;

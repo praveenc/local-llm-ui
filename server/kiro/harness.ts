@@ -31,6 +31,14 @@ import type { KiroSettings } from './settings.ts';
  */
 export const KIRO_APP_OWNED_OPTION_IDS: readonly string[] = ['model', 'effortLevel', 'thinking'];
 
+/**
+ * The session options whose value Kiro keeps per `kiro-cli acp` process, not per session: a set
+ * in one session changes every session of the process, and a new process starts with Kiro's
+ * default (kiro-cli 3.6.2, probe 2). The app never replays a stored value of these to a new
+ * session, so it does not undo a change made in another chat or in the terminal.
+ */
+export const KIRO_PROCESS_WIDE_OPTION_IDS: readonly string[] = ['contentCollection'];
+
 export const KIRO_ACP_ARGS = ['acp', '--agent-engine', 'v3', '--auth-method', 'cli'];
 
 /** The Kiro extension methods that `extension()` may call */

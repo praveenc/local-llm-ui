@@ -36,6 +36,7 @@ import { loadPreferences } from '../utils/preferences';
 import { isRunningStatus, replyStore } from '../utils/replyStore';
 import {
   parseSessionOptionsSnapshot,
+  processWideOptionIds,
   sessionOptionsToSend,
   snapshotValues,
 } from '../utils/sessionOptions';
@@ -278,8 +279,11 @@ export function useBedrockChat({
           // The same session gets only the user's new picks; a new one also the stored values (K9)
           const sessionOptions = sessionOptionsToSend({
             stored: stored?.kiro?.options,
-            pending: pendingSessionOptions(currentConversationId),
+            pending: pendingSessionOptions(currentConversationId, stored),
             newSession: !stored?.kiro?.sessionId || kiroSessionIsStale({ history, seenMessages }),
+            processWide: processWideOptionIds(
+              kiroService.getSessionOptions(stored?.kiro?.sessionId)
+            ),
           });
           kiroRequest = {
             ...(stored?.kiro?.sessionId && { sessionId: stored.kiro.sessionId }),
@@ -997,8 +1001,8 @@ async function saveSessionOptionsEvent(
     sessionId,
     snapshotValues(snapshot)
   );
-  // The session shows what it took: the chat's picks are done
-  clearPendingSessionOptions(conversationId);
+  // The session shows what it took: the picks that it took are done, the others stay
+  clearPendingSessionOptions(conversationId, snapshotValues(snapshot));
 }
 
 /** The `session` event of the Kiro route */

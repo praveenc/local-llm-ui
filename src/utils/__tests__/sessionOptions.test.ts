@@ -9,8 +9,10 @@ import {
   compactSessionOption,
   currentValueName,
   defaultModeValues,
+  listedValues,
   parseSessionOptionsRequest,
   parseSessionOptionsSnapshot,
+  processWideOptionIds,
   sessionOptionsToSend,
   snapshotValues,
   withValues,
@@ -193,6 +195,66 @@ describe('sessionOptionsToSend', () => {
     ).toEqual({ mode: 'agent-b', switch: 'off' });
     expect(sessionOptionsToSend({ newSession: true })).toBeUndefined();
   });
+
+  it('never replays a stored value of a process-wide option to a new session', () => {
+    expect(
+      sessionOptionsToSend({
+        stored: { mode: 'agent-a', contentCollection: 'disabled' },
+        newSession: true,
+        processWide: ['contentCollection'],
+      })
+    ).toEqual({ mode: 'agent-a' });
+    expect(
+      sessionOptionsToSend({
+        stored: { contentCollection: 'disabled' },
+        newSession: true,
+        processWide: ['contentCollection'],
+      })
+    ).toBeUndefined();
+  });
+
+  it('still sends a pick of a process-wide option, to a new and to the same session', () => {
+    const input = {
+      stored: { contentCollection: 'enabled' },
+      pending: { contentCollection: 'disabled' },
+      processWide: ['contentCollection'],
+    };
+    expect(sessionOptionsToSend({ ...input, newSession: true })).toEqual({
+      contentCollection: 'disabled',
+    });
+    expect(sessionOptionsToSend({ ...input, newSession: false })).toEqual({
+      contentCollection: 'disabled',
+    });
+  });
+});
+
+describe('option scope (process-wide options)', () => {
+  const scoped = {
+    options: [
+      { ...snapshot.options[0], id: 'contentCollection', scope: 'process' },
+      snapshot.options[0],
+    ],
+  };
+
+  it('keeps scope process, and reads a missing or unknown scope as per session', () => {
+    const parsed = parseSessionOptionsSnapshot(JSON.parse(JSON.stringify(scoped)));
+    expect(parsed?.options[0].scope).toBe('process');
+    expect(parsed?.options[1]).not.toHaveProperty('scope');
+    // An older server: no scope at all
+    expect(parseSessionOptionsSnapshot(JSON.parse(JSON.stringify(snapshot)))).toEqual(snapshot);
+    const unknown = parseSessionOptionsSnapshot({
+      options: [{ ...snapshot.options[0], scope: 'account' }],
+    });
+    expect(unknown?.options[0]).not.toHaveProperty('scope');
+  });
+
+  it('processWideOptionIds lists the marked options', () => {
+    expect(processWideOptionIds(parseSessionOptionsSnapshot(scoped))).toEqual([
+      'contentCollection',
+    ]);
+    expect(processWideOptionIds(snapshot)).toEqual([]);
+    expect(processWideOptionIds(null)).toEqual([]);
+  });
 });
 
 describe('defaultModeValues', () => {
@@ -225,5 +287,43 @@ describe('defaultModeValues', () => {
     expect(defaultModeValues(snapshot, undefined)).toEqual({ missing: false });
     expect(defaultModeValues(null, 'agent-b')).toEqual({ missing: false });
     expect(defaultModeValues({ options: [] }, 'agent-b')).toEqual({ missing: false });
+  });
+});
+
+describe('listedValues (D27)', () => {
+  const lists: SessionOptionsSnapshot = {
+    mode: {
+      id: 'mode',
+      name: 'Mode',
+      currentValue: 'agent-a',
+      values: [
+        { value: 'agent-a', name: 'Agent A' },
+        { value: 'agent-b', name: 'Agent B' },
+      ],
+    },
+    options: [
+      {
+        id: 'autopilot',
+        name: 'Autopilot',
+        currentValue: 'on',
+        values: [
+          { value: 'on', name: 'Autopilot' },
+          { value: 'off', name: 'Supervised' },
+        ],
+      },
+    ],
+  };
+
+  it('keeps only the values that the lists have', () => {
+    expect(listedValues(lists, { mode: 'agent-b', autopilot: 'gone', other: 'x' })).toEqual({
+      mode: 'agent-b',
+    });
+    expect(listedValues(lists, { autopilot: 'off' })).toEqual({ autopilot: 'off' });
+  });
+
+  it('is undefined when nothing is left', () => {
+    expect(listedValues(lists, { mode: 'agent-gone' })).toBeUndefined();
+    expect(listedValues(lists, undefined)).toBeUndefined();
+    expect(listedValues({ options: [] }, { mode: 'agent-a' })).toBeUndefined();
   });
 });
