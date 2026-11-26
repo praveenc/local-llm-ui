@@ -418,7 +418,9 @@ To add a server:
 
 ![The MCP Servers tab of Preferences with a local server and the form of a remote HTTP server.](.github/images/preferences-mcp-servers.png)
 
-The MCP button in the chat input shows the connected servers and their tools.
+The MCP button in the chat input shows the connected servers and their tools. A server that cannot start shows the reason, with the last lines of its error output.
+
+The app starts a local server to check it at these times only: when the page loads, when you close Preferences, and when you open the MCP popover. It does not start a server while you type in the form. To check one server, open it in **Preferences → MCP Servers** and click **Check** at the end of its form. The result shows under the button, for example **Connected · 7 tools**, or the error. **Check** also works for a server that is off.
 
 For safety, a local server must start with an approved command: `node`, `npx`, `python`, `python3`, `uv`, `uvx`, `docker`, `deno`, `bun`, or `bunx`. The app also blocks shell characters in arguments, blocks private network addresses for remote servers, and does not share your environment variables with servers. For more data, see [docs/SECURITY-LEARNINGS.md](docs/SECURITY-LEARNINGS.md).
 
@@ -624,6 +626,15 @@ The app keeps all preferences in your browser. Preferences has no Save button. T
 1. Make sure that the provider runs on the correct port.
 2. Make sure that a firewall does not block the port.
 3. For cloud providers, make sure that the API key is correct.
+
+### An MCP server shows an error
+
+The MCP popover and **Check** show the reason, with the last lines of the server's error output. The terminal that runs `npm run dev` shows all of the output, with the server name at the start of each line.
+
+- **`npm error code E401`, `EALLOWREMOTE`, or another npm error:** `npx` could not get the package. Do the same `npx` command in a terminal. If it fails there too, sign in to your npm registry again (`npm login`), or add the environment variable `npm_config_registry` with the value `https://registry.npmjs.org/` to the server.
+- **Command not found:** install the program, or make sure that it is on the `PATH` of the terminal that runs `npm run dev`.
+- **The server did not answer in 15 s:** the first start of `npx` or `uvx` can take a long time, because it downloads the package. Click **Check** again.
+- **The server stopped before it answered:** read the last lines in the message. Often an argument or an environment variable is wrong. Remove quotes from the values.
 
 ### The reply stops before the answer
 

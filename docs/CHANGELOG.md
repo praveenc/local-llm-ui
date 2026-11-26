@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 2026-11
 
+#### Added
+
+- **Check** button on each server in **Preferences → MCP Servers**: it starts that server, also a server that is off, and shows **Connected · N tools** with the tool names, or the error ([#93])
+
 #### Fixed
 
+- MCP servers that fail say why: the popover and **Check** show, for example, "The server stopped before it answered (exit code 1): npm error code E401 …" or "Command not found: uvx", not "Attempted to send a request from a closed client". A server whose process stops starts again at the next check or chat, a timeout ends the process, and two requests start one process. The app checks the servers when the page loads, when Preferences closes, and when the MCP popover opens, not after each change in the form, and it sends only complete servers. The status route `POST /api/bedrock-aisdk/mcp-status` accepts `closeOthers: true`, and closes servers that are off or that left the list ([#93])
 - Clearer **Add MCP server** form: a new server opens with an empty name and the cursor in **Name**, the command placeholder names `uvx`, and help text under **Arguments** and **Environment Variables** says to type one value in each field, with no quotes. The app does not use a shell, so a value that starts and ends with a quote shows a warning ([#92])
 
 ## [1.3.0] - 2026-11-26
@@ -256,6 +261,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#93]: https://github.com/praveenc/local-llm-ui/pull/93
 [#92]: https://github.com/praveenc/local-llm-ui/pull/92
 [#90]: https://github.com/praveenc/local-llm-ui/pull/90
 [#89]: https://github.com/praveenc/local-llm-ui/pull/89
