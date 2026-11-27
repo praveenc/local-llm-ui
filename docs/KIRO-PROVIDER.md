@@ -1,6 +1,6 @@
 # Kiro provider
 
-Status: items 1 to 10 are done, merged, and ship in release 1.3.0. Item 11 (the small points left) is in review as K11a to K11d. All decisions take the recommended option (2026-11-24). On 2026-11-25 the direction became: Kiro is the provider and kiro-cli is the harness (D15 to D20). See [Progress](#progress) for the state of each PR. Last updated 2026-11-26.
+Status: done. Items 1 to 10 ship in release 1.3.0, and item 11 (the small points left, K11a to K11d) ships in release 1.4.0. All decisions take the recommended option (2026-11-24). On 2026-11-25 the direction became: Kiro is the provider and kiro-cli is the harness (D15 to D20). See [Progress](#progress) for the state of each PR. Last updated 2026-11-27.
 
 This document plans Kiro as a provider. Kiro is not an HTTP API. It is a local agent (`kiro-cli`) that the app starts as a child process and talks to with the Agent Client Protocol (ACP): JSON-RPC, one message per line, on stdin and stdout. Kiro keeps its own login, model list, sessions on disk, tools, and credits. The app must fit these into its existing patterns: one model picker, one chat view, one work row, one SSE format.
 
@@ -67,10 +67,10 @@ The direction since 2026-11-25: the app signs in with Kiro and then gives the wo
 | K8 | `feat/kiro-credits` | 8 | Done, merged ([#84](https://github.com/praveenc/local-llm-ui/pull/84)) |
 | K9 | `feat/kiro-session-options` | 9 | Done, merged ([#86](https://github.com/praveenc/local-llm-ui/pull/86)) |
 | KD | `feat/kiro-defaults` | D6, D9, 10 | Done, merged ([#87](https://github.com/praveenc/local-llm-ui/pull/87)) |
-| K11a | `fix/kiro-question-line` | 11 (D21, D22) | In review ([#94](https://github.com/praveenc/local-llm-ui/pull/94)) |
-| K11b | `fix/kiro-settings-folder` | 11 (D28) | In review ([#95](https://github.com/praveenc/local-llm-ui/pull/95)) |
-| K11c | `fix/kiro-session-options` | 11 (D26, D27) | In review ([#96](https://github.com/praveenc/local-llm-ui/pull/96)) |
-| K11d | `fix/kiro-session-sync` | 11 (D23, D24, D25) | In review ([#97](https://github.com/praveenc/local-llm-ui/pull/97)) |
+| K11a | `fix/kiro-question-line` | 11 (D21, D22) | Done, merged ([#94](https://github.com/praveenc/local-llm-ui/pull/94)) |
+| K11b | `fix/kiro-settings-folder` | 11 (D28) | Done, merged ([#95](https://github.com/praveenc/local-llm-ui/pull/95)) |
+| K11c | `fix/kiro-session-options` | 11 (D26, D27) | Done, merged ([#96](https://github.com/praveenc/local-llm-ui/pull/96)) |
+| K11d | `fix/kiro-session-sync` | 11 (D23, D24, D25) | Done, merged ([#97](https://github.com/praveenc/local-llm-ui/pull/97)) |
 
 ### Found during the work
 

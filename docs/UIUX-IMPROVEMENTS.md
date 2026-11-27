@@ -1,6 +1,6 @@
 # UI and UX improvements
 
-Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Items 19 to 21 are done and ship in release 1.3.0. [Plan 3](#plan-3-mcp-servers) (items 22 to 25) is in progress. Its decisions D14 to D19 are made. Last updated 2026-11-26. See [Progress](#progress) for the state of each item.
+Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Items 19 to 21 are done and ship in release 1.3.0. In [Plan 3](#plan-3-mcp-servers), items 22 and 23 are done and ship in release 1.4.0. Items 24 and 25 are planned. The decisions D14 to D19 are made. Last updated 2026-11-27. See [Progress](#progress) for the state of each item.
 
 This document reviews the current chat UI and proposes changes, in order of impact. It also records the decisions made so far and the questions that are still open.
 
@@ -70,8 +70,8 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 19 | Current provider first in the model picker | `fix/model-picker-order` ([#85](https://github.com/praveenc/local-llm-ui/pull/85)) | Done, merged ([#85](https://github.com/praveenc/local-llm-ui/pull/85)) |
 | 20 | Replies keep running in their own chat | `fix/background-replies` | Done, merged ([#88](https://github.com/praveenc/local-llm-ui/pull/88)) |
 | 21 | Totals of the whole chat in the context popover | `feat/chat-totals` ([#89](https://github.com/praveenc/local-llm-ui/pull/89)) | Done, merged ([#89](https://github.com/praveenc/local-llm-ui/pull/89)) |
-| 22 | MCP servers that fail say why, and recover | M1 `fix/mcp-npx-launch` ([#93](https://github.com/praveenc/local-llm-ui/pull/93), stacked on [#92](https://github.com/praveenc/local-llm-ui/pull/92)) | Done, in review |
-| 23 | Clearer Add MCP server form | M2 `fix/mcp-server-form` ([#92](https://github.com/praveenc/local-llm-ui/pull/92)) | Done, in review |
+| 22 | MCP servers that fail say why, and recover | M1 `fix/mcp-npx-launch` ([#93](https://github.com/praveenc/local-llm-ui/pull/93), stacked on [#92](https://github.com/praveenc/local-llm-ui/pull/92)) | Done, merged ([#93](https://github.com/praveenc/local-llm-ui/pull/93)) |
+| 23 | Clearer Add MCP server form | M2 `fix/mcp-server-form` ([#92](https://github.com/praveenc/local-llm-ui/pull/92)) | Done, merged ([#92](https://github.com/praveenc/local-llm-ui/pull/92)) |
 | 24 | Local servers that are standalone programs | M3 `feat/mcp-standalone-commands` | Planned, waits on M1 and M2 |
 | 25 | Import MCP servers from other tools | M4 `feat/mcp-import` | Planned, waits on M3 |
 
