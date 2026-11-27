@@ -442,6 +442,8 @@ The `sessionOptions` field of `POST /api/kiro/chat` sets the agent and the other
 
 Five API keys + MCP auth headers are stored in plaintext `localStorage`. This is inherent to the local-first, no-backend-auth architecture.
 
+The keys are in one place only: the preferences object (`local-llm-ui-preferences`). The model list services get the key as an argument of `getModels`. They keep no copy, and no other `localStorage` entry holds a key. `migrateLegacyApiKeys` (`src/utils/legacyApiKeys.ts`, called in `src/main.tsx` before the first render) moves the keys of the older entries (`GROQ_API_KEY`, `CEREBRAS_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`) into the preferences once. The preferences value wins when both differ, the log has the key name and never the value, and it removes an older entry only after a read-back of the preferences matches. A preferences blob that does not parse is never written, and blocked storage removes nothing.
+
 **Mitigations in place**:
 - Keys sent via `X-Api-Key` headers (not URLs — won't appear in logs/history)
 - AWS credentials use server-side provider chain (never sent from client)

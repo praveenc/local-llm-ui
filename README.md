@@ -287,7 +287,7 @@ Anthropic, OpenRouter, Groq, Cerebras, and Bedrock Mantle use an API key:
 3. Click **Add key** next to the provider and paste the key.
 4. For Bedrock Mantle, also select the Region.
 
-The app keeps the keys in your browser.
+The app keeps the keys in your browser, with your other preferences. Each key is in one place only, so a key that you change or remove in **Preferences** changes everywhere.
 
 For Anthropic, the model picker shows the models that your key can use, with Anthropic's names. The app gets this list from Anthropic. If the app cannot get the list, the picker shows Claude Fable 5.2, Claude Opus 5.5, Claude Sonnet 5.5, and Claude Haiku 5.5.
 
