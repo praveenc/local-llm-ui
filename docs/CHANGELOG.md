@@ -14,8 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each chat proxy now checks the chat request before it does anything else. A body that is not valid JSON, or that has a wrong field (for example no model, a model id with control characters, a `tool` role, or no message with text), gets a short `400` JSON error. The server checks the request before it reads an API key, starts the MCP servers of the request, or opens the stream. Before, most proxies used the fields as they came, so a bad body could start MCP servers or end in a raw stream error. OpenRouter keeps its strict model id rule (#125, #126) ([#138])
 - `POST /api/kiro/logout` accepts a body of at most 1 KB, and the plain proxies `/api/ollama` and `/api/lmstudio` accept at most 16 KB. A larger body gets `413`. The body limits now count bytes, not characters (#111, #112) ([#138])
 
+#### Removed
+
+- UI code that the app does not use: the `MessageBranch` parts and `MessageToolbar` of the message component, `ModelSelectorDialog`, `ModelSelectorShortcut`, and `ModelSelectorLogoGroup` of the model picker, `PromptInputSpeechButton` with its speech code and `PromptInputCommandSeparator` of the chat input, `PaginationEllipsis`, `TableFooter`, `TableCaption`, the button group component (`src/components/ui/button-group.tsx`), and the unused file `src/components/ui/index.ts`. Nothing changes on screen. `MessageAttachment` and `MessageAttachments` stay for the attachment work (#122, #123) ([#141])
+- The direct dependency `@radix-ui/react-use-controllable-state`. Nothing in the app imports it. The Radix packages still install it for their own use (#121) ([#141])
+
 #### Fixed
 
+- The pager of **Saved Prompts** works with the keyboard. Tab goes to **Previous**, to each page number, and to **Next**, with a visible focus ring, and Enter or Space opens the page. A line above the pager says, for example, **Page 2 of 5**, and screen readers hear the current page. At the first and the last page, **Previous** or **Next** is dimmed but keeps the focus. On a touch screen, each button is 44 px. A page change scrolls the list to the top. Before, the page numbers were links with no target, so the keyboard could not reach them (#105) ([#136])
+- When you delete the last prompt on the last page of **Saved Prompts**, the list shows the page before it. Before, the list said **No saved prompts** although the other pages had prompts ([#136])
+- **Saved Prompts** reads the prompts once, and the category filter comes from the same read. Before, the app read all the prompts a second time only to make the category list (#118) ([#136])
 - **Stop**, a reload, or a closed page now also stops the model call on the provider. Before, the server kept the provider call running until the reply ended, so a stopped reply could still use tokens and cost money (#117) ([#138])
 - An error in the chat is now at most 500 characters, also the error that comes before a reply starts. Before, a long provider error showed in full. The Bedrock Mantle error for a wrong Region no longer repeats the Region value (#109) ([#138])
 - A Bedrock Mantle reply now ends once. Before, the stream sent its end marker twice (#110) ([#138])
@@ -287,7 +295,9 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#141]: https://github.com/praveenc/local-llm-ui/pull/141
 [#138]: https://github.com/praveenc/local-llm-ui/pull/138
+[#136]: https://github.com/praveenc/local-llm-ui/pull/136
 [#97]: https://github.com/praveenc/local-llm-ui/pull/97
 [#96]: https://github.com/praveenc/local-llm-ui/pull/96
 [#95]: https://github.com/praveenc/local-llm-ui/pull/95
