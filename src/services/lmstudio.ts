@@ -1,7 +1,7 @@
 import type { ModelInfo } from './types';
 
-// Use proxy in development, direct connection in production
-const LMSTUDIO_BASE_URL = import.meta.env.DEV ? '/api/lmstudio/v1' : 'http://localhost:1234/v1';
+// Always the app's own proxy: the proxies exist only in the Vite dev server (npm run dev)
+const LMSTUDIO_BASE_URL = '/api/lmstudio/v1';
 const LMSTUDIO_SDK_URL = '/api/lmstudio-sdk';
 
 export interface LMStudioModelInfo extends ModelInfo {

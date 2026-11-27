@@ -1,7 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { mantleService } from '../../services';
+import { openrouterService } from '../../services/openrouter';
+import * as preferencesModule from '../../utils/preferences';
 import { loadPreferences } from '../../utils/preferences';
 import { useAllModels } from '../useAllModels';
 import { KIRO_STATUS_QUERY_KEY } from '../useKiroStatus';
@@ -34,8 +37,11 @@ vi.mock('../../services/aisdk', () => ({
   groqService: { getModels: () => never() },
   syncApiKeysFromPreferences: vi.fn(),
 }));
+const openrouterGetModels = vi.hoisted(() =>
+  vi.fn<() => Promise<unknown[]>>(() => new Promise<never>(() => {}))
+);
 vi.mock('../../services/openrouter', () => ({
-  openrouterService: { getModels: () => never(), setApiKey: vi.fn() },
+  openrouterService: { getModels: openrouterGetModels, setApiKey: vi.fn() },
 }));
 
 describe('useAllModels', () => {
@@ -144,5 +150,113 @@ describe('useAllModels', () => {
     expect(messages.filter((message) => message.includes('No queryFn'))).toEqual([]);
     expect(kiroGetStatus).not.toHaveBeenCalled();
     errorLog.mockRestore();
+  });
+
+  describe('preferences', () => {
+    const renderModels = (prefs: ReturnType<typeof loadPreferences>) => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      return renderHook(() => useAllModels(prefs), {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      });
+    };
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('never reads the preferences from disk, only the argument', async () => {
+      localStorage.clear();
+      const prefs = { ...loadPreferences(), bedrockMantleApiKey: 'arg-key' };
+      const load = vi.spyOn(preferencesModule, 'loadPreferences');
+      const getItem = vi.spyOn(Storage.prototype, 'getItem');
+
+      const { result, rerender } = renderModels(prefs);
+      await waitFor(() =>
+        expect(result.current.providers.find((p) => p.provider === 'ollama')?.status).toBe(
+          'success'
+        )
+      );
+      rerender();
+
+      expect(load).not.toHaveBeenCalled();
+      expect(getItem).not.toHaveBeenCalledWith('local-llm-ui-preferences');
+    });
+
+    it('fetches Mantle for a key in the argument, with the argument key and region', async () => {
+      localStorage.clear();
+      vi.mocked(mantleService.setApiKey).mockClear();
+      vi.mocked(mantleService.setRegion).mockClear();
+      vi.mocked(openrouterService.setApiKey).mockClear();
+      const prefs = {
+        ...loadPreferences(),
+        bedrockMantleApiKey: 'arg-key',
+        bedrockMantleRegion: 'eu-west-1',
+        openrouterApiKey: 'or-arg-key',
+      };
+
+      const { result } = renderModels(prefs);
+
+      await waitFor(() =>
+        expect(result.current.providers.find((p) => p.provider === 'ollama')?.status).toBe(
+          'success'
+        )
+      );
+      expect(result.current.providers.find((p) => p.provider === 'bedrock-mantle')?.status).toBe(
+        'loading'
+      );
+      expect(mantleService.setApiKey).toHaveBeenCalledWith('arg-key');
+      expect(mantleService.setApiKey).not.toHaveBeenCalledWith(null);
+      expect(mantleService.setRegion).toHaveBeenCalledWith('eu-west-1');
+      expect(openrouterService.setApiKey).toHaveBeenCalledWith('or-arg-key');
+    });
+
+    it('fetches again with the new key when the key value changes', async () => {
+      localStorage.clear();
+      vi.mocked(openrouterService.setApiKey).mockClear();
+      openrouterGetModels.mockReset();
+      openrouterGetModels.mockResolvedValue([]);
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { rerender } = renderHook(
+        ({ prefs }: { prefs: ReturnType<typeof loadPreferences> }) => useAllModels(prefs),
+        {
+          initialProps: { prefs: { ...loadPreferences(), openrouterApiKey: 'or-key-a' } },
+          wrapper: ({ children }) => (
+            <QueryClientProvider client={client}>{children}</QueryClientProvider>
+          ),
+        }
+      );
+      await waitFor(() => expect(openrouterGetModels).toHaveBeenCalledTimes(1));
+      expect(openrouterService.setApiKey).toHaveBeenLastCalledWith('or-key-a');
+
+      // Same "key is set" state, new value: the query key does not change
+      rerender({ prefs: { ...loadPreferences(), openrouterApiKey: 'or-key-b' } });
+
+      await waitFor(() => expect(openrouterGetModels).toHaveBeenCalledTimes(2));
+      expect(openrouterService.setApiKey).toHaveBeenLastCalledWith('or-key-b');
+      openrouterGetModels.mockImplementation(() => never());
+    });
+
+    it('does not fetch Mantle for a key that is only on disk', async () => {
+      localStorage.clear();
+      localStorage.setItem(
+        'local-llm-ui-preferences',
+        JSON.stringify({ bedrockMantleApiKey: 'disk-key' })
+      );
+      vi.mocked(mantleService.setApiKey).mockClear();
+      // The argument has no key, as when the user removed it
+      const prefs = { ...loadPreferences(), bedrockMantleApiKey: '' };
+
+      const { result } = renderModels(prefs);
+
+      await waitFor(() =>
+        expect(result.current.providers.find((p) => p.provider === 'ollama')?.status).toBe(
+          'success'
+        )
+      );
+      expect(result.current.providers.some((p) => p.provider === 'bedrock-mantle')).toBe(false);
+      expect(mantleService.setApiKey).not.toHaveBeenCalledWith('disk-key');
+    });
   });
 });

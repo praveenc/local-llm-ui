@@ -38,3 +38,22 @@ describe('OllamaService.getModels', () => {
     expect(model.supportsTools).toBeUndefined();
   });
 });
+
+describe('ollamaService URL', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('uses the app proxy also when the build is not a dev build', async () => {
+    vi.stubEnv('DEV', false);
+    vi.resetModules();
+    mockTags([{ name: 'qwen3:8b' }]);
+    const { ollamaService } = await import('../ollama');
+
+    await ollamaService.getModels();
+
+    expect(fetch).toHaveBeenCalledWith('/api/ollama/api/tags');
+  });
+});
