@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11
+
+#### Fixed
+
+- When you open a different chat, the chat shows only the messages of that chat. An empty chat is empty. Before, an empty chat kept the messages of the chat that you had open before, and a switch to a different chat could show the old messages until the new ones loaded (#98, #99) ([#137])
+- A rating (thumbs up or thumbs down) that the app cannot save goes back to its earlier value, and only the error toast shows. When you click several times quickly, the last click wins. Before, a rating that failed stayed on screen, and a rating of a reply that had no saved message said **Feedback saved** (#103, #130) ([#137])
+- **Stop** right after **Send to Fork** in **Quote and Ask** now stops the reply of the fork. Before, Stop could go to the original chat, and the reply of the fork continued (#128) ([#137])
+- After **Stop** in a Kiro chat, the next message waits, at most 5 seconds, until the stopped reply is saved. Then Kiro gets the correct messages. Before, a message right after Stop could send messages that Kiro already had ([#137])
+- After **Regenerate**, the stored totals of the chat (the message count, the tokens, the providers, and the models) come from the messages that are left. Before, they kept the values of the deleted reply (#114) ([#137])
+
 ## [1.4.0] - 2026-11-27
 
 PR numbers link to GitHub.
@@ -274,6 +284,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#137]: https://github.com/praveenc/local-llm-ui/pull/137
 [#97]: https://github.com/praveenc/local-llm-ui/pull/97
 [#96]: https://github.com/praveenc/local-llm-ui/pull/96
 [#95]: https://github.com/praveenc/local-llm-ui/pull/95
