@@ -14,8 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The **Anthropic** group of the model picker now shows the models that your key can use, with Anthropic's names, for example **Claude Opus 5.5**. The app gets the list from the Anthropic Models API through `GET /api/aisdk/models?provider=anthropic`. If the list does not load, the picker shows Claude Fable 5.2, Claude Opus 5.5, Claude Sonnet 5.5, and Claude Haiku 5.5. Before, the app showed a fixed list of older models, for example Claude Sonnet 4.5 (#107) ([#139])
 - Each model list call of `/api/aisdk/models` (Anthropic, Groq, and Cerebras) stops after 10 seconds, and its error text is at most 500 characters, with no API key in it ([#139])
 
+#### Removed
+
+- UI code that the app does not use: the `MessageBranch` parts and `MessageToolbar` of the message component, `ModelSelectorDialog`, `ModelSelectorShortcut`, and `ModelSelectorLogoGroup` of the model picker, `PromptInputSpeechButton` with its speech code and `PromptInputCommandSeparator` of the chat input, `PaginationEllipsis`, `TableFooter`, `TableCaption`, the button group component (`src/components/ui/button-group.tsx`), and the unused file `src/components/ui/index.ts`. Nothing changes on screen. `MessageAttachment` and `MessageAttachments` stay for the attachment work (#122, #123) ([#141])
+- The direct dependency `@radix-ui/react-use-controllable-state`. Nothing in the app imports it. The Radix packages still install it for their own use (#121) ([#141])
+
 #### Fixed
 
+- The pager of **Saved Prompts** works with the keyboard. Tab goes to **Previous**, to each page number, and to **Next**, with a visible focus ring, and Enter or Space opens the page. A line above the pager says, for example, **Page 2 of 5**, and screen readers hear the current page. At the first and the last page, **Previous** or **Next** is dimmed but keeps the focus. On a touch screen, each button is 44 px. A page change scrolls the list to the top. Before, the page numbers were links with no target, so the keyboard could not reach them (#105) ([#136])
+- When you delete the last prompt on the last page of **Saved Prompts**, the list shows the page before it. Before, the list said **No saved prompts** although the other pages had prompts ([#136])
+- **Saved Prompts** reads the prompts once, and the category filter comes from the same read. Before, the app read all the prompts a second time only to make the category list (#118) ([#136])
 - The model list no longer reads the saved preferences from browser storage on each render and each fetch. It uses the preferences that the app already has (#108, #119) ([#139])
 - The Ollama and LM Studio model lists always use the app's `/api` routes. Before, a build that was not the development build called `localhost` directly for these two lists only (#113) ([#139])
 
@@ -286,7 +294,9 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#141]: https://github.com/praveenc/local-llm-ui/pull/141
 [#139]: https://github.com/praveenc/local-llm-ui/pull/139
+[#136]: https://github.com/praveenc/local-llm-ui/pull/136
 [#97]: https://github.com/praveenc/local-llm-ui/pull/97
 [#96]: https://github.com/praveenc/local-llm-ui/pull/96
 [#95]: https://github.com/praveenc/local-llm-ui/pull/95

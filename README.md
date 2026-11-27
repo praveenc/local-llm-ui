@@ -584,7 +584,7 @@ To save a prompt:
 To use a saved prompt:
 
 1. Click **Saved Prompts** in the sidebar.
-2. Find the prompt. You can search by name or content, and filter by category.
+2. Find the prompt. You can search by name or content, and filter by category. The list shows 10 prompts on each page. To go to a different page, click **Previous**, **Next**, or a page number below the list. You can also push Tab to go to these buttons, and push Enter or Space.
 3. Click the **Insert into chat** button in the row. The prompt text goes into the chat input. If the chat input already has text, the prompt goes after it.
 
 ### Themes and display
