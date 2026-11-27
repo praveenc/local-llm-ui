@@ -66,29 +66,25 @@ MCP is the highest-risk integration because it involves spawning child processes
 
 **Risk**: User-controlled `command` and `args` in stdio MCP configs are passed to `Experimental_StdioMCPTransport`, which spawns a child process.
 
-**Hardening applied** (`server/mcp-manager.ts`):
+**Hardening applied** (`src/utils/mcpCommand.ts`, `server/mcp-command.ts`, `server/mcp-manager.ts: validateStdioSecurity()`):
 
-1. **Command allowlist** — only these bare commands are permitted:
-   ```typescript
-   const ALLOWED_STDIO_COMMANDS = new Set([
-     'node', 'npx', 'python', 'python3', 'uvx', 'uv',
-     'docker', 'deno', 'bun', 'bunx',
-   ]);
-   ```
+1. **No command allowlist.** Since SEC-23, a command can be any program. Until then, only `node`, `npx`, `python`, `python3`, `uvx`, `uv`, `docker`, `deno`, `bun`, and `bunx` could start. See SEC-23 for why the list went.
 
-2. **No path separators** — blocks `/usr/bin/evil` or `../../evil`:
-   ```typescript
-   if (cmd.includes('/') || cmd.includes('\\')) {
-     throw new Error('[MCP Security] Command paths are not allowed');
-   }
-   ```
+2. **A shape rule for the command** — `classifyCommand(raw)` in `src/utils/mcpCommand.ts` (no DOM and no Node imports; the server and the form `validateMCPServerConfig` both use it). It trims the command once and never changes its case. The result is one of:
+   - `name`: no `/` and no `\`, for example `npx` or `github-mcp-server`. The server looks it up on `PATH` (SEC-23).
+   - `absolute`: starts with `/`.
+   - `home`: starts with `~/` and has more after it. The server expands `~/` (SEC-23).
+   - `invalid`, with a text: empty ("Command is required"), a control character ("Command contains characters that the app does not allow"), or any other shape: a `\`, a relative path (`./x`, `bin/x`), `~`, `~/`, or `~user/x` ("Use a program name or a full path that starts with / or ~/"). The form shows the last one as "Command is not valid. Use a program name or a full path that starts with / or ~/."
 
-3. **Shell metacharacter validation on args** — blocks `; rm -rf /`:
+3. **Shell metacharacter validation on args** — blocks `; rm -rf /`. No shell runs, so these characters do nothing there; the rule stays as a second line of defense:
    ```typescript
    const SHELL_METACHAR_PATTERN = /[;&|`$(){}!<>]/;
    ```
+   `findDisallowedArgument(args)` returns the number of the first bad argument. The error names the number, never the value, because an argument can hold a secret: "Argument 2 contains characters that the app does not allow".
 
-**To add a new allowed command**: Add it to `ALLOWED_STDIO_COMMANDS` in `server/mcp-manager.ts`.
+4. **No shell.** The AI SDK transport spawns with `shell: false`, so the app passes each argument as typed.
+
+**How to read it**: a stdio config passes `validateStdioSecurity` (shape and arguments) before the config hash and before any start. `createClient` then resolves the program (`resolveCommand`, SEC-23) and spawns the resolved path. To change what a command can be, change `classifyCommand` and its tests in `src/utils/__tests__/mcpCommand.test.ts`. The form and the server then agree.
 
 ### SEC-02: Environment Variable Leak Prevention (HIGH)
 
@@ -130,6 +126,38 @@ env: { ...getSafeEnv(), ...config.env }
 | `169.254.x.x` | Link-local addresses |
 | Non-http/https schemes | `file://`, `ftp://`, etc. |
 | HTTP redirects | AI SDK 7 MCP transports default to `redirect: 'error'`, so a validated URL cannot redirect to a blocked target |
+
+### SEC-23: Standalone MCP Server Programs
+
+**Before**: SEC-01 allowed only 10 runner commands (`node`, `npx`, `python`, `python3`, `uv`, `uvx`, `docker`, `deno`, `bun`, `bunx`) and refused any `/`. Many MCP servers are one program that you start by its name or its path, for example `github-mcp-server`, so the app could not run them.
+
+**Why the allowlist goes** (D15 (a), `docs/UIUX-IMPROVEMENTS.md` item 24): it did not stop other code. `npx -y <package>`, `uvx <package>`, and `docker run <image>` already run any code that the user names. And the user's environment variables go on top of the safe ones (`{ ...getSafeEnv(), ...config.env }`), so a `PATH` in a server's environment could make `npx` start a different program named `npx`. So the allowlist gave little protection and blocked real servers.
+
+**What stays**:
+
+- SEC-13: only the app's own pages can call the routes that start a server.
+- The dev server listens on loopback only.
+- No shell (SEC-01), and the shell-character check on arguments (SEC-01).
+- The safe environment (SEC-02).
+- The shape rule (SEC-01): a program name, or a full path that starts with `/` or `~/`. A relative path is refused, because it depends on the folder where the dev server started.
+
+**How the server finds the program** (`server/mcp-command.ts: resolveCommand(command, env)`):
+
+- The command is trimmed once. The trimmed text is the text that the app checks, hashes, resolves, and shows in errors. The app never lowercases it, and the lookup is case-sensitive. Before, the check lowercased the command and the spawn used the text as typed, so `NODE` passed the check as `node`.
+- A name is looked up on the `PATH` of the child's own environment: the safe environment with the server's environment on top, so a `PATH` that the user sets wins. This is the `PATH` that the child gets. The lookup skips empty and relative entries, folders, and files that are not executable (`fs.stat` follows links, `isFile()`, then `fs.access(X_OK)`), and keeps searching. The first match wins.
+- `~/` expands with `os.homedir()` of the dev server process, never with a `HOME` from the server's environment.
+- No `realpath` and no `normalize`: a program such as a virtualenv `python` finds its environment from the path that it was started with.
+- The manager spawns the absolute path that `resolveCommand` returns, with the same environment. So the file that was checked is the file that runs. Node's own `PATH` search (which tries relative entries) never runs. A test puts a decoy program in a relative `PATH` entry and checks that it does not run.
+- Linux and macOS only. A `\` stays refused.
+
+**Errors** (they show in the MCP popover and under **Check**):
+
+- "Command not found: x" for a name with no match on `PATH`.
+- "x is not a program" for a `/` or `~/` path that is missing, a folder, or not executable, and for a spawn that fails after the check (`EACCES`, `ENOEXEC`, and similar). `x` is the command as the user typed it. The error never shows the resolved host path or the expanded home folder.
+- An argument error names the argument number, not the value (SEC-01).
+- A remote URL error shows only the scheme or the host, never the query or the user info. A URL that does not parse gives "[MCP Security] The URL is not valid" (SEC-03).
+
+**Accepted risk**: anyone who can open the app can start any program on the host, with the user's rights. That was already true through `npx` and `uvx`. Keep the dev server on `localhost`, and share it only through an authenticated tunnel (SEC-13).
 
 ### SEC-10: Connection Timeout and Process Cleanup (LOW)
 
@@ -190,10 +218,13 @@ setCORSHeaders(req, res, 'Content-Type, X-Mantle-Api-Key, X-Mantle-Region');
 
 **Before**: All proxies used unbounded `body += chunk` — multi-GB body = OOM.
 
-**After** (`server/security.ts: readBodyWithLimit()`):
-- Default limit: **10MB**
-- Returns `null` and sends `413 Payload Too Large` if exceeded
-- Applied to all 10 proxy body-reading paths
+**After** (`server/security.ts: readBodyWithLimit()`, `limitStreamedBody()`):
+- Every route that reads a body or forwards one has a limit. Default limit: **10MB**.
+- The limit counts **bytes**, not characters (`Buffer.byteLength`). The body is decoded once at the end, so a character that is split across two chunks stays whole.
+- Returns `null` and sends `413` JSON (`{"error":"Request body too large"}`) if exceeded.
+- The chat proxies read the body through `readChatRequest()` (SEC-22), which uses the same limit.
+- Small routes have their own smaller limit, for example 1 KB for `POST /api/kiro/logout`, and 1 KB or 4 KB for the other Kiro routes. Before, logout did not read its body at all (`req.resume()`).
+- The plain proxies `/api/ollama` and `/api/lmstudio` (Vite `server.proxy`) pipe the body to the upstream and never read it into memory. `limitStreamedBody(req, res, PLAIN_PROXY_BODY_LIMIT)` runs on http-proxy-3's `start` event with **16 KB**: a declared `Content-Length` over the limit gets 413 before any byte goes upstream; a chunked body is counted, and at the limit the client gets 413 and the request is destroyed with `ECONNRESET`, so http-proxy-3 also destroys its upstream request. The upstream can get at most one socket read (up to 64 KB) past the limit. The app sends these proxies only `GET` requests with no body.
 
 ```typescript
 const body = await readBodyWithLimit(req, res);
@@ -218,7 +249,7 @@ maxOutputTokens: capMaxTokens(request.max_tokens), // Math.min(val ?? 2048, 3276
 **Before**: SEC-05 only stopped another site from *reading* a response. The request itself still ran. A page on any site could send a form post, or a `fetch` with `mode: 'no-cors'` and a `text/plain` body, to `http://localhost:5173/api/...`. These are "simple" requests, so the browser sends them without a preflight. The proxies parsed the body as JSON whatever its `Content-Type` was. So the page could:
 
 - start a chat that used the host's AWS credentials or API keys;
-- send `mcpServers` to `/api/bedrock-aisdk/mcp-status` or a chat route, and so start an allowed MCP command such as `npx -y <package>` on the host;
+- send `mcpServers` to `/api/bedrock-aisdk/mcp-status` or a chat route, and so start an MCP server command on the host, for example `npx -y <package>` (since SEC-23, any program);
 - send requests to Ollama and LM Studio through `/api/ollama` and `/api/lmstudio`.
 
 **After** (`server/security.ts: checkApiRequest()`, `createApiGuard()`, `apiGuardPlugin()`): one middleware checks every HTTP request to `/api` before any proxy:
@@ -379,6 +410,30 @@ The `sessionOptions` field of `POST /api/kiro/chat` sets the agent and the other
 - **Accepted risk.** Any page of the app can change the folder, because the app has no user accounts. The same-origin guard stops other sites (SEC-13), and the app must be shared only through an authenticated tunnel. This is the same as SEC-17. Kiro's tools still ask before they run a command or write a file, but Kiro reads files without a question, and the folder does not limit what Kiro can read or reach when the user answers a question. The folder is the place where Kiro starts, not a sandbox.
 - **Limits of the checks.** The checks stop a mistake of the user, for example a system folder or a settings folder. They do not stop a person who can already run commands as the same user. A folder can change between the check and the moment that Kiro opens it, because Kiro opens it itself. A `~/.local-llm-ui` that is a symlink is followed when the app writes the setting (see the next rule).
 
+### SEC-22: Chat Request Validation
+
+**Before**: each chat proxy parsed the body with `JSON.parse` and used its fields as they came. Only the OpenRouter proxy checked them. Some proxies wrote the SSE headers, checked the API key, or started the request's MCP servers before they knew that the body was valid. So `{`, `{}`, or `{"model":42}` could start MCP server processes, give a raw `TypeError` as a stream error, or end a stream with no status. OpenRouter checked for an empty message only after the MCP start.
+
+**After** (`server/security.ts`): every chat proxy (Groq and Cerebras, Anthropic, Amazon Bedrock, Bedrock Mantle, LM Studio, Ollama, OpenRouter) uses the same order:
+
+1. `readChatRequest(req, res)`: the body limit (SEC-07), `JSON.parse`, and the field checks below. A bad body gets `400` JSON (`Invalid JSON body`, `Invalid chat request`, `Model is required`, and so on) and the proxy returns. A body over the limit gets `413`.
+2. The checks of the proxy itself: the Groq or Cerebras `provider` (the error is `Invalid provider`, with no echoed value), the OpenRouter model pattern, the API key, and the Mantle region. The Mantle region and key checks run before the body read and have no side effect. A bad region gets `Invalid region`, with no echo of the header.
+3. The MCP start. For Bedrock, the start is inside the `try` that closes the clients.
+4. `startEventStream(res)` sets the SSE headers right before the stream loop. Every error before this point is a JSON status.
+
+**The field rules** (`checkChatRequest`):
+
+- `model`: a string that is not empty after a trim, at most 256 characters, with no control characters (U+0000 to U+001F, U+007F to U+009F). This rule is loose on purpose: an LM Studio model id can be a path with spaces and parentheses, and an Ollama id has a `:`. OpenRouter keeps its strict pattern `^[a-zA-Z0-9._\-/:@]+$` as an extra check, for OpenRouter only.
+- `messages`: an array of `{ role: 'user' | 'assistant' | 'system', content: string, files? }`. Each file is `{ name: string, format: string, bytes: string }` (Bedrock decodes `bytes` as base64). A `tool` role is refused.
+- Messages with no text and no files are left out. Then at least one message must be left (`At least one non-empty message is required`). A message with files and no text stays.
+- `max_tokens`: a positive integer, if present. SEC-09 still caps it.
+- `enableWebSearch`: a boolean, if present. `mcpServers`: an array, if present (SEC-11 checks each server).
+- The other fields (`thinkingEffort`, `maxToolSteps`, `provider`) are checked by the helpers that use them.
+
+**Shared helpers**: `readChatRequest`, `startEventStream`, `abortOnClose` (SEC-08 and OWASP LLM10 below), `sendJsonError` (a JSON error with the text capped at 500 characters; it removes the SSE `Cache-Control` and `Connection` headers when no byte went out), `capErrorText`, `isAbortError`, and `isAbortAfterClientLeft`. See [Shared Security Utilities](#shared-security-utilities).
+
+**Rule for a new chat proxy**: call `readChatRequest` first, and start nothing (no key use, no MCP server, no SSE header) before it returns a request. `server/__tests__/chat-request.test.ts` tests the rules, and each proxy test posts the same table of bad bodies (`BAD_BODIES` in `server/__tests__/fixtures/chat-proxy-harness.ts`, each with an MCP server in it) and expects `400` with no MCP start.
+
 ---
 
 ## Client-Side Security
@@ -458,13 +513,15 @@ Security reports, PR drafts, and temp docs live in `docs/tmp_docs/` (gitignored)
 ### 7. Sanitize Error Messages
 
 ```typescript
-// ❌ May contain AWS account IDs, ARNs, internal paths
+// ❌ May contain AWS account IDs, ARNs, internal paths, or a whole upstream body
 res.end(JSON.stringify({ error: err.message, errorDetail: err.stack }));
 
-// ✅ Sanitized
-res.end(JSON.stringify({ error: 'Internal server error' }));
+// ✅ Sanitized and capped
+sendJsonError(res, 500, 'Internal server error'); // JSON, at most 500 characters
 console.error('Full error (server-side only):', err); // log server-side
 ```
+
+Every error text that a proxy sends to the browser is at most 500 characters (`MAX_ERROR_LENGTH`, `capErrorText()`): the SSE `error` event (`endStreamWithError`, `streamErrorMessage` in the tool loop, and the stream-part writes), the JSON `error` before a stream starts (`sendJsonError`), and `errorDetail` (Bedrock, Mantle). The cut never leaves half of a surrogate pair. Do not echo a request value (a header, a provider name) in an error.
 
 ---
 
@@ -477,14 +534,22 @@ All shared utilities live in `server/security.ts`:
 | `apiGuardPlugin()` | Vite plugin that rejects cross-site and non-JSON requests to `/api` (SEC-13) | `vite.config.ts`, first plugin, `enforce: 'pre'` |
 | `checkApiRequest(req)` | The rules of the guard; returns `null` or a 403/415 rejection | `createApiGuard()` |
 | `setCORSHeaders(req, res, headers?)` | Restrict CORS to dev server origins | All proxies with CORS |
-| `readBodyWithLimit(req, res, maxSize?)` | Read body with 10MB limit, returns null + 413 on overflow | All proxies reading bodies |
+| `readBodyWithLimit(req, res, maxSize?)` | Read body with a limit in bytes (default 10MB), returns null + 413 on overflow | All routes that read a body |
+| `limitStreamedBody(req, res, maxSize?)` | Limit a body that a proxy pipes upstream; 413 and destroy over the limit (SEC-07) | `/api/ollama`, `/api/lmstudio` (`PLAIN_PROXY_BODY_LIMIT`, 16 KB), in `vite.config.ts` |
+| `readChatRequest(req, res, options?)` | Body limit, JSON, and the chat field checks; 400/413 JSON and null on a bad body (SEC-22) | All 7 chat proxies |
+| `startEventStream(res)` | Set the SSE headers, right before the stream loop | All 7 chat proxies |
+| `abortOnClose(res)` | An `AbortSignal` that aborts when the browser closes the response before it ends | All 7 chat proxies |
+| `sendJsonError(res, status, message)` | JSON error, text capped at 500 characters | Chat proxies, body limits |
+| `capErrorText(text)` | Cut an error text to 500 characters | Every error text sent to the browser |
+| `isAbortError(error)`, `isAbortAfterClientLeft(error, res)` | Tell an abort after the browser left from a real error (no log, no reply) | Chat proxy catches |
 | `capMaxTokens(requested?)` | Cap maxOutputTokens at 32,768, default 2,048 | All proxies with token params |
 
 MCP-specific security functions live in `server/mcp-manager.ts`:
 
 | Function | Purpose |
 |----------|---------|
-| `validateStdioSecurity(config)` | Command allowlist + arg metachar check |
+| `validateStdioSecurity(config)` | Command shape rule + arg metachar check (`classifyCommand`, `findDisallowedArgument` from `src/utils/mcpCommand.ts`) |
+| `resolveCommand(command, env)` (`server/mcp-command.ts`) | Find the program on the child's `PATH`, or check a full path; returns the path to spawn (SEC-23) |
 | `getSafeEnv()` | Safe env var allowlist for child processes |
 | `validateUrlSecurity(url)` | SSRF protection for HTTP/SSE URLs |
 | `validateConfigStructure(config)` | Runtime type validation |
@@ -500,11 +565,11 @@ How each OWASP LLM risk maps to this project:
 |------------|-----------|--------|
 | **LLM01: Prompt Injection** | MCP tool results flow back into LLM context — indirect injection vector | ⚠️ Architecture-level concern |
 | **LLM02: Sensitive Info Disclosure** | process.env leak to MCP, API keys in localStorage, verbose errors | ✅ SEC-02 fixed, SEC-04/08 noted |
-| **LLM03: Supply Chain** | npm dependencies, MCP servers from untrusted sources | ✅ npm audit clean, command allowlist |
+| **LLM03: Supply Chain** | npm dependencies, MCP servers from untrusted sources | ✅ npm audit clean; ⚠️ a local MCP server can be any program (SEC-23): the user decides which servers to trust |
 | **LLM05: Improper Output Handling** | LLM markdown rendered in browser | ✅ rehype-sanitize in place |
 | **LLM06: Excessive Agency** | MCP tools executed without confirmation | ⚠️ No human-in-the-loop yet |
 | **LLM07: System Prompt Leakage** | No secrets in system prompts | ✅ N/A — no system prompts with secrets |
-| **LLM10: Unbounded Consumption** | No rate limiting, uncapped tokens | ✅ SEC-09 fixed, SEC-06 deferred |
+| **LLM10: Unbounded Consumption** | No rate limiting, uncapped tokens, a provider call that runs on after the browser left | ✅ SEC-09 fixed; every chat proxy stops the provider call when the browser closes the stream (`abortOnClose`, Mantle passes the signal to `fetch`); SEC-06 deferred |
 
 ---
 
@@ -515,7 +580,7 @@ Things this project does well:
 1. **AWS credentials via provider chain** — never sent from client, never exposed
 2. **API keys on headers** — not URLs, won't appear in server logs or browser history
 3. **rehype-sanitize for markdown** — XSS mitigation for LLM output
-4. **Abort signal support** — all proxies abort on client disconnect, preventing wasted API calls
+4. **Abort signal support** — all chat proxies abort on client disconnect, preventing wasted API calls. `abortOnClose(res)` listens on the response: once the body is read, the request's own `close` has already fired, so a listener on `req` never ran
 5. **MCP tool namespacing** — `serverName__toolName` prevents collisions
 6. **`Promise.allSettled` for MCP** — one broken server doesn't take down the rest
 7. **File upload filename sanitization** — dangerous characters stripped
@@ -532,7 +597,7 @@ Items identified but not yet implemented (long-term):
 | Item | Finding | Reason for Deferral |
 |------|---------|-------------------|
 | Rate limiting | SEC-06 | Needs middleware pattern redesign for Vite dev server |
-| Error message sanitization | SEC-08 | Lower risk for local dev server; needs per-proxy audit |
+| Error message sanitization | SEC-08 | Partly done: every error text to the browser is capped at 500 characters, also the JSON error before a stream starts and `errorDetail` (see pitfall 7). Not done: a review of each upstream text, which can still hold up to 500 characters of the provider's own message. Lower risk for a local dev server. |
 | sessionStorage for API keys | SEC-04 | Architecture-level UX change (keys cleared on tab close) |
 | CSP/security headers | SEC-12 | Not applicable to Vite dev server; needed for production |
 | Human-in-the-loop for MCP tools | LLM06 | Significant UX/architecture work |
@@ -547,6 +612,8 @@ Items identified but not yet implemented (long-term):
 |------|-------|----------|-------|
 | 2026-03-06 | Full project (first audit) | 14 (1C, 3H, 5M, 2L, 3I) | 8 of 14 |
 | 2026-11-24 | `/api` routes before the Kiro provider | 1 (SEC-13: cross-site requests reach the proxies, including the MCP command start) | 1 of 1 |
+| 2026-11-27 | Chat proxies and body limits (SEC-22) | 6 (no validation before the MCP start and the SSE headers; no abort when the browser leaves; uncapped error text; no limit on the logout body and the plain proxies; the limit counted characters) | 6 of 6 |
+| 2026-11-27 | MCP command allowlist removed (SEC-23) | 3 (the check lowercased the command and the spawn did not; the command was not trimmed for the spawn; argument and URL errors showed their values) | 3 of 3 |
 
 ---
 
@@ -554,8 +621,9 @@ Items identified but not yet implemented (long-term):
 
 ```
 server/
-├── security.ts             # Shared: same-origin guard, CORS, body limits, token cap
-├── mcp-manager.ts          # MCP: command allowlist, env allowlist, SSRF, timeout, validation
+├── security.ts             # Shared: same-origin guard, CORS, body limits, chat request checks, error cap, token cap
+├── mcp-manager.ts          # MCP: command shape and argument checks, env allowlist, SSRF, timeout, validation
+├── mcp-command.ts          # MCP: find the program of a stdio server on PATH (SEC-23)
 ├── kiro-proxy.ts           # Kiro routes (uses security.ts)
 ├── acp/                    # Generic ACP layer: agent process, process groups, permissions (no harness names)
 ├── kiro/                   # Kiro harness: kiro-cli commands, sign-in, chat route, approvals
@@ -564,7 +632,7 @@ server/
 ├── bedrock-aisdk-proxy.ts  # Bedrock AI SDK (uses security.ts)
 ├── bedrock-proxy.ts        # Legacy Bedrock (uses security.ts)
 ├── lmstudio-aisdk-proxy.ts # LM Studio chat (uses security.ts)
-├── lmstudio-proxy.ts       # LM Studio SDK (inline limits)
+├── lmstudio-proxy.ts       # LM Studio SDK model list (reads no body)
 ├── mantle-proxy.ts         # Bedrock Mantle (uses security.ts)
 └── ollama-aisdk-proxy.ts   # Ollama (uses security.ts)
 ```

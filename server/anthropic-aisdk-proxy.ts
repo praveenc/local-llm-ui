@@ -10,10 +10,17 @@ import { streamText } from 'ai';
 import type { ToolSet } from 'ai';
 import type { Connect } from 'vite';
 
-import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
-import { capMaxTokens, endStreamWithError, readBodyWithLimit } from './security.ts';
+import {
+  abortOnClose,
+  capMaxTokens,
+  endStreamWithError,
+  isAbortAfterClientLeft,
+  readChatRequest,
+  sendJsonError,
+  startEventStream,
+} from './security.ts';
 import {
   noAnswerNotice,
   streamErrorMessage,
@@ -27,22 +34,6 @@ import {
   getWebSearchProviders,
 } from './web-search.ts';
 
-interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-}
-
-interface ChatRequest {
-  model: string;
-  messages: ChatMessage[];
-  max_tokens?: number;
-  enableWebSearch?: boolean;
-  thinkingEffort?: unknown;
-  mcpServers?: MCPServerConfig[];
-  /** Most model calls in one reply when tools are on */
-  maxToolSteps?: unknown;
-}
-
 export function createAnthropicProxy(): Connect.NextHandleFunction {
   return async (req, res, next) => {
     // Only handle POST requests to /api/anthropic/chat
@@ -50,35 +41,21 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
       return next();
     }
 
-    // Parse request body (SEC-07: size-limited)
-    const rawBody = await readBodyWithLimit(req, res);
-    if (rawBody === null) return; // 413 already sent
-
-    let request: ChatRequest;
-    try {
-      request = JSON.parse(rawBody);
-    } catch {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
-      return;
-    }
+    // Size limit, JSON, and the fields of every chat request (SEC-07, SEC-22)
+    const request = await readChatRequest(req, res);
+    if (!request) return; // 413 or 400 already sent
 
     // Get API key from header
     const apiKey = req.headers['x-api-key'] as string;
     if (!apiKey) {
-      res.statusCode = 401;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Anthropic API key required' }));
+      sendJsonError(res, 401, 'Anthropic API key required');
       return;
     }
 
     // Web search API keys and the order to try the providers in
     const webSearchProviders = getWebSearchProviders(req.headers);
     if (request.enableWebSearch && webSearchProviders.length === 0) {
-      res.statusCode = 401;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: WEB_SEARCH_KEY_REQUIRED_ERROR }));
+      sendJsonError(res, 401, WEB_SEARCH_KEY_REQUIRED_ERROR);
       return;
     }
 
@@ -86,11 +63,6 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
     try {
       const anthropic = createAnthropic({ apiKey });
       const startTime = Date.now();
-
-      // Set up SSE response
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
 
       // Get MCP tools if configured
       let mcpTools: Record<string, unknown> = {};
@@ -107,11 +79,8 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
       }
       const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 
-      // Create abort controller to cancel streamText when client disconnects
-      const abortController = new AbortController();
-      req.on('close', () => {
-        abortController.abort();
-      });
+      // Cancel streamText when the browser closes the connection
+      const abortSignal = abortOnClose(res);
 
       // Send the thinking effort only for models that accept it. The AI SDK maps it to adaptive
       // thinking (and asks for the thinking text) or to a thinking token budget.
@@ -128,11 +97,14 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
         messages: request.messages,
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
-        abortSignal: abortController.signal,
+        abortSignal,
         ...reasoningParams,
         // Tool loop that always ends with an answer (see tool-loop.ts)
         ...toolLoopOptions(tools, { maxSteps: request.maxToolSteps }),
       });
+
+      // Set up SSE response
+      startEventStream(res);
 
       // Stream text chunks and handle tool calls
       for await (const part of result.stream) {
@@ -188,6 +160,8 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
       if (mcpCleanup) {
         mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
       }
+      // The browser left and the call stopped: not a proxy error, and no one to answer
+      if (isAbortAfterClientLeft(error, res)) return;
       console.error('Anthropic Proxy error:', error);
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -195,9 +169,7 @@ export function createAnthropicProxy(): Connect.NextHandleFunction {
       // The stream has started: report the error as an SSE event, so the chat shows it
       if (endStreamWithError(res, errorMessage)) return;
 
-      res.statusCode = 500;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: errorMessage }));
+      sendJsonError(res, 500, errorMessage);
     }
   };
 }

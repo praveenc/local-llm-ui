@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import ChatContainer from '../ChatContainer';
 
@@ -227,5 +227,144 @@ describe('ChatContainer', () => {
       );
       expect(chatOptions.current.enableWebSearch).toBe(false);
     });
+  });
+});
+
+describe('ChatContainer attached files (#101)', () => {
+  const PNG = 'iVBORw0KGgo=';
+  const userWith = (parts: unknown[]) => [
+    { id: 'u1', role: 'user', parts: [...parts, { type: 'text', text: 'what are these' }] },
+  ];
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const stubObjectUrls = () => {
+    let n = 0;
+    const createObjectURL = vi.fn(() => `blob:file-${++n}`);
+    const revokeObjectURL = vi.fn();
+    const original = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL };
+    Object.assign(URL, { createObjectURL, revokeObjectURL });
+    onTestFinished(() => {
+      Object.assign(URL, original);
+    });
+    return { createObjectURL, revokeObjectURL };
+  };
+
+  it('shows an image as a thumbnail with the file name as its alt text, and opens it', async () => {
+    const user = userEvent.setup();
+    const { createObjectURL, revokeObjectURL } = stubObjectUrls();
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    chatMessages.current = userWith([
+      { type: 'file', filename: 'photo.png', mediaType: 'image/png', data: PNG, size: 8 },
+    ]);
+    const { unmount } = renderChat();
+
+    const img = screen.getByRole('img', { name: 'photo.png' });
+    expect(img).toHaveAttribute('src', 'blob:file-1');
+    // The files come before the text of the message
+    const list = screen.getByRole('list', { name: 'Attached files' });
+    const text = screen.getByText('what are these');
+    expect(list.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const button = screen.getByRole('button', { name: 'Open photo.png' });
+    button.focus();
+    await user.keyboard('{Enter}');
+    expect(open).toHaveBeenCalledWith('blob:file-1', '_blank', 'noopener,noreferrer');
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    unmount();
+    await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:file-1'));
+  });
+
+  it('makes one object URL per image, reused by the thumbnail, every click, and every render', async () => {
+    const user = userEvent.setup();
+    const { createObjectURL, revokeObjectURL } = stubObjectUrls();
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const files = [
+      { type: 'file', filename: 'photo.png', mediaType: 'image/png', data: PNG, size: 8 },
+      {
+        type: 'file',
+        filename: 'report.pdf',
+        mediaType: 'application/pdf',
+        data: 'JVBERi0=',
+        size: 2048,
+      },
+    ];
+    chatMessages.current = userWith(files);
+    const { rerender, unmount } = renderChat();
+
+    // A streamed token renders the transcript again, with new message objects
+    chatMessages.current = [
+      ...userWith(files.map((f) => ({ ...f }))),
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'one' }] },
+    ];
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatContainer
+          providers={[]}
+          selectedModel={null}
+          onSelectModel={vi.fn()}
+          maxTokens={4096}
+          setMaxTokens={vi.fn()}
+          maxToolSteps={10}
+          setMaxToolSteps={vi.fn()}
+          thinkingEffort="default"
+          setThinkingEffort={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    const button = screen.getByRole('button', { name: 'Open photo.png' });
+    await user.click(button);
+    await user.click(button);
+
+    // The PDF gets no URL at all; the image gets one, made once
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(open.mock.calls.map((call) => call[0])).toEqual(['blob:file-1', 'blob:file-1']);
+    expect(screen.getByRole('img', { name: 'photo.png' })).toHaveAttribute('src', 'blob:file-1');
+    expect(document.querySelector('img[src^="data:"]')).toBeNull();
+    unmount();
+    await waitFor(() => expect(revokeObjectURL.mock.calls).toEqual([['blob:file-1']]));
+  });
+
+  it('shows a PDF with its name, its type, and its size in text', () => {
+    chatMessages.current = userWith([
+      {
+        type: 'file',
+        filename: 'report.pdf',
+        mediaType: 'application/pdf',
+        data: 'JVBERi0=',
+        size: 2048,
+      },
+    ]);
+    renderChat();
+    expect(screen.getByText('report.pdf')).toBeInTheDocument();
+    expect(screen.getByText('PDF · 2 KB')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
+  it('says "File not kept" for a file whose bytes are missing, also for an image', () => {
+    chatMessages.current = userWith([
+      { type: 'file', filename: 'lost.png', mediaType: 'image/png', size: 9, kept: false },
+    ]);
+    renderChat();
+    expect(screen.getByText('lost.png')).toBeInTheDocument();
+    expect(screen.getByText('File not kept')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Open/ })).not.toBeInTheDocument();
+  });
+
+  it('says under a reply how many earlier files were not sent again', () => {
+    chatMessages.current = [
+      ...userWith([]),
+      {
+        id: 'a1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'answer' }],
+        filesNotResent: 2,
+      },
+    ];
+    renderChat();
+    expect(screen.getByText('2 earlier files were not sent again')).toBeInTheDocument();
   });
 });

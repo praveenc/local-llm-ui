@@ -5,7 +5,9 @@
  * when their config hasn't changed and recreated when it has.
  *
  * Security hardening (SEC-01 through SEC-11):
- * - Command allowlist for stdio transports (SEC-01)
+ * - Stdio command: a program name found on the child's PATH, or a full path that
+ *   starts with / or ~/, checked and resolved before the start; the resolved path is
+ *   spawned with no shell; arguments with shell characters are refused (SEC-01)
  * - Safe env var allowlist — no process.env leak (SEC-02)
  * - SSRF protection for HTTP/SSE URLs (SEC-03)
  * - Connection timeout on client creation (SEC-10)
@@ -27,6 +29,8 @@ import type {
   MCPServerConfig,
   MCPStdioConfig,
 } from '../src/types/mcp.ts';
+import { argumentError, classifyCommand, findDisallowedArgument } from '../src/utils/mcpCommand.ts';
+import { resolveCommand } from './mcp-command.ts';
 
 /** Separator used to namespace tool names: serverName__toolName */
 const TOOL_NS_SEP = '__';
@@ -40,55 +44,20 @@ export function setMCPConnectTimeoutForTests(ms: number = DEFAULT_MCP_CONNECT_TI
   MCP_CONNECT_TIMEOUT_MS = ms;
 }
 
-// ─── Security: Command Allowlist (SEC-01) ────────────────────────────────────
+// ─── Security: Stdio command and arguments (SEC-01) ──────────────────────────
 
 /**
- * Allowlisted commands for stdio MCP servers.
- * Only these executables can be spawned as child processes.
- * Add to this list as needed — keep it minimal.
- */
-const ALLOWED_STDIO_COMMANDS = new Set([
-  'node',
-  'npx',
-  'python',
-  'python3',
-  'uvx',
-  'uv',
-  'docker',
-  'deno',
-  'bun',
-  'bunx',
-]);
-
-/** Shell metacharacters that could enable command injection in args */
-const SHELL_METACHAR_PATTERN = /[;&|`$(){}!<>]/;
-
-/**
- * SEC-01: Validate stdio MCP config — command allowlist + arg sanitization.
- * Throws if the command is not allowed or args contain shell metacharacters.
+ * SEC-01: The static checks of a stdio config, before the hash and before any start: the
+ * shape of the command (a name, or a path that starts with / or ~/) and the arguments.
+ * The program itself is found in createClient (`resolveCommand`). The texts never show an
+ * argument: it can hold a secret.
  */
 function validateStdioSecurity(config: MCPStdioConfig): void {
-  const cmd = config.command.trim().toLowerCase();
+  const shape = classifyCommand(config.command);
+  if (shape.kind === 'invalid') throw new Error(shape.error);
 
-  // Block absolute/relative paths — only bare command names allowed
-  if (cmd.includes('/') || cmd.includes('\\')) {
-    throw new Error(
-      `[MCP Security] Command paths are not allowed: '${config.command}'. Use a bare command name (e.g., 'node', 'uvx').`
-    );
-  }
-
-  if (!ALLOWED_STDIO_COMMANDS.has(cmd)) {
-    throw new Error(
-      `[MCP Security] Command '${config.command}' is not in the allowlist. ` +
-        `Allowed: ${[...ALLOWED_STDIO_COMMANDS].join(', ')}`
-    );
-  }
-
-  for (const arg of config.args) {
-    if (SHELL_METACHAR_PATTERN.test(arg)) {
-      throw new Error(`[MCP Security] Argument contains shell metacharacters: '${arg}'`);
-    }
-  }
+  const badArgument = findDisallowedArgument(config.args);
+  if (badArgument !== null) throw new Error(argumentError(badArgument));
 }
 
 // ─── Security: Safe Environment Variables (SEC-02) ───────────────────────────
@@ -131,7 +100,8 @@ function validateUrlSecurity(urlString: string): void {
   try {
     url = new URL(urlString);
   } catch {
-    throw new Error(`[MCP Security] Invalid URL: '${urlString}'`);
+    // Nothing in a string that does not parse is safe to show: it can hold a token
+    throw new Error('[MCP Security] The URL is not valid');
   }
 
   // Only allow http/https schemes
@@ -406,7 +376,7 @@ function formatSeconds(ms: number): string {
  * Errors from Node internals can come from another realm (for example under a test
  * runner's VM context), where `instanceof Error` is false. So read fields, not the class.
  */
-function errorField(error: unknown, field: 'message' | 'code'): string | undefined {
+function errorField(error: unknown, field: 'message' | 'code' | 'syscall'): string | undefined {
   if (!error || typeof error !== 'object') return undefined;
   const value = (error as Record<string, unknown>)[field];
   return typeof value === 'string' ? value : undefined;
@@ -426,6 +396,19 @@ function hasErrorCode(error: unknown, code: string): boolean {
     e = (e as { cause?: unknown }).cause;
   }
   return false;
+}
+
+/** Node error codes of a spawn that found the file but could not run it */
+const SPAWN_ERROR_CODES = ['EACCES', 'ENOEXEC', 'EISDIR', 'ENOTDIR', 'ELOOP', 'EPERM'];
+
+/** True when the error, or an error in its `cause` chain, comes from the spawn of the child */
+function isSpawnError(error: unknown): boolean {
+  let e: unknown = error;
+  for (let depth = 0; e && typeof e === 'object' && depth < 5; depth++) {
+    if (errorField(e, 'syscall')?.startsWith('spawn')) return true;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return SPAWN_ERROR_CODES.some((code) => hasErrorCode(error, code));
 }
 
 /**
@@ -449,7 +432,14 @@ function describeFailure(
     );
   }
   if (config.transport === 'stdio' && hasErrorCode(error, 'ENOENT')) {
-    return new Error(`Command not found: ${config.command}`, { cause: error });
+    // The file went away after the check, or a script's `#!` program is missing
+    return new Error(`Command not found: ${config.command.trim()}`, { cause: error });
+  }
+  if (config.transport === 'stdio' && isSpawnError(error)) {
+    // The transport spawns the resolved host path, and Node's text names it (for example
+    // `spawn /home/user/.local/bin/x EACCES` when the mode changed after the check). Show
+    // the command as the user typed it, never the path that the server found.
+    return new Error(`${config.command.trim()} is not a program`, { cause: error });
   }
   const exit = transport?.exit;
   if (exit?.onItsOwn) {
@@ -511,7 +501,7 @@ function computeConfigHash(config: MCPServerConfig): string {
   const parts: string[] = [config.id, config.transport];
   switch (config.transport) {
     case 'stdio':
-      parts.push(config.command, ...config.args, JSON.stringify(config.env));
+      parts.push(config.command.trim(), ...config.args, JSON.stringify(config.env));
       break;
     case 'sse':
     case 'http':
@@ -559,12 +549,12 @@ async function createClient(config: MCPServerConfig, configHash: string): Promis
   switch (config.transport) {
     case 'stdio': {
       const stdioConfig = config as MCPStdioConfig;
+      // The same env that the child gets: the lookup uses its PATH, and the resolved path is
+      // spawned, so the file that was checked is the file that runs
+      const env = { ...getSafeEnv(), ...stdioConfig.env };
+      const program = await resolveCommand(stdioConfig.command, env);
       const transport = new DiscoveryWaitingStdioTransport(
-        {
-          command: stdioConfig.command,
-          args: stdioConfig.args,
-          env: { ...getSafeEnv(), ...stdioConfig.env },
-        },
+        { command: program, args: stdioConfig.args, env },
         config.name
       );
       let client: MCPClient;

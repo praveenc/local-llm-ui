@@ -17,7 +17,16 @@ import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { errorMessageOr } from '../src/utils/errorMessage.ts';
 import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
-import { capMaxTokens, endStreamWithError, readBodyWithLimit } from './security.ts';
+import {
+  abortOnClose,
+  capErrorText,
+  capMaxTokens,
+  endStreamWithError,
+  isAbortAfterClientLeft,
+  readChatRequest,
+  sendJsonError,
+  startEventStream,
+} from './security.ts';
 import { noAnswerNotice, toolErrorEvent, toolLoopOptions } from './tool-loop.ts';
 import { usageEvent } from './usage.ts';
 import {
@@ -61,9 +70,6 @@ type ModelsProvider = AISDKProvider | 'anthropic';
 
 const MODELS_PROVIDERS: readonly ModelsProvider[] = ['groq', 'cerebras', 'anthropic'];
 
-/** Longest upstream error text that goes back to the browser */
-const MAX_ERROR_TEXT = 500;
-
 /** Anthropic pages: `limit` is at most 1000, and the cap stops a loop of `has_more` */
 const ANTHROPIC_PAGE_LIMIT = 1000;
 const ANTHROPIC_MAX_PAGES = 5;
@@ -85,9 +91,9 @@ function getModelsEndpoint(provider: ModelsProvider): string {
   }
 }
 
-/** Cut the text to the cap. With the key, hide it first, in case an upstream echoes it. */
-const capErrorText = (text: string, apiKey?: string): string =>
-  (apiKey ? text.split(apiKey).join('[redacted]') : text).slice(0, MAX_ERROR_TEXT);
+/** Hide the key, in case an upstream echoes it, then cut the text to the shared cap */
+const capModelsError = (text: string, apiKey: string): string =>
+  capErrorText(text.split(apiKey).join('[redacted]'));
 
 // By name: a DOMException is not always an `Error` in every runtime
 const isTimeoutError = (error: unknown): boolean =>
@@ -100,7 +106,7 @@ function thrownErrorAnswer(error: unknown, provider: string, apiKey: string) {
   if (isTimeoutError(error)) {
     return { status: 504, message: `${provider} did not answer in time` };
   }
-  return { status: 500, message: capErrorText(errorMessageOr(error, 'Unknown error'), apiKey) };
+  return { status: 500, message: capModelsError(errorMessageOr(error, 'Unknown error'), apiKey) };
 }
 
 /** Thrown when the upstream answers with an error status; the route passes the status on */
@@ -160,7 +166,7 @@ async function fetchAnthropicModels(apiKey: string): Promise<Array<{ id: string;
       const text = await response.text();
       throw new UpstreamError(
         response.status,
-        capErrorText(text || 'Failed to fetch anthropic models', apiKey)
+        capModelsError(text || 'Failed to fetch anthropic models', apiKey)
       );
     }
 
@@ -236,7 +242,7 @@ async function handleModelsRequest(req: IncomingMessage, res: ServerResponse) {
       res.setHeader('Content-Type', 'application/json');
       res.end(
         JSON.stringify({
-          error: capErrorText(text, apiKey) || `Failed to fetch ${provider} models`,
+          error: capModelsError(text, apiKey) || `Failed to fetch ${provider} models`,
         })
       );
       return;
@@ -281,43 +287,28 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       return next();
     }
 
-    // Parse request body (SEC-07: size-limited)
-    const rawBody = await readBodyWithLimit(req, res);
-    if (rawBody === null) return; // 413 already sent
+    // Size limit, JSON, and the fields of every chat request (SEC-07, SEC-22)
+    const body = await readChatRequest(req, res);
+    if (!body) return; // 413 or 400 already sent
 
-    let request: ChatRequest;
-    try {
-      request = JSON.parse(rawBody);
-    } catch {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    // Validate provider
+    if (body.provider !== 'groq' && body.provider !== 'cerebras') {
+      sendJsonError(res, 400, 'Invalid provider');
       return;
     }
+    const request: ChatRequest = { ...body, provider: body.provider };
 
     // Get API key from header
     const apiKey = req.headers['x-api-key'] as string;
     if (!apiKey) {
-      res.statusCode = 401;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: `API key required for ${request.provider}` }));
-      return;
-    }
-
-    // Validate provider
-    if (!['groq', 'cerebras'].includes(request.provider)) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: `Invalid provider: ${request.provider}` }));
+      sendJsonError(res, 401, `API key required for ${request.provider}`);
       return;
     }
 
     // Web search API keys and the order to try the providers in
     const webSearchProviders = getWebSearchProviders(req.headers);
     if (request.enableWebSearch && webSearchProviders.length === 0) {
-      res.statusCode = 401;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: WEB_SEARCH_KEY_REQUIRED_ERROR }));
+      sendJsonError(res, 401, WEB_SEARCH_KEY_REQUIRED_ERROR);
       return;
     }
 
@@ -325,11 +316,6 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
     try {
       const provider = createProvider(request.provider, apiKey);
       const startTime = Date.now();
-
-      // Set up SSE response
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
 
       // Get MCP tools if configured
       let mcpTools: Record<string, unknown> = {};
@@ -346,11 +332,8 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       }
       const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 
-      // Create abort controller to cancel streamText when client disconnects
-      const abortController = new AbortController();
-      req.on('close', () => {
-        abortController.abort();
-      });
+      // Cancel streamText when the browser closes the connection
+      const abortSignal = abortOnClose(res);
 
       const result = await streamText({
         model: provider(request.model),
@@ -359,12 +342,15 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
         messages: request.messages,
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
-        abortSignal: abortController.signal,
+        abortSignal,
         // Send the thinking effort only for models that accept it (gpt-oss on Groq)
         ...buildReasoningParams(request.provider, request.model, request.thinkingEffort),
         // Tool loop that always ends with an answer (see tool-loop.ts)
         ...toolLoopOptions(tools, { maxSteps: request.maxToolSteps }),
       });
+
+      // Set up SSE response
+      startEventStream(res);
 
       // Stream text chunks and handle tool calls
       for await (const part of result.stream) {
@@ -395,7 +381,7 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
             })}\n\n`
           );
         } else if (part.type === 'error') {
-          const streamError = errorMessageOr(part.error, 'Unknown error');
+          const streamError = capErrorText(errorMessageOr(part.error, 'Unknown error'));
           res.write(`data: ${JSON.stringify({ error: streamError })}\n\n`);
         }
       }
@@ -420,6 +406,8 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       if (mcpCleanup) {
         mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
       }
+      // The browser left and the call stopped: not a proxy error, and no one to answer
+      if (isAbortAfterClientLeft(error, res)) return;
       console.error(`AI SDK Proxy error (${request.provider}):`, error);
 
       const errorMessage = errorMessageOr(error, 'Unknown error');
@@ -427,9 +415,7 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       // The stream has started: report the error as an SSE event, so the chat shows it
       if (endStreamWithError(res, errorMessage)) return;
 
-      res.statusCode = 500;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: errorMessage }));
+      sendJsonError(res, 500, errorMessage);
     }
   };
 }

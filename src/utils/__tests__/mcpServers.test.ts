@@ -7,6 +7,7 @@ import type {
   MCPServersMap,
   MCPStdioConfig,
 } from '../../types/mcp';
+import { validateMCPServerConfig } from '../../types/mcp';
 import {
   MCP_SERVERS_CHECK_EVENT,
   checkableServers,
@@ -64,9 +65,38 @@ describe('checkableServers', () => {
     expect(checkableServers(toMap(noCommand, ok, noName))).toEqual([ok]);
   });
 
+  it('keeps a program name, a full path, and a ~/ path; leaves out a relative path', () => {
+    const name = stdio('name', { command: 'my-mcp-server' } as Partial<MCPServerConfig>);
+    const full = stdio('full', { command: '/opt/tools/server' } as Partial<MCPServerConfig>);
+    const home = stdio('home', { command: '~/bin/server' } as Partial<MCPServerConfig>);
+    const dot = stdio('dot', { command: './server' } as Partial<MCPServerConfig>);
+    const sub = stdio('sub', { command: 'bin/server' } as Partial<MCPServerConfig>);
+    expect(checkableServers(toMap(name, dot, full, sub, home))).toEqual([name, full, home]);
+  });
+
   it('leaves out a remote server with no URL or a broken URL', () => {
     const ok = http('ok', 'https://example.com/mcp');
     expect(checkableServers(toMap(http('empty', ''), http('bad', 'not a url'), ok))).toEqual([ok]);
+  });
+});
+
+describe('validateMCPServerConfig for a command', () => {
+  const check = (command: string) =>
+    validateMCPServerConfig(stdio('x', { command } as Partial<MCPServerConfig>));
+
+  it('accepts a name, a full path, and a ~/ path', () => {
+    expect(check('my-mcp-server')).toBeNull();
+    expect(check('/opt/tools/server')).toBeNull();
+    expect(check('~/bin/server')).toBeNull();
+  });
+
+  it('says why a relative path cannot run, in a text that starts with "Command"', () => {
+    for (const command of ['./server', 'bin/server', '~', 'a\\b']) {
+      expect(check(command)).toBe(
+        'Command is not valid. Use a program name or a full path that starts with / or ~/.'
+      );
+    }
+    expect(check('  ')).toBe('Command is required');
   });
 });
 

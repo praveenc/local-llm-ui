@@ -615,12 +615,13 @@ function StdioFields({
           }
           value={config.command}
           onChange={(e) => onChange({ ...config, command: e.target.value })}
-          placeholder="npx, uvx, node, python, etc."
+          placeholder="npx, uvx, or the name or path of a program"
           className="h-8 text-xs font-mono"
         />
         <FieldErrorText error={commandError} />
         <p id={commandHelpId} className="text-[10px] text-muted-foreground">
-          The program that starts the server. Put its arguments in the fields below.
+          A program name on PATH, or a full path that starts with / or ~/. Put its arguments in the
+          fields below.
         </p>
       </div>
 
