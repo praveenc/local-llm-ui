@@ -13,8 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A local MCP server can now start any program. In **Command**, type a program name that is on `PATH`, for example `github-mcp-server`, or a full path that starts with `/` or `~/`. Before, only `node`, `npx`, `python`, `python3`, `uv`, `uvx`, `docker`, `deno`, `bun`, and `bunx` could start, and a path was refused. A relative path such as `./server` or `bin/server` is still refused, with "Use a program name or a full path that starts with / or ~/". The placeholder and the help text of the field say what to type. A name that the app cannot find says "Command not found: x", and a path that does not go to a program says "x is not a program" ([#140])
 
+#### Removed
+
+- UI code that the app does not use: the `MessageBranch` parts and `MessageToolbar` of the message component, `ModelSelectorDialog`, `ModelSelectorShortcut`, and `ModelSelectorLogoGroup` of the model picker, `PromptInputSpeechButton` with its speech code and `PromptInputCommandSeparator` of the chat input, `PaginationEllipsis`, `TableFooter`, `TableCaption`, the button group component (`src/components/ui/button-group.tsx`), and the unused file `src/components/ui/index.ts`. Nothing changes on screen. `MessageAttachment` and `MessageAttachments` stay for the attachment work (#122, #123) ([#141])
+- The direct dependency `@radix-ui/react-use-controllable-state`. Nothing in the app imports it. The Radix packages still install it for their own use (#121) ([#141])
+
 #### Fixed
 
+- The pager of **Saved Prompts** works with the keyboard. Tab goes to **Previous**, to each page number, and to **Next**, with a visible focus ring, and Enter or Space opens the page. A line above the pager says, for example, **Page 2 of 5**, and screen readers hear the current page. At the first and the last page, **Previous** or **Next** is dimmed but keeps the focus. On a touch screen, each button is 44 px. A page change scrolls the list to the top. Before, the page numbers were links with no target, so the keyboard could not reach them (#105) ([#136])
+- When you delete the last prompt on the last page of **Saved Prompts**, the list shows the page before it. Before, the list said **No saved prompts** although the other pages had prompts ([#136])
+- **Saved Prompts** reads the prompts once, and the category filter comes from the same read. Before, the app read all the prompts a second time only to make the category list (#118) ([#136])
 - The command of a local MCP server is the same in the check and in the start. The app removes spaces around it once and keeps its case. Before, the check changed `NODE` to `node`, and the start then failed ([#140])
 - MCP errors no longer show values that can hold a secret. An argument error names the argument number, for example "Argument 2 contains characters that the app does not allow", and an error for a URL that does not parse says "The URL is not valid". Before, these errors showed the whole argument or URL ([#140])
 
@@ -285,7 +293,9 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#141]: https://github.com/praveenc/local-llm-ui/pull/141
 [#140]: https://github.com/praveenc/local-llm-ui/pull/140
+[#136]: https://github.com/praveenc/local-llm-ui/pull/136
 [#97]: https://github.com/praveenc/local-llm-ui/pull/97
 [#96]: https://github.com/praveenc/local-llm-ui/pull/96
 [#95]: https://github.com/praveenc/local-llm-ui/pull/95
