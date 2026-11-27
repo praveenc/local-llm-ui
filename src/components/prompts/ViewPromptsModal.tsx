@@ -277,7 +277,8 @@ export function ViewPromptsModal({ visible, onDismiss, onInsertPrompt }: ViewPro
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex flex-col items-center gap-2">
+              <div className="flex flex-col items-center gap-2 pb-1">
+                {/* pb-1 leaves room for the 4 px focus ring: the wrapper above clips overflow */}
                 <p role="status" className="text-xs text-muted-foreground tabular-nums">
                   Page {page} of {totalPages}
                 </p>
