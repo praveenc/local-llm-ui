@@ -21,9 +21,6 @@ vi.mock('../index', () => ({
   }),
 }));
 
-// Only imported for the mantle provider path, not exercised here.
-vi.mock('../../services', () => ({ mantleService: { getApiKey: () => '', getRegion: () => '' } }));
-
 const model = { id: 'anthropic.claude', name: 'Claude', provider: 'bedrock' as const };
 
 const options = {
@@ -206,5 +203,67 @@ describe('useBedrockChat streaming', () => {
     expect(stored.toolCalls[1]).toMatchObject({ status: 'error', result: 'Connection refused' });
     expect(stored.toolCalls[2]).toMatchObject({ status: 'error' });
     expect(stored.toolCalls[0]).not.toHaveProperty('type');
+  });
+
+  it('sends a Mantle chat with the key and region from the preferences, with no model fetch', async () => {
+    localStorage.clear();
+    localStorage.setItem(
+      'local-llm-ui-preferences',
+      JSON.stringify({ bedrockMantleApiKey: 'mantle-pref-key', bedrockMantleRegion: 'eu-west-1' })
+    );
+    const reader = {
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({ done: false, value: chunk('Hi') })
+        .mockResolvedValue({ done: true, value: undefined }),
+    };
+    const fetchMock = vi.fn(async () => ({ ok: true, body: { getReader: () => reader } }));
+    globalThis.fetch = fetchMock as never;
+
+    const mantleModel = { id: 'openai.gpt-oss-120b', name: 'gpt-oss', provider: 'bedrock-mantle' };
+    const { result } = renderHook(() =>
+      useBedrockChat({ ...options, selectedModel: mantleModel as never })
+    );
+    await act(async () => {
+      await result.current.sendMessage('hello');
+    });
+
+    // The send is the only request: no model list ran first to set the key
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      { headers: Record<string, string> },
+    ];
+    expect(url).toBe('/api/mantle/chat');
+    expect(init.headers['X-Mantle-Api-Key']).toBe('mantle-pref-key');
+    expect(init.headers['X-Mantle-Region']).toBe('eu-west-1');
+    expect(lastAssistant(result.current.messages)).toBe('Hi');
+    localStorage.clear();
+  });
+
+  it('sends a Mantle chat with us-west-2 when the preferences have no region', async () => {
+    localStorage.clear();
+    localStorage.setItem(
+      'local-llm-ui-preferences',
+      JSON.stringify({ bedrockMantleApiKey: 'mantle-pref-key', bedrockMantleRegion: '' })
+    );
+    const reader = { read: vi.fn().mockResolvedValue({ done: true, value: undefined }) };
+    const fetchMock = vi.fn(async () => ({ ok: true, body: { getReader: () => reader } }));
+    globalThis.fetch = fetchMock as never;
+
+    const mantleModel = { id: 'openai.gpt-oss-120b', name: 'gpt-oss', provider: 'bedrock-mantle' };
+    const { result } = renderHook(() =>
+      useBedrockChat({ ...options, selectedModel: mantleModel as never })
+    );
+    await act(async () => {
+      await result.current.sendMessage('hello');
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      { headers: Record<string, string> },
+    ];
+    expect(init.headers['X-Mantle-Region']).toBe('us-west-2');
+    localStorage.clear();
   });
 });

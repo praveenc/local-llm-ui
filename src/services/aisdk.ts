@@ -31,34 +31,9 @@ const ANTHROPIC_MODELS_FALLBACK = [
   { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5' },
 ];
 
-// API key storage keys (used directly in localStorage for runtime access)
-const API_KEY_STORAGE = {
-  groq: 'GROQ_API_KEY',
-  cerebras: 'CEREBRAS_API_KEY',
-  anthropic: 'ANTHROPIC_API_KEY',
-} as const;
-
-// Sync API keys from preferences to localStorage (call on app init or preference change)
-export function syncApiKeysFromPreferences(
-  groqApiKey?: string,
-  cerebrasApiKey?: string,
-  anthropicApiKey?: string
-): void {
-  if (groqApiKey) {
-    localStorage.setItem(API_KEY_STORAGE.groq, groqApiKey);
-  } else {
-    localStorage.removeItem(API_KEY_STORAGE.groq);
-  }
-  if (cerebrasApiKey) {
-    localStorage.setItem(API_KEY_STORAGE.cerebras, cerebrasApiKey);
-  } else {
-    localStorage.removeItem(API_KEY_STORAGE.cerebras);
-  }
-  if (anthropicApiKey) {
-    localStorage.setItem(API_KEY_STORAGE.anthropic, anthropicApiKey);
-  } else {
-    localStorage.removeItem(API_KEY_STORAGE.anthropic);
-  }
+/** The key of the provider, from the preferences (the only store of provider keys) */
+export interface ApiKeyOptions {
+  apiKey?: string;
 }
 
 interface ProviderModelResponse {
@@ -77,28 +52,7 @@ export class AISDKService {
     this.provider = provider;
   }
 
-  /**
-   * Get the API key from localStorage
-   */
-  private getApiKey(): string | null {
-    const key = API_KEY_STORAGE[this.provider];
-    return localStorage.getItem(key);
-  }
-
-  /**
-   * Check if API key is configured
-   */
-  hasApiKey(): boolean {
-    const apiKey = this.getApiKey();
-    return !!apiKey && apiKey.trim().length > 0;
-  }
-
-  private async fetchRemoteModels(): Promise<ModelInfo[]> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      throw new Error(`API key not configured for ${this.provider}`);
-    }
-
+  private async fetchRemoteModels(apiKey: string): Promise<ModelInfo[]> {
     const response = await fetch(`/api/aisdk/models?provider=${this.provider}`, {
       method: 'GET',
       headers: {
@@ -127,15 +81,16 @@ export class AISDKService {
   /**
    * Get available models for this provider
    */
-  async getModels(): Promise<ModelInfo[]> {
+  async getModels({ apiKey }: ApiKeyOptions = {}): Promise<ModelInfo[]> {
     // Only return models if API key is configured
-    if (!this.hasApiKey()) {
+    const key = apiKey?.trim();
+    if (!key) {
       return [];
     }
 
     // All three providers list their models at runtime through the proxy
     try {
-      return await this.fetchRemoteModels();
+      return await this.fetchRemoteModels(key);
     } catch (error) {
       console.warn(`Failed to fetch ${this.provider} models remotely, using fallback:`, error);
     }

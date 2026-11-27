@@ -6,7 +6,6 @@
 import type { ModelInfo } from './types';
 
 const OPENROUTER_BASE_URL = '/api/openrouter';
-const OPENROUTER_API_KEY_STORAGE = 'OPENROUTER_API_KEY';
 
 interface OpenRouterModelsResponse {
   provider?: string;
@@ -17,33 +16,15 @@ interface OpenRouterModelsResponse {
 }
 
 export class OpenRouterService {
-  setApiKey(apiKey: string | null): void {
-    const trimmed = apiKey?.trim();
-    if (trimmed && trimmed.length > 0) {
-      localStorage.setItem(OPENROUTER_API_KEY_STORAGE, trimmed);
-    } else {
-      localStorage.removeItem(OPENROUTER_API_KEY_STORAGE);
-    }
-  }
-
-  getApiKey(): string | null {
-    return localStorage.getItem(OPENROUTER_API_KEY_STORAGE);
-  }
-
-  hasApiKey(): boolean {
-    const apiKey = this.getApiKey();
-    return !!apiKey && apiKey.trim().length > 0;
-  }
-
-  async getModels(): Promise<ModelInfo[]> {
-    if (!this.hasApiKey()) {
-      throw new Error('OpenRouter API key is required. Please configure it in the preferences.');
-    }
+  /** Lists the models with the key from the preferences; no key, no models */
+  async getModels({ apiKey }: { apiKey?: string } = {}): Promise<ModelInfo[]> {
+    const key = apiKey?.trim();
+    if (!key) return [];
 
     try {
       const response = await fetch(`${OPENROUTER_BASE_URL}/models`, {
         headers: {
-          'X-Api-Key': this.getApiKey()!,
+          'X-Api-Key': key,
         },
       });
 

@@ -27,7 +27,6 @@ vi.mock('../index', () => ({
   }),
 }));
 
-vi.mock('../../services', () => ({ mantleService: { getApiKey: () => '', getRegion: () => '' } }));
 vi.mock('../../services/replyNotices', () => ({ notifyReply }));
 
 const model = { id: 'anthropic.claude', name: 'Claude', provider: 'bedrock' as const };

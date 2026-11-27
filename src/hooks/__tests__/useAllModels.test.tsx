@@ -2,14 +2,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { mantleService } from '../../services';
-import { openrouterService } from '../../services/openrouter';
 import * as preferencesModule from '../../utils/preferences';
 import { loadPreferences } from '../../utils/preferences';
 import { useAllModels } from '../useAllModels';
 import { KIRO_STATUS_QUERY_KEY } from '../useKiroStatus';
 
 const never = () => new Promise<never>(() => {});
+const LEGACY_KEY_NAMES = [
+  'GROQ_API_KEY',
+  'CEREBRAS_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'OPENROUTER_API_KEY',
+];
 const kiroGetModels = vi.hoisted(() =>
   vi.fn<(refresh?: boolean) => Promise<unknown[]>>(() => Promise.resolve([]))
 );
@@ -18,6 +22,26 @@ const bedrockGetModels = vi.hoisted(() =>
   vi.fn<() => Promise<unknown[]>>(() => new Promise<never>(() => {}))
 );
 
+const {
+  mantleGetModels,
+  groqGetModels,
+  cerebrasGetModels,
+  anthropicGetModels,
+  openrouterGetModels,
+} = vi.hoisted(() => {
+  // The keyed services get the key (and the Mantle region) as an options argument
+  const make = () =>
+    vi.fn<(options?: { apiKey?: string; region?: string }) => Promise<unknown[]>>(
+      () => new Promise<never>(() => {})
+    );
+  return {
+    mantleGetModels: make(),
+    groqGetModels: make(),
+    cerebrasGetModels: make(),
+    anthropicGetModels: make(),
+    openrouterGetModels: make(),
+  };
+});
 vi.mock('../../services', () => ({
   kiroService: { getModels: kiroGetModels, getStatus: kiroGetStatus },
   bedrockService: { getModels: bedrockGetModels },
@@ -29,19 +53,16 @@ vi.mock('../../services', () => ({
         { modelId: 'gemma3', modelName: 'gemma3', supportsTools: false },
       ]),
   },
-  mantleService: { getModels: () => never(), setApiKey: vi.fn(), setRegion: vi.fn() },
+  mantleService: { getModels: mantleGetModels },
 }));
+
 vi.mock('../../services/aisdk', () => ({
-  anthropicService: { getModels: () => never() },
-  cerebrasService: { getModels: () => never() },
-  groqService: { getModels: () => never() },
-  syncApiKeysFromPreferences: vi.fn(),
+  anthropicService: { getModels: anthropicGetModels },
+  cerebrasService: { getModels: cerebrasGetModels },
+  groqService: { getModels: groqGetModels },
 }));
-const openrouterGetModels = vi.hoisted(() =>
-  vi.fn<() => Promise<unknown[]>>(() => new Promise<never>(() => {}))
-);
 vi.mock('../../services/openrouter', () => ({
-  openrouterService: { getModels: openrouterGetModels, setApiKey: vi.fn() },
+  openrouterService: { getModels: openrouterGetModels },
 }));
 
 describe('useAllModels', () => {
@@ -184,15 +205,27 @@ describe('useAllModels', () => {
       expect(getItem).not.toHaveBeenCalledWith('local-llm-ui-preferences');
     });
 
-    it('fetches Mantle for a key in the argument, with the argument key and region', async () => {
+    it('gives each service the key from the argument, and reads no legacy key', async () => {
       localStorage.clear();
-      vi.mocked(mantleService.setApiKey).mockClear();
-      vi.mocked(mantleService.setRegion).mockClear();
-      vi.mocked(openrouterService.setApiKey).mockClear();
+      // Keys that an older version left behind must not be used
+      for (const name of LEGACY_KEY_NAMES) localStorage.setItem(name, `legacy-${name}`);
+      for (const fn of [
+        mantleGetModels,
+        groqGetModels,
+        cerebrasGetModels,
+        anthropicGetModels,
+        openrouterGetModels,
+      ]) {
+        fn.mockClear();
+      }
+      const getItem = vi.spyOn(Storage.prototype, 'getItem');
       const prefs = {
         ...loadPreferences(),
         bedrockMantleApiKey: 'arg-key',
         bedrockMantleRegion: 'eu-west-1',
+        groqApiKey: 'groq-arg-key',
+        cerebrasApiKey: 'cerebras-arg-key',
+        anthropicApiKey: 'anthropic-arg-key',
         openrouterApiKey: 'or-arg-key',
       };
 
@@ -206,15 +239,36 @@ describe('useAllModels', () => {
       expect(result.current.providers.find((p) => p.provider === 'bedrock-mantle')?.status).toBe(
         'loading'
       );
-      expect(mantleService.setApiKey).toHaveBeenCalledWith('arg-key');
-      expect(mantleService.setApiKey).not.toHaveBeenCalledWith(null);
-      expect(mantleService.setRegion).toHaveBeenCalledWith('eu-west-1');
-      expect(openrouterService.setApiKey).toHaveBeenCalledWith('or-arg-key');
+      expect(mantleGetModels).toHaveBeenCalledWith({ apiKey: 'arg-key', region: 'eu-west-1' });
+      expect(groqGetModels).toHaveBeenCalledWith({ apiKey: 'groq-arg-key' });
+      expect(cerebrasGetModels).toHaveBeenCalledWith({ apiKey: 'cerebras-arg-key' });
+      expect(anthropicGetModels).toHaveBeenCalledWith({ apiKey: 'anthropic-arg-key' });
+      expect(openrouterGetModels).toHaveBeenCalledWith({ apiKey: 'or-arg-key' });
+      for (const name of LEGACY_KEY_NAMES) expect(getItem).not.toHaveBeenCalledWith(name);
+      // Nothing writes the legacy keys again
+      for (const name of LEGACY_KEY_NAMES) {
+        expect(localStorage.getItem(name)).toBe(`legacy-${name}`);
+      }
+    });
+
+    it('gives Mantle us-west-2 when the argument has no region', async () => {
+      localStorage.clear();
+      mantleGetModels.mockClear();
+      const prefs = {
+        ...loadPreferences(),
+        bedrockMantleApiKey: 'arg-key',
+        bedrockMantleRegion: '',
+      };
+
+      renderModels(prefs);
+
+      await waitFor(() =>
+        expect(mantleGetModels).toHaveBeenCalledWith({ apiKey: 'arg-key', region: 'us-west-2' })
+      );
     });
 
     it('fetches again with the new key when the key value changes', async () => {
       localStorage.clear();
-      vi.mocked(openrouterService.setApiKey).mockClear();
       openrouterGetModels.mockReset();
       openrouterGetModels.mockResolvedValue([]);
       const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -228,13 +282,13 @@ describe('useAllModels', () => {
         }
       );
       await waitFor(() => expect(openrouterGetModels).toHaveBeenCalledTimes(1));
-      expect(openrouterService.setApiKey).toHaveBeenLastCalledWith('or-key-a');
+      expect(openrouterGetModels).toHaveBeenLastCalledWith({ apiKey: 'or-key-a' });
 
       // Same "key is set" state, new value: the query key does not change
       rerender({ prefs: { ...loadPreferences(), openrouterApiKey: 'or-key-b' } });
 
       await waitFor(() => expect(openrouterGetModels).toHaveBeenCalledTimes(2));
-      expect(openrouterService.setApiKey).toHaveBeenLastCalledWith('or-key-b');
+      expect(openrouterGetModels).toHaveBeenLastCalledWith({ apiKey: 'or-key-b' });
       openrouterGetModels.mockImplementation(() => never());
     });
 
@@ -244,7 +298,7 @@ describe('useAllModels', () => {
         'local-llm-ui-preferences',
         JSON.stringify({ bedrockMantleApiKey: 'disk-key' })
       );
-      vi.mocked(mantleService.setApiKey).mockClear();
+      mantleGetModels.mockClear();
       // The argument has no key, as when the user removed it
       const prefs = { ...loadPreferences(), bedrockMantleApiKey: '' };
 
@@ -256,7 +310,7 @@ describe('useAllModels', () => {
         )
       );
       expect(result.current.providers.some((p) => p.provider === 'bedrock-mantle')).toBe(false);
-      expect(mantleService.setApiKey).not.toHaveBeenCalledWith('disk-key');
+      expect(mantleGetModels).not.toHaveBeenCalled();
     });
   });
 });

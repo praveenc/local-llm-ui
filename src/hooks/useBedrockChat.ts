@@ -10,7 +10,6 @@ import { toast } from 'sonner';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { KiroConversationSession, MessageFeedback, Provider } from '../db/types';
-import { mantleService } from '../services';
 import { conversationService } from '../services/conversationService';
 import { kiroService } from '../services/kiro';
 import { prepareKiroSend } from '../services/kiroSyncs';
@@ -399,14 +398,14 @@ export function useBedrockChat({
           // Build provider-specific request
           if (provider === 'bedrock-mantle') {
             endpoint = '/api/mantle/chat';
-            const apiKey = mantleService.getApiKey();
+            const apiKey = prefs.bedrockMantleApiKey;
             if (!apiKey) {
               throw new Error(
                 'Bedrock Mantle API key is required. Please configure it in preferences.'
               );
             }
             headers['X-Mantle-Api-Key'] = apiKey;
-            headers['X-Mantle-Region'] = mantleService.getRegion();
+            headers['X-Mantle-Region'] = prefs.bedrockMantleRegion || 'us-west-2';
           } else if (provider === 'groq' || provider === 'cerebras') {
             endpoint = '/api/aisdk/chat';
             const apiKey = provider === 'groq' ? prefs.groqApiKey : prefs.cerebrasApiKey;

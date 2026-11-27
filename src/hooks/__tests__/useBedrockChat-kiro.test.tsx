@@ -32,8 +32,6 @@ vi.mock('../index', () => ({
   useConversationMutations: () => mutations,
 }));
 
-vi.mock('../../services', () => ({ mantleService: { getApiKey: () => '', getRegion: () => '' } }));
-
 const opus: ChatModel = {
   id: 'claude-opus-5.5',
   name: 'Claude Opus 5.5',
