@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -69,6 +69,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  // Unmount the hooks first: a hook that is still mounted could read its record after the reset
+  cleanup();
   vi.unstubAllGlobals();
   localStorage.clear();
   forgetPendingSessionOptions();
@@ -337,6 +339,22 @@ describe('picks that are not sent yet survive a reload (D27)', () => {
     await conversationService.delete('conv-d9');
     await new Promise((r) => setTimeout(r, 50));
     expect(await db.conversations.get('conv-d9')).toBeUndefined();
+  });
+
+  it('a chat whose record went away is not marked as read, so a later record is read', async () => {
+    const old = renderHook(() => useSessionOptions('conv-d9'));
+    await waitFor(() => expect(old.result.current.snapshot).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 20));
+    forgetPendingSessionOptions();
+    await db.conversations.delete('conv-d9');
+    await new Promise((r) => setTimeout(r, 50));
+    old.unmount();
+    await db.conversations.add({
+      ...chat({ sessionId: SESSION, seenMessages: 2 }),
+      kiroPicks: { autopilot: 'off' },
+    });
+    renderHook(() => useSessionOptions('conv-d9'));
+    await waitFor(() => expect(pendingSessionOptions('conv-d9')).toEqual({ autopilot: 'off' }));
   });
 
   it('a result of the chat that was open before is not taken for the next one', async () => {
