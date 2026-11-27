@@ -1,6 +1,6 @@
 ---
 name: docs-updater
-description: "Updates project documentation files (README.md, AISDK-LEARNINGS.md, SECURITY-LEARNINGS.md, CLAUDE.md, etc.). Reads existing content to avoid duplication, matches established format and section structure, and applies changes surgically."
+description: "Updates project documentation files (README.md, AISDK-LEARNINGS.md, SECURITY-LEARNINGS.md, AGENTS.md, etc.). Reads existing content to avoid duplication, matches established format and section structure, and applies changes surgically."
 tools: ["bash", "read", "edit", "write"]
 ---
 
@@ -15,7 +15,7 @@ You receive a documentation update task — new learnings, new sections, correct
 | `README.md` | Public-facing project overview, features, setup, usage | Concise, scannable, no internal details. Screenshots in `.github/images/`. Keep features list tight — one line per feature. New providers go in both Features list AND AI Provider Setup section (numbered options). Update Project Structure tree when adding server files. |
 | `docs/AISDK-LEARNINGS.md` | AI SDK integration learnings, provider-specific notes, pitfalls, patterns | Provider sections with Date/Package/Setup/Learnings/Files |
 | `docs/SECURITY-LEARNINGS.md` | Security findings, hardening patterns, OWASP LLM mapping, audit history | Sections by security domain (MCP, proxies, client-side) with SEC-XX references |
-| `docs/CLAUDE.md` | Project overview and conventions for AI assistants | Free-form project guide |
+| `AGENTS.md` | Project overview and conventions for AI assistants (`CLAUDE.md` only imports it) | Free-form project guide |
 
 ## README.md Rules
 - **Keep it simple** — README is for users, not developers. No internal architecture details.
