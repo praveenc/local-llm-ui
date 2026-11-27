@@ -163,7 +163,7 @@ export function MCPServerImport({
       <div className="space-y-2 text-left">
         {resultText}
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2">
-          <p className="flex-1 min-w-40 text-sm">{importLineText(rows)}</p>
+          <p className="flex-1 min-w-40 text-sm">{importLineText(rows, dismissed)}</p>
           <Button variant="outline" size="sm" className={BUTTON} onClick={() => setOpen(true)}>
             Import
           </Button>

@@ -541,15 +541,29 @@ function uniqueName(name: string, label: string, used: ReadonlySet<string>): str
 export const importableRows = (rows: readonly ImportRow[]): ImportRow[] =>
   rows.filter((row) => row.state === 'importable');
 
-/** True when an importable row has a key that "Not now" did not store (hashes, `dismissKey`) */
-export function hasNewImports(rows: readonly ImportRow[], dismissed: readonly string[]): boolean {
+/** The importable rows whose key "Not now" did not store (hashes, `dismissKey`) */
+export function newImportRows(
+  rows: readonly ImportRow[],
+  dismissed: readonly string[] = []
+): ImportRow[] {
   const seen = new Set(dismissed);
-  return importableRows(rows).some((row) => !seen.has(row.dismissKey));
+  return importableRows(rows).filter((row) => !seen.has(row.dismissKey));
 }
 
-/** "12 servers in Kiro and Pi are not in this app" */
-export function importLineText(rows: readonly ImportRow[]): string {
-  const importable = importableRows(rows);
+/** True when an importable row has a key that "Not now" did not store */
+export function hasNewImports(rows: readonly ImportRow[], dismissed: readonly string[]): boolean {
+  return newImportRows(rows, dismissed).length > 0;
+}
+
+/**
+ * "12 servers in Kiro and Pi are not in this app". It counts only the rows that "Not now" did not
+ * hide, and names only their tools.
+ */
+export function importLineText(
+  rows: readonly ImportRow[],
+  dismissed: readonly string[] = []
+): string {
+  const importable = newImportRows(rows, dismissed);
   const tools = TOOL_ORDER.filter((id) =>
     importable.some((row) => row.tools.includes(id as MCPImportToolId))
   );

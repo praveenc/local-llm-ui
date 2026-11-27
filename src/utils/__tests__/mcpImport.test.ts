@@ -396,6 +396,19 @@ describe('buildImportRows', () => {
     );
     expect(hasNewImports(more, keys)).toBe(true);
   });
+
+  it('counts and names only the rows that Not now did not hide', () => {
+    const rows = buildImportRows(
+      scanOf(file('kiro', [stdio('a', 'x')]), file('pi', [stdio('b', 'y'), stdio('c', 'z')])),
+      {}
+    );
+    const kiroKey = rows.filter((r) => r.tools.includes('kiro')).map((r) => r.dismissKey);
+    const piKeys = rows.filter((r) => !r.tools.includes('kiro')).map((r) => r.dismissKey);
+    expect(importLineText(rows, kiroKey)).toBe('2 servers in Pi are not in this app');
+    expect(importLineText(rows, [...piKeys, 'stale-key'])).toBe(
+      '1 server in Kiro is not in this app'
+    );
+  });
 });
 
 describe('shortHash', () => {

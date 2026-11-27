@@ -168,7 +168,8 @@ describe('MCP import', () => {
       )
     );
     render(<Harness initialDismissed={keys} />);
-    expect(await screen.findByText('3 servers in Kiro and Pi are not in this app')).toBeVisible();
+    // Only the new server counts, and only its tool is named
+    expect(await screen.findByText('1 server in Kiro is not in this app')).toBeVisible();
   });
 
   it('lists rows by tool, with no checkbox for added or blocked rows', async () => {
