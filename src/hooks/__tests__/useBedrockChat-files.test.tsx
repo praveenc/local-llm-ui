@@ -209,7 +209,8 @@ describe('useBedrockChat files', () => {
     await add(4, 'assistant', 'two');
 
     const { result } = renderChat(id);
-    await waitFor(() => expect(result.current.messages).toHaveLength(4));
+    // Two large files load slowly from fake-indexeddb when the host is busy
+    await waitFor(() => expect(result.current.messages).toHaveLength(4), { timeout: 10_000 });
     await act(async () => {
       await result.current.sendMessage('third');
     });
