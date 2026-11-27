@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11
+
+#### Changed
+
+- Each chat proxy now checks the chat request before it does anything else. A body that is not valid JSON, or that has a wrong field (for example no model, a model id with control characters, a `tool` role, or no message with text), gets a short `400` JSON error. The server checks the request before it reads an API key, starts the MCP servers of the request, or opens the stream. Before, most proxies used the fields as they came, so a bad body could start MCP servers or end in a raw stream error. OpenRouter keeps its strict model id rule (#125, #126) ([#138])
+- `POST /api/kiro/logout` accepts a body of at most 1 KB, and the plain proxies `/api/ollama` and `/api/lmstudio` accept at most 16 KB. A larger body gets `413`. The body limits now count bytes, not characters (#111, #112) ([#138])
+
+#### Fixed
+
+- **Stop**, a reload, or a closed page now also stops the model call on the provider. Before, the server kept the provider call running until the reply ended, so a stopped reply could still use tokens and cost money (#117) ([#138])
+- An error in the chat is now at most 500 characters, also the error that comes before a reply starts. Before, a long provider error showed in full. The Bedrock Mantle error for a wrong Region no longer repeats the Region value (#109) ([#138])
+- A Bedrock Mantle reply now ends once. Before, the stream sent its end marker twice (#110) ([#138])
+
 ## [1.4.0] - 2026-11-27
 
 PR numbers link to GitHub.
@@ -274,6 +287,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#138]: https://github.com/praveenc/local-llm-ui/pull/138
 [#97]: https://github.com/praveenc/local-llm-ui/pull/97
 [#96]: https://github.com/praveenc/local-llm-ui/pull/96
 [#95]: https://github.com/praveenc/local-llm-ui/pull/95

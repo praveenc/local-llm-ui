@@ -190,10 +190,13 @@ setCORSHeaders(req, res, 'Content-Type, X-Mantle-Api-Key, X-Mantle-Region');
 
 **Before**: All proxies used unbounded `body += chunk` — multi-GB body = OOM.
 
-**After** (`server/security.ts: readBodyWithLimit()`):
-- Default limit: **10MB**
-- Returns `null` and sends `413 Payload Too Large` if exceeded
-- Applied to all 10 proxy body-reading paths
+**After** (`server/security.ts: readBodyWithLimit()`, `limitStreamedBody()`):
+- Every route that reads a body or forwards one has a limit. Default limit: **10MB**.
+- The limit counts **bytes**, not characters (`Buffer.byteLength`). The body is decoded once at the end, so a character that is split across two chunks stays whole.
+- Returns `null` and sends `413` JSON (`{"error":"Request body too large"}`) if exceeded.
+- The chat proxies read the body through `readChatRequest()` (SEC-22), which uses the same limit.
+- Small routes have their own smaller limit, for example 1 KB for `POST /api/kiro/logout`, and 1 KB or 4 KB for the other Kiro routes. Before, logout did not read its body at all (`req.resume()`).
+- The plain proxies `/api/ollama` and `/api/lmstudio` (Vite `server.proxy`) pipe the body to the upstream and never read it into memory. `limitStreamedBody(req, res, PLAIN_PROXY_BODY_LIMIT)` runs on http-proxy-3's `start` event with **16 KB**: a declared `Content-Length` over the limit gets 413 before any byte goes upstream; a chunked body is counted, and at the limit the client gets 413 and the request is destroyed with `ECONNRESET`, so http-proxy-3 also destroys its upstream request. The upstream can get at most one socket read (up to 64 KB) past the limit. The app sends these proxies only `GET` requests with no body.
 
 ```typescript
 const body = await readBodyWithLimit(req, res);
@@ -379,6 +382,30 @@ The `sessionOptions` field of `POST /api/kiro/chat` sets the agent and the other
 - **Accepted risk.** Any page of the app can change the folder, because the app has no user accounts. The same-origin guard stops other sites (SEC-13), and the app must be shared only through an authenticated tunnel. This is the same as SEC-17. Kiro's tools still ask before they run a command or write a file, but Kiro reads files without a question, and the folder does not limit what Kiro can read or reach when the user answers a question. The folder is the place where Kiro starts, not a sandbox.
 - **Limits of the checks.** The checks stop a mistake of the user, for example a system folder or a settings folder. They do not stop a person who can already run commands as the same user. A folder can change between the check and the moment that Kiro opens it, because Kiro opens it itself. A `~/.local-llm-ui` that is a symlink is followed when the app writes the setting (see the next rule).
 
+### SEC-22: Chat Request Validation
+
+**Before**: each chat proxy parsed the body with `JSON.parse` and used its fields as they came. Only the OpenRouter proxy checked them. Some proxies wrote the SSE headers, checked the API key, or started the request's MCP servers before they knew that the body was valid. So `{`, `{}`, or `{"model":42}` could start MCP server processes, give a raw `TypeError` as a stream error, or end a stream with no status. OpenRouter checked for an empty message only after the MCP start.
+
+**After** (`server/security.ts`): every chat proxy (Groq and Cerebras, Anthropic, Amazon Bedrock, Bedrock Mantle, LM Studio, Ollama, OpenRouter) uses the same order:
+
+1. `readChatRequest(req, res)`: the body limit (SEC-07), `JSON.parse`, and the field checks below. A bad body gets `400` JSON (`Invalid JSON body`, `Invalid chat request`, `Model is required`, and so on) and the proxy returns. A body over the limit gets `413`.
+2. The checks of the proxy itself: the Groq or Cerebras `provider` (the error is `Invalid provider`, with no echoed value), the OpenRouter model pattern, the API key, and the Mantle region. The Mantle region and key checks run before the body read and have no side effect. A bad region gets `Invalid region`, with no echo of the header.
+3. The MCP start. For Bedrock, the start is inside the `try` that closes the clients.
+4. `startEventStream(res)` sets the SSE headers right before the stream loop. Every error before this point is a JSON status.
+
+**The field rules** (`checkChatRequest`):
+
+- `model`: a string that is not empty after a trim, at most 256 characters, with no control characters (U+0000 to U+001F, U+007F to U+009F). This rule is loose on purpose: an LM Studio model id can be a path with spaces and parentheses, and an Ollama id has a `:`. OpenRouter keeps its strict pattern `^[a-zA-Z0-9._\-/:@]+$` as an extra check, for OpenRouter only.
+- `messages`: an array of `{ role: 'user' | 'assistant' | 'system', content: string, files? }`. Each file is `{ name: string, format: string, bytes: string }` (Bedrock decodes `bytes` as base64). A `tool` role is refused.
+- Messages with no text and no files are left out. Then at least one message must be left (`At least one non-empty message is required`). A message with files and no text stays.
+- `max_tokens`: a positive integer, if present. SEC-09 still caps it.
+- `enableWebSearch`: a boolean, if present. `mcpServers`: an array, if present (SEC-11 checks each server).
+- The other fields (`thinkingEffort`, `maxToolSteps`, `provider`) are checked by the helpers that use them.
+
+**Shared helpers**: `readChatRequest`, `startEventStream`, `abortOnClose` (SEC-08 and OWASP LLM10 below), `sendJsonError` (a JSON error with the text capped at 500 characters; it removes the SSE `Cache-Control` and `Connection` headers when no byte went out), `capErrorText`, `isAbortError`, and `isAbortAfterClientLeft`. See [Shared Security Utilities](#shared-security-utilities).
+
+**Rule for a new chat proxy**: call `readChatRequest` first, and start nothing (no key use, no MCP server, no SSE header) before it returns a request. `server/__tests__/chat-request.test.ts` tests the rules, and each proxy test posts the same table of bad bodies (`BAD_BODIES` in `server/__tests__/fixtures/chat-proxy-harness.ts`, each with an MCP server in it) and expects `400` with no MCP start.
+
 ---
 
 ## Client-Side Security
@@ -458,13 +485,15 @@ Security reports, PR drafts, and temp docs live in `docs/tmp_docs/` (gitignored)
 ### 7. Sanitize Error Messages
 
 ```typescript
-// ❌ May contain AWS account IDs, ARNs, internal paths
+// ❌ May contain AWS account IDs, ARNs, internal paths, or a whole upstream body
 res.end(JSON.stringify({ error: err.message, errorDetail: err.stack }));
 
-// ✅ Sanitized
-res.end(JSON.stringify({ error: 'Internal server error' }));
+// ✅ Sanitized and capped
+sendJsonError(res, 500, 'Internal server error'); // JSON, at most 500 characters
 console.error('Full error (server-side only):', err); // log server-side
 ```
+
+Every error text that a proxy sends to the browser is at most 500 characters (`MAX_ERROR_LENGTH`, `capErrorText()`): the SSE `error` event (`endStreamWithError`, `streamErrorMessage` in the tool loop, and the stream-part writes), the JSON `error` before a stream starts (`sendJsonError`), and `errorDetail` (Bedrock, Mantle). The cut never leaves half of a surrogate pair. Do not echo a request value (a header, a provider name) in an error.
 
 ---
 
@@ -477,7 +506,14 @@ All shared utilities live in `server/security.ts`:
 | `apiGuardPlugin()` | Vite plugin that rejects cross-site and non-JSON requests to `/api` (SEC-13) | `vite.config.ts`, first plugin, `enforce: 'pre'` |
 | `checkApiRequest(req)` | The rules of the guard; returns `null` or a 403/415 rejection | `createApiGuard()` |
 | `setCORSHeaders(req, res, headers?)` | Restrict CORS to dev server origins | All proxies with CORS |
-| `readBodyWithLimit(req, res, maxSize?)` | Read body with 10MB limit, returns null + 413 on overflow | All proxies reading bodies |
+| `readBodyWithLimit(req, res, maxSize?)` | Read body with a limit in bytes (default 10MB), returns null + 413 on overflow | All routes that read a body |
+| `limitStreamedBody(req, res, maxSize?)` | Limit a body that a proxy pipes upstream; 413 and destroy over the limit (SEC-07) | `/api/ollama`, `/api/lmstudio` (`PLAIN_PROXY_BODY_LIMIT`, 16 KB), in `vite.config.ts` |
+| `readChatRequest(req, res, options?)` | Body limit, JSON, and the chat field checks; 400/413 JSON and null on a bad body (SEC-22) | All 7 chat proxies |
+| `startEventStream(res)` | Set the SSE headers, right before the stream loop | All 7 chat proxies |
+| `abortOnClose(res)` | An `AbortSignal` that aborts when the browser closes the response before it ends | All 7 chat proxies |
+| `sendJsonError(res, status, message)` | JSON error, text capped at 500 characters | Chat proxies, body limits |
+| `capErrorText(text)` | Cut an error text to 500 characters | Every error text sent to the browser |
+| `isAbortError(error)`, `isAbortAfterClientLeft(error, res)` | Tell an abort after the browser left from a real error (no log, no reply) | Chat proxy catches |
 | `capMaxTokens(requested?)` | Cap maxOutputTokens at 32,768, default 2,048 | All proxies with token params |
 
 MCP-specific security functions live in `server/mcp-manager.ts`:
@@ -504,7 +540,7 @@ How each OWASP LLM risk maps to this project:
 | **LLM05: Improper Output Handling** | LLM markdown rendered in browser | ✅ rehype-sanitize in place |
 | **LLM06: Excessive Agency** | MCP tools executed without confirmation | ⚠️ No human-in-the-loop yet |
 | **LLM07: System Prompt Leakage** | No secrets in system prompts | ✅ N/A — no system prompts with secrets |
-| **LLM10: Unbounded Consumption** | No rate limiting, uncapped tokens | ✅ SEC-09 fixed, SEC-06 deferred |
+| **LLM10: Unbounded Consumption** | No rate limiting, uncapped tokens, a provider call that runs on after the browser left | ✅ SEC-09 fixed; every chat proxy stops the provider call when the browser closes the stream (`abortOnClose`, Mantle passes the signal to `fetch`); SEC-06 deferred |
 
 ---
 
@@ -515,7 +551,7 @@ Things this project does well:
 1. **AWS credentials via provider chain** — never sent from client, never exposed
 2. **API keys on headers** — not URLs, won't appear in server logs or browser history
 3. **rehype-sanitize for markdown** — XSS mitigation for LLM output
-4. **Abort signal support** — all proxies abort on client disconnect, preventing wasted API calls
+4. **Abort signal support** — all chat proxies abort on client disconnect, preventing wasted API calls. `abortOnClose(res)` listens on the response: once the body is read, the request's own `close` has already fired, so a listener on `req` never ran
 5. **MCP tool namespacing** — `serverName__toolName` prevents collisions
 6. **`Promise.allSettled` for MCP** — one broken server doesn't take down the rest
 7. **File upload filename sanitization** — dangerous characters stripped
@@ -532,7 +568,7 @@ Items identified but not yet implemented (long-term):
 | Item | Finding | Reason for Deferral |
 |------|---------|-------------------|
 | Rate limiting | SEC-06 | Needs middleware pattern redesign for Vite dev server |
-| Error message sanitization | SEC-08 | Lower risk for local dev server; needs per-proxy audit |
+| Error message sanitization | SEC-08 | Partly done: every error text to the browser is capped at 500 characters, also the JSON error before a stream starts and `errorDetail` (see pitfall 7). Not done: a review of each upstream text, which can still hold up to 500 characters of the provider's own message. Lower risk for a local dev server. |
 | sessionStorage for API keys | SEC-04 | Architecture-level UX change (keys cleared on tab close) |
 | CSP/security headers | SEC-12 | Not applicable to Vite dev server; needed for production |
 | Human-in-the-loop for MCP tools | LLM06 | Significant UX/architecture work |
@@ -547,6 +583,7 @@ Items identified but not yet implemented (long-term):
 |------|-------|----------|-------|
 | 2026-03-06 | Full project (first audit) | 14 (1C, 3H, 5M, 2L, 3I) | 8 of 14 |
 | 2026-11-24 | `/api` routes before the Kiro provider | 1 (SEC-13: cross-site requests reach the proxies, including the MCP command start) | 1 of 1 |
+| 2026-11-27 | Chat proxies and body limits (SEC-22) | 6 (no validation before the MCP start and the SSE headers; no abort when the browser leaves; uncapped error text; no limit on the logout body and the plain proxies; the limit counted characters) | 6 of 6 |
 
 ---
 
@@ -554,7 +591,7 @@ Items identified but not yet implemented (long-term):
 
 ```
 server/
-├── security.ts             # Shared: same-origin guard, CORS, body limits, token cap
+├── security.ts             # Shared: same-origin guard, CORS, body limits, chat request checks, error cap, token cap
 ├── mcp-manager.ts          # MCP: command allowlist, env allowlist, SSRF, timeout, validation
 ├── kiro-proxy.ts           # Kiro routes (uses security.ts)
 ├── acp/                    # Generic ACP layer: agent process, process groups, permissions (no harness names)
@@ -564,7 +601,7 @@ server/
 ├── bedrock-aisdk-proxy.ts  # Bedrock AI SDK (uses security.ts)
 ├── bedrock-proxy.ts        # Legacy Bedrock (uses security.ts)
 ├── lmstudio-aisdk-proxy.ts # LM Studio chat (uses security.ts)
-├── lmstudio-proxy.ts       # LM Studio SDK (inline limits)
+├── lmstudio-proxy.ts       # LM Studio SDK model list (reads no body)
 ├── mantle-proxy.ts         # Bedrock Mantle (uses security.ts)
 └── ollama-aisdk-proxy.ts   # Ollama (uses security.ts)
 ```
