@@ -21,6 +21,20 @@ const generateId = (): string => {
   return crypto.randomUUID();
 };
 
+/** The totals of a conversation, built from its messages (as `addMessage` adds them up) */
+const totalsOf = (
+  messages: Message[]
+): Pick<
+  Conversation,
+  'messageCount' | 'totalInputTokens' | 'totalOutputTokens' | 'providers' | 'models'
+> => ({
+  messageCount: messages.length,
+  totalInputTokens: messages.reduce((n, m) => n + (m.usage?.inputTokens || 0), 0),
+  totalOutputTokens: messages.reduce((n, m) => n + (m.usage?.outputTokens || 0), 0),
+  providers: [...new Set(messages.map((m) => m.provider))],
+  models: [...new Set(messages.map((m) => m.modelId))],
+});
+
 // Generate title from first message content
 const generateTitle = (content: string, maxLength = 50): string => {
   const cleaned = content.trim().replace(/\s+/g, ' ');
@@ -246,7 +260,11 @@ export const conversationService = {
    * conversation's updatedAt, so rating a message does not reorder the list.
    */
   async setMessageFeedback(messageId: string, feedback: MessageFeedback | null): Promise<void> {
-    await db.messages.update(messageId, { feedback: feedback ?? undefined });
+    // The update count is 0 also for an unchanged value, so read the row first
+    await db.transaction('rw', db.messages, async () => {
+      if (!(await db.messages.get(messageId))) throw new Error('Message not found');
+      await db.messages.update(messageId, { feedback: feedback ?? undefined });
+    });
   },
 
   /**
@@ -330,11 +348,15 @@ export const conversationService = {
           .between([conversationId, fromSequence], [conversationId, Dexie.maxKey])
           .delete();
 
-        // Update conversation message count
+        // The totals of the messages that stay
         const conversation = await db.conversations.get(conversationId);
         if (conversation) {
+          const remaining = await db.messages
+            .where('[conversationId+sequence]')
+            .between([conversationId, Dexie.minKey], [conversationId, fromSequence], true, false)
+            .toArray();
           await db.conversations.update(conversationId, {
-            messageCount: Math.max(0, conversation.messageCount - deleteCount),
+            ...totalsOf(remaining),
             updatedAt: new Date(),
           });
         }
@@ -363,11 +385,7 @@ export const conversationService = {
         createdAt: now,
         updatedAt: now,
         status: 'active',
-        messageCount: sourceMessages.length,
-        totalInputTokens: sourceMessages.reduce((n, m) => n + (m.usage?.inputTokens || 0), 0),
-        totalOutputTokens: sourceMessages.reduce((n, m) => n + (m.usage?.outputTokens || 0), 0),
-        providers: [...new Set(sourceMessages.map((m) => m.provider))],
-        models: [...new Set(sourceMessages.map((m) => m.modelId))],
+        ...totalsOf(sourceMessages),
         // No `kiro`: two chats must not share one Kiro session. The fork's first Kiro prompt
         // opens a new session and sends the copied messages as context (D12).
       };

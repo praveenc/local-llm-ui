@@ -71,6 +71,12 @@ export interface ReplyStore {
    * Resolves when the run has finished its last write (at once when nothing runs).
    */
   stop(conversationId: string): Promise<void>;
+  /**
+   * Resolves when every run of the chat that has not called `finish` yet has called it (at once
+   * when none runs), or after `timeoutMs`, so that a stuck run cannot hold a caller forever. Only
+   * the runs that exist at the call count. Never rejects.
+   */
+  whenFinished(conversationId: string, timeoutMs?: number): Promise<void>;
   /** Shows an error in a chat without a run, for example a failed fork */
   fail(conversationId: string, messages: UIMessage[], error: string): void;
   /** Changes the messages of an entry that exists, for example a rating on a shown reply */
@@ -105,8 +111,14 @@ interface Entry {
 
 const NO_ACTIVITY: ReadonlyMap<string, ReplyActivity> = new Map();
 
+/** How long `whenFinished` waits at most by default */
+export const WHEN_FINISHED_TIMEOUT_MS = 5000;
+
 export function createReplyStore(): ReplyStore {
   const entries = new Map<string, Entry>();
+  // The runs that have not called `finish`, by chat. A run replaced by `start` or removed by
+  // `dismiss` or `remove` can still be writing.
+  const unfinished = new Map<string, Set<Entry>>();
   const listeners = new Set<() => void>();
   let nextRun = 1;
   let onScreenId: string | null = null;
@@ -182,7 +194,13 @@ export function createReplyStore(): ReplyStore {
         },
         controller
       );
+      // A run that this one replaces stops its request. Its `finished` resolves on its own
+      // `finish`, after its last write.
+      entries.get(conversationId)?.controller?.abort();
       entries.set(conversationId, entry);
+      const runs = unfinished.get(conversationId) ?? new Set<Entry>();
+      runs.add(entry);
+      unfinished.set(conversationId, runs);
       emit();
       const run = entry.run;
       const own = () => {
@@ -215,6 +233,9 @@ export function createReplyStore(): ReplyStore {
           entry.done = true;
           entry.controller = null;
           entry.resolveFinished();
+          const runs = unfinished.get(conversationId);
+          runs?.delete(entry);
+          if (runs?.size === 0) unfinished.delete(conversationId);
         },
       };
     },
@@ -233,6 +254,19 @@ export function createReplyStore(): ReplyStore {
         controller?.abort();
       }
       return entry.finished;
+    },
+
+    whenFinished(conversationId, timeoutMs = WHEN_FINISHED_TIMEOUT_MS) {
+      const runs = [...(unfinished.get(conversationId) ?? [])];
+      if (runs.length === 0) return Promise.resolve();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+      });
+      return Promise.race([
+        Promise.all(runs.map((r) => r.finished)).then(() => undefined),
+        timeout,
+      ]).finally(() => clearTimeout(timer));
     },
 
     fail(conversationId, messages, error) {
@@ -291,7 +325,9 @@ export function createReplyStore(): ReplyStore {
         entry.controller?.abort();
         entry.resolveFinished();
       }
+      for (const runs of unfinished.values()) for (const entry of runs) entry.resolveFinished();
       entries.clear();
+      unfinished.clear();
       onScreenId = null;
       emit();
     },

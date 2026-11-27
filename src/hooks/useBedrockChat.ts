@@ -7,7 +7,7 @@
  */
 import { toast } from 'sonner';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { KiroConversationSession, MessageFeedback, Provider } from '../db/types';
 import { mantleService } from '../services';
@@ -158,19 +158,34 @@ export function useBedrockChat({
     setTitleFromKiro,
   } = useConversationMutations();
 
-  // Sync DB messages to local state when conversation loads (adjusting state during render)
+  // Sync DB messages to local state when conversation loads (adjusting state during render).
+  // Another chat clears the list until its messages load; an empty chat shows no messages. A
+  // reply in the store still shows first (`shownMessages`), and the store entry stays as it is.
   const [syncedDbMessages, setSyncedDbMessages] = useState(dbMessages);
-  if (dbMessages !== syncedDbMessages) {
+  const [syncedConversationId, setSyncedConversationId] = useState(activeConversationId);
+  if (activeConversationId !== syncedConversationId) {
+    setSyncedConversationId(activeConversationId);
     setSyncedDbMessages(dbMessages);
-    if (dbMessages && dbMessages.length > 0) {
-      setMessages(toUIMessages(dbMessages));
-    }
+    setMessages(dbMessages ? toUIMessages(dbMessages) : []);
+  } else if (dbMessages !== syncedDbMessages) {
+    setSyncedDbMessages(dbMessages);
+    if (dbMessages) setMessages(toUIMessages(dbMessages));
   }
 
-  // Stop the reply of the open chat only
-  const stopGeneration = useCallback(() => {
-    if (activeConversationId) void replyStore.stop(activeConversationId);
+  // Stop the reply of the open chat only. A new chat or a fork that this hook put on screen goes
+  // first: the view does not render it yet. Refs, so that a closure from an earlier render stops
+  // the same chat. Not the store's global `onScreen`, which another view can change.
+  const latestConversationId = useRef(activeConversationId);
+  const startedConversationId = useRef<string | null>(null);
+  useEffect(() => {
+    latestConversationId.current = activeConversationId;
+    // The view shows this chat now (or the user opened another one)
+    startedConversationId.current = null;
   }, [activeConversationId]);
+  const stopGeneration = useCallback(() => {
+    const id = startedConversationId.current ?? latestConversationId.current;
+    if (id) void replyStore.stop(id);
+  }, []);
 
   // New chat: the reply of the chat that was open keeps running in its own chat
   const clearMessages = useCallback(() => {
@@ -207,7 +222,10 @@ export function useBedrockChat({
       // One reply per chat
       if (replyStore.isRunning(currentConversationId)) return;
       // A new chat or a fork is on screen now, also before the view renders it
-      if (target || !activeConversationId) replyStore.setOnScreen(currentConversationId);
+      if (target || !activeConversationId) {
+        replyStore.setOnScreen(currentConversationId);
+        startedConversationId.current = currentConversationId;
+      }
       // The messages before this one
       const baseMessages = target?.history ?? shownMessages;
 
@@ -240,6 +258,9 @@ export function useBedrockChat({
         }
       }
 
+      // A stopped Kiro run of this chat may still write its Kiro record: wait for it before the
+      // record is read below. Taken before `start`, so it does not wait for this run.
+      const previousRun = isKiro ? replyStore.whenFinished(currentConversationId) : undefined;
       // The chat shows the new message at once; the reply writes only to its own chat's entry
       const run = replyStore.start(currentConversationId, [...baseMessages, userMessage]);
 
@@ -265,6 +286,13 @@ export function useBedrockChat({
         // Kiro: read what the session has seen, and the chat's earlier messages, from the database
         // now: the chat may be new, or a fork (D12).
         if (isKiro) {
+          await previousRun;
+          // Stopped during the wait: end as a stop, before anything reads Kiro or starts it
+          if (run.signal.aborted) {
+            run.end('stopped');
+            run.finish();
+            return;
+          }
           // Add the turns that Kiro made in the terminal first (a running sync, or one exact check
           // of Kiro's time): the history and the turn count below then include them (K7, K11)
           let sync = false;
@@ -998,21 +1026,42 @@ export function useBedrockChat({
   );
 
   // Rate a message. The same rating again clears it. The UI updates first; the DB follows.
+  // The newest call for each message, so that only its failure rolls back
+  const ratingCalls = useRef({ count: 0, latest: new Map<string, number>() });
   const rateMessage = useCallback(
     async (messageId: string, feedback: MessageFeedback) => {
       const current = shownMessages.find((m) => m.id === messageId)?.feedback;
       const next = current === feedback ? null : feedback;
+      // The last call for a message wins: an older call that fails changes nothing
+      const call = ++ratingCalls.current.count;
+      ratingCalls.current.latest.set(messageId, call);
+      const isLatest = () => ratingCalls.current.latest.get(messageId) === call;
+      // The chat of this call: the rollback goes there, also after a switch
+      const conversationId = activeConversationId;
       const change = (prev: UIMessage[]) =>
         prev.map((m) => (m.id === messageId ? { ...m, feedback: next ?? undefined } : m));
       setMessages(change);
       // An ended reply that the chat still shows from the store
-      if (activeConversationId) replyStore.editMessages(activeConversationId, change);
+      if (conversationId) replyStore.editMessages(conversationId, change);
       try {
         await setMessageFeedback(messageId, next);
         toast.success(next ? 'Feedback saved' : 'Feedback removed');
       } catch (err) {
         console.error('Failed to save feedback:', err);
         toast.error('Could not save feedback');
+        // A later call for this message has set its own value: keep it
+        if (!isLatest()) return;
+        // Undo the rating, unless something else changed it again
+        const rollback = (prev: UIMessage[]) =>
+          prev.map((m) =>
+            m.id === messageId && m.feedback === (next ?? undefined)
+              ? { ...m, feedback: current }
+              : m
+          );
+        setMessages(rollback);
+        if (conversationId) replyStore.editMessages(conversationId, rollback);
+      } finally {
+        if (isLatest()) ratingCalls.current.latest.delete(messageId);
       }
     },
     [shownMessages, activeConversationId, setMessageFeedback]
