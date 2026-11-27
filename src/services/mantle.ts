@@ -7,43 +7,26 @@
 import type { ModelInfo } from './types';
 
 const MANTLE_BASE_URL = '/api/mantle';
+const DEFAULT_MANTLE_REGION = 'us-west-2';
+
+/** The key and Region of Bedrock Mantle, from the preferences */
+export interface MantleModelOptions {
+  apiKey?: string;
+  region?: string;
+}
 
 export class MantleService {
-  private apiKey: string | null = null;
-  private region: string = 'us-west-2';
-
-  setApiKey(apiKey: string | null): void {
-    this.apiKey = apiKey;
-  }
-
-  setRegion(region: string): void {
-    this.region = region;
-  }
-
-  getApiKey(): string | null {
-    return this.apiKey;
-  }
-
-  getRegion(): string {
-    return this.region;
-  }
-
-  hasApiKey(): boolean {
-    return !!this.apiKey && this.apiKey.trim().length > 0;
-  }
-
-  async getModels(): Promise<ModelInfo[]> {
-    if (!this.hasApiKey()) {
-      throw new Error(
-        'Bedrock Mantle API key is required. Please configure it in the preferences.'
-      );
-    }
+  /** Lists the models with the key and Region from the preferences; no key, no models */
+  async getModels({ apiKey, region }: MantleModelOptions = {}): Promise<ModelInfo[]> {
+    const key = apiKey?.trim();
+    if (!key) return [];
+    const mantleRegion = region?.trim() || DEFAULT_MANTLE_REGION;
 
     try {
       const response = await fetch(`${MANTLE_BASE_URL}/models`, {
         headers: {
-          'X-Mantle-Api-Key': this.apiKey!,
-          'X-Mantle-Region': this.region,
+          'X-Mantle-Api-Key': key,
+          'X-Mantle-Region': mantleRegion,
         },
       });
 
@@ -63,7 +46,7 @@ export class MantleService {
       }
 
       throw new Error(
-        `Cannot connect to Bedrock Mantle in ${this.region}. Please check your API key.`,
+        `Cannot connect to Bedrock Mantle in ${mantleRegion}. Please check your API key.`,
         { cause: error }
       );
     }

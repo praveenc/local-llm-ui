@@ -72,10 +72,6 @@ vi.mock('../../services/kiro', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../services/kiro')>()),
   kiroService: service,
 }));
-vi.mock('../../services', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../services')>()),
-  mantleService: { getApiKey: () => '', getRegion: () => '' },
-}));
 
 const summary = (): KiroSessionSummary => ({
   sessionId: SESSION,

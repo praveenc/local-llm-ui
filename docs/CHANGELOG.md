@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The model list no longer reads the saved preferences from browser storage on each render and each fetch. It uses the preferences that the app already has (#108, #119) ([#139])
 - The Ollama and LM Studio model lists always use the app's `/api` routes. Before, a build that was not the development build called `localhost` directly for these two lists only (#113) ([#139])
 - The command of a local MCP server is the same in the check and in the start. The app removes spaces around it once and keeps its case. Before, the check changed `NODE` to `node`, and the start then failed ([#140])
+- Each provider API key is now in one place: the preferences in your browser. The app moves a key that is only in the older storage of an earlier version into the preferences when the page loads, and then removes the older copy. When the two copies differ, the key in **Preferences** stays. If the browser storage is blocked, the page still loads. Before, the app kept a second copy of the Anthropic, OpenRouter, Groq, and Cerebras keys, and of the Bedrock Mantle key in memory, so a key that you removed in **Preferences** could still be sent with a model list request (#129) ([#144])
 - MCP errors no longer show values that can hold a secret. An argument error names the argument number, for example "Argument 2 contains characters that the app does not allow", and an error for a URL that does not parse says "The URL is not valid". Before, these errors showed the whole argument or URL ([#140])
 
 ## [1.4.0] - 2026-11-27
@@ -312,6 +313,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#144]: https://github.com/praveenc/local-llm-ui/pull/144
 [#143]: https://github.com/praveenc/local-llm-ui/pull/143
 [#141]: https://github.com/praveenc/local-llm-ui/pull/141
 [#140]: https://github.com/praveenc/local-llm-ui/pull/140

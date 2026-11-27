@@ -111,6 +111,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// These tests encode about 10 MB of files. They take about 0.5 s alone, and more than the
+// default 5 s when the whole suite runs on a busy host.
+const LARGE_FILE_TIMEOUT = 20_000;
+
 describe('useBedrockChat files', () => {
   it('sends a PNG again after the chat was left and opened again', async () => {
     const bodies = mockReplies();
@@ -169,66 +173,70 @@ describe('useBedrockChat files', () => {
     expect(rows[0].messageId).toBe(user.id);
   });
 
-  it('sends the oldest earlier file as a text line past the budget, and says so', async () => {
-    const bodies = mockReplies();
-    const { id } = await conversationService.create();
-    // Two earlier files whose base64 together is over the budget
-    const big = (fill: number) =>
-      new Uint8Array(Math.ceil((REQUEST_BUDGET * 0.6 * 3) / 4)).fill(fill);
-    const add = (
-      sequence: number,
-      role: 'user' | 'assistant',
-      content: string,
-      data?: Uint8Array,
-      name?: string
-    ) =>
-      conversationService.addMessage(
-        {
-          conversationId: id,
-          role,
-          content,
-          sequence,
-          createdAt: new Date(),
-          provider: 'bedrock',
-          modelId: model.id,
-          modelName: model.name,
-        },
-        data && [
+  it(
+    'sends the oldest earlier file as a text line past the budget, and says so',
+    async () => {
+      const bodies = mockReplies();
+      const { id } = await conversationService.create();
+      // Two earlier files whose base64 together is over the budget
+      const big = (fill: number) =>
+        new Uint8Array(Math.ceil((REQUEST_BUDGET * 0.6 * 3) / 4)).fill(fill);
+      const add = (
+        sequence: number,
+        role: 'user' | 'assistant',
+        content: string,
+        data?: Uint8Array,
+        name?: string
+      ) =>
+        conversationService.addMessage(
           {
-            name: name!,
-            format: 'pdf',
-            mediaType: 'application/pdf',
-            size: data.length,
-            data: data.buffer as ArrayBuffer,
+            conversationId: id,
+            role,
+            content,
+            sequence,
+            createdAt: new Date(),
+            provider: 'bedrock',
+            modelId: model.id,
+            modelName: model.name,
           },
-        ]
-      );
-    await add(1, 'user', 'first', big(1), 'old.pdf');
-    await add(2, 'assistant', 'one');
-    await add(3, 'user', 'second', big(2), 'new.pdf');
-    await add(4, 'assistant', 'two');
+          data && [
+            {
+              name: name!,
+              format: 'pdf',
+              mediaType: 'application/pdf',
+              size: data.length,
+              data: data.buffer as ArrayBuffer,
+            },
+          ]
+        );
+      await add(1, 'user', 'first', big(1), 'old.pdf');
+      await add(2, 'assistant', 'one');
+      await add(3, 'user', 'second', big(2), 'new.pdf');
+      await add(4, 'assistant', 'two');
 
-    const { result } = renderChat(id);
-    // Two large files load slowly from fake-indexeddb when the host is busy
-    await waitFor(() => expect(result.current.messages).toHaveLength(4), { timeout: 10_000 });
-    await act(async () => {
-      await result.current.sendMessage('third');
-    });
+      const { result } = renderChat(id);
+      // Two large files load slowly from fake-indexeddb when the host is busy
+      await waitFor(() => expect(result.current.messages).toHaveLength(4), { timeout: 10_000 });
+      await act(async () => {
+        await result.current.sendMessage('third');
+      });
 
-    const [first, , second, , third] = bodies[0];
-    expect(first.files).toEqual([]);
-    expect(first.content).toBe('first\n\n[Earlier file: old.pdf]');
-    expect(second.files.map((f) => f.name)).toEqual(['new.pdf']);
-    expect(second.content).toBe('second');
-    expect(third.content).toBe('third');
-    const base64 = bodies[0].flatMap((m) => m.files).reduce((n, f) => n + f.bytes.length, 0);
-    expect(base64).toBeLessThanOrEqual(REQUEST_BUDGET);
+      const [first, , second, , third] = bodies[0];
+      expect(first.files).toEqual([]);
+      expect(first.content).toBe('first\n\n[Earlier file: old.pdf]');
+      expect(second.files.map((f) => f.name)).toEqual(['new.pdf']);
+      expect(second.content).toBe('second');
+      expect(third.content).toBe('third');
+      const base64 = bodies[0].flatMap((m) => m.files).reduce((n, f) => n + f.bytes.length, 0);
+      expect(base64).toBeLessThanOrEqual(REQUEST_BUDGET);
 
-    // The reply says that one earlier file was not sent again, also after a reload
-    expect(result.current.messages.at(-1)?.filesNotResent).toBe(1);
-    const stored = await conversationService.getMessages(id);
-    expect(stored.at(-1)).toMatchObject({ role: 'assistant', filesNotResent: 1 });
-  });
+      // The reply says that one earlier file was not sent again, also after a reload
+      expect(result.current.messages.at(-1)?.filesNotResent).toBe(1);
+      const stored = await conversationService.getMessages(id);
+      expect(stored.at(-1)).toMatchObject({ role: 'assistant', filesNotResent: 1 });
+    },
+    LARGE_FILE_TIMEOUT
+  );
 
   it('sends a file that was not kept as a text line, with its name', async () => {
     const bodies = mockReplies();
@@ -302,52 +310,56 @@ describe('useBedrockChat files', () => {
     expect(stored).toMatchObject({ content: 'look' });
     expect(stored.attachments?.[0]).toMatchObject({ name: 'photo.png', kept: false });
   });
-  it('counts long pasted text in the budget, so the whole body stays under the server limit', async () => {
-    mockReplies();
-    const { id } = await conversationService.create();
-    // 5 MB of pasted text and a file of 5 MB base64: the files alone fit 8 MB, the body does not
-    const pasted = 'x'.repeat(5 * 1024 * 1024);
-    const earlier = new Uint8Array((5 * 1024 * 1024 * 3) / 4).fill(3);
-    await conversationService.addMessage(
-      {
-        conversationId: id,
-        role: 'user',
-        content: pasted,
-        sequence: 1,
-        createdAt: new Date(),
-        provider: 'bedrock',
-        modelId: model.id,
-        modelName: model.name,
-      },
-      [
+  it(
+    'counts long pasted text in the budget, so the whole body stays under the server limit',
+    async () => {
+      mockReplies();
+      const { id } = await conversationService.create();
+      // 5 MB of pasted text and a file of 5 MB base64: the files alone fit 8 MB, the body does not
+      const pasted = 'x'.repeat(5 * 1024 * 1024);
+      const earlier = new Uint8Array((5 * 1024 * 1024 * 3) / 4).fill(3);
+      await conversationService.addMessage(
         {
-          name: 'old.pdf',
-          format: 'pdf',
-          mediaType: 'application/pdf',
-          size: earlier.length,
-          data: earlier.buffer as ArrayBuffer,
+          conversationId: id,
+          role: 'user',
+          content: pasted,
+          sequence: 1,
+          createdAt: new Date(),
+          provider: 'bedrock',
+          modelId: model.id,
+          modelName: model.name,
         },
-      ]
-    );
-    const newFile = bytesToBase64(new Uint8Array((512 * 1024 * 3) / 4).fill(4).buffer);
+        [
+          {
+            name: 'old.pdf',
+            format: 'pdf',
+            mediaType: 'application/pdf',
+            size: earlier.length,
+            data: earlier.buffer as ArrayBuffer,
+          },
+        ]
+      );
+      const newFile = bytesToBase64(new Uint8Array((512 * 1024 * 3) / 4).fill(4).buffer);
 
-    const { result } = renderChat(id);
-    await waitFor(() => expect(result.current.messages).toHaveLength(1));
-    await act(async () => {
-      await result.current.sendMessage('third', [
-        { name: 'new.pdf', format: 'pdf', bytes: newFile },
-      ]);
-    });
+      const { result } = renderChat(id);
+      await waitFor(() => expect(result.current.messages).toHaveLength(1));
+      await act(async () => {
+        await result.current.sendMessage('third', [
+          { name: 'new.pdf', format: 'pdf', bytes: newFile },
+        ]);
+      });
 
-    const body = (vi.mocked(globalThis.fetch).mock.calls[0][1] as { body: string }).body;
-    expect(new TextEncoder().encode(body).length).toBeLessThan(REQUEST_LIMIT);
-    const { messages } = JSON.parse(body) as { messages: SentMessage[] };
-    expect(messages[0].files).toEqual([]);
-    expect(messages[0].content.endsWith('\n\n[Earlier file: old.pdf]')).toBe(true);
-    // The new message's own file always goes
-    expect(messages[1].files.map((f) => f.name)).toEqual(['new.pdf']);
-    expect(result.current.messages.at(-1)?.filesNotResent).toBe(1);
-  });
+      const body = (vi.mocked(globalThis.fetch).mock.calls[0][1] as { body: string }).body;
+      expect(new TextEncoder().encode(body).length).toBeLessThan(REQUEST_LIMIT);
+      const { messages } = JSON.parse(body) as { messages: SentMessage[] };
+      expect(messages[0].files).toEqual([]);
+      expect(messages[0].content.endsWith('\n\n[Earlier file: old.pdf]')).toBe(true);
+      // The new message's own file always goes
+      expect(messages[1].files.map((f) => f.name)).toEqual(['new.pdf']);
+      expect(result.current.messages.at(-1)?.filesNotResent).toBe(1);
+    },
+    LARGE_FILE_TIMEOUT
+  );
 });
 
 describe('buildChatMessages', () => {

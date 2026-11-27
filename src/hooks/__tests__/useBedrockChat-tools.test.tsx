@@ -16,8 +16,6 @@ vi.mock('../index', () => ({
   }),
 }));
 
-vi.mock('../../services', () => ({ mantleService: { getApiKey: () => '', getRegion: () => '' } }));
-
 const STORAGE_KEY = 'local-llm-ui-preferences';
 
 const mcpServer = {

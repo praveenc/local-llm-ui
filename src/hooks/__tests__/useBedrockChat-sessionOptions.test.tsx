@@ -43,8 +43,6 @@ vi.mock('../index', () => ({
   useConversationMutations: () => mutations,
 }));
 vi.mock('../../services/conversationService', () => ({ conversationService: service }));
-vi.mock('../../services', () => ({ mantleService: { getApiKey: () => '', getRegion: () => '' } }));
-
 /** A stored chat with this Kiro record; the hook reads only these fields */
 const chatWith = (kiro: KiroConversationSession) => ({ id: 'conv-1', kiro }) as Conversation;
 
