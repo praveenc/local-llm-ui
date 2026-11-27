@@ -46,8 +46,9 @@ export function setCORSHeaders(
 // The CORS headers above only stop a page on another site from reading a response. They do not
 // stop the request: a cross-site form post or a no-cors fetch with a text/plain body reaches the
 // proxy, which parses it as JSON. That started a chat with the host's AWS credentials or API keys,
-// and through /api/bedrock-aisdk/mcp-status it could start an MCP server command such as
-// `npx -y <package>`. This guard rejects those requests before any proxy sees them.
+// and through /api/bedrock-aisdk/mcp-status it could start any program on the host as an MCP
+// server (a name on PATH or a full path), for example `npx -y <package>`. This guard rejects
+// those requests before any proxy sees them.
 //
 // Rules for new routes: a GET must not change state (old browsers send a cross-site GET without
 // Origin or Sec-Fetch-Site), and a WebSocket upgrade does not pass through this middleware, so it

@@ -66,29 +66,25 @@ MCP is the highest-risk integration because it involves spawning child processes
 
 **Risk**: User-controlled `command` and `args` in stdio MCP configs are passed to `Experimental_StdioMCPTransport`, which spawns a child process.
 
-**Hardening applied** (`server/mcp-manager.ts`):
+**Hardening applied** (`src/utils/mcpCommand.ts`, `server/mcp-command.ts`, `server/mcp-manager.ts: validateStdioSecurity()`):
 
-1. **Command allowlist** — only these bare commands are permitted:
-   ```typescript
-   const ALLOWED_STDIO_COMMANDS = new Set([
-     'node', 'npx', 'python', 'python3', 'uvx', 'uv',
-     'docker', 'deno', 'bun', 'bunx',
-   ]);
-   ```
+1. **No command allowlist.** Since SEC-23, a command can be any program. Until then, only `node`, `npx`, `python`, `python3`, `uvx`, `uv`, `docker`, `deno`, `bun`, and `bunx` could start. See SEC-23 for why the list went.
 
-2. **No path separators** — blocks `/usr/bin/evil` or `../../evil`:
-   ```typescript
-   if (cmd.includes('/') || cmd.includes('\\')) {
-     throw new Error('[MCP Security] Command paths are not allowed');
-   }
-   ```
+2. **A shape rule for the command** — `classifyCommand(raw)` in `src/utils/mcpCommand.ts` (no DOM and no Node imports; the server and the form `validateMCPServerConfig` both use it). It trims the command once and never changes its case. The result is one of:
+   - `name`: no `/` and no `\`, for example `npx` or `github-mcp-server`. The server looks it up on `PATH` (SEC-23).
+   - `absolute`: starts with `/`.
+   - `home`: starts with `~/` and has more after it. The server expands `~/` (SEC-23).
+   - `invalid`, with a text: empty ("Command is required"), a control character ("Command contains characters that the app does not allow"), or any other shape: a `\`, a relative path (`./x`, `bin/x`), `~`, `~/`, or `~user/x` ("Use a program name or a full path that starts with / or ~/"). The form shows the last one as "Command is not valid. Use a program name or a full path that starts with / or ~/."
 
-3. **Shell metacharacter validation on args** — blocks `; rm -rf /`:
+3. **Shell metacharacter validation on args** — blocks `; rm -rf /`. No shell runs, so these characters do nothing there; the rule stays as a second line of defense:
    ```typescript
    const SHELL_METACHAR_PATTERN = /[;&|`$(){}!<>]/;
    ```
+   `findDisallowedArgument(args)` returns the number of the first bad argument. The error names the number, never the value, because an argument can hold a secret: "Argument 2 contains characters that the app does not allow".
 
-**To add a new allowed command**: Add it to `ALLOWED_STDIO_COMMANDS` in `server/mcp-manager.ts`.
+4. **No shell.** The AI SDK transport spawns with `shell: false`, so the app passes each argument as typed.
+
+**How to read it**: a stdio config passes `validateStdioSecurity` (shape and arguments) before the config hash and before any start. `createClient` then resolves the program (`resolveCommand`, SEC-23) and spawns the resolved path. To change what a command can be, change `classifyCommand` and its tests in `src/utils/__tests__/mcpCommand.test.ts`. The form and the server then agree.
 
 ### SEC-02: Environment Variable Leak Prevention (HIGH)
 
@@ -130,6 +126,38 @@ env: { ...getSafeEnv(), ...config.env }
 | `169.254.x.x` | Link-local addresses |
 | Non-http/https schemes | `file://`, `ftp://`, etc. |
 | HTTP redirects | AI SDK 7 MCP transports default to `redirect: 'error'`, so a validated URL cannot redirect to a blocked target |
+
+### SEC-23: Standalone MCP Server Programs
+
+**Before**: SEC-01 allowed only 10 runner commands (`node`, `npx`, `python`, `python3`, `uv`, `uvx`, `docker`, `deno`, `bun`, `bunx`) and refused any `/`. Many MCP servers are one program that you start by its name or its path, for example `github-mcp-server`, so the app could not run them.
+
+**Why the allowlist goes** (D15 (a), `docs/UIUX-IMPROVEMENTS.md` item 24): it did not stop other code. `npx -y <package>`, `uvx <package>`, and `docker run <image>` already run any code that the user names. And the user's environment variables go on top of the safe ones (`{ ...getSafeEnv(), ...config.env }`), so a `PATH` in a server's environment could make `npx` start a different program named `npx`. So the allowlist gave little protection and blocked real servers.
+
+**What stays**:
+
+- SEC-13: only the app's own pages can call the routes that start a server.
+- The dev server listens on loopback only.
+- No shell (SEC-01), and the shell-character check on arguments (SEC-01).
+- The safe environment (SEC-02).
+- The shape rule (SEC-01): a program name, or a full path that starts with `/` or `~/`. A relative path is refused, because it depends on the folder where the dev server started.
+
+**How the server finds the program** (`server/mcp-command.ts: resolveCommand(command, env)`):
+
+- The command is trimmed once. The trimmed text is the text that the app checks, hashes, resolves, and shows in errors. The app never lowercases it, and the lookup is case-sensitive. Before, the check lowercased the command and the spawn used the text as typed, so `NODE` passed the check as `node`.
+- A name is looked up on the `PATH` of the child's own environment: the safe environment with the server's environment on top, so a `PATH` that the user sets wins. This is the `PATH` that the child gets. The lookup skips empty and relative entries, folders, and files that are not executable (`fs.stat` follows links, `isFile()`, then `fs.access(X_OK)`), and keeps searching. The first match wins.
+- `~/` expands with `os.homedir()` of the dev server process, never with a `HOME` from the server's environment.
+- No `realpath` and no `normalize`: a program such as a virtualenv `python` finds its environment from the path that it was started with.
+- The manager spawns the absolute path that `resolveCommand` returns, with the same environment. So the file that was checked is the file that runs. Node's own `PATH` search (which tries relative entries) never runs. A test puts a decoy program in a relative `PATH` entry and checks that it does not run.
+- Linux and macOS only. A `\` stays refused.
+
+**Errors** (they show in the MCP popover and under **Check**):
+
+- "Command not found: x" for a name with no match on `PATH`.
+- "x is not a program" for a `/` or `~/` path that is missing, a folder, or not executable, and for a spawn that fails after the check (`EACCES`, `ENOEXEC`, and similar). `x` is the command as the user typed it. The error never shows the resolved host path or the expanded home folder.
+- An argument error names the argument number, not the value (SEC-01).
+- A remote URL error shows only the scheme or the host, never the query or the user info. A URL that does not parse gives "[MCP Security] The URL is not valid" (SEC-03).
+
+**Accepted risk**: anyone who can open the app can start any program on the host, with the user's rights. That was already true through `npx` and `uvx`. Keep the dev server on `localhost`, and share it only through an authenticated tunnel (SEC-13).
 
 ### SEC-10: Connection Timeout and Process Cleanup (LOW)
 
@@ -221,7 +249,7 @@ maxOutputTokens: capMaxTokens(request.max_tokens), // Math.min(val ?? 2048, 3276
 **Before**: SEC-05 only stopped another site from *reading* a response. The request itself still ran. A page on any site could send a form post, or a `fetch` with `mode: 'no-cors'` and a `text/plain` body, to `http://localhost:5173/api/...`. These are "simple" requests, so the browser sends them without a preflight. The proxies parsed the body as JSON whatever its `Content-Type` was. So the page could:
 
 - start a chat that used the host's AWS credentials or API keys;
-- send `mcpServers` to `/api/bedrock-aisdk/mcp-status` or a chat route, and so start an allowed MCP command such as `npx -y <package>` on the host;
+- send `mcpServers` to `/api/bedrock-aisdk/mcp-status` or a chat route, and so start an MCP server command on the host, for example `npx -y <package>` (since SEC-23, any program);
 - send requests to Ollama and LM Studio through `/api/ollama` and `/api/lmstudio`.
 
 **After** (`server/security.ts: checkApiRequest()`, `createApiGuard()`, `apiGuardPlugin()`): one middleware checks every HTTP request to `/api` before any proxy:
@@ -520,7 +548,8 @@ MCP-specific security functions live in `server/mcp-manager.ts`:
 
 | Function | Purpose |
 |----------|---------|
-| `validateStdioSecurity(config)` | Command allowlist + arg metachar check |
+| `validateStdioSecurity(config)` | Command shape rule + arg metachar check (`classifyCommand`, `findDisallowedArgument` from `src/utils/mcpCommand.ts`) |
+| `resolveCommand(command, env)` (`server/mcp-command.ts`) | Find the program on the child's `PATH`, or check a full path; returns the path to spawn (SEC-23) |
 | `getSafeEnv()` | Safe env var allowlist for child processes |
 | `validateUrlSecurity(url)` | SSRF protection for HTTP/SSE URLs |
 | `validateConfigStructure(config)` | Runtime type validation |
@@ -536,7 +565,7 @@ How each OWASP LLM risk maps to this project:
 |------------|-----------|--------|
 | **LLM01: Prompt Injection** | MCP tool results flow back into LLM context — indirect injection vector | ⚠️ Architecture-level concern |
 | **LLM02: Sensitive Info Disclosure** | process.env leak to MCP, API keys in localStorage, verbose errors | ✅ SEC-02 fixed, SEC-04/08 noted |
-| **LLM03: Supply Chain** | npm dependencies, MCP servers from untrusted sources | ✅ npm audit clean, command allowlist |
+| **LLM03: Supply Chain** | npm dependencies, MCP servers from untrusted sources | ✅ npm audit clean; ⚠️ a local MCP server can be any program (SEC-23): the user decides which servers to trust |
 | **LLM05: Improper Output Handling** | LLM markdown rendered in browser | ✅ rehype-sanitize in place |
 | **LLM06: Excessive Agency** | MCP tools executed without confirmation | ⚠️ No human-in-the-loop yet |
 | **LLM07: System Prompt Leakage** | No secrets in system prompts | ✅ N/A — no system prompts with secrets |
@@ -584,6 +613,7 @@ Items identified but not yet implemented (long-term):
 | 2026-03-06 | Full project (first audit) | 14 (1C, 3H, 5M, 2L, 3I) | 8 of 14 |
 | 2026-11-24 | `/api` routes before the Kiro provider | 1 (SEC-13: cross-site requests reach the proxies, including the MCP command start) | 1 of 1 |
 | 2026-11-27 | Chat proxies and body limits (SEC-22) | 6 (no validation before the MCP start and the SSE headers; no abort when the browser leaves; uncapped error text; no limit on the logout body and the plain proxies; the limit counted characters) | 6 of 6 |
+| 2026-11-27 | MCP command allowlist removed (SEC-23) | 3 (the check lowercased the command and the spawn did not; the command was not trimmed for the spawn; argument and URL errors showed their values) | 3 of 3 |
 
 ---
 
@@ -592,7 +622,8 @@ Items identified but not yet implemented (long-term):
 ```
 server/
 ├── security.ts             # Shared: same-origin guard, CORS, body limits, chat request checks, error cap, token cap
-├── mcp-manager.ts          # MCP: command allowlist, env allowlist, SSRF, timeout, validation
+├── mcp-manager.ts          # MCP: command shape and argument checks, env allowlist, SSRF, timeout, validation
+├── mcp-command.ts          # MCP: find the program of a stdio server on PATH (SEC-23)
 ├── kiro-proxy.ts           # Kiro routes (uses security.ts)
 ├── acp/                    # Generic ACP layer: agent process, process groups, permissions (no harness names)
 ├── kiro/                   # Kiro harness: kiro-cli commands, sign-in, chat route, approvals

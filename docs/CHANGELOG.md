@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `POST /api/kiro/logout` accepts a body of at most 1 KB, and the plain proxies `/api/ollama` and `/api/lmstudio` accept at most 16 KB. A larger body gets `413`. The body limits now count bytes, not characters (#111, #112) ([#138])
 - The **Anthropic** group of the model picker now shows the models that your key can use, with Anthropic's names, for example **Claude Opus 5.5**. The app gets the list from the Anthropic Models API through `GET /api/aisdk/models?provider=anthropic`. If the list does not load, the picker shows Claude Fable 5.2, Claude Opus 5.5, Claude Sonnet 5.5, and Claude Haiku 5.5. Before, the app showed a fixed list of older models, for example Claude Sonnet 4.5 (#107) ([#139])
 - Each model list call of `/api/aisdk/models` (Anthropic, Groq, and Cerebras) stops after 10 seconds, and its error text is at most 500 characters, with no API key in it ([#139])
+- A local MCP server can now start any program. In **Command**, type a program name that is on `PATH`, for example `github-mcp-server`, or a full path that starts with `/` or `~/`. Before, only `node`, `npx`, `python`, `python3`, `uv`, `uvx`, `docker`, `deno`, `bun`, and `bunx` could start, and a path was refused. A relative path such as `./server` or `bin/server` is still refused, with "Use a program name or a full path that starts with / or ~/". The placeholder and the help text of the field say what to type. A name that the app cannot find says "Command not found: x", and a path that does not go to a program says "x is not a program" ([#140])
 
 #### Removed
 
@@ -36,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Bedrock Mantle reply now ends once. Before, the stream sent its end marker twice (#110) ([#138])
 - The model list no longer reads the saved preferences from browser storage on each render and each fetch. It uses the preferences that the app already has (#108, #119) ([#139])
 - The Ollama and LM Studio model lists always use the app's `/api` routes. Before, a build that was not the development build called `localhost` directly for these two lists only (#113) ([#139])
+- The command of a local MCP server is the same in the check and in the start. The app removes spaces around it once and keeps its case. Before, the check changed `NODE` to `node`, and the start then failed ([#140])
+- MCP errors no longer show values that can hold a secret. An argument error names the argument number, for example "Argument 2 contains characters that the app does not allow", and an error for a URL that does not parse says "The URL is not valid". Before, these errors showed the whole argument or URL ([#140])
 
 ## [1.4.0] - 2026-11-27
 
@@ -305,6 +308,7 @@ PR numbers link to GitHub.
 - ESLint for code quality
 
 [#141]: https://github.com/praveenc/local-llm-ui/pull/141
+[#140]: https://github.com/praveenc/local-llm-ui/pull/140
 [#139]: https://github.com/praveenc/local-llm-ui/pull/139
 [#138]: https://github.com/praveenc/local-llm-ui/pull/138
 [#137]: https://github.com/praveenc/local-llm-ui/pull/137

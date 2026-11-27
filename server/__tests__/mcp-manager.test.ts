@@ -1,8 +1,17 @@
 // @vitest-environment node
 import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative as relativePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -20,6 +29,20 @@ const SLOW = fixture('slow-mcp-server.mjs');
 const EXIT = fixture('exit-mcp-server.mjs');
 const SILENT = fixture('silent-mcp-server.mjs');
 const WRAPPER = fixture('wrapper-mcp-server.mjs');
+
+/**
+ * True when the temp folder is on a case-insensitive file system (APFS on macOS by default),
+ * where `MY-NODE` finds `my-node`. Probed once at run time.
+ */
+const caseInsensitive = (() => {
+  const dir = mkdtempSync(join(tmpdir(), 'mcp-manager-test-case-'));
+  try {
+    writeFileSync(join(dir, 'x'), '');
+    return existsSync(join(dir, 'X'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();
 
 /** Longer than the 1 s that the AI SDK waits for `server/discover` on stdio */
 const SLOW_START_MS = 1500;
@@ -473,9 +496,8 @@ describe('an AI SDK whose stdio transport has no process field', () => {
 });
 
 describe('a command that is not found', () => {
-  // The allowlist limits the commands, and which of them exist differs per host.
-  // `node` exists wherever the tests run, so a PATH with only an empty folder makes
-  // the spawn fail with ENOENT on every host.
+  // `node` exists wherever the tests run, so a PATH with only an empty folder makes the
+  // lookup on the child's PATH find nothing on every host.
   it('says the command was not found', async () => {
     const emptyDir = join(tempDir, 'empty');
     const [status] = await getMCPServerStatus([
@@ -484,6 +506,153 @@ describe('a command that is not found', () => {
 
     expect(status).toMatchObject({ status: 'error', error: 'Command not found: node' });
   }, 10_000);
+
+  it.skipIf(caseInsensitive)(
+    'does not lowercase the command: MY-NODE is not my-node on a case-sensitive file system',
+    async () => {
+      const bin = join(tempDir, 'bin');
+      mkdirSync(bin);
+      symlinkSync(process.execPath, join(bin, 'my-node'));
+
+      const [status] = await getMCPServerStatus([
+        { ...stdio('upper', [SLOW, '0', 'modern'], { PATH: bin }), command: 'MY-NODE' },
+      ]);
+
+      expect(status).toMatchObject({ status: 'error', error: 'Command not found: MY-NODE' });
+    },
+    10_000
+  );
+});
+
+describe('a standalone program as the command (D15 (a))', () => {
+  it('starts a program by its full path', async () => {
+    const [status] = await getMCPServerStatus([
+      { ...stdio('full-path', [SLOW, '0', 'modern']), command: process.execPath },
+    ]);
+
+    expect(status).toMatchObject({ status: 'connected', tools: ['echo'] });
+  }, 10_000);
+
+  it('starts a program by a name on the PATH of the server env', async () => {
+    const bin = join(tempDir, 'bin');
+    mkdirSync(bin);
+    symlinkSync(process.execPath, join(bin, 'my-node'));
+
+    const [status] = await getMCPServerStatus([
+      { ...stdio('by-name', [SLOW, '0', 'modern'], { PATH: bin }), command: 'my-node' },
+    ]);
+
+    expect(status).toMatchObject({ status: 'connected', tools: ['echo'] });
+  }, 10_000);
+
+  it('spawns the resolved path, not the typed name', async () => {
+    // Node's spawn searches the child's PATH itself and also tries relative entries, which
+    // the resolver skips. A decoy `my-node` in a relative entry that comes first runs only
+    // when the manager passes the typed name to the transport.
+    const decoyDir = join(tempDir, 'decoy');
+    mkdirSync(decoyDir);
+    const marker = join(tempDir, 'decoy-ran');
+    writeFileSync(join(decoyDir, 'my-node'), `#!/bin/sh\necho ran > '${marker}'\nexit 3\n`, {
+      mode: 0o755,
+    });
+    const bin = join(tempDir, 'bin');
+    mkdirSync(bin);
+    symlinkSync(process.execPath, join(bin, 'my-node'));
+    const decoyEntry = relativePath(process.cwd(), decoyDir);
+    expect(decoyEntry.startsWith('/')).toBe(false);
+
+    const [status] = await getMCPServerStatus([
+      {
+        ...stdio('resolved', [SLOW, '0', 'modern'], { PATH: `${decoyEntry}:${bin}` }),
+        command: 'my-node',
+      },
+    ]);
+
+    expect(status).toMatchObject({ status: 'connected', tools: ['echo'] });
+    expect(existsSync(marker)).toBe(false);
+  }, 10_000);
+
+  it('shows the typed command, not the resolved host path, when the spawn fails', async () => {
+    const bin = join(tempDir, 'bin');
+    mkdirSync(bin);
+    const resolved = join(bin, 'my-node');
+    symlinkSync(process.execPath, resolved);
+    // The mode changed between the check and the spawn: Node rejects with the host path
+    const spawnError = Object.assign(new Error(`spawn ${resolved} EACCES`), {
+      code: 'EACCES',
+      errno: -13,
+      syscall: `spawn ${resolved}`,
+      path: resolved,
+    });
+    vi.spyOn(Experimental_StdioMCPTransport.prototype, 'start').mockRejectedValue(spawnError);
+
+    const [status] = await getMCPServerStatus([
+      { ...stdio('eacces', [SLOW, '0', 'modern'], { PATH: bin }), command: 'my-node' },
+    ]);
+
+    expect(status).toMatchObject({ status: 'error', error: 'my-node is not a program' });
+    expect(status.error).not.toContain(tempDir);
+  }, 10_000);
+
+  it('trims the spaces around the command', async () => {
+    const [status] = await getMCPServerStatus([
+      { ...stdio('spaces', [SLOW, '0', 'modern']), command: ' node ' },
+    ]);
+
+    expect(status).toMatchObject({ status: 'connected', tools: ['echo'] });
+  }, 10_000);
+
+  it('refuses a relative path, and a path that is not a program', async () => {
+    const [relative, folder] = await getMCPServerStatus([
+      { ...stdio('relative', [SLOW]), command: './server' },
+      { ...stdio('folder', [SLOW]), command: tempDir },
+    ]);
+
+    expect(relative.error).toBe('Use a program name or a full path that starts with / or ~/');
+    expect(folder.error).toBe(`${tempDir} is not a program`);
+  });
+});
+
+describe('security error texts', () => {
+  it('name the argument number and not the value', async () => {
+    const [status] = await getMCPServerStatus([stdio('arg', [SLOW, 'secret$value'])]);
+
+    expect(status.error).toBe('Argument 2 contains characters that the app does not allow');
+    expect(status.error).not.toContain('secret');
+  });
+
+  it('show no part of a URL that does not parse', async () => {
+    const [status] = await getMCPServerStatus([
+      {
+        id: 'bad-url',
+        name: 'bad-url',
+        enabled: true,
+        transport: 'http',
+        url: 'not a url?token=url-secret-value',
+        headers: {},
+      },
+    ]);
+
+    expect(status.error).toBe('[MCP Security] The URL is not valid');
+  });
+
+  it('show no query and no user info of a blocked URL', async () => {
+    const [status] = await getMCPServerStatus([
+      {
+        id: 'private',
+        name: 'private',
+        enabled: true,
+        transport: 'http',
+        url: 'http://someone:pass-secret@10.0.0.1/mcp?token=query-secret',
+        headers: {},
+      },
+    ]);
+
+    expect(status.status).toBe('error');
+    expect(status.error).not.toContain('pass-secret');
+    expect(status.error).not.toContain('query-secret');
+    expect(status.error).not.toContain('someone');
+  });
 });
 
 describe('SEC-11 invalid config', () => {

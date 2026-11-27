@@ -313,9 +313,9 @@ describe('MCPServerSettings accessibility', () => {
     it('describes the command', async () => {
       await open();
       const command = screen.getByLabelText('Command');
-      expect(command).toHaveAttribute('placeholder', 'npx, uvx, node, python, etc.');
+      expect(command).toHaveAttribute('placeholder', 'npx, uvx, or the name or path of a program');
       expect(command).toHaveAccessibleDescription(
-        'The program that starts the server. Put its arguments in the fields below.'
+        'A program name on PATH, or a full path that starts with / or ~/. Put its arguments in the fields below.'
       );
     });
 

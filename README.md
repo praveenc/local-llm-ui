@@ -415,7 +415,7 @@ To add a server:
 1. Open **Preferences → MCP Servers**.
 2. Click **Local** for a stdio server or **Remote** for an HTTP or SSE server. If you have no servers yet, the buttons are **Add Local Server** and **Add Remote Server**.
 3. Fill in the form. A new server opens with the cursor in **Name**. A local server needs these fields:
-   - **Command**: the program that starts the server, for example `npx` or `uvx`.
+   - **Command**: the program that starts the server. Type a program name that is on `PATH`, for example `npx`, `uvx`, or `github-mcp-server`. Or type a full path that starts with `/` or `~/`, for example `~/.local/bin/my-server`. A path that starts with `~/` is in your home folder. The app does not accept a relative path such as `./server` or `bin/server`.
    - **Arguments**: one argument in each field, with no quotes. For `npx -y @modelcontextprotocol/server-filesystem ~/notes`, type `-y`, then `@modelcontextprotocol/server-filesystem`, then the full path of the folder. The app does not use a shell, so it does not remove quotes, and it does not expand `~` or `$HOME`.
    - **Environment Variables**: one variable in each row. Type the full value, with no quotes and no `$VAR`.
 
@@ -427,7 +427,7 @@ The MCP button in the chat input shows the connected servers and their tools. A 
 
 The app starts a local server to check it at these times only: when the page loads, when you close Preferences, and when you open the MCP popover. It does not start a server while you type in the form. To check one server, open it in **Preferences → MCP Servers** and click **Check** at the end of its form. The result shows under the button, for example **Connected · 7 tools**, or the error. **Check** also works for a server that is off.
 
-For safety, a local server must start with an approved command: `node`, `npx`, `python`, `python3`, `uv`, `uvx`, `docker`, `deno`, `bun`, or `bunx`. The app also blocks shell characters in arguments, blocks private network addresses for remote servers, and does not share your environment variables with servers. For more data, see [docs/SECURITY-LEARNINGS.md](docs/SECURITY-LEARNINGS.md).
+For safety, the app starts a local server with no shell. It blocks shell characters in arguments, blocks private network addresses for remote servers, and does not share your environment variables with servers. A local server can be any program, and it runs with your user rights on the computer that runs `npm run dev`. Add only servers that you trust. Anyone who can open the app can add a server and start it, so share the app only through a tunnel that asks for a sign-in. For more data, see [docs/SECURITY-LEARNINGS.md](docs/SECURITY-LEARNINGS.md).
 
 ### Quote and Ask
 
@@ -638,7 +638,8 @@ The app keeps all preferences in your browser. Preferences has no Save button. T
 The MCP popover and **Check** show the reason, with the last lines of the server's error output. The terminal that runs `npm run dev` shows all of the output, with the server name at the start of each line.
 
 - **`npm error code E401`, `EALLOWREMOTE`, or another npm error:** `npx` could not get the package. Do the same `npx` command in a terminal. If it fails there too, sign in to your npm registry again (`npm login`), or add the environment variable `npm_config_registry` with the value `https://registry.npmjs.org/` to the server.
-- **Command not found:** install the program, or make sure that it is on the `PATH` of the terminal that runs `npm run dev`.
+- **Command not found:** install the program, or make sure that it is on the `PATH` of the terminal that runs `npm run dev`. You can also type the full path of the program, or set `PATH` in the environment variables of the server.
+- **x is not a program:** the full path does not go to a file that can run. Make sure that the file exists, that it is not a folder, and that it is executable (`chmod +x`).
 - **The server did not answer in 15 s:** the first start of `npx` or `uvx` can take a long time, because it downloads the package. Click **Check** again.
 - **The server stopped before it answered:** read the last lines in the message. Often an argument or an environment variable is wrong. Remove quotes from the values.
 
