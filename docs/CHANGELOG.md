@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 2026-11
 
+#### Added
+
+- Attached files stay with the chat. The app keeps each file in your browser, so the file is still there after a reload, and the model gets it again on later turns, after **Regenerate**, and in a fork from **Send to Fork**. When the files are too large to send again in one request, the app sends the oldest ones as a line with their name, and a line under the reply says, for example, **1 earlier file was not sent again**. The app keeps at most 500 MB of data. When it cannot keep a file, it saves the message without that file, and the file says **File not kept**. Before, the app kept only the file names, so the files were gone after a reload, and **Regenerate** and **Send to Fork** sent the message without them (#102) ([#143])
+- Your message shows its files above the text. An image shows as a thumbnail that opens full size in a new tab. Each other file shows its name, its type, and its size. Before, the transcript did not show the files (#101) ([#143])
+
 #### Changed
 
 - Each chat proxy now checks the chat request before it does anything else. A body that is not valid JSON, or that has a wrong field (for example no model, a model id with control characters, a `tool` role, or no message with text), gets a short `400` JSON error. The server checks the request before it reads an API key, starts the MCP servers of the request, or opens the stream. Before, most proxies used the fields as they came, so a bad body could start MCP servers or end in a raw stream error. OpenRouter keeps its strict model id rule (#125, #126) ([#138])
@@ -304,6 +309,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#143]: https://github.com/praveenc/local-llm-ui/pull/143
 [#141]: https://github.com/praveenc/local-llm-ui/pull/141
 [#139]: https://github.com/praveenc/local-llm-ui/pull/139
 [#138]: https://github.com/praveenc/local-llm-ui/pull/138
