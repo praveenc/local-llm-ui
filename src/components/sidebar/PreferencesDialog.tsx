@@ -19,6 +19,7 @@ import { useKiroStatus } from '../../hooks/useKiroStatus';
 import { useResolvedVisualMode } from '../../hooks/useResolvedVisualMode';
 import { kiroDefaultProviderError } from '../../utils/kiroStatus';
 import type { KiroStatus } from '../../utils/kiroStatus';
+import { MCP_SERVERS_CHECK_EVENT } from '../../utils/mcpServers';
 import {
   PROVIDER_API_KEY_FIELDS,
   isProviderConfigured,
@@ -192,6 +193,8 @@ export function PreferencesDialog({
   const handleOpenChange = (next: boolean) => {
     if (!next) {
       savePending();
+      // The saved servers are final now: the MCP button checks them
+      window.dispatchEvent(new CustomEvent(MCP_SERVERS_CHECK_EVENT));
       // A sign-in that runs keeps its wish; an open form or an error does not
       if (kiroPhase !== 'starting' && kiroPhase !== 'waiting') makeKiroDefault.current = false;
     }

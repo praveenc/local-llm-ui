@@ -20,6 +20,7 @@ import {
   PowerOff,
   Terminal,
   Trash2,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 
@@ -52,6 +53,22 @@ import {
   createDefaultStdioConfig,
   validateMCPServerConfig,
 } from '../../types/mcp';
+import { hasOuterQuotes } from '../../utils/mcpFieldHints';
+import { MCPServerCheck } from './MCPServerCheck';
+
+// ─── Quote warning ────────────────────────────────────────────────────────────
+
+const QUOTE_WARNING =
+  'The quotes are part of this value. Remove them unless the server needs them.';
+
+function QuoteWarning({ id }: { id: string }) {
+  return (
+    <p id={id} className="flex items-start gap-1 text-xs text-status-warn">
+      <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+      {QUOTE_WARNING}
+    </p>
+  );
+}
 
 // ─── Key-Value Editor (for env vars and headers) ──────────────────────────────
 
@@ -63,6 +80,10 @@ interface KeyValueEditorProps {
   valueType?: 'text' | 'password';
   /** Singular noun used in accessible names, e.g. "Header" */
   label: string;
+  /** Id of a help text that describes every name and value input */
+  helpId?: string;
+  /** Warn under a value that starts and ends with the same quote */
+  warnQuotes?: boolean;
 }
 
 interface KeyValueRow {
@@ -70,6 +91,10 @@ interface KeyValueRow {
   key: string;
   value: string;
 }
+
+/** Join the ids that exist into one aria-describedby value */
+const describedBy = (...ids: Array<string | undefined>): string | undefined =>
+  ids.filter(Boolean).join(' ') || undefined;
 
 let nextRowId = 0;
 const toRows = (entries: Record<string, string>): KeyValueRow[] =>
@@ -92,6 +117,8 @@ function KeyValueEditor({
   valuePlaceholder = 'Value',
   valueType = 'text',
   label,
+  helpId,
+  warnQuotes = false,
 }: KeyValueEditorProps) {
   // Local rows with stable ids, so a row keeps its place and its focus while its name is
   // typed. Keying rows by the name re-created the row on every keystroke.
@@ -146,6 +173,10 @@ function KeyValueEditor({
               ? 'Add a name, or this row is not saved.'
               : null;
         const errorId = `${baseId}-${row.id}-error`;
+        const quoteId = `${baseId}-${row.id}-quotes`;
+        const showQuoteWarning = warnQuotes && hasOuterQuotes(row.value);
+        const nameDescribedBy = describedBy(rowError ? errorId : undefined, helpId);
+        const valueDescribedBy = describedBy(showQuoteWarning ? quoteId : undefined, helpId);
         return (
           <div key={row.id} className="space-y-1">
             <div className="flex items-center gap-2">
@@ -153,7 +184,7 @@ function KeyValueEditor({
                 ref={index === rows.length - 1 ? lastKeyRef : undefined}
                 aria-label={`${label} name ${index + 1}`}
                 aria-invalid={rowError ? true : undefined}
-                aria-describedby={rowError ? errorId : undefined}
+                aria-describedby={nameDescribedBy}
                 value={row.key}
                 onChange={(e) => updateRow(row.id, { key: e.target.value })}
                 placeholder={keyPlaceholder}
@@ -162,6 +193,7 @@ function KeyValueEditor({
               <Input
                 aria-label={`${label} value ${index + 1}`}
                 type={valueType}
+                aria-describedby={valueDescribedBy}
                 value={row.value}
                 onChange={(e) => updateRow(row.id, { value: e.target.value })}
                 placeholder={valuePlaceholder}
@@ -182,6 +214,7 @@ function KeyValueEditor({
                 {rowError}
               </p>
             )}
+            {showQuoteWarning && <QuoteWarning id={quoteId} />}
           </div>
         );
       })}
@@ -204,9 +237,16 @@ function KeyValueEditor({
 interface ArgsEditorProps {
   args: string[];
   onChange: (args: string[]) => void;
+  /** Id of the help text that describes every argument field */
+  helpId: string;
 }
 
-function ArgsEditor({ args, onChange }: ArgsEditorProps) {
+// The first two fields show a real example; the others say which argument they are
+const argPlaceholder = (index: number): string =>
+  index === 0 ? '-y' : index === 1 ? 'package-name' : `Argument ${index + 1}`;
+
+function ArgsEditor({ args, onChange, helpId }: ArgsEditorProps) {
+  const baseId = useId();
   const updateArg = (index: number, value: string) => {
     const updated = [...args];
     updated[index] = value;
@@ -231,27 +271,35 @@ function ArgsEditor({ args, onChange }: ArgsEditorProps) {
 
   return (
     <div className="space-y-2">
-      {args.map((arg, index) => (
-        <div key={index} className="flex items-center gap-2">
-          <Input
-            ref={index === args.length - 1 ? lastArgRef : undefined}
-            aria-label={`Argument ${index + 1}`}
-            value={arg}
-            onChange={(e) => updateArg(index, e.target.value)}
-            placeholder={`Argument ${index + 1}`}
-            className="h-8 text-xs font-mono"
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => removeArg(index)}
-            aria-label={`Remove argument ${index + 1}`}
-            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-          >
-            <X className="h-3 w-3" aria-hidden="true" />
-          </Button>
-        </div>
-      ))}
+      {args.map((arg, index) => {
+        const quoteId = `${baseId}-${index}-quotes`;
+        const showQuoteWarning = hasOuterQuotes(arg);
+        return (
+          <div key={index} className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Input
+                ref={index === args.length - 1 ? lastArgRef : undefined}
+                aria-label={`Argument ${index + 1}`}
+                aria-describedby={describedBy(showQuoteWarning ? quoteId : undefined, helpId)}
+                value={arg}
+                onChange={(e) => updateArg(index, e.target.value)}
+                placeholder={argPlaceholder(index)}
+                className="h-8 text-xs font-mono"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => removeArg(index)}
+                aria-label={`Remove argument ${index + 1}`}
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+              </Button>
+            </div>
+            {showQuoteWarning && <QuoteWarning id={quoteId} />}
+          </div>
+        );
+      })}
       <Button variant="outline" size="sm" onClick={addArg} className="h-7 text-xs gap-1">
         <Plus className="h-3 w-3" />
         Add argument
@@ -278,7 +326,13 @@ function ServerConfigForm({
   onToggleEnabled,
   isNew,
 }: ServerConfigFormProps) {
-  const [expanded, setExpanded] = useState(false);
+  // A new server opens with the cursor in Name; saved servers start closed
+  const [expanded, setExpanded] = useState(isNew);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const focusNameOnMount = useRef(isNew);
+  useEffect(() => {
+    if (focusNameOnMount.current) nameInputRef.current?.focus();
+  }, []);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const validationError = validateMCPServerConfig(config);
   const id = config.id;
@@ -343,6 +397,10 @@ function ServerConfigForm({
     onChange(newConfig);
   };
 
+  const trimmedName = config.name.trim();
+  const displayName =
+    trimmedName || (config.transport === 'stdio' ? 'New local server' : 'New remote server');
+
   const transportIcon =
     config.transport === 'stdio' ? (
       <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
@@ -375,7 +433,11 @@ function ServerConfigForm({
             />
           )}
           {transportIcon}
-          <span className="text-sm font-medium flex-1 truncate">{config.name || 'Untitled'}</span>
+          <span
+            className={`text-sm font-medium flex-1 truncate ${trimmedName ? '' : 'text-muted-foreground'}`}
+          >
+            {displayName}
+          </span>
         </button>
         {validationError && (
           <AlertCircle
@@ -392,7 +454,7 @@ function ServerConfigForm({
           size="sm"
           onClick={onToggleEnabled}
           className="h-7 w-7 p-0"
-          aria-label={`${config.enabled ? 'Disable' : 'Enable'} server ${config.name || 'Untitled'}`}
+          aria-label={`${config.enabled ? 'Disable' : 'Enable'} server ${displayName}`}
           title={config.enabled ? 'Disable server' : 'Enable server'}
         >
           {config.enabled ? (
@@ -406,7 +468,7 @@ function ServerConfigForm({
           size="sm"
           onClick={onDelete}
           className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-          aria-label={`Remove server ${config.name || 'Untitled'}`}
+          aria-label={`Remove server ${displayName}`}
           title="Remove server"
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -426,12 +488,13 @@ function ServerConfigForm({
               </Label>
               <Input
                 id={`${id}-name`}
+                ref={nameInputRef}
                 onBlur={nameError.onBlur}
                 aria-invalid={nameError.message ? true : undefined}
                 aria-describedby={nameError.message ? nameError.id : undefined}
                 value={config.name}
                 onChange={(e) => updateField('name', e.target.value)}
-                placeholder="My MCP Server"
+                placeholder="my-server"
                 className="h-8 text-xs"
               />
               <FieldErrorText error={nameError} />
@@ -497,6 +560,8 @@ function ServerConfigForm({
               fieldError={fieldError}
             />
           )}
+
+          <MCPServerCheck config={config} />
         </div>
       )}
     </div>
@@ -532,6 +597,8 @@ function StdioFields({
 }) {
   const id = config.id;
   const commandHelpId = `${id}-command-help`;
+  const argsHelpId = `${id}-args-help`;
+  const envHelpId = `${id}-env-help`;
   const commandError = fieldError('command');
   return (
     <>
@@ -548,12 +615,12 @@ function StdioFields({
           }
           value={config.command}
           onChange={(e) => onChange({ ...config, command: e.target.value })}
-          placeholder="node, python, npx, etc."
+          placeholder="npx, uvx, node, python, etc."
           className="h-8 text-xs font-mono"
         />
         <FieldErrorText error={commandError} />
         <p id={commandHelpId} className="text-[10px] text-muted-foreground">
-          The command to run the MCP server process
+          The program that starts the server. Put its arguments in the fields below.
         </p>
       </div>
 
@@ -561,19 +628,33 @@ function StdioFields({
         <Label id={`${id}-args-label`} className="text-xs">
           Arguments
         </Label>
-        <ArgsEditor args={config.args} onChange={(args) => onChange({ ...config, args })} />
+        <p id={argsHelpId} className="text-[10px] text-muted-foreground">
+          One argument in each field, with no quotes. The app does not use a shell, so it passes
+          each field as you type it.
+        </p>
+        <ArgsEditor
+          args={config.args}
+          onChange={(args) => onChange({ ...config, args })}
+          helpId={argsHelpId}
+        />
       </div>
 
       <div role="group" aria-labelledby={`${id}-env-label`} className="space-y-1.5">
         <Label id={`${id}-env-label`} className="text-xs">
           Environment Variables
         </Label>
+        <p id={envHelpId} className="text-[10px] text-muted-foreground">
+          One variable in each row, with no quotes. The app does not expand <code>$VAR</code> or{' '}
+          <code>~</code>: type the full value.
+        </p>
         <KeyValueEditor
           label="Environment variable"
           entries={config.env}
           onChange={(env) => onChange({ ...config, env })}
-          keyPlaceholder="VARIABLE_NAME"
+          keyPlaceholder="NAME"
           valuePlaceholder="value"
+          helpId={envHelpId}
+          warnQuotes
         />
       </div>
     </>
