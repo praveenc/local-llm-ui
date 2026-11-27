@@ -21,6 +21,17 @@ describe('showKiroSessions', () => {
   });
 });
 
+describe('mcpImportDismissed', () => {
+  it('is an empty list for old preferences, then keeps the keys', () => {
+    localStorage.clear();
+    localStorage.setItem('local-llm-ui-preferences', JSON.stringify({ visualMode: 'dark' }));
+    expect(loadPreferences()).toMatchObject({ visualMode: 'dark', mcpImportDismissed: [] });
+    savePreferences({ ...loadPreferences(), mcpImportDismissed: ['k1'] });
+    expect(loadPreferences().mcpImportDismissed).toEqual(['k1']);
+    localStorage.clear();
+  });
+});
+
 describe('last selected model', () => {
   it('saves, loads, and clears the model', () => {
     localStorage.clear();

@@ -7,6 +7,12 @@ import { useState } from 'react';
 import type { MCPHTTPConfig, MCPServersMap, MCPStdioConfig } from '../../../types/mcp';
 import { MCPServerSettings } from '../MCPServerSettings';
 
+// The tab scans the other tools' files when it opens: no files here
+vi.mock('../../../services/mcpImport', () => ({
+  scanMCPImport: async () => ({ files: [] }),
+  readMCPImport: async () => ({ servers: [], skipped: [] }),
+}));
+
 const remote: MCPHTTPConfig = {
   id: 's2',
   name: 'Remote one',
@@ -66,6 +72,11 @@ describe('MCPServerSettings accessibility', () => {
     expect(screen.getByLabelText('Argument 2')).toHaveValue('pkg');
     expect(screen.getByLabelText('Environment variable name 1')).toHaveValue('TOKEN');
     expect(screen.getByLabelText('Environment variable value 1')).toHaveValue('abc');
+    // A value can be a secret, as a header value
+    expect(screen.getByLabelText('Environment variable value 1')).toHaveAttribute(
+      'type',
+      'password'
+    );
     expect(screen.getByRole('button', { name: 'Remove argument 2' })).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Remove environment variable TOKEN' })

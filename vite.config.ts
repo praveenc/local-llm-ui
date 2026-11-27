@@ -11,6 +11,7 @@ import { createKiroProxy } from './server/kiro-proxy.ts';
 import { createLMStudioAISDKProxy } from './server/lmstudio-aisdk-proxy.ts';
 import { handleLMStudioRequest } from './server/lmstudio-proxy.ts';
 import { handleMantleRequest } from './server/mantle-proxy.ts';
+import { createMCPImportProxy } from './server/mcp-import-proxy.ts';
 import { createOllamaAISDKProxy } from './server/ollama-aisdk-proxy.ts';
 import { createOpenRouterAISDKProxy } from './server/openrouter-aisdk-proxy.ts';
 import { apiGuardPlugin } from './server/security.ts';
@@ -109,6 +110,13 @@ export default defineConfig({
         server.middlewares.use(kiro);
         // A sign-in that waits for approval must not outlive the server
         server.httpServer?.once('close', () => kiro.close());
+      },
+    },
+    // Import MCP servers from the config files of other tools (POST only, SEC-13)
+    {
+      name: 'mcp-import-proxy',
+      configureServer(server) {
+        server.middlewares.use(createMCPImportProxy());
       },
     },
     // LMStudio SDK proxy for model management

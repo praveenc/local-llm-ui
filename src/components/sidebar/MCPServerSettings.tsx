@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 
+import { scanMCPImport } from '../../services/mcpImport';
 import type {
   MCPHTTPConfig,
   MCPSSEConfig,
@@ -54,7 +55,9 @@ import {
   validateMCPServerConfig,
 } from '../../types/mcp';
 import { hasOuterQuotes } from '../../utils/mcpFieldHints';
+import type { MCPImportScan } from '../../utils/mcpImport';
 import { MCPServerCheck } from './MCPServerCheck';
+import { MCPServerImport } from './MCPServerImport';
 
 // ─── Quote warning ────────────────────────────────────────────────────────────
 
@@ -654,6 +657,7 @@ function StdioFields({
           onChange={(env) => onChange({ ...config, env })}
           keyPlaceholder="NAME"
           valuePlaceholder="value"
+          valueType="password"
           helpId={envHelpId}
           warnQuotes
         />
@@ -723,10 +727,56 @@ function RemoteFields({
 interface MCPServerSettingsProps {
   servers: MCPServersMap;
   onChange: (servers: MCPServersMap) => void;
+  /** Short hashes of the "same server" keys that **Not now** of the import stored (item 25) */
+  importDismissed?: readonly string[];
+  onImportDismissedChange?: (keys: string[]) => void;
 }
 
-export function MCPServerSettings({ servers, onChange }: MCPServerSettingsProps) {
+let warnedScanFailed = false;
+
+/**
+ * One scan of the other tools' files each time the tab opens. Nothing while it runs; on an
+ * error nothing either (logged once).
+ */
+function useImportScan(): MCPImportScan | null {
+  const [scan, setScan] = useState<MCPImportScan | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    scanMCPImport(controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) setScan(result);
+      })
+      .catch(() => {
+        if (controller.signal.aborted || warnedScanFailed) return;
+        warnedScanFailed = true;
+        console.warn('[MCP import] The check of the other tools failed');
+      });
+    return () => controller.abort();
+  }, []);
+  return scan;
+}
+
+export function MCPServerSettings({
+  servers,
+  onChange,
+  importDismissed,
+  onImportDismissedChange,
+}: MCPServerSettingsProps) {
   const serverList = Object.values(servers);
+  const importScan = useImportScan();
+  // Old preferences can hold anything here
+  const dismissed = Array.isArray(importDismissed) ? importDismissed : [];
+  const importPanel = importScan && (
+    <MCPServerImport
+      scan={importScan}
+      servers={servers}
+      dismissed={dismissed}
+      onDismiss={(keys) => onImportDismissedChange?.(keys)}
+      onImport={(configs) =>
+        onChange({ ...servers, ...Object.fromEntries(configs.map((c) => [c.id, c])) })
+      }
+    />
+  );
   // Servers added while this tab is open have not been filled in yet
   const [addedIds, setAddedIds] = useState<string[]>([]);
   const enabledCount = serverList.filter((s) => s.enabled).length;
@@ -801,8 +851,11 @@ export function MCPServerSettings({ servers, onChange }: MCPServerSettingsProps)
         )}
       </div>
 
+      {serverList.length > 0 && importPanel}
+
       {serverList.length === 0 ? (
         <div className="border border-dashed rounded-lg p-6 text-center">
+          {importPanel && <div className="mb-4 empty:hidden">{importPanel}</div>}
           <Pencil className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
           <p className="text-sm text-muted-foreground">No MCP servers configured</p>
           <p className="text-xs text-muted-foreground mt-1">
