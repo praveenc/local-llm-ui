@@ -32,6 +32,7 @@ import {
   parseKiroPermissionResult,
 } from '../utils/kiroPermissions';
 import { isKiroChatInSync, parseKiroSessionStamp } from '../utils/kiroSessions';
+import { checkableServers } from '../utils/mcpServers';
 import { getMediaTypeFromFormat, lookupFormat } from '../utils/mediaTypes';
 import { loadPreferences } from '../utils/preferences';
 import { isRunningStatus, replyStore } from '../utils/replyStore';
@@ -389,11 +390,8 @@ export function useBedrockChat({
             Object.assign(headers, buildWebSearchHeaders(prefs));
           }
 
-          // Add enabled MCP server configs
-          const enabledMCPServers =
-            useTools && prefs.mcpServers
-              ? Object.values(prefs.mcpServers).filter((s) => s.enabled)
-              : [];
+          // Add the MCP servers that are enabled and complete (never one that is half typed)
+          const enabledMCPServers = useTools ? checkableServers(prefs.mcpServers) : [];
           if (enabledMCPServers.length > 0) {
             requestBody.mcpServers = enabledMCPServers;
           }
