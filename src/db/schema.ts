@@ -3,12 +3,13 @@
  */
 import Dexie, { type EntityTable } from 'dexie';
 
-import type { Conversation, Message, SavedPrompt } from './types';
+import type { Conversation, Message, SavedPrompt, StoredAttachment } from './types';
 
 export interface ConversationDB extends Dexie {
   conversations: EntityTable<Conversation, 'id'>;
   messages: EntityTable<Message, 'id'>;
   savedPrompts: EntityTable<SavedPrompt, 'id'>;
+  attachments: EntityTable<StoredAttachment, 'id'>;
 }
 
 const db = new Dexie('ChatConversationsDB') as ConversationDB;
@@ -47,6 +48,15 @@ db.version(3).stores({
   conversations: 'id, createdAt, updatedAt, status, *providers, *models, kiro.sessionId',
   messages: 'id, conversationId, [conversationId+sequence], createdAt',
   savedPrompts: 'id, name, category, createdAt',
+});
+
+// Version 4: the bytes of attached files (D-C), apart from the messages, so the chat's message
+// query does not read them. No data changes: no message had stored bytes before.
+db.version(4).stores({
+  conversations: 'id, createdAt, updatedAt, status, *providers, *models, kiro.sessionId',
+  messages: 'id, conversationId, [conversationId+sequence], createdAt',
+  savedPrompts: 'id, name, category, createdAt',
+  attachments: 'id, messageId, conversationId',
 });
 
 export { db };

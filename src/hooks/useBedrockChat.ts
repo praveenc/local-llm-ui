@@ -9,15 +9,26 @@ import { toast } from 'sonner';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { KiroConversationSession, MessageFeedback, Provider } from '../db/types';
+import type {
+  KiroConversationSession,
+  MessageFeedback,
+  NewAttachment,
+  Provider,
+} from '../db/types';
 import { mantleService } from '../services';
 import { conversationService } from '../services/conversationService';
 import { kiroService } from '../services/kiro';
 import { prepareKiroSend } from '../services/kiroSyncs';
 import { notifyReply } from '../services/replyNotices';
 import type { KiroModelMeta } from '../services/types';
-import type { MessagePart, ToolCallPart, UIMessage } from '../types/ai-messages';
-import { createUIMessage, getTextContent, toUIMessages } from '../types/ai-messages';
+import type { FilePart, MessagePart, ToolCallPart, UIMessage } from '../types/ai-messages';
+import {
+  base64Size,
+  base64ToBytes,
+  createUIMessage,
+  getTextContent,
+  toUIMessages,
+} from '../types/ai-messages';
 import { extractErrorMessage } from '../utils/errorMessage';
 import { normalizeMediaType } from '../utils/fileUtils';
 import {
@@ -65,6 +76,27 @@ import {
 
 export type ChatStatus = 'idle' | 'streaming' | 'submitted' | 'error';
 
+/**
+ * A file to send with a message: base64 `bytes`. A file whose bytes were not kept (D-C) has no
+ * `bytes`: regenerate and retry send it as a text line and keep its name.
+ */
+export interface ChatFile {
+  name: string;
+  format: string;
+  bytes?: string;
+  size?: number;
+}
+
+/** The most bytes of JSON that the server takes in one request (`MAX_BODY_SIZE`, `server/security.ts`) */
+export const REQUEST_LIMIT = 10 * 1024 * 1024;
+
+/**
+ * Room for the messages of one request: their text and their files. The 1 MB margin is for the
+ * rest of the body (model, settings, the MCP server list) and the JSON escapes of odd text.
+ * Earlier files past it go as a text line (D-E).
+ */
+export const REQUEST_BUDGET = REQUEST_LIMIT - 1024 * 1024;
+
 /** The model that the chat sends to */
 export interface ChatModel {
   id: string;
@@ -99,10 +131,7 @@ interface UseBedrockChatReturn {
    * Not stored with the reply.
    */
   streamStatus: string | null;
-  sendMessage: (
-    content: string,
-    files?: Array<{ name: string; format: string; bytes: string }>
-  ) => Promise<void>;
+  sendMessage: (content: string, files?: ChatFile[]) => Promise<void>;
   regenerate: (messageIndex: number) => Promise<void>;
   /** Resend the last user message after a failed reply */
   retryLast: () => Promise<void>;
@@ -144,7 +173,8 @@ export function useBedrockChat({
   }, [activeConversationId]);
 
   // Load conversation from DB
-  const { messages: dbMessages } = useConversation(activeConversationId);
+  const { messages: dbMessages, attachments: dbAttachments } =
+    useConversation(activeConversationId);
   const {
     createConversation,
     addMessage,
@@ -161,15 +191,19 @@ export function useBedrockChat({
   // Sync DB messages to local state when conversation loads (adjusting state during render).
   // Another chat clears the list until its messages load; an empty chat shows no messages. A
   // reply in the store still shows first (`shownMessages`), and the store entry stays as it is.
+  // The stored file bytes come with the messages and change on their own (D-C).
   const [syncedDbMessages, setSyncedDbMessages] = useState(dbMessages);
+  const [syncedDbAttachments, setSyncedDbAttachments] = useState(dbAttachments);
   const [syncedConversationId, setSyncedConversationId] = useState(activeConversationId);
   if (activeConversationId !== syncedConversationId) {
     setSyncedConversationId(activeConversationId);
     setSyncedDbMessages(dbMessages);
-    setMessages(dbMessages ? toUIMessages(dbMessages) : []);
-  } else if (dbMessages !== syncedDbMessages) {
+    setSyncedDbAttachments(dbAttachments);
+    setMessages(dbMessages ? toUIMessages(dbMessages, dbAttachments) : []);
+  } else if (dbMessages !== syncedDbMessages || dbAttachments !== syncedDbAttachments) {
     setSyncedDbMessages(dbMessages);
-    if (dbMessages) setMessages(toUIMessages(dbMessages));
+    setSyncedDbAttachments(dbAttachments);
+    if (dbMessages) setMessages(toUIMessages(dbMessages, dbAttachments));
   }
 
   // Stop the reply of the open chat only. A new chat or a fork that this hook put on screen goes
@@ -198,7 +232,7 @@ export function useBedrockChat({
   const sendMessage = useCallback(
     async (
       content: string,
-      files?: Array<{ name: string; format: string; bytes: string }>,
+      files?: ChatFile[],
       // Used by forkAndSend: send into a conversation that state does not show yet
       target?: { conversationId: string; history: UIMessage[] }
     ) => {
@@ -247,15 +281,16 @@ export function useBedrockChat({
       // Create user message
       const userMessage = createUIMessage('user', content);
       // Kiro takes no files in this version
-      if (!isKiro && files && files.length > 0) {
-        for (const file of files) {
-          userMessage.parts.push({
-            type: 'file',
-            filename: file.name,
-            mediaType: getMediaTypeFromFormat(file.format),
-            data: file.bytes,
-          } as MessagePart);
-        }
+      const sentFiles = !isKiro && files ? files : [];
+      for (const file of sentFiles) {
+        const size = file.bytes ? base64Size(file.bytes) : (file.size ?? 0);
+        userMessage.parts.push({
+          type: 'file',
+          filename: file.name,
+          mediaType: getMediaTypeFromFormat(file.format),
+          size,
+          ...(file.bytes ? { data: file.bytes } : { kept: false }),
+        });
       }
 
       // A stopped Kiro run of this chat may still write its Kiro record: wait for it before the
@@ -309,8 +344,15 @@ export function useBedrockChat({
             getConversation(currentConversationId),
             getMessages(currentConversationId),
           ]);
-          // The sync added turns to the database: the chat shows them before the new message
-          if (sync) run.setMessages(() => [...toUIMessages(storedMessages), userMessage]);
+          // The sync added turns to the database: the chat shows them before the new message,
+          // with the files of earlier messages
+          if (sync) {
+            // A failed read only shows those files as not kept
+            const storedFiles = await conversationService
+              .getAttachments(currentConversationId)
+              .catch(() => undefined);
+            run.setMessages(() => [...toUIMessages(storedMessages, storedFiles), userMessage]);
+          }
           storedKiro = stored?.kiro;
           const history: KiroHistoryMessage[] = toUIMessages(storedMessages)
             .filter((m): m is UIMessage & { role: 'user' | 'assistant' } => m.role !== 'system')
@@ -349,19 +391,27 @@ export function useBedrockChat({
       try {
         run.update({ status: 'streaming', streamStatus: null });
 
-        // Persist user message to DB
+        // Persist user message to DB, with the bytes of its files (D-C)
         const userSequence = await getNextSequence(currentConversationId);
-        await addMessage({
-          conversationId: currentConversationId,
-          role: 'user',
-          content,
-          sequence: userSequence,
-          createdAt: new Date(),
-          provider,
-          modelId,
-          modelName,
-          parameters,
-        });
+        const savedUser = await addMessage(
+          {
+            conversationId: currentConversationId,
+            role: 'user',
+            content,
+            sequence: userSequence,
+            createdAt: new Date(),
+            provider,
+            modelId,
+            modelName,
+            parameters,
+          },
+          sentFiles.length > 0 ? sentFiles.map(toNewAttachment) : undefined
+        );
+
+        // The history with the files that fit in the request (D-E); Kiro gets no files
+        const outgoing = kiroRequest
+          ? undefined
+          : buildChatMessages([...baseMessages, userMessage]);
 
         // Create streaming assistant message
         const assistantMessage: UIMessage = {
@@ -370,6 +420,7 @@ export function useBedrockChat({
           parts: [],
           createdAt: new Date(),
           model: { provider, id: modelId, name: modelName },
+          ...(outgoing?.filesNotResent && { filesNotResent: outgoing.filesNotResent }),
         };
 
         // Route to appropriate endpoint based on provider
@@ -384,27 +435,9 @@ export function useBedrockChat({
           endpoint = '/api/kiro/chat';
           requestBody = { ...kiroRequest };
         } else {
-          // Build request - filter out messages with empty content
-          const chatMessages = [...baseMessages, userMessage]
-            .filter((m) => {
-              const textContent = getTextContent(m);
-              return textContent.trim().length > 0;
-            })
-            .map((m) => ({
-              role: m.role,
-              content: getTextContent(m),
-              files: m.parts
-                .filter((p): p is MessagePart & { type: 'file' } => p.type === 'file')
-                .map((p) => ({
-                  name: (p as { filename?: string }).filename || 'file',
-                  format: getFormatFromMediaType((p as { mediaType?: string }).mediaType || ''),
-                  bytes: (p as { data?: string }).data || '',
-                })),
-            }));
-
           requestBody = {
             model: modelId,
-            messages: chatMessages,
+            messages: outgoing?.chatMessages ?? [],
             max_tokens: maxTokens,
             maxToolSteps,
             enableWebSearch: useTools && enableWebSearch,
@@ -837,10 +870,18 @@ export function useBedrockChat({
           usage: usageData,
           ...(storedToolCalls.length > 0 && { toolCalls: storedToolCalls }),
           ...(assistantMessage.reasoningMs && { reasoningMs: assistantMessage.reasoningMs }),
+          ...(assistantMessage.filesNotResent && {
+            filesNotResent: assistantMessage.filesNotResent,
+          }),
         });
-        // Give the shown message the stored id, so feedback on it finds the DB row
+        // Give the shown message the stored id, so feedback on it finds the DB row. The user
+        // message's files that the database could not keep say so now, as after a reload.
         run.setMessages((prev) =>
-          prev.map((m) => (m.id === assistantMessage.id ? { ...m, id: saved.id } : m))
+          withFilesNotKept(
+            prev.map((m) => (m.id === assistantMessage.id ? { ...m, id: saved.id } : m)),
+            userMessage.id,
+            savedUser?.attachments?.map((a) => a.kept) ?? []
+          )
         );
 
         // Kiro has seen the chat, the new message, and its reply. The next history leaves out
@@ -946,6 +987,8 @@ export function useBedrockChat({
       }
 
       const userContent = getTextContent(messages[userMessageIndex]);
+      // The same files go again (D-G)
+      const userFiles = filesOf(messages[userMessageIndex]);
       const history = messages.slice(0, userMessageIndex);
 
       // Drop the user message and everything after it (DB sequences are 1-based): sendMessage
@@ -954,8 +997,8 @@ export function useBedrockChat({
       replyStore.dismiss(activeConversationId);
       setMessages(history);
 
-      // Re-send the user message (without files for regeneration)
-      await sendMessage(userContent, undefined, { conversationId: activeConversationId, history });
+      // Re-send the user message with its files
+      await sendMessage(userContent, userFiles, { conversationId: activeConversationId, history });
     },
     [
       status,
@@ -967,7 +1010,7 @@ export function useBedrockChat({
     ]
   );
 
-  // Resend the last user message after a failed reply. Files are not resent (as in regenerate).
+  // Resend the last user message after a failed reply, with its files (D-G)
   const retryLast = useCallback(async () => {
     if (isRunningStatus(status) || !selectedModel || !activeConversationId) return;
     const messages = shownMessages;
@@ -977,12 +1020,13 @@ export function useBedrockChat({
     });
     if (lastUserIndex === -1) return;
     const content = getTextContent(messages[lastUserIndex]);
+    const files = filesOf(messages[lastUserIndex]);
     const history = messages.slice(0, lastUserIndex);
     // Drop the failed turn (DB sequences are 1-based) so it is not sent twice
     await deleteMessagesFromSequence(activeConversationId, lastUserIndex + 1);
     replyStore.dismiss(activeConversationId);
     setMessages(history);
-    await sendMessage(content, undefined, { conversationId: activeConversationId, history });
+    await sendMessage(content, files, { conversationId: activeConversationId, history });
   }, [
     status,
     selectedModel,
@@ -1137,4 +1181,124 @@ function getFormatFromMediaType(mediaType: string): string {
   const normalized = normalizeMediaType(mediaType);
   if (!normalized) return 'bin'; // truly unsupported binary
   return lookupFormat(normalized) ?? 'txt';
+}
+
+/** The file parts of a message */
+function fileParts(message: UIMessage): FilePart[] {
+  return message.parts.filter((p): p is FilePart => p.type === 'file');
+}
+
+/** A message's files, to send again (regenerate, retry) */
+function filesOf(message: UIMessage): ChatFile[] {
+  return fileParts(message).map((p) => ({
+    name: p.filename || 'file',
+    format: getFormatFromMediaType(p.mediaType || ''),
+    ...(p.data ? { bytes: p.data } : { size: p.size ?? 0 }),
+  }));
+}
+
+/** A file of the chat input as the database stores it */
+function toNewAttachment(file: ChatFile): NewAttachment {
+  return {
+    name: file.name,
+    format: file.format,
+    mediaType: getMediaTypeFromFormat(file.format),
+    size: file.bytes ? base64Size(file.bytes) : (file.size ?? 0),
+    ...(file.bytes && { data: base64ToBytes(file.bytes) }),
+  };
+}
+
+/**
+ * Mark the files of message `id` whose bytes the database did not keep (`kept`, in the order of
+ * the file parts)
+ */
+function withFilesNotKept(messages: UIMessage[], id: string, kept: boolean[]): UIMessage[] {
+  if (!kept.includes(false)) return messages;
+  return messages.map((message) => {
+    if (message.id !== id) return message;
+    let i = 0;
+    return {
+      ...message,
+      parts: message.parts.map((p) =>
+        p.type === 'file' && kept[i++] === false ? { ...p, kept: false } : p
+      ),
+    };
+  });
+}
+
+/** The line that stands for a file that the request does not carry (D-E) */
+export const earlierFileLine = (name: string): string => `[Earlier file: ${name}]`;
+
+/** The line for a file of the new message whose bytes the app did not keep */
+export const notKeptFileLine = (name: string): string => `[File not kept: ${name}]`;
+
+const utf8 = new TextEncoder();
+/** The bytes of a value in the request's JSON */
+const jsonSize = (value: unknown): number => utf8.encode(JSON.stringify(value)).length;
+
+type SentFile = { name: string; format: string; bytes: string };
+
+/**
+ * The messages of a request. The new message's files always go. Earlier files go again, newest
+ * first, while the whole history (texts, file lines, and files) fits in `REQUEST_BUDGET`; the
+ * older ones, and earlier files whose bytes were not kept, go as a line `[Earlier file: name]`
+ * in their message's text (D-E). A file of the new message without bytes goes as
+ * `[File not kept: name]` and is not an earlier file.
+ */
+export function buildChatMessages(messages: UIMessage[]): {
+  chatMessages: Array<{ role: UIMessage['role']; content: string; files: SentFile[] }>;
+  filesNotResent: number;
+} {
+  // Messages with no text are left out, as before
+  const sent = messages.filter((m) => getTextContent(m).trim().length > 0);
+  const last = sent.length - 1;
+  const fileOf = (p: FilePart): SentFile => ({
+    name: p.filename || 'file',
+    format: getFormatFromMediaType(p.mediaType || ''),
+    bytes: p.data ?? '',
+  });
+
+  // First the parts that always go: every text and the new message's own files
+  let room = REQUEST_BUDGET;
+  for (const m of sent) room -= jsonSize({ role: m.role, content: getTextContent(m), files: [] });
+  const newFiles = last >= 0 ? fileParts(sent[last]).filter((p) => p.data !== undefined) : [];
+  for (const p of newFiles) room -= jsonSize(fileOf(p)) + 1;
+
+  let full = false;
+  let filesNotResent = 0;
+  const chatMessages = sent
+    .map((m, index) => ({ m, index }))
+    .reverse()
+    .map(({ m, index }) => {
+      const files: SentFile[] = [];
+      const lines: string[] = [];
+      for (const p of fileParts(m)) {
+        const name = p.filename || 'file';
+        if (index === last) {
+          if (p.data !== undefined) files.push(fileOf(p));
+          else lines.push(notKeptFileLine(name));
+          continue;
+        }
+        const cost = p.data === undefined ? 0 : jsonSize(fileOf(p)) + 1;
+        if (p.data !== undefined && !full && cost <= room) {
+          room -= cost;
+          files.push(fileOf(p));
+        } else {
+          // Past the budget every older file goes as a line too, so the newest ones go as bytes
+          if (p.data !== undefined) full = true;
+          const line = earlierFileLine(name);
+          room -= utf8.encode(line).length + 2;
+          lines.push(line);
+          filesNotResent += 1;
+        }
+      }
+      const text = getTextContent(m);
+      return {
+        role: m.role,
+        content: lines.length > 0 ? `${text}\n\n${lines.join('\n')}` : text,
+        files,
+      };
+    })
+    .reverse();
+  return { chatMessages, filesNotResent };
 }

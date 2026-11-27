@@ -45,7 +45,7 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 
 - Let the model search the web with Brave Search, Exa, or Tavily. When a search key is set, web search is on in each new chat.
 - Connect external tools with [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) servers.
-- Attach documents and images to Bedrock models.
+- Attach documents and images to Bedrock models. The chat keeps them after a reload.
 
 **Your workflow**
 
@@ -289,6 +289,8 @@ Anthropic, OpenRouter, Groq, Cerebras, and Bedrock Mantle use an API key:
 
 The app keeps the keys in your browser.
 
+For Anthropic, the model picker shows the models that your key can use, with Anthropic's names. The app gets this list from Anthropic. If the app cannot get the list, the picker shows Claude Fable 5.2, Claude Opus 5.5, Claude Sonnet 5.5, and Claude Haiku 5.5.
+
 ## Use the app
 
 ### Chat input
@@ -463,6 +465,15 @@ Under each reply, click the thumbs up or thumbs down icon to rate it. The app st
 4. Type your message and send it.
 
 Supported formats: PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX, and images.
+
+Your message shows its files above the text. An image shows as a thumbnail. Click the thumbnail to open the image full size in a new tab. Each other file shows its name, its type, and its size.
+
+The app keeps the files with the chat in your browser:
+
+- The files stay after a reload.
+- The model gets the files of earlier messages again with each new message, as it gets the earlier text. **Regenerate** and **Send to Fork** also keep the files.
+- When the files are too large to send again in one request, the app sends the oldest files as a line with their name. A line under the reply says, for example, **1 earlier file was not sent again**.
+- The app keeps at most 500 MB of data in your browser. When it cannot keep a file, it saves the message without that file, and the file shows **File not kept**.
 
 ### Context window
 

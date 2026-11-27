@@ -5,9 +5,12 @@
  * SEC-07: Request body size limits
  * SEC-09: maxOutputTokens cap
  * SEC-13: Same-origin guard for every /api route
+ * SEC-22: Chat request validation, before any side effect
  */
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { Plugin } from 'vite';
+
+import type { MCPServerConfig } from '../src/types/mcp.ts';
 
 // ─── SEC-05: CORS ────────────────────────────────────────────────────────────
 
@@ -236,8 +239,13 @@ export function apiGuardPlugin(): Plugin {
 
 const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 
+/** Body limit of the plain proxies to Ollama and LM Studio. The app sends them GETs with no body */
+export const PLAIN_PROXY_BODY_LIMIT = 16 * 1024;
+
+const BODY_TOO_LARGE = 'Request body too large';
+
 /**
- * Read the full request body with a size limit.
+ * Read the full request body with a size limit in bytes.
  * Returns null and sends a 413 response if the body exceeds the limit.
  */
 export async function readBodyWithLimit(
@@ -245,17 +253,263 @@ export async function readBodyWithLimit(
   res: ServerResponse,
   maxSize = MAX_BODY_SIZE
 ): Promise<string | null> {
-  let body = '';
-  for await (const chunk of req) {
-    body += chunk;
-    if (body.length > maxSize) {
-      res.statusCode = 413;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Request body too large' }));
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req as AsyncIterable<Buffer | string>) {
+    const bytes = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+    size += bytes.length;
+    if (size > maxSize) {
+      sendJsonError(res, 413, BODY_TOO_LARGE);
       return null;
     }
+    chunks.push(bytes);
   }
-  return body;
+  // Decode once, so that a character split across two chunks stays whole
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/**
+ * A body limit for a request that a proxy pipes to an upstream (Vite's `server.proxy`), where the
+ * body is never read into memory. Register it on http-proxy-3's `start` event, which runs right
+ * before `req.pipe(proxyReq)`: a declared Content-Length over the limit, or more bytes than the
+ * limit, get a 413 and the request is destroyed. Returns false when it refused the request.
+ *
+ * The upstream can get at most one read of the socket (up to 64 KB) past the limit: the pipe
+ * gets the chunk that crosses the limit too. A declared Content-Length is refused before any byte.
+ */
+export function limitStreamedBody(
+  req: IncomingMessage,
+  res: ServerResponse,
+  maxSize = MAX_BODY_SIZE
+): boolean {
+  let refused = false;
+  const refuse = () => {
+    if (refused) return;
+    refused = true;
+    req.off('data', count);
+    if (!res.headersSent && !res.writableEnded) {
+      res.setHeader('Connection', 'close');
+      sendJsonError(res, 413, BODY_TOO_LARGE);
+    }
+    // The 413 is sent, so the proxy does not destroy its upstream request when the response
+    // closes. http-proxy-3 does destroy it, with no log line, for a client socket that ends with
+    // ECONNRESET, so end the request that way. The no-op listener keeps a server with no other
+    // 'error' listener on the request from stopping.
+    req.on('error', () => undefined);
+    req.destroy(Object.assign(new Error(BODY_TOO_LARGE), { code: 'ECONNRESET' }));
+  };
+  let size = 0;
+  function count(chunk: Buffer | string) {
+    size += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
+    if (size > maxSize) refuse();
+  }
+
+  const declared = Number(req.headers['content-length']);
+  if (Number.isFinite(declared) && declared > maxSize) {
+    refuse();
+    return false;
+  }
+  // Added in the same tick as the pipe, so this listener sees every chunk that the upstream gets
+  req.on('data', count);
+  return true;
+}
+
+// ─── Chat proxies: errors, request validation, event stream, abort ───────────
+
+/** Most characters of an error text that a proxy sends to the browser */
+export const MAX_ERROR_LENGTH = 500;
+
+/** An error text cut to MAX_ERROR_LENGTH characters, without a half surrogate pair at the end */
+export function capErrorText(text: string): string {
+  if (text.length <= MAX_ERROR_LENGTH) return text;
+  // A high surrogate at the cut would leave half of a character
+  const last = text.charCodeAt(MAX_ERROR_LENGTH - 1);
+  const end = last >= 0xd800 && last <= 0xdbff ? MAX_ERROR_LENGTH - 1 : MAX_ERROR_LENGTH;
+  return text.slice(0, end);
+}
+
+/**
+ * Send a JSON error with a status. The text is cut to MAX_ERROR_LENGTH characters. When
+ * `startEventStream` set the SSE headers but no byte went out, those headers are removed, so the
+ * JSON reply does not say `no-cache` and `keep-alive`.
+ */
+export function sendJsonError(res: ServerResponse, status: number, message: string): void {
+  if (!res.headersSent) {
+    res.removeHeader('Cache-Control');
+    res.removeHeader('Connection');
+  }
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({ error: capErrorText(message) }));
+}
+
+export interface ChatRequestFile {
+  name: string;
+  format: string;
+  /** base64 */
+  bytes: string;
+}
+
+export interface ChatRequestMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  /** Amazon Bedrock only; the browser sends an empty list on every message */
+  files?: ChatRequestFile[];
+}
+
+/** A chat body after `readChatRequest`. The proxy checks its own extra fields */
+export interface ChatRequest {
+  model: string;
+  /** With the messages that have no text and no files left out */
+  messages: ChatRequestMessage[];
+  max_tokens?: number;
+  enableWebSearch?: boolean;
+  mcpServers?: MCPServerConfig[];
+  /** Checked by buildReasoningParams and the other thinking helpers */
+  thinkingEffort?: unknown;
+  /** Most model calls in one reply when tools are on; clamped by clampToolSteps */
+  maxToolSteps?: unknown;
+  /** Groq or Cerebras; checked by the AI SDK proxy */
+  provider?: unknown;
+}
+
+export interface ReadChatRequestOptions {
+  /** Body limit in bytes (default 10 MB) */
+  maxSize?: number;
+}
+
+const MODEL_ID_MAX = 256;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasControlCharacter(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
+  }
+  return false;
+}
+
+function isChatFile(value: unknown): value is ChatRequestFile {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    typeof value.format === 'string' &&
+    typeof value.bytes === 'string'
+  );
+}
+
+function isChatMessage(value: unknown): value is ChatRequestMessage {
+  if (!isRecord(value)) return false;
+  return (
+    (value.role === 'user' || value.role === 'assistant' || value.role === 'system') &&
+    typeof value.content === 'string' &&
+    (value.files === undefined || (Array.isArray(value.files) && value.files.every(isChatFile)))
+  );
+}
+
+/** The error text for a parsed chat body, or the request when the body is valid */
+function checkChatRequest(body: unknown): ChatRequest | string {
+  if (!isRecord(body) || typeof body.model !== 'string' || !Array.isArray(body.messages)) {
+    return 'Invalid chat request';
+  }
+  const { model, messages, max_tokens, enableWebSearch, mcpServers } = body;
+  if (!model.trim()) return 'Model is required';
+  if (model.length > MODEL_ID_MAX) return 'Model ID too long';
+  if (hasControlCharacter(model)) return 'Invalid model ID format';
+  if (!messages.every(isChatMessage)) return 'Invalid messages array';
+  if (
+    max_tokens !== undefined &&
+    (typeof max_tokens !== 'number' || !Number.isInteger(max_tokens) || max_tokens < 1)
+  ) {
+    return 'max_tokens must be a positive integer';
+  }
+  if (enableWebSearch !== undefined && typeof enableWebSearch !== 'boolean') {
+    return 'enableWebSearch must be a boolean';
+  }
+  if (mcpServers !== undefined && !Array.isArray(mcpServers)) {
+    return 'mcpServers must be an array';
+  }
+  const nonEmpty = messages.filter(
+    (message) => message.content.trim().length > 0 || (message.files?.length ?? 0) > 0
+  );
+  if (nonEmpty.length === 0) return 'At least one non-empty message is required';
+  return { ...(body as unknown as ChatRequest), messages: nonEmpty };
+}
+
+/**
+ * Read and check the body of a chat request (SEC-22): the size limit, JSON, and the fields that
+ * every chat proxy uses. Answers 413 or 400 JSON itself and returns null; the proxy then returns.
+ * Call it before any key check, MCP start, or SSE header, so a bad body has no side effect.
+ */
+export async function readChatRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  options: ReadChatRequestOptions = {}
+): Promise<ChatRequest | null> {
+  const raw = await readBodyWithLimit(req, res, options.maxSize);
+  if (raw === null) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    sendJsonError(res, 400, 'Invalid JSON body');
+    return null;
+  }
+  const checked = checkChatRequest(parsed);
+  if (typeof checked === 'string') {
+    sendJsonError(res, 400, checked);
+    return null;
+  }
+  return checked;
+}
+
+/**
+ * Set the SSE headers. Call it right before the stream loop: after the request checks, the key
+ * checks, and the MCP start, so that an error before it still gets a JSON status.
+ */
+export function startEventStream(res: ServerResponse): void {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+}
+
+/**
+ * A signal that aborts when the browser closes the connection before the response ended. It
+ * listens on the response: once the body is read, the request's own 'close' has already fired.
+ */
+export function abortOnClose(res: ServerResponse): AbortSignal {
+  const controller = new AbortController();
+  if (res.destroyed && !res.writableEnded) {
+    controller.abort();
+  } else {
+    res.on('close', () => {
+      if (!res.writableEnded) controller.abort();
+    });
+  }
+  return controller.signal;
+}
+
+/**
+ * True for the error of a call that `abortOnClose` stopped. It checks the name only: `fetch` throws
+ * a DOMException, which is not an `Error` of every realm.
+ */
+export function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { name?: unknown }).name === 'AbortError'
+  );
+}
+
+/**
+ * True for an `AbortError` after the browser closed the connection: the proxy stopped the call
+ * itself, so it is not a proxy error and needs no log and no reply.
+ */
+export function isAbortAfterClientLeft(error: unknown, res: ServerResponse): boolean {
+  return isAbortError(error) && res.destroyed;
 }
 
 // ─── SEC-09: maxOutputTokens Cap ─────────────────────────────────────────────
@@ -274,7 +528,7 @@ export function capMaxTokens(requestedTokens?: number): number {
 
 /**
  * Finish a response whose status and headers are already sent (an SSE stream). Writes the error
- * as an SSE event, so the browser shows it in the chat. Returns false when nothing is sent yet;
+ * as an SSE event, cut to MAX_ERROR_LENGTH characters, so the browser shows it in the chat. Returns false when nothing is sent yet;
  * the caller then sends a JSON error with a status code.
  *
  * Without this check, a proxy that sets a status or header after the stream started throws
@@ -283,7 +537,7 @@ export function capMaxTokens(requestedTokens?: number): number {
 export function endStreamWithError(res: ServerResponse, message: string): boolean {
   if (!res.headersSent) return false;
   if (!res.writableEnded) {
-    res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
+    res.write(`data: ${JSON.stringify({ error: capErrorText(message) })}\n\n`);
     res.write('data: [DONE]\n\n');
     res.end();
   }

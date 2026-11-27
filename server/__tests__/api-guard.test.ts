@@ -232,6 +232,13 @@ describe('the guard on real Vite servers', () => {
   beforeAll(async () => {
     upstream = createServer((req, res) => {
       upstreamHits.push(`${req.method} ${req.url}`);
+      if (req.url === '/api/stream') {
+        // A streamed answer in three parts, as Ollama streams /api/pull
+        res.write('one ');
+        setTimeout(() => res.write('two '), 30);
+        setTimeout(() => res.end('three'), 60);
+        return;
+      }
       res.end('upstream');
     });
     await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve));
@@ -365,6 +372,40 @@ describe('the guard on real Vite servers', () => {
       '/api/mcp/import/read',
     ])('blocks a cross-site form post to %s', async (path) => {
       expect((await send(ready.app, 'POST', path, CROSS_SITE_FORM, '{}')).status).toBe(403);
+    });
+
+    it('refuses a body over 16 KB to the plain Ollama proxy with 413', async () => {
+      const reply = await send(
+        ready.app,
+        'POST',
+        '/api/ollama/api/pull',
+        SAME_ORIGIN_JSON,
+        JSON.stringify({ name: 'x'.repeat(17 * 1024) })
+      );
+      expect(reply.status).toBe(413);
+      expect(JSON.parse(reply.body)).toEqual({ error: 'Request body too large' });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(upstreamHits).toEqual([]);
+    });
+
+    it('still forwards a small body to the plain Ollama proxy', async () => {
+      const reply = await send(
+        ready.app,
+        'POST',
+        '/api/ollama/api/show',
+        SAME_ORIGIN_JSON,
+        '{"model":"m"}'
+      );
+      expect([reply.status, reply.body]).toEqual([200, 'upstream']);
+      expect(upstreamHits).toEqual(['POST /api/show']);
+    });
+
+    it('still proxies a GET to the plain Ollama proxy and streams the answer', async () => {
+      const reply = await send(ready.app, 'GET', '/api/ollama/api/stream', {
+        'sec-fetch-site': 'same-origin',
+      });
+      expect([reply.status, reply.body]).toEqual([200, 'one two three']);
+      expect(upstreamHits).toEqual(['GET /api/stream']);
     });
 
     it('rejects a text/plain post from the app with 415', async () => {

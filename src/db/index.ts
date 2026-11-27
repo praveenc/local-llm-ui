@@ -17,6 +17,8 @@ export type {
   MessageParameters,
   MessageRole,
   MessageUsage,
+  NewAttachment,
   Provider,
   SavedPrompt,
+  StoredAttachment,
 } from './types';

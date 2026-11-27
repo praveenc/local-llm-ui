@@ -51,6 +51,10 @@ vi.mock('../../db', () => {
           store.messages.push(...rows);
         },
       },
+      // No message of these tests has files
+      attachments: {
+        where: () => ({ anyOf: () => ({ toArray: async () => [] }) }),
+      },
     },
   };
 });

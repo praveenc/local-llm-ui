@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
@@ -29,8 +29,13 @@ import type { MessageUsage, Provider } from '../../db/types';
 import type { ProviderModels, UnifiedModel } from '../../hooks/useAllModels';
 import { useBedrockChat } from '../../hooks/useBedrockChat';
 import { useSessionOptions } from '../../hooks/useSessionOptions';
-import type { ToolCallPart, UIMessage } from '../../types/ai-messages';
-import { getReasoningContent, getTextContent, hasReasoning } from '../../types/ai-messages';
+import type { FilePart, ToolCallPart, UIMessage } from '../../types/ai-messages';
+import {
+  base64ToBytes,
+  getReasoningContent,
+  getTextContent,
+  hasReasoning,
+} from '../../types/ai-messages';
 import { summarizeChatUsage } from '../../utils/chatUsage';
 import { normalizeMediaType } from '../../utils/fileUtils';
 import { formatCredits } from '../../utils/kiroModels';
@@ -52,6 +57,8 @@ import {
   Message,
   MessageAction,
   MessageActions,
+  MessageAttachment,
+  MessageAttachments,
   MessageAvatar,
   MessageContent,
   MessageResponse,
@@ -476,11 +483,15 @@ const ChatContainer = ({
                         </MessageContent>
                       );
 
+                      const files = message.parts.filter((p): p is FilePart => p.type === 'file');
                       const switchedTo = modelSwitches.get(index);
                       return (
                         <Fragment key={message.id}>
                           {switchedTo && <ModelSwitchDivider label={switchedTo} />}
                           <Message from={message.role} data-message-index={index}>
+                            {message.role === 'user' && files.length > 0 && (
+                              <MessageFiles files={files} />
+                            )}
                             {showAvatar ? (
                               <div className="flex items-start justify-end gap-2">
                                 {content}
@@ -490,6 +501,9 @@ const ChatContainer = ({
                               content
                             )}
                           </Message>
+                          {message.role === 'assistant' && !!message.filesNotResent && (
+                            <FilesNotResentNote count={message.filesNotResent} />
+                          )}
                           {message.role === 'assistant' && !isLoading && (
                             <MessageActions className="ml-0 compact:-mt-1">
                               <MessageAction
@@ -789,6 +803,93 @@ const ModelSwitchDivider = ({ label }: { label: string }) => (
     <span aria-hidden>Switched to {label}</span>
     <span aria-hidden className="h-px flex-1 bg-border" />
   </div>
+);
+
+/** Object URLs whose file left the screen, revoked after one tick unless it mounts again */
+const pendingRevokes = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * One object URL for the stored bytes of an image, made once for the file and revoked when the
+ * file leaves the screen (or its bytes change). No URL for any other file. The revoke waits one
+ * tick, so the effect's remount in StrictMode keeps the URL that the thumbnail already shows.
+ */
+function useImageUrl(data: string | undefined, mediaType: string): string | undefined {
+  const isImage = mediaType.startsWith('image/');
+  const url = useMemo(
+    () =>
+      data && isImage
+        ? URL.createObjectURL(new Blob([base64ToBytes(data)], { type: mediaType }))
+        : undefined,
+    [data, mediaType, isImage]
+  );
+  useEffect(() => {
+    if (!url) return;
+    clearTimeout(pendingRevokes.get(url));
+    pendingRevokes.delete(url);
+    return () => {
+      pendingRevokes.set(
+        url,
+        setTimeout(() => {
+          pendingRevokes.delete(url);
+          URL.revokeObjectURL(url);
+        }, 0)
+      );
+    };
+  }, [url]);
+  return url;
+}
+
+/** One file of a user message; memoized, so a streamed token does not touch its bytes */
+const MessageFile = memo(function MessageFile({
+  filename,
+  mediaType,
+  data,
+  size,
+}: {
+  filename: string;
+  mediaType: string;
+  data: string | undefined;
+  size: number | undefined;
+}) {
+  const url = useImageUrl(data, mediaType);
+  const isImage = mediaType.startsWith('image/');
+  return (
+    <MessageAttachment
+      data={{ type: 'file', filename, mediaType, url: url ?? '' }}
+      size={size}
+      notKept={!data}
+      onOpen={isImage && url ? () => window.open(url, '_blank', 'noopener,noreferrer') : undefined}
+    />
+  );
+});
+
+/**
+ * The files of a user message, above its text (D-D): an image thumbnail that opens full size in
+ * a new tab, else a chip with the name, the type, and the size. A file without bytes says
+ * "File not kept". An image's thumbnail and its tab share one object URL.
+ */
+const MessageFiles = ({ files }: { files: FilePart[] }) => (
+  <MessageAttachments aria-label="Attached files" role="list">
+    {files.map((file, i) => (
+      <div key={`${file.filename ?? 'file'}-${i}`} role="listitem">
+        <MessageFile
+          filename={file.filename || 'file'}
+          mediaType={file.mediaType || 'application/octet-stream'}
+          data={file.kept === false ? undefined : file.data || undefined}
+          size={file.size}
+        />
+      </div>
+    ))}
+  </MessageAttachments>
+);
+
+/** Under a reply: the earlier files that the request carried as a text line only (D-E) */
+const FilesNotResentNote = ({ count }: { count: number }) => (
+  <p className="text-xs text-muted-foreground">
+    {count === 1
+      ? '1 earlier file was not sent again'
+      : `${count} earlier files were not sent again`}
+  </p>
 );
 
 /** Tokens, time and cost of one reply, after its action buttons */

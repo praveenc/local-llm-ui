@@ -1,7 +1,7 @@
 import type { ModelInfo } from './types';
 
-// Use proxy in development, direct connection in production
-const OLLAMA_BASE_URL = import.meta.env.DEV ? '/api/ollama' : 'http://localhost:11434';
+// Always the app's own proxy: the proxies exist only in the Vite dev server (npm run dev)
+const OLLAMA_BASE_URL = '/api/ollama';
 
 export class OllamaService {
   private baseUrl: string;
