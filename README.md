@@ -44,7 +44,7 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 **Tools**
 
 - Let the model search the web with Brave Search, Exa, or Tavily. When a search key is set, web search is on in each new chat.
-- Connect external tools with [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) servers.
+- Connect external tools with [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) servers. Import the servers that you already set up in Kiro, Pi, Claude Code, and other tools.
 - Attach documents and images to Bedrock models. The chat keeps them after a reload.
 
 **Your workflow**
@@ -417,7 +417,7 @@ To add a server:
 3. Fill in the form. A new server opens with the cursor in **Name**. A local server needs these fields:
    - **Command**: the program that starts the server. Type a program name that is on `PATH`, for example `npx`, `uvx`, or `github-mcp-server`. Or type a full path that starts with `/` or `~/`, for example `~/.local/bin/my-server`. A path that starts with `~/` is in your home folder. The app does not accept a relative path such as `./server` or `bin/server`.
    - **Arguments**: one argument in each field, with no quotes. For `npx -y @modelcontextprotocol/server-filesystem ~/notes`, type `-y`, then `@modelcontextprotocol/server-filesystem`, then the full path of the folder. The app does not use a shell, so it does not remove quotes, and it does not expand `~` or `$HOME`.
-   - **Environment Variables**: one variable in each row. Type the full value, with no quotes and no `$VAR`.
+   - **Environment Variables**: one variable in each row. Type the full value, with no quotes and no `$VAR`. The value field is a password field, so the value does not show on screen.
 
    A remote server needs a URL and, if necessary, headers. A field whose value starts and ends with a quote shows a warning, because the quotes go to the server as part of the value.
 
@@ -428,6 +428,44 @@ The MCP button in the chat input shows the connected servers and their tools. A 
 The app starts a local server to check it at these times only: when the page loads, when you close Preferences, and when you open the MCP popover. It does not start a server while you type in the form. To check one server, open it in **Preferences → MCP Servers** and click **Check** at the end of its form. The result shows under the button, for example **Connected · 7 tools**, or the error. **Check** also works for a server that is off.
 
 For safety, the app starts a local server with no shell. It blocks shell characters in arguments, blocks private network addresses for remote servers, and does not share your environment variables with servers. A local server can be any program, and it runs with your user rights on the computer that runs `npm run dev`. Add only servers that you trust. Anyone who can open the app can add a server and start it, so share the app only through a tunnel that asks for a sign-in. For more data, see [docs/SECURITY-LEARNINGS.md](docs/SECURITY-LEARNINGS.md).
+
+#### Import servers from other tools
+
+If you already set up MCP servers in other tools, you do not need to type them again. The **MCP Servers** tab reads the MCP config files of these tools, on the computer that runs `npm run dev`:
+
+| Tool | File |
+|---|---|
+| Kiro | `~/.kiro/settings/mcp.json` |
+| Pi | `~/.pi/agent/mcp.json` |
+| Claude Code | `~/.claude.json` (only the servers of the file's own `mcpServers` list, not the lists of single projects) |
+| Cursor | `~/.cursor/mcp.json` |
+| Claude Desktop | `~/.config/Claude/claude_desktop_config.json` on Linux, `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS |
+| Gemini CLI | `~/.gemini/settings.json` |
+| Devin Desktop | `~/.config/devin/mcp_config.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+
+To import servers:
+
+1. Open **Preferences → MCP Servers**. When the files have servers that are not in the app, the tab shows a line, for example "3 servers in Kiro and Pi are not in this app". If you have no servers yet, the line shows in the empty box.
+2. Click **Import**. The tab shows the servers, grouped by tool.
+3. Select the servers that you want, or click **Select all**. A server that two tools have, with the same command and arguments or the same URL, shows once, with the text "Found in Kiro and Pi".
+4. Click **Import N servers**. The app reads the values of the selected servers from the files and adds the servers to the tab.
+
+Some rows have no checkbox:
+
+- **Already added** means that the app has this server. A server that is off counts too.
+- **Cannot run** and a reason means that the app cannot start the server. For example, the command is a relative path, an argument has shell characters, or the command or an argument uses `${…}` or `$VAR`. The app does not expand them.
+
+A row can also show a note, for example "1 value uses ${…}. The app passes it as text. Type the real value after the import." This note is for an environment value, a URL, or a header that has `${…}`. Open the server after the import and type the real value.
+
+Some details to know:
+
+- Imported servers are off. Turn on the ones that you want. A server that is off in the other tool is imported off too.
+- If the name of a server is the same as the name of a server that the app has, the new name has the tool at the end, for example `github (Kiro)`.
+- A file that is larger than 4 MB, or that is not valid JSON, shows "too large" or "could not read" under its tool. The app does not import from it.
+- Click **Not now** to hide the line and its **Import** button. The line shows again when a new server shows up in the files. It then counts only the new servers, and **Import** lists all the servers, also the ones that you hid.
+
+The app reads only the files in the table. You cannot type a different path. Before you click **Import N servers**, the app does not send a value of a server to the browser: the list shows the command, the arguments without the values of flags like `--token`, the URL without its query, and only the names of environment variables and headers. After the import, the values are in your browser preferences, like the values of a server that you type. For safety information, see [docs/SECURITY-LEARNINGS.md](docs/SECURITY-LEARNINGS.md).
 
 ### Quote and Ask
 
