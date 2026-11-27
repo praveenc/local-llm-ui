@@ -23,6 +23,9 @@ PR numbers link to GitHub.
 - An agent that you make in the terminal now shows in the **Agent** list of a new chat, and in **Default agent**, the next time that you open the list. Before, the list could be up to 1 hour old. The app asks Kiro again at most once a minute ([#96])
 - An agent or option pick in a Kiro chat that you have not sent yet now stays after a reload. A pick of a value that Kiro no longer lists is dropped ([#96])
 - Content Collection is one value for all Kiro chats of a Kiro CLI process. A new Kiro chat no longer sets it back to the value of an older chat, and the **Options** menu says "Applies to all Kiro chats until Kiro CLI stops." under it ([#96])
+- A turn that you make in the terminal now shows in the Kiro chat of the app before your next message. Before each message, and when you open the chat, the app asks Kiro whether the session changed, and adds the new turns first, in Kiro's order. Before, a message that you sent right after a terminal turn could leave that turn out of the chat for good, a reply could be imported twice, and an open showed a terminal turn only after up to 2 minutes, or never for a session outside the window of the **Kiro sessions** menu. The chat says **Checking the Kiro session…** when the check takes more than a moment ([#97])
+- A Kiro chat from before 1.3.0 now counts its turns the first time that you open it, so the turns that you make in the terminal after that show in the chat ([#97])
+- When Kiro refuses a message, for example with "This session is loaded in another program", the chat now keeps its turn count, so the next open still adds the turns that you made in the terminal ([#97])
 - MCP servers that fail say why: the popover and **Check** show, for example, "The server stopped before it answered (exit code 1): npm error code E401 …" or "Command not found: uvx", not "Attempted to send a request from a closed client". A server whose process stops starts again at the next check or chat, a timeout ends the process, and two requests start one process. The app checks the servers when the page loads, when Preferences closes, and when the MCP popover opens, not after each change in the form, and it sends only complete servers. The status route `POST /api/bedrock-aisdk/mcp-status` accepts `closeOthers: true`, and closes servers that are off or that left the list ([#93])
 - Clearer **Add MCP server** form: a new server opens with an empty name and the cursor in **Name**, the command placeholder names `uvx`, and help text under **Arguments** and **Environment Variables** says to type one value in each field, with no quotes. The app does not use a shell, so a value that starts and ends with a quote shows a warning ([#92])
 
@@ -269,6 +272,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#97]: https://github.com/praveenc/local-llm-ui/pull/97
 [#96]: https://github.com/praveenc/local-llm-ui/pull/96
 [#95]: https://github.com/praveenc/local-llm-ui/pull/95
 [#94]: https://github.com/praveenc/local-llm-ui/pull/94

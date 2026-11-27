@@ -17,6 +17,12 @@ export const KIRO_NEW_SESSION_TITLE = 'New Session';
 export const KIRO_SESSIONS_MAX = 2_000;
 /** The server keeps the parsed list this long (ms) */
 export const KIRO_SESSIONS_TTL_MS = 60_000;
+/**
+ * `skipTurns` for a count-only open (K11): the open route then maps no turn and answers with no
+ * messages, only Kiro's turn count, time, and options (`server/kiro/replay.ts` counts the turns
+ * before `skipTurns` without mapping them)
+ */
+export const KIRO_COUNT_ONLY_SKIP = Number.MAX_SAFE_INTEGER;
 
 /** The import response is at most this many bytes of JSON: older turns are left out first */
 export const KIRO_IMPORT_MAX_BYTES = 16 * 1024 * 1024;
@@ -63,6 +69,12 @@ export interface KiroSessionOpenRequest {
    * turns after them. 0 for a new import.
    */
   skipTurns: number;
+  /**
+   * The conversation's stored `kiro.updatedAt` (K11): when Kiro's time of the session is still
+   * this instant, the route answers `{ unchanged: true }` with no replay. The route then finds the
+   * session from its own folder, not from the full list.
+   */
+  ifUpdatedAfter?: string;
 }
 
 /** A tool call of an imported reply. Same shape as a stored tool call (`StoredToolCall`). */
@@ -109,11 +121,22 @@ export interface KiroSessionOpenResponse {
   turnsLeftOut: number;
 }
 
+/** The open answer when Kiro's time of the session equals `ifUpdatedAfter`: nothing to add (K11) */
+export interface KiroSessionUnchangedResponse {
+  unchanged: true;
+  /** Kiro's time of the session now, ISO 8601 */
+  updatedAt: string;
+}
+
 /** What a conversation stores of its Kiro session for a later sync (in `Conversation.kiro`) */
 export interface KiroSessionSync {
   /** Kiro's `updatedAt` at the last import or sync */
   updatedAt?: string;
-  /** How many Kiro turns the conversation holds. Absent: unknown, so no sync. */
+  /**
+   * How many Kiro turns the conversation holds. Absent: unknown (a chat made before K7, or a reply
+   * in a chat that Kiro's time did not show to hold every turn, K11): the next open counts the
+   * turns again and adds no messages.
+   */
   turns?: number;
 }
 
@@ -124,8 +147,19 @@ type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
+/** The longest date text that the app keeps from Kiro */
+const ISO_MAX_CHARS = 40;
+
 const isIsoDate = (value: unknown): value is string =>
-  typeof value === 'string' && value.length <= 40 && !Number.isNaN(Date.parse(value));
+  typeof value === 'string' && value.length <= ISO_MAX_CHARS && !Number.isNaN(Date.parse(value));
+
+/**
+ * An ISO time with a date, a time, and a zone (`Z` or `+hh:mm`), as `toISOString()` writes it or
+ * with a zone offset. `Date.parse` alone also reads "1", "Nov 26 2026", and local times.
+ */
+const ISO_TIME = /^[+-]?\d{4,6}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+
+const isIsoTime = (value: unknown): value is string => isIsoDate(value) && ISO_TIME.test(value);
 
 const isCount = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0;
@@ -154,7 +188,18 @@ export function parseKiroSessionOpenRequest(value: unknown): Parsed<KiroSessionO
   }
   const skip = value.skipTurns ?? 0;
   if (!isCount(skip)) return { ok: false, error: 'skipTurns must be a whole number' };
-  return { ok: true, value: { sessionId: value.sessionId, skipTurns: skip } };
+  const after = value.ifUpdatedAfter;
+  if (after !== undefined && !isIsoTime(after)) {
+    return { ok: false, error: 'ifUpdatedAfter must be an ISO time' };
+  }
+  return {
+    ok: true,
+    value: {
+      sessionId: value.sessionId,
+      skipTurns: skip,
+      ...(after !== undefined && { ifUpdatedAfter: after }),
+    },
+  };
 }
 
 function parseSummary(value: unknown): KiroSessionSummary | undefined {
@@ -236,6 +281,25 @@ export function parseKiroSessionOpenResponse(value: unknown): KiroSessionOpenRes
   };
 }
 
+/**
+ * The browser's check of an open answer to a request with `ifUpdatedAfter` (K11): the unchanged
+ * answer, the full open answer, or null when it is neither
+ */
+export function parseKiroSessionCheckResponse(
+  value: unknown
+): KiroSessionUnchangedResponse | KiroSessionOpenResponse | null {
+  if (isRecord(value) && value.unchanged === true) {
+    return isIsoDate(value.updatedAt) ? { unchanged: true, updatedAt: value.updatedAt } : null;
+  }
+  return parseKiroSessionOpenResponse(value);
+}
+
+/** True when Kiro's time `kiroAt` is the same instant as the stored `stored` (K11) */
+export function isSameKiroTime(kiroAt: string, stored: string): boolean {
+  const at = Date.parse(stored);
+  return !Number.isNaN(at) && Date.parse(kiroAt) === at;
+}
+
 // --- rules ---
 
 /** The last part of a folder path, for the row. The full path never goes to the browser. */
@@ -255,10 +319,33 @@ export function isInWindow(updatedAt: string, days: KiroSessionWindow, now = Dat
   return Date.parse(updatedAt) >= now - days * 24 * 60 * 60 * 1000;
 }
 
-/** True when Kiro changed the session after the conversation's last import or sync */
-export function isNewerInKiro(listUpdatedAt: string, sync: KiroSessionSync | undefined): boolean {
-  if (!sync?.updatedAt) return true;
-  return Date.parse(listUpdatedAt) > Date.parse(sync.updatedAt);
+/**
+ * Kiro's time of the session in two events of the chat route (K11), both an ISO time from Kiro's
+ * session/list, the same value that the sessions routes report:
+ * - `{ sessionUpdatedBefore: string }` right after the `session` event of a known session: the
+ *   time before this message. Left out when the server could not read it within 1 s.
+ * - `{ sessionUpdatedAt: string }` before `metadata`: the time after the turn, also for a new
+ *   session. Left out for a cancelled reply, or when the server could not read it.
+ * Returns the time, or undefined when the value is not a date.
+ */
+export function parseKiroSessionStamp(value: unknown): string | undefined {
+  return isIsoDate(value) ? value : undefined;
+}
+
+/**
+ * True when the chat held every turn of its session before this message (K11): the record counts
+ * turns, has Kiro's time of its last sync, and Kiro's time before the message (the
+ * `sessionUpdatedBefore` event) is the same instant. Any turn or option change since then, also
+ * in the terminal, moves Kiro's time. Compared as instants (`Date.parse`), so that two ISO forms of
+ * the same time match.
+ */
+export function isKiroChatInSync(
+  sync: KiroSessionSync | undefined,
+  before: string | undefined
+): boolean {
+  if (sync?.turns === undefined || !sync.updatedAt || !before) return false;
+  const stored = Date.parse(sync.updatedAt);
+  return !Number.isNaN(stored) && stored === Date.parse(before);
 }
 
 const CONTEXT_BLOCK = /^<conversation_context>\n[\s\S]*?\n<\/conversation_context>\n\n/;

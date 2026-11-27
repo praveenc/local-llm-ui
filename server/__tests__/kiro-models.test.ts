@@ -29,7 +29,7 @@ function setup(status: KiroStatus = SIGNED_IN) {
   const agent = {
     newSession: vi.fn(async () => {
       counter += 1;
-      return { sessionId: `sess_${counter}`, configOptions: state.options };
+      return { sessionId: `sess_${counter}`, configOptions: state.options, cwd: '/home/user/work' };
     }),
     deleteSession: vi.fn<(sessionId: string) => Promise<void>>(async () => undefined),
   };

@@ -13,6 +13,17 @@
  * - Open takes a session id only: it must be in Kiro's list, and the load uses the folder from
  *   that list, never one from the browser. The replay is read only and ends with session/close.
  *   The response is at most KIRO_IMPORT_MAX_BYTES of JSON, with the session's agent and options.
+ *   Its `updatedAt` is read after the replay with a session/list of the session's own folder, so
+ *   it is the same instant that the chat route reports (K11), not the cached one (up to 60 s
+ *   old). When that read fails or takes more than 1 s, the cached value is used.
+ * - Open with `ifUpdatedAfter` (K11, the check before a send and on open): the folder comes from
+ *   the session's session.json, and the session must be in the list of that folder (a load of an
+ *   id that Kiro does not list would make a new session). When Kiro's time there is the same
+ *   instant, the answer is `{ unchanged: true, updatedAt }` with no load. Else the replay runs as
+ *   above, with no full list. When the folder list says the session is not idle (a turn runs in
+ *   the terminal), the answer is 409 with no load. When the folder list fails, takes more than
+ *   1 s, or lacks the id, the session must be in the full list (else 404, no load), and the open
+ *   works as without `ifUpdatedAfter` with the full list's time: never a wrong `unchanged`.
  *
  * Logs the size and the time only: never titles, folders, or text.
  */
@@ -26,24 +37,29 @@ import {
   folderName,
   isInWindow,
   isNeverUsedSession,
+  isSameKiroTime,
   parseKiroSessionOpenRequest,
   parseKiroSessionsRequest,
 } from '../../src/utils/kiroSessions.ts';
 import type {
   KiroSessionOpenResponse,
   KiroSessionSummary,
+  KiroSessionUnchangedResponse,
   KiroSessionsResponse,
 } from '../../src/utils/kiroSessions.ts';
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
 import { readBodyWithLimit } from '../security.ts';
 import { KiroBusyError, KiroSignedOutError } from './agent.ts';
 import type { KiroAgent } from './agent.ts';
+import { defaultKiroEnvironment } from './binary.ts';
+import type { KiroEnvironment } from './binary.ts';
 import { kiroSessionOptions } from './chat-options.ts';
 import { createKiroReplayCollector } from './replay.ts';
+import { findKiroSessionCwd } from './session-files.ts';
 
 export type KiroSessionsAgent = Pick<
   KiroAgent,
-  'listSessions' | 'replaySession' | 'onAgentNotification'
+  'listSessions' | 'replaySession' | 'onAgentNotification' | 'isBusy'
 >;
 
 export interface KiroSessionsHandlerOptions {
@@ -51,6 +67,12 @@ export interface KiroSessionsHandlerOptions {
   statusReader: { read(refresh?: boolean): Promise<KiroStatus> };
   ttlMs?: number;
   now?: () => number;
+  /** How long an open waits for the session's exact time (K11). Default 1 s. */
+  stampWaitMs?: number;
+  /** The home folder that holds Kiro's session files. Default: this computer's. */
+  environment?: KiroEnvironment;
+  /** The folder of a session from its session.json (tests). Default: findKiroSessionCwd. */
+  findCwd?: (sessionId: string) => Promise<string | undefined>;
 }
 
 /** The parts of a list entry that the app keeps; `cwd` stays on the server */
@@ -63,6 +85,7 @@ interface Entry {
 }
 
 const BODY_LIMIT = 1024;
+const STAMP_WAIT_MS = 1_000;
 export const KIRO_SESSIONS_FAILED =
   'Kiro could not list your sessions. See the terminal that runs npm run dev.';
 export const KIRO_SESSION_OPEN_FAILED =
@@ -128,6 +151,13 @@ export function createKiroSessionsHandler(options: KiroSessionsHandlerOptions) {
   const { agent, statusReader } = options;
   const ttlMs = options.ttlMs ?? KIRO_SESSIONS_TTL_MS;
   const now = options.now ?? Date.now;
+  const stampWaitMs = options.stampWaitMs ?? STAMP_WAIT_MS;
+  const findCwd =
+    options.findCwd ??
+    ((sessionId: string) =>
+      findKiroSessionCwd(sessionId, {
+        home: (options.environment ?? defaultKiroEnvironment()).home,
+      }));
 
   let cached: { entries: Entry[]; at: number } | undefined;
   let loading: Promise<Entry[]> | undefined;
@@ -164,6 +194,51 @@ export function createKiroSessionsHandler(options: KiroSessionsHandlerOptions) {
         });
     }
     return loading;
+  }
+
+  /**
+   * The session's entry in a list of its own folder (K11): Kiro's time now, the same instant as
+   * the chat route's. Null when that list does not have the session; undefined when the list
+   * fails or takes longer than the wait. Never rejects.
+   */
+  async function folderEntry(sessionId: string, cwd: string): Promise<Entry | null | undefined> {
+    let timer: NodeJS.Timeout | undefined;
+    const read = Promise.resolve()
+      .then(() => agent.listSessions({ cwd }))
+      .then(
+        (result) =>
+          result.sessions
+            .map(toEntry)
+            .find((e): e is Entry => e?.sessionId === sessionId && !isNeverUsedSession(e.title)) ??
+          null,
+        (error: unknown) => {
+          console.warn(
+            `[kiro] could not read the session time: ${error instanceof Error ? error.name : 'unknown error'}`
+          );
+          return undefined;
+        }
+      );
+    const late = new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), stampWaitMs);
+      timer.unref();
+    });
+    return Promise.race([read, late]).finally(() => clearTimeout(timer));
+  }
+
+  /** The session's time now, or the entry's time when the folder list cannot tell */
+  async function exactUpdatedAt(entry: Entry): Promise<string> {
+    return (await folderEntry(entry.sessionId, entry.cwd))?.updatedAt ?? entry.updatedAt;
+  }
+
+  /** The session from Kiro's full list (cached up to 60 s), or undefined */
+  async function listedEntry(sessionId: string): Promise<Entry | undefined> {
+    let entry = (await entries()).find((e) => e.sessionId === sessionId);
+    if (!entry && cached) {
+      // A session made after the cached list
+      cached = undefined;
+      entry = (await entries()).find((e) => e.sessionId === sessionId);
+    }
+    return entry;
   }
 
   /** Reads the JSON body; null when a reply was sent */
@@ -228,14 +303,47 @@ export function createKiroSessionsHandler(options: KiroSessionsHandlerOptions) {
       return;
     }
     if (!(await checkStatus(res))) return;
-    const { sessionId, skipTurns } = parsed.value;
+    const { sessionId, skipTurns, ifUpdatedAfter } = parsed.value;
     const started = Date.now();
     try {
-      let entry = (await entries()).find((e) => e.sessionId === sessionId);
-      if (!entry && cached) {
-        // A session made after the cached list
-        cached = undefined;
-        entry = (await entries()).find((e) => e.sessionId === sessionId);
+      let entry: Entry | undefined;
+      // After the replay, read Kiro's time again in the session's folder (B3). Not when that
+      // folder list already timed out or lacked the session: the second read would only wait
+      // again, so the full list's time is used.
+      let readExactTime = true;
+      if (ifUpdatedAfter !== undefined) {
+        // A reply runs in the session: its time moves, so neither answer would be right
+        if (agent.isBusy(sessionId)) throw new KiroBusyError('Kiro is answering in this session');
+        const cwd = await findCwd(sessionId);
+        if (cwd === undefined) {
+          // No session.json: no load of an id that may not be Kiro's
+          sendJson(res, 404, { error: KIRO_SESSION_NOT_FOUND });
+          return;
+        }
+        const found = await folderEntry(sessionId, cwd);
+        if (found) {
+          // A turn runs in the session (in the terminal): a replay now could count half of it
+          if (found.status !== 'idle') {
+            throw new KiroBusyError('Kiro is answering in this session');
+          }
+          if (isSameKiroTime(found.updatedAt, ifUpdatedAfter)) {
+            const body: KiroSessionUnchangedResponse = {
+              unchanged: true,
+              updatedAt: found.updatedAt,
+            };
+            sendJson(res, 200, body);
+            console.log(`[kiro] session unchanged (${Date.now() - started} ms)`);
+            return;
+          }
+          entry = found;
+        } else {
+          // The folder list failed, was slow, or lacks the id (session.json names another form
+          // of the folder): the session must still be in Kiro's full list, else 404 with no load
+          readExactTime = false;
+          entry = await listedEntry(sessionId);
+        }
+      } else {
+        entry = await listedEntry(sessionId);
       }
       if (!entry) {
         sendJson(res, 404, { error: KIRO_SESSION_NOT_FOUND });
@@ -260,9 +368,11 @@ export function createKiroSessionsHandler(options: KiroSessionsHandlerOptions) {
         KIRO_IMPORT_MAX_BYTES - Buffer.byteLength(JSON.stringify(sessionOptions), 'utf8')
       );
       const title = asRecord(load._meta)?.title;
+      const updatedAt = readExactTime ? await exactUpdatedAt(entry) : entry.updatedAt;
+      if (res.destroyed) return;
       const body: KiroSessionOpenResponse = {
         title: typeof title === 'string' && title.trim() ? title : entry.title,
-        updatedAt: entry.updatedAt,
+        updatedAt,
         ...result,
         sessionOptions,
       };

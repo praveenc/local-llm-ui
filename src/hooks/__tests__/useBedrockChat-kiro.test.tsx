@@ -237,18 +237,26 @@ describe('useBedrockChat with Kiro', () => {
   });
 
   it("keeps an imported session's turn count and sync time, and adds the new turn", async () => {
+    // No sessions section: the server's time decides (K11)
     db.conversation = {
       id: 'conv-1',
       kiro: { sessionId: SESSION, seenMessages: 2, turns: 3, updatedAt: '2026-11-25T10:00:00Z' },
     } as Conversation;
     db.messages = [dbMessage(1, 'user', 'a'), dbMessage(2, 'assistant', 'b')];
-    mockKiroFetch([{ session: { id: SESSION, created: false } }, { content: 'ok' }, '[DONE]']);
+    mockKiroFetch([
+      { session: { id: SESSION, created: false } },
+      // The same instant as the stored time, in Kiro's form
+      { sessionUpdatedBefore: '2026-11-25T10:00:00.000Z' },
+      { content: 'ok' },
+      '[DONE]',
+    ]);
     const { result } = renderHook(() => useBedrockChat(options({ conversationId: 'conv-1' })));
 
     await act(async () => {
       await result.current.sendMessage('c');
     });
 
+    // Until the reply ends, the database keeps the stored count (a refused prompt keeps it)
     expect(mutations.setKiroSession).toHaveBeenNthCalledWith(1, 'conv-1', {
       sessionId: SESSION,
       seenMessages: 2,
@@ -278,6 +286,8 @@ describe('useBedrockChat with Kiro', () => {
     );
     const { fetchMock } = mockKiroFetch([
       { session: { id: SESSION, created: false } },
+      // Kiro's time equals the time that the sync stored: the record is read after the wait
+      { sessionUpdatedBefore: '2026-11-25T11:00:00.000Z' },
       { content: 'ok' },
       '[DONE]',
     ]);
@@ -317,6 +327,166 @@ describe('useBedrockChat with Kiro', () => {
       seenMessages: 6,
       turns: 5,
       updatedAt: '2026-11-25T11:00:00Z',
+    });
+  });
+
+  it.each([
+    ["a terminal turn moved Kiro's time", [{ sessionUpdatedBefore: '2026-11-25T10:30:00.000Z' }]],
+    ['the server could not read the time', []],
+    ['the time is not a date', [{ sessionUpdatedBefore: 'soon' }]],
+  ])('keeps no turn count and no new time when %s (K11)', async (_name, before) => {
+    db.conversation = {
+      id: 'conv-1',
+      kiro: { sessionId: SESSION, seenMessages: 2, turns: 3, updatedAt: '2026-11-25T10:00:00Z' },
+    } as Conversation;
+    db.messages = [dbMessage(1, 'user', 'a'), dbMessage(2, 'assistant', 'b')];
+    mockKiroFetch([
+      { session: { id: SESSION, created: false } },
+      ...before,
+      { content: 'ok' },
+      { sessionUpdatedAt: '2026-11-25T11:00:00.000Z' },
+      '[DONE]',
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options({ conversationId: 'conv-1' })));
+
+    await act(async () => {
+      await result.current.sendMessage('c');
+    });
+
+    // No count and no new stamp: the next open counts the turns again (D24)
+    expect(mutations.setKiroSession).toHaveBeenLastCalledWith('conv-1', {
+      sessionId: SESSION,
+      seenMessages: 4,
+      updatedAt: '2026-11-25T10:00:00Z',
+    });
+  });
+
+  it('keeps the stored count when Kiro refuses the message after the session event (K11)', async () => {
+    db.conversation = {
+      id: 'conv-1',
+      kiro: { sessionId: SESSION, seenMessages: 2, turns: 3, updatedAt: '2026-11-25T10:00:00Z' },
+    } as Conversation;
+    db.messages = [dbMessage(1, 'user', 'a'), dbMessage(2, 'assistant', 'b')];
+    mockKiroFetch([
+      { session: { id: SESSION, created: false } },
+      { sessionUpdatedBefore: '2026-11-25T10:30:00.000Z' },
+      { error: 'This session is loaded in another program.' },
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options({ conversationId: 'conv-1' })));
+
+    await act(async () => {
+      await result.current.sendMessage('c');
+    });
+
+    expect(result.current.error).toContain('another program');
+    expect(mutations.setKiroSession).toHaveBeenCalledTimes(1);
+    expect(mutations.setKiroSession).toHaveBeenLastCalledWith('conv-1', {
+      sessionId: SESSION,
+      seenMessages: 2,
+      turns: 3,
+      updatedAt: '2026-11-25T10:00:00Z',
+    });
+  });
+
+  it('drops the count when Kiro took the message and then failed (K11)', async () => {
+    db.conversation = {
+      id: 'conv-1',
+      kiro: { sessionId: SESSION, seenMessages: 2, turns: 3, updatedAt: '2026-11-25T10:00:00Z' },
+    } as Conversation;
+    db.messages = [dbMessage(1, 'user', 'a'), dbMessage(2, 'assistant', 'b')];
+    mockKiroFetch([
+      { session: { id: SESSION, created: false } },
+      { sessionUpdatedBefore: '2026-11-25T10:00:00.000Z' },
+      { content: 'par' },
+      { error: 'Kiro stopped during the reply. Send the message again.' },
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options({ conversationId: 'conv-1' })));
+
+    await act(async () => {
+      await result.current.sendMessage('c');
+    });
+
+    expect(result.current.error).toContain('Kiro stopped');
+    expect(mutations.setKiroSession).toHaveBeenLastCalledWith('conv-1', {
+      sessionId: SESSION,
+      seenMessages: 3,
+      turns: undefined,
+      updatedAt: '2026-11-25T10:00:00Z',
+    });
+  });
+
+  it('keeps no turn count when the chat had none, also with the same time (K11)', async () => {
+    db.conversation = {
+      id: 'conv-1',
+      kiro: { sessionId: SESSION, seenMessages: 2, updatedAt: '2026-11-25T10:00:00Z' },
+    } as Conversation;
+    db.messages = [dbMessage(1, 'user', 'a'), dbMessage(2, 'assistant', 'b')];
+    mockKiroFetch([
+      { session: { id: SESSION, created: false } },
+      { sessionUpdatedBefore: '2026-11-25T10:00:00.000Z' },
+      { content: 'ok' },
+      { sessionUpdatedAt: '2026-11-25T11:00:00.000Z' },
+      '[DONE]',
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options({ conversationId: 'conv-1' })));
+
+    await act(async () => {
+      await result.current.sendMessage('c');
+    });
+
+    expect(mutations.setKiroSession).toHaveBeenLastCalledWith('conv-1', {
+      sessionId: SESSION,
+      seenMessages: 4,
+      updatedAt: '2026-11-25T10:00:00Z',
+    });
+  });
+
+  it("stores Kiro's time after a reply that counts its turn (D25)", async () => {
+    db.conversation = {
+      id: 'conv-1',
+      kiro: { sessionId: SESSION, seenMessages: 2, turns: 3, updatedAt: '2026-11-25T10:00:00Z' },
+    } as Conversation;
+    db.messages = [dbMessage(1, 'user', 'a'), dbMessage(2, 'assistant', 'b')];
+    mockKiroFetch([
+      { session: { id: SESSION, created: false } },
+      { sessionUpdatedBefore: '2026-11-25T10:00:00.000Z' },
+      { content: 'ok' },
+      { sessionUpdatedAt: 'not a date' },
+      { sessionUpdatedAt: '2026-11-25T11:00:00.000Z' },
+      '[DONE]',
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options({ conversationId: 'conv-1' })));
+
+    await act(async () => {
+      await result.current.sendMessage('c');
+    });
+
+    expect(mutations.setKiroSession).toHaveBeenLastCalledWith('conv-1', {
+      sessionId: SESSION,
+      seenMessages: 4,
+      turns: 4,
+      updatedAt: '2026-11-25T11:00:00.000Z',
+    });
+  });
+
+  it("stores Kiro's time for a new session, which has no turns that the chat lacks", async () => {
+    mockKiroFetch([
+      { session: { id: SESSION, created: true } },
+      { content: 'ok' },
+      { sessionUpdatedAt: '2026-11-25T11:00:00.000Z' },
+      '[DONE]',
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options()));
+
+    await act(async () => {
+      await result.current.sendMessage('hi');
+    });
+
+    expect(mutations.setKiroSession).toHaveBeenLastCalledWith('conv-1', {
+      sessionId: SESSION,
+      seenMessages: 2,
+      turns: 1,
+      updatedAt: '2026-11-25T11:00:00.000Z',
     });
   });
 

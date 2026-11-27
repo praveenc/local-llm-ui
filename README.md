@@ -554,8 +554,9 @@ Some limits apply to an import:
 
 To continue a session in both places:
 
-- When you make a new turn in the terminal and then open the chat in the app, the app adds the new turns at the end. It does this only when the session is in the list that the section shows now. Select **All** if the session is old. A chat that was imported before this feature does not get new turns.
-- After a reply in the app, the next open of that chat can ask Kiro for the session again, and add nothing. This takes a short time.
+- Before each message that you send in the chat, and when you open the chat, the app asks Kiro whether the session changed. When you made new turns in the terminal, the app adds them at the end first, in Kiro's order, and then sends your message. While the app asks, the chat can say **Checking the Kiro session…**, and while it adds the turns, **Adding the new Kiro turns…**.
+- The check when you open a chat runs only while the **Kiro sessions** section is on. The check before a message also runs when the section is off.
+- A chat from before 1.3.0 counts its turns the first time that you open it. The app adds the turns that you make in the terminal after that, but not the turns from before that open.
 - The terminal can use the session after the app's reply. If the terminal holds the session when you send a message in the app, the chat shows Kiro's text about the other program. Close the session in the terminal and click **Retry**.
 
 **Delete** removes the chat from the app only. Kiro keeps the session and its files, and the session shows in the **Kiro sessions** section again.

@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { createHash } from 'crypto';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises';
 import { createServer } from 'http';
 import type { IncomingMessage, RequestListener, Server } from 'http';
 import type { AddressInfo } from 'net';
@@ -8,6 +9,7 @@ import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { KIRO_COUNT_ONLY_SKIP } from '../../src/utils/kiroSessions.ts';
 import type { KiroStatus } from '../../src/utils/kiroStatus.ts';
 import { createKiroProxy } from '../kiro-proxy.ts';
 import { KiroAgent, KiroBusyError } from '../kiro/agent.ts';
@@ -114,6 +116,7 @@ async function setup() {
   });
   return {
     url,
+    home,
     async log(): Promise<Record<string, unknown>[]> {
       try {
         return (await readFile(logFile, 'utf8'))
@@ -194,7 +197,12 @@ describe('POST /api/kiro/sessions', () => {
     });
     expect(await chat.text()).toContain('[DONE]');
     await post(c.url, '/api/kiro/sessions', {});
-    expect((await c.log()).filter((m) => m.method === 'session/list')).toHaveLength(2);
+    // The full lists only: the chat route reads one folder for Kiro's time (K11)
+    const full = (await c.log()).filter(
+      (m) =>
+        m.method === 'session/list' && (m.params as { cwd?: string } | undefined)?.cwd === undefined
+    );
+    expect(full).toHaveLength(2);
   });
 
   it('answers 405 to a GET and 403 to a cross-site POST', async () => {
@@ -271,6 +279,150 @@ describe('POST /api/kiro/sessions/open', () => {
     ]);
   });
 
+  it('answers a count-only open with no messages and all the turns (D24)', async () => {
+    const c = await setup();
+    const { json } = await post(c.url, '/api/kiro/sessions/open', {
+      sessionId: USED,
+      skipTurns: KIRO_COUNT_ONLY_SKIP,
+    });
+    expect(json.turns).toBe(2);
+    expect(json.messages).toEqual([]);
+    expect(json.turnsLeftOut).toBe(0);
+    expect(typeof json.updatedAt).toBe('string');
+  });
+
+  it("gives the same time as the chat route, and Kiro's time now, not the cached one (K11)", async () => {
+    const c = await setup();
+    const res = await fetch(`${c.url}/api/kiro/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ history: [], seenMessages: 0, model: 'claude-fake-1', prompt: 'hi' }),
+    });
+    const events = (await res.text())
+      .split('\n\n')
+      .map((b) => b.trim())
+      .filter((b) => b.startsWith('data: ') && b !== 'data: [DONE]')
+      .map((b) => JSON.parse(b.slice(6)) as Record<string, unknown>);
+    const id = (events.find((e) => 'session' in e)?.session as { id: string }).id;
+    const chatAt = events.find((e) => 'sessionUpdatedAt' in e)?.sessionUpdatedAt as string;
+    expect(typeof chatAt).toBe('string');
+    await vi.waitFor(async () => {
+      expect((await c.log()).some((m) => m.method === 'session/close')).toBe(true);
+    });
+    // The full list has the session with the same time as the list of its folder
+    const listed = (await post(c.url, '/api/kiro/sessions', {})).json.sessions as {
+      sessionId: string;
+      updatedAt: string;
+    }[];
+    expect(listed.find((s) => s.sessionId === id)?.updatedAt).toBe(chatAt);
+    const opened = await post(c.url, '/api/kiro/sessions/open', { sessionId: id });
+    expect(opened.status).toBe(200);
+    expect(opened.json.updatedAt).toBe(chatAt);
+
+    // A terminal turn: the cached list is now old, the open reports Kiro's time
+    const root = path.join(c.home, '.kiro', 'sessions');
+    const [bucket] = (await readdir(root)).filter((b) => b);
+    const file = path.join(root, bucket, id, 'session.json');
+    const json = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>;
+    const terminal = new Date(Date.parse(chatAt) + 60_000).toISOString();
+    await writeFile(file, JSON.stringify({ ...json, updatedAt: terminal }));
+    const cachedAt = (
+      (await post(c.url, '/api/kiro/sessions', {})).json.sessions as {
+        sessionId: string;
+        updatedAt: string;
+      }[]
+    ).find((s) => s.sessionId === id)?.updatedAt;
+    expect(cachedAt).toBe(chatAt);
+    const again = await post(c.url, '/api/kiro/sessions/open', { sessionId: id });
+    expect(again.json.updatedAt).toBe(terminal);
+    // The time is read with a list of the session's folder; no folder goes to the browser
+    const lists = (await c.log()).filter((m) => m.method === 'session/list');
+    expect(lists.some((m) => typeof (m.params as { cwd?: unknown }).cwd === 'string')).toBe(true);
+    expect(again.text).not.toContain(c.home);
+    expect(again.text).not.toContain('cwd');
+  });
+
+  /** A session.json for a session of the fake's list, as Kiro keeps it on disk */
+  async function sessionFile(home: string, sessionId: string, cwd: string) {
+    const bucket = createHash('sha256').update(cwd).digest('hex').slice(0, 16);
+    const dir = path.join(home, '.kiro', 'sessions', bucket, sessionId);
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      path.join(dir, 'session.json'),
+      JSON.stringify({ id: sessionId, workspacePaths: [cwd], title: 'On disk' })
+    );
+  }
+  const loads = (log: Record<string, unknown>[]) =>
+    log.filter((m) => m.method === 'session/load').length;
+  const fullLists = (log: Record<string, unknown>[]) =>
+    log.filter(
+      (m) =>
+        m.method === 'session/list' && (m.params as { cwd?: string } | undefined)?.cwd === undefined
+    ).length;
+
+  it("answers unchanged with no load when Kiro's time equals ifUpdatedAfter (K11 B4)", async () => {
+    const c = await setup();
+    await sessionFile(c.home, USED, '/work/fake-project/');
+    // Newer than the chat's time: the replay, from the folder list, with no full list
+    const replayed = await post(c.url, '/api/kiro/sessions/open', {
+      sessionId: USED,
+      skipTurns: 1,
+      ifUpdatedAfter: '2020-01-01T00:00:00.000Z',
+    });
+    expect(replayed.status).toBe(200);
+    expect(replayed.json.turns).toBe(2);
+    expect((replayed.json.messages as { content: string }[]).map((m) => m.content)).toEqual([
+      'Say hi',
+      'hi',
+    ]);
+    let log = await c.log();
+    expect(loads(log)).toBe(1);
+    expect(fullLists(log)).toBe(0);
+    const at = replayed.json.updatedAt as string;
+    // The exact time: the same as the full list reports
+    const listed = (await post(c.url, '/api/kiro/sessions', {})).json.sessions as {
+      sessionId: string;
+      updatedAt: string;
+    }[];
+    expect(listed.find((s) => s.sessionId === USED)?.updatedAt).toBe(at);
+
+    // The same instant: unchanged, and no load
+    const same = await post(c.url, '/api/kiro/sessions/open', {
+      sessionId: USED,
+      skipTurns: 2,
+      ifUpdatedAfter: at,
+    });
+    expect(same.status).toBe(200);
+    expect(same.json).toEqual({ unchanged: true, updatedAt: at });
+    log = await c.log();
+    expect(loads(log)).toBe(1);
+    expect(same.text).not.toContain('/work');
+    expect(same.text).not.toContain(c.home);
+    expect(replayed.text).not.toContain('/work');
+    expect(replayed.text).not.toContain('cwd');
+  });
+
+  it('answers 404 with no load for an id that has no session.json, or a bad ifUpdatedAfter 400', async () => {
+    const c = await setup();
+    // OLDER is in Kiro's full list, but has no session.json: no load of an id from elsewhere
+    for (const sessionId of [OLDER, UNKNOWN]) {
+      const res = await post(c.url, '/api/kiro/sessions/open', {
+        sessionId,
+        ifUpdatedAfter: '2026-11-26T10:00:00.000Z',
+      });
+      expect(res.status).toBe(404);
+      expect(res.json.error).toBe(KIRO_SESSION_NOT_FOUND);
+    }
+    const bad = await post(c.url, '/api/kiro/sessions/open', {
+      sessionId: USED,
+      ifUpdatedAfter: 'yesterday',
+    });
+    expect(bad.status).toBe(400);
+    const log = await c.log();
+    expect(loads(log)).toBe(0);
+    expect(log.some((m) => m.method === 'session/list')).toBe(false);
+  });
+
   it('refuses a bad id, and an id that is not in the list', async () => {
     const c = await setup();
     const bad = await post(c.url, '/api/kiro/sessions/open', { sessionId: '../etc' });
@@ -299,6 +451,7 @@ describe('createKiroSessionsHandler', () => {
     const agent = {
       listSessions: vi.fn(async () => ({ sessions: [entry(USED, 'Used')] })),
       replaySession: vi.fn(async () => ({})),
+      isBusy: vi.fn(() => false),
       onAgentNotification: vi.fn((l: (method: string, params: unknown) => void) => {
         listener = l;
         return () => undefined;
@@ -307,6 +460,7 @@ describe('createKiroSessionsHandler', () => {
     } as unknown as KiroSessionsAgent & {
       listSessions: ReturnType<typeof vi.fn>;
       replaySession: ReturnType<typeof vi.fn>;
+      isBusy: ReturnType<typeof vi.fn>;
     };
     return { agent, notify: (method: string) => listener?.(method, {}) };
   }
@@ -314,12 +468,16 @@ describe('createKiroSessionsHandler', () => {
   async function handlerUrl(
     agent: KiroSessionsAgent,
     status: KiroStatus = SIGNED_IN,
-    now?: () => number
+    now?: () => number,
+    stampWaitMs?: number,
+    findCwd: (sessionId: string) => Promise<string | undefined> = async () => '/work/project'
   ) {
     const handler = createKiroSessionsHandler({
       agent,
       statusReader: { read: async () => status },
       now,
+      stampWaitMs,
+      findCwd,
     });
     return serve((req, res) => {
       void (req.url === '/open' ? handler.open(req, res) : handler.list(req, res));
@@ -377,6 +535,42 @@ describe('createKiroSessionsHandler', () => {
     expect(failed.json).toEqual({ error: KIRO_SESSION_OPEN_FAILED });
   });
 
+  it("reports the time from a list of the session's folder, else the cached one (K11)", async () => {
+    const cached = '2026-11-26T10:00:00.000Z';
+    const exact = '2026-11-26T10:05:00.000Z';
+    const { agent } = stub();
+    agent.listSessions.mockImplementation(async (params?: { cwd?: string }) => ({
+      sessions: [entry(USED, 'Used', params?.cwd ? exact : cached)],
+    }));
+    const url = await handlerUrl(agent);
+    expect((await post(url, '/open', { sessionId: USED })).json.updatedAt).toBe(exact);
+    expect(agent.listSessions).toHaveBeenLastCalledWith({ cwd: '/work/project' });
+
+    // The folder list fails: the cached time
+    const failing = stub();
+    failing.agent.listSessions.mockImplementation(async (params?: { cwd?: string }) => {
+      if (params?.cwd) throw new Error('list failed');
+      return { sessions: [entry(USED, 'Used', cached)] };
+    });
+    const failed = await post(await handlerUrl(failing.agent), '/open', { sessionId: USED });
+    expect(failed.status).toBe(200);
+    expect(failed.json.updatedAt).toBe(cached);
+
+    // The folder list hangs: the cached time after the wait
+    const hanging = stub();
+    hanging.agent.listSessions.mockImplementation((params?: { cwd?: string }) =>
+      params?.cwd
+        ? new Promise(() => undefined)
+        : Promise.resolve({ sessions: [entry(USED, 'Used', cached)] })
+    );
+    const started = Date.now();
+    const slow = await post(await handlerUrl(hanging.agent, SIGNED_IN, undefined, 100), '/open', {
+      sessionId: USED,
+    });
+    expect(slow.json.updatedAt).toBe(cached);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
   it('lists again for an id that a cached list does not have yet', async () => {
     const { agent } = stub();
     agent.listSessions
@@ -388,5 +582,159 @@ describe('createKiroSessionsHandler', () => {
     expect(res.status).toBe(200);
     expect(res.json.title).toBe('Newer one');
     expect(agent.replaySession).toHaveBeenCalledWith(OLDER, '/work/project', expect.any(Function));
+  });
+
+  describe('with ifUpdatedAfter (K11 B4)', () => {
+    const AT = '2026-11-26T10:00:00.000Z';
+    const NEWER = '2026-11-26T10:05:00.000Z';
+    /** A full list without the session, and a folder list with it at `at` */
+    function folderOnly(at: string) {
+      const s = stub();
+      s.agent.listSessions.mockImplementation(async (params?: { cwd?: string }) => ({
+        sessions: params?.cwd ? [entry(USED, 'Used', at)] : [entry(OLDER, 'Other')],
+      }));
+      return s;
+    }
+
+    it('answers unchanged from the folder list, with no full list and no replay', async () => {
+      const { agent } = folderOnly(AT);
+      const url = await handlerUrl(agent);
+      const res = await post(url, '/open', { sessionId: USED, ifUpdatedAfter: AT });
+      expect(res.json).toEqual({ unchanged: true, updatedAt: AT });
+      expect(agent.listSessions).toHaveBeenCalledTimes(1);
+      expect(agent.listSessions).toHaveBeenCalledWith({ cwd: '/work/project' });
+      expect(agent.replaySession).not.toHaveBeenCalled();
+      expect(res.text).not.toContain('/work');
+    });
+
+    it('replays a session that only the folder list has, with the exact time', async () => {
+      const { agent } = folderOnly(NEWER);
+      const url = await handlerUrl(agent);
+      const res = await post(url, '/open', { sessionId: USED, ifUpdatedAfter: AT });
+      expect(res.status).toBe(200);
+      expect(res.json).toMatchObject({ title: 'Used', updatedAt: NEWER, turns: 0 });
+      expect(agent.replaySession).toHaveBeenCalledWith(USED, '/work/project', expect.any(Function));
+      // Only folder lists: no full list on this path
+      for (const [params] of agent.listSessions.mock.calls as [{ cwd?: string }?][]) {
+        expect(params?.cwd).toBe('/work/project');
+      }
+      expect(res.text).not.toContain('/work');
+    });
+
+    it('answers 409 with no replay when the folder list says a turn runs (B5)', async () => {
+      const { agent } = stub();
+      agent.listSessions.mockResolvedValue({
+        sessions: [{ ...entry(USED, 'Used', NEWER), _meta: { kiro: { status: 'in_progress' } } }],
+      });
+      const res = await post(await handlerUrl(agent), '/open', {
+        sessionId: USED,
+        ifUpdatedAfter: AT,
+      });
+      expect(res.status).toBe(409);
+      expect(res.json.error).toBe(KIRO_SESSION_BUSY);
+      expect(agent.listSessions).toHaveBeenCalledTimes(1);
+      expect(agent.replaySession).not.toHaveBeenCalled();
+      expect(res.text).not.toContain('/work');
+    });
+
+    it('falls back to the full list when the folder list lacks the id, with one folder read (B5)', async () => {
+      const { agent } = stub();
+      // session.json names one form of the folder; Kiro lists the session under another
+      agent.listSessions.mockImplementation(async (params?: { cwd?: string }) => ({
+        sessions: params?.cwd
+          ? [entry(OLDER, 'Other')]
+          : [{ ...entry(USED, 'Used', NEWER), cwd: '/work/project-link' }],
+      }));
+      const res = await post(await handlerUrl(agent), '/open', {
+        sessionId: USED,
+        ifUpdatedAfter: AT,
+      });
+      expect(res.status).toBe(200);
+      expect(res.json).toMatchObject({ title: 'Used', updatedAt: NEWER });
+      expect(res.json.unchanged).toBeUndefined();
+      // The load uses the folder that Kiro lists, not the session.json one
+      expect(agent.replaySession).toHaveBeenCalledWith(
+        USED,
+        '/work/project-link',
+        expect.any(Function)
+      );
+      const calls = agent.listSessions.mock.calls as [{ cwd?: string }?][];
+      expect(calls.filter(([params]) => params?.cwd)).toHaveLength(1);
+      expect(calls.filter(([params]) => !params?.cwd)).toHaveLength(1);
+      expect(res.text).not.toContain('/work');
+    });
+
+    it('answers 404 with no replay when there is no session.json or no list has it', async () => {
+      const { agent } = stub();
+      const noFile = await post(
+        await handlerUrl(agent, SIGNED_IN, undefined, undefined, async () => undefined),
+        '/open',
+        { sessionId: USED, ifUpdatedAfter: AT }
+      );
+      expect(noFile.status).toBe(404);
+      expect(agent.listSessions).not.toHaveBeenCalled();
+
+      const other = stub();
+      other.agent.listSessions.mockResolvedValue({ sessions: [entry(OLDER, 'Other')] });
+      const missing = await post(await handlerUrl(other.agent), '/open', {
+        sessionId: USED,
+        ifUpdatedAfter: AT,
+      });
+      expect(missing.status).toBe(404);
+      expect(missing.json.error).toBe(KIRO_SESSION_NOT_FOUND);
+      expect(other.agent.replaySession).not.toHaveBeenCalled();
+    });
+
+    it('replays as without ifUpdatedAfter when the folder list fails or is slow, never unchanged', async () => {
+      const failing = stub();
+      failing.agent.listSessions.mockImplementation(async (params?: { cwd?: string }) => {
+        if (params?.cwd) throw new Error('list failed');
+        return { sessions: [entry(USED, 'Used', AT)] };
+      });
+      const failed = await post(await handlerUrl(failing.agent), '/open', {
+        sessionId: USED,
+        ifUpdatedAfter: AT,
+      });
+      expect(failed.status).toBe(200);
+      expect(failed.json.unchanged).toBeUndefined();
+      expect(failed.json.updatedAt).toBe(AT);
+      expect(failing.agent.replaySession).toHaveBeenCalledTimes(1);
+      // No second folder read after the replay: the full list's time
+      const failedCalls = failing.agent.listSessions.mock.calls as [{ cwd?: string }?][];
+      expect(failedCalls.filter(([params]) => params?.cwd)).toHaveLength(1);
+
+      const hanging = stub();
+      hanging.agent.listSessions.mockImplementation((params?: { cwd?: string }) =>
+        params?.cwd
+          ? new Promise(() => undefined)
+          : Promise.resolve({ sessions: [entry(USED, 'Used', AT)] })
+      );
+      const started = Date.now();
+      const slow = await post(await handlerUrl(hanging.agent, SIGNED_IN, undefined, 100), '/open', {
+        sessionId: USED,
+        ifUpdatedAfter: AT,
+      });
+      expect(slow.status).toBe(200);
+      expect(slow.json.unchanged).toBeUndefined();
+      expect(hanging.agent.replaySession).toHaveBeenCalledTimes(1);
+      expect(slow.json.updatedAt).toBe(AT);
+      // One wait only (B5): no second folder read after the replay
+      const hangingCalls = hanging.agent.listSessions.mock.calls as [{ cwd?: string }?][];
+      expect(hangingCalls.filter(([params]) => params?.cwd)).toHaveLength(1);
+      expect(Date.now() - started).toBeLessThan(1000);
+    });
+
+    it('answers 409 while a reply runs in the session, with no list and no replay', async () => {
+      const { agent } = stub();
+      agent.isBusy.mockReturnValue(true);
+      const res = await post(await handlerUrl(agent), '/open', {
+        sessionId: USED,
+        ifUpdatedAfter: AT,
+      });
+      expect(res.status).toBe(409);
+      expect(res.json.error).toBe(KIRO_SESSION_BUSY);
+      expect(agent.listSessions).not.toHaveBeenCalled();
+      expect(agent.replaySession).not.toHaveBeenCalled();
+    });
   });
 });

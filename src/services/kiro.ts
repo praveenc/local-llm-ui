@@ -4,7 +4,9 @@ import type { KiroPermissionAnswer } from '../utils/kiroPermissions';
 import {
   type KiroSessionOpenResponse,
   type KiroSessionSummary,
+  type KiroSessionUnchangedResponse,
   type KiroSessionWindow,
+  parseKiroSessionCheckResponse,
   parseKiroSessionOpenResponse,
   parseKiroSessionsResponse,
 } from '../utils/kiroSessions';
@@ -336,6 +338,32 @@ export class KiroService {
     const session = parseKiroSessionOpenResponse(await response.json());
     if (!session) throw new Error('Kiro sent a session that the app cannot read.');
     if (session.sessionOptions) this.rememberSessionOptions(sessionId, session.sessionOptions);
+    return session;
+  }
+
+  /**
+   * The exact check of a synced chat (K11): `{ unchanged: true }` when Kiro's time of the session
+   * is still `ifUpdatedAfter`, else the turns after `skipTurns` as `openSession` returns them. The
+   * server finds the session from its own folder, so this never waits for Kiro's full list.
+   * Throws an error in words.
+   */
+  async checkSession(
+    sessionId: string,
+    skipTurns: number,
+    ifUpdatedAfter: string
+  ): Promise<KiroSessionUnchangedResponse | KiroSessionOpenResponse> {
+    const response = await fetch('/api/kiro/sessions/open', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ sessionId, skipTurns, ifUpdatedAfter }),
+    });
+    if (response.status === 401) throw new KiroSignedOutError();
+    if (!response.ok) throw new Error(await responseError(response));
+    const session = parseKiroSessionCheckResponse(await response.json());
+    if (!session) throw new Error('Kiro sent a session that the app cannot read.');
+    if ('messages' in session && session.sessionOptions) {
+      this.rememberSessionOptions(sessionId, session.sessionOptions);
+    }
     return session;
   }
 

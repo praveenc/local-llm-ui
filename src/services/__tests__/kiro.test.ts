@@ -531,6 +531,38 @@ describe('KiroService sessions', () => {
     );
   });
 
+  it('checks a synced chat with its time: unchanged, or the new turns (K11 B4)', async () => {
+    const at = '2026-11-25T10:00:00.000Z';
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ unchanged: true, updatedAt: at }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(new KiroService().checkSession(SESSION, 2, at)).resolves.toEqual({
+      unchanged: true,
+      updatedAt: at,
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/kiro/sessions/open');
+    expect(fetchMock.mock.calls[0][1].body).toBe(
+      JSON.stringify({ sessionId: SESSION, skipTurns: 2, ifUpdatedAfter: at })
+    );
+    const body = {
+      title: 'Fix the build',
+      updatedAt: '2026-11-25T10:05:00.000Z',
+      messages: [{ role: 'user', content: 'hi' }],
+      turns: 3,
+      imagesLeftOut: 0,
+      turnsLeftOut: 0,
+    };
+    fetchMock.mockResolvedValue(Response.json(body));
+    await expect(new KiroService().checkSession(SESSION, 2, at)).resolves.toEqual(body);
+    fetchMock.mockResolvedValue(Response.json({ unchanged: true }));
+    await expect(new KiroService().checkSession(SESSION, 2, at)).rejects.toThrow(
+      'Kiro sent a session that the app cannot read.'
+    );
+    fetchMock.mockResolvedValue(new Response('{}', { status: 401 }));
+    await expect(new KiroService().checkSession(SESSION, 2, at)).rejects.toBeInstanceOf(
+      KiroSignedOutError
+    );
+  });
+
   it("keeps the opened session's option lists for its controls (K9)", async () => {
     const sessionOptions = {
       options: [

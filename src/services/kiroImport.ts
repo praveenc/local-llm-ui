@@ -136,15 +136,20 @@ export async function importKiroSession(
  * terminal) at the end of the chat. `session` must hold only the turns after the stored
  * `kiro.turns` (the open route with `skipTurns`). When Kiro's history is shorter than the stored
  * count, nothing is added: the chat keeps its messages. Returns how many messages were added.
+ *
+ * `skipTurns` is the count that the request sent. When the stored count differs now (another tab
+ * or a reply stored turns meanwhile), the answer is old and nothing is added or written.
  */
 export async function appendKiroTurns(
   conversationId: string,
-  session: KiroSessionOpenResponse
+  session: KiroSessionOpenResponse,
+  skipTurns: number
 ): Promise<number> {
   return db.transaction('rw', [db.conversations, db.messages], async () => {
     const conversation = await db.conversations.get(conversationId);
     const kiro = conversation?.kiro;
     if (!conversation || !kiro || kiro.turns === undefined) return 0;
+    if (kiro.turns !== skipTurns) return 0;
 
     if (session.turns <= kiro.turns || session.messages.length === 0) {
       // Nothing new, or a shorter history: keep the chat as it is and remember Kiro's time
@@ -193,5 +198,33 @@ export async function appendKiroTurns(
       },
     });
     return added.length;
+  });
+}
+
+/**
+ * Stores the turn count of a chat that has none (D24, K11): a chat made before K7, or a chat whose
+ * last send could not know whether it held every turn. `session` is a count-only answer of the
+ * open route (`KIRO_COUNT_ONLY_SKIP`). Adds no message: the app cannot tell which of Kiro's turns
+ * the chat holds, so turns that Kiro made before this count (in the terminal) are not imported.
+ * Turns after it sync as usual. Returns false when the chat changed meanwhile (another session, or
+ * a count already stored).
+ */
+export async function backfillKiroTurns(
+  conversationId: string,
+  sessionId: string,
+  session: KiroSessionOpenResponse
+): Promise<boolean> {
+  return db.transaction('rw', db.conversations, async () => {
+    const kiro = (await db.conversations.get(conversationId))?.kiro;
+    if (!kiro || kiro.sessionId !== sessionId || kiro.turns !== undefined) return false;
+    await db.conversations.update(conversationId, {
+      kiro: {
+        ...kiro,
+        turns: session.turns,
+        updatedAt: session.updatedAt,
+        ...sessionValues(session),
+      },
+    });
+    return true;
   });
 }

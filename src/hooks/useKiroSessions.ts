@@ -8,7 +8,9 @@
  *
  * `importSession` makes a conversation from a session and opens it (a session that a
  * conversation already holds opens that conversation). `syncIfNewer` adds the turns that Kiro
- * made later (in the terminal) to an imported conversation.
+ * made later (in the terminal) to an imported conversation: it asks Kiro with the chat's stored
+ * time, so it does not depend on the list (K11, `kiroSyncs.ts`). A chat with no turn count gets
+ * one (D24). It runs only while the section is on, so an open never starts Kiro CLI otherwise.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -19,11 +21,10 @@ import { db } from '../db';
 import { KiroSignedOutError, kiroService } from '../services/kiro';
 import {
   KIRO_AUTO_MODEL,
-  appendKiroTurns,
   findConversationByKiroSession,
   importKiroSession,
 } from '../services/kiroImport';
-import { trackKiroSync } from '../services/kiroSyncs';
+import { syncKiroChatOnOpen } from '../services/kiroSyncs';
 import {
   DEFAULT_KIRO_SESSION_WINDOW,
   KIRO_SESSIONS_TTL_MS,
@@ -31,7 +32,6 @@ import {
   type KiroSessionOpenResponse,
   type KiroSessionSummary,
   type KiroSessionWindow,
-  isNewerInKiro,
 } from '../utils/kiroSessions';
 import { PREFERENCES_CHANGED_EVENT, loadPreferences } from '../utils/preferences';
 import { KIRO_STATUS_QUERY_KEY, useKiroStatus } from './useKiroStatus';
@@ -120,11 +120,10 @@ export function useKiroSessions(onOpen: (conversationId: string) => void): UseKi
   const [rows, setRows] = useState<Record<string, KiroSessionRowState>>({});
   const [notice, setNotice] = useState<string | null>(null);
 
-  const query = useQuery({
-    queryKey: [...KIRO_SESSIONS_QUERY_KEY, days],
-    queryFn: async () => {
+  const fetchList = useCallback(
+    async (range: KiroSessionWindow) => {
       try {
-        return await kiroService.listSessions(days);
+        return await kiroService.listSessions(range);
       } catch (error) {
         // Signed out since the last check: the status hides the section
         if (error instanceof KiroSignedOutError) {
@@ -133,6 +132,12 @@ export function useKiroSessions(onOpen: (conversationId: string) => void): UseKi
         throw error;
       }
     },
+    [queryClient]
+  );
+
+  const query = useQuery({
+    queryKey: [...KIRO_SESSIONS_QUERY_KEY, days],
+    queryFn: () => fetchList(days),
     enabled,
     staleTime: KIRO_SESSIONS_TTL_MS,
     // Only while the page is visible: a hidden page lets Kiro CLI stop
@@ -204,34 +209,13 @@ export function useKiroSessions(onOpen: (conversationId: string) => void): UseKi
     [onOpen]
   );
 
-  const data = query.data;
   const syncIfNewer = useCallback(
     (conversationId: string) => {
-      if (!enabled || !data) return;
+      if (!enabled) return;
       // A send into this chat waits for the sync (see kiroSyncs)
-      void trackKiroSync(
-        conversationId,
-        (async () => {
-          const conversation = await db.conversations.get(conversationId);
-          const kiro = conversation?.kiro;
-          if (!kiro || kiro.turns === undefined) return;
-          const entry = data.find((s) => s.sessionId === kiro.sessionId);
-          if (!entry || !isNewerInKiro(entry.updatedAt, kiro)) return;
-          if (busy.current.has(kiro.sessionId)) return;
-          busy.current.add(kiro.sessionId);
-          try {
-            const session = await kiroService.openSession(kiro.sessionId, kiro.turns);
-            await appendKiroTurns(conversationId, session);
-          } catch (error) {
-            // The chat keeps its messages; the next open tries again
-            console.error('Failed to add the new Kiro turns:', errorText(error, 'unknown error'));
-          } finally {
-            busy.current.delete(kiro.sessionId);
-          }
-        })()
-      );
+      void syncKiroChatOnOpen(conversationId);
     },
-    [enabled, data]
+    [enabled]
   );
 
   return {

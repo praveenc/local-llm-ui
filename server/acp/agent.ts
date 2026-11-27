@@ -237,11 +237,13 @@ export class AcpAgent<TInfo extends object> {
 
   /**
    * A new session. `cwd` is the folder that the agent's tools work in: it must never come from
-   * the browser. Default: the harness's workspace folder.
+   * the browser. Default: the harness's workspace folder. The result has the folder that the
+   * session uses, for the server only.
    */
   async newSession(input: { cwd?: string } = {}): Promise<{
     sessionId: string;
     configOptions: ConfigOption[];
+    cwd: string;
   }> {
     const { agent, log } = this.harness.names;
     const cwd = input.cwd ?? (await this.harness.workspaceDir());
@@ -281,7 +283,7 @@ export class AcpAgent<TInfo extends object> {
     void recordProcessGroups(gen.proc.child);
     gen.sessions.set(sessionId, { configOptions: result.configOptions ?? [], opening: true });
     await this.afterOpen(gen, sessionId, { created: true });
-    return { sessionId, configOptions: gen.sessions.get(sessionId)?.configOptions ?? [] };
+    return { sessionId, configOptions: gen.sessions.get(sessionId)?.configOptions ?? [], cwd };
   }
 
   /**
