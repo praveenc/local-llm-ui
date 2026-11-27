@@ -1,6 +1,6 @@
 import { AlertTriangle, CornerDownLeft, Eye, Search, Trash2 } from 'lucide-react';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -84,13 +84,23 @@ export function ViewPromptsModal({ visible, onDismiss, onInsertPrompt }: ViewPro
     return result;
   }, [prompts, searchText, selectedCategory]);
 
+  const totalPages = Math.ceil(filteredPrompts.length / PAGE_SIZE);
+  // The list can shrink under the current page (a delete): never show a page past the last one
+  const page = Math.min(currentPage, Math.max(1, totalPages));
+  // Write the clamp back, so that a list that grows again does not jump to the old page
+  if (page !== currentPage) setCurrentPage(page);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+
   // Paginate
   const paginatedPrompts = useMemo(() => {
-    const startIndex = (currentPage - 1) * PAGE_SIZE;
+    const startIndex = (page - 1) * PAGE_SIZE;
     return filteredPrompts.slice(startIndex, startIndex + PAGE_SIZE);
-  }, [filteredPrompts, currentPage]);
+  }, [filteredPrompts, page]);
 
-  const totalPages = Math.ceil(filteredPrompts.length / PAGE_SIZE);
+  const goToPage = (next: number) => {
+    setCurrentPage(Math.min(Math.max(1, next), totalPages));
+    if (tableScrollRef.current) tableScrollRef.current.scrollTop = 0;
+  };
 
   const handleViewPrompt = (prompt: SavedPrompt) => {
     setSelectedPrompt(prompt);
@@ -172,7 +182,7 @@ export function ViewPromptsModal({ visible, onDismiss, onInsertPrompt }: ViewPro
             </div>
 
             {/* Prompts Table */}
-            <div className="flex-1 overflow-auto border rounded-md">
+            <div ref={tableScrollRef} className="flex-1 overflow-auto border rounded-md">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -267,39 +277,38 @@ export function ViewPromptsModal({ visible, onDismiss, onInsertPrompt }: ViewPro
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <Pagination>
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      className={
-                        currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'
-                      }
-                    />
-                  </PaginationItem>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                    <PaginationItem key={page}>
-                      <PaginationLink
-                        onClick={() => setCurrentPage(page)}
-                        isActive={currentPage === page}
-                        className="cursor-pointer"
-                      >
-                        {page}
-                      </PaginationLink>
+              <div className="flex flex-col items-center gap-2">
+                <p role="status" className="text-xs text-muted-foreground tabular-nums">
+                  Page {page} of {totalPages}
+                </p>
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        onClick={() => goToPage(page - 1)}
+                        aria-disabled={page === 1}
+                      />
                     </PaginationItem>
-                  ))}
-                  <PaginationItem>
-                    <PaginationNext
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      className={
-                        currentPage === totalPages
-                          ? 'pointer-events-none opacity-50'
-                          : 'cursor-pointer'
-                      }
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+                      <PaginationItem key={n}>
+                        <PaginationLink
+                          onClick={() => goToPage(n)}
+                          isActive={page === n}
+                          aria-label={`Page ${n}`}
+                        >
+                          {n}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ))}
+                    <PaginationItem>
+                      <PaginationNext
+                        onClick={() => goToPage(page + 1)}
+                        aria-disabled={page === totalPages}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
             )}
           </div>
 
