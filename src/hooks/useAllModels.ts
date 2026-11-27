@@ -15,14 +15,11 @@ import {
   mantleService,
   ollamaService,
 } from '../services';
-import {
-  anthropicService,
-  cerebrasService,
-  groqService,
-  syncApiKeysFromPreferences,
-} from '../services/aisdk';
+import { anthropicService, cerebrasService, groqService } from '../services/aisdk';
+import type { MantleModelOptions } from '../services/mantle';
 import { openrouterService } from '../services/openrouter';
-import type { KiroModelMeta } from '../services/types';
+import type { KiroModelMeta, ModelInfo } from '../services/types';
+import { PROVIDER_API_KEY_FIELDS } from '../utils/preferences';
 import type { Provider, UserPreferences } from '../utils/preferences';
 import { kiroStatusQueryOptions } from './useKiroStatus';
 
@@ -147,45 +144,63 @@ function getProvidersToFetch(preferences: UserPreferences): Provider[] {
   return providersToFetch;
 }
 
-/** Point the services at the keys and region saved in preferences */
-function configureServices(preferences: UserPreferences) {
-  syncApiKeysFromPreferences(
-    preferences.groqApiKey,
-    preferences.cerebrasApiKey,
-    preferences.anthropicApiKey
-  );
-  mantleService.setApiKey(preferences.bedrockMantleApiKey || null);
-  mantleService.setRegion(preferences.bedrockMantleRegion || 'us-west-2');
-  openrouterService.setApiKey(preferences.openrouterApiKey || null);
-}
+type KeyedProvider = 'bedrock-mantle' | 'groq' | 'cerebras' | 'anthropic' | 'openrouter';
+type LocalProvider = Exclude<Provider, KeyedProvider | 'kiro'>;
 
-// A function, not a module-level object: importing the hooks barrel must not read the services,
+// Functions, not module-level objects: importing the hooks barrel must not read the services,
 // so tests that mock '../services' with only some exports still load
-const servicesByProvider = () =>
+const localServices = () =>
   ({
     lmstudio: lmstudioService,
     ollama: ollamaService,
     bedrock: bedrockService,
+  }) satisfies Record<LocalProvider, { getModels: () => Promise<ModelInfo[]> }>;
+
+// These take the key (and the Mantle region) from the preferences on each call: the preferences
+// are the only store of provider keys
+const keyedServices = () =>
+  ({
     'bedrock-mantle': mantleService,
     groq: groqService,
     cerebras: cerebrasService,
     anthropic: anthropicService,
     openrouter: openrouterService,
-    kiro: kiroService,
-  }) satisfies Record<Provider, { getModels: () => Promise<unknown[]> }>;
+  }) satisfies Record<
+    KeyedProvider,
+    { getModels: (options: MantleModelOptions) => Promise<ModelInfo[]> }
+  >;
+
+const isKeyedProvider = (provider: Provider): provider is KeyedProvider =>
+  PROVIDER_API_KEY_FIELDS[provider] !== undefined;
+
+/** The key of the provider (and the Mantle region), read from the preferences argument */
+function modelListOptions(
+  provider: KeyedProvider,
+  preferences: UserPreferences
+): MantleModelOptions {
+  const field = PROVIDER_API_KEY_FIELDS[provider];
+  const apiKey = field ? preferences[field] : undefined;
+  return provider === 'bedrock-mantle'
+    ? { apiKey, region: preferences.bedrockMantleRegion || 'us-west-2' }
+    : { apiKey };
+}
+
+function getRawModels(provider: Provider, preferences: UserPreferences, refresh: boolean) {
+  if (provider === 'kiro') return kiroService.getModels(refresh);
+  if (isKeyedProvider(provider)) {
+    return keyedServices()[provider].getModels(modelListOptions(provider, preferences));
+  }
+  return localServices()[provider].getModels();
+}
 
 async function fetchProviderModels(
   provider: Provider,
   preferences: UserPreferences
 ): Promise<ProviderModels> {
-  configureServices(preferences);
   try {
     const refresh = provider === 'kiro' && kiroRefreshPending;
     if (refresh) kiroRefreshPending = false;
-    const rawModels =
-      provider === 'kiro'
-        ? await servicesByProvider().kiro.getModels(refresh)
-        : await servicesByProvider()[provider].getModels();
+    const rawModels: ModelInfo[] = await getRawModels(provider, preferences, refresh);
     const models: UnifiedModel[] = rawModels.map((model) => ({
       id: model.modelId,
       name: model.modelName,

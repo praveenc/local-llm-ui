@@ -30,14 +30,33 @@ describe('AISDKService.getModels', () => {
   });
 
   describe('anthropic', () => {
-    beforeEach(() => localStorage.setItem('ANTHROPIC_API_KEY', 'sk-ant-test'));
+    const withKey = { apiKey: 'sk-ant-test' };
 
-    it('returns no models without a key, and does not call the route', async () => {
-      localStorage.clear();
+    it.each([
+      ['no options', undefined],
+      ['no key', {}],
+      ['an empty key', { apiKey: '  ' }],
+    ])('returns no models with %s, and does not call the route', async (_label, options) => {
       const fetchMock = mockFetch({ ok: true });
+
+      expect(await new AISDKService('anthropic').getModels(options)).toEqual([]);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('sends the key from the argument, never a key from localStorage', async () => {
+      localStorage.setItem('ANTHROPIC_API_KEY', 'sk-ant-legacy');
+      const getItem = vi.spyOn(Storage.prototype, 'getItem');
+      const fetchMock = mockFetch({ ok: true, json: () => Promise.resolve({ models: [] }) });
 
       expect(await new AISDKService('anthropic').getModels()).toEqual([]);
       expect(fetchMock).not.toHaveBeenCalled();
+
+      await new AISDKService('anthropic').getModels({ apiKey: ' sk-ant-arg ' });
+      expect(fetchMock).toHaveBeenCalledWith('/api/aisdk/models?provider=anthropic', {
+        method: 'GET',
+        headers: { 'X-Api-Key': 'sk-ant-arg' },
+      });
+      expect(getItem).not.toHaveBeenCalled();
     });
 
     it('lists the models that the route gives, with their display names', async () => {
@@ -53,7 +72,7 @@ describe('AISDKService.getModels', () => {
           }),
       });
 
-      const models = await new AISDKService('anthropic').getModels();
+      const models = await new AISDKService('anthropic').getModels(withKey);
 
       expect(fetchMock).toHaveBeenCalledWith('/api/aisdk/models?provider=anthropic', {
         method: 'GET',
@@ -79,7 +98,7 @@ describe('AISDKService.getModels', () => {
           Promise.resolve({ models: [{ id: 'claude-x' }, { id: 'claude-y', name: ' ' }] }),
       });
 
-      const models = await new AISDKService('anthropic').getModels();
+      const models = await new AISDKService('anthropic').getModels(withKey);
 
       expect(models.map((m) => m.modelName)).toEqual(['claude-x', 'claude-y']);
     });
@@ -93,7 +112,7 @@ describe('AISDKService.getModels', () => {
     ])('falls back to the 4 latest models on %s', async (_label, response) => {
       mockFetch(response);
 
-      const models = await new AISDKService('anthropic').getModels();
+      const models = await new AISDKService('anthropic').getModels(withKey);
 
       expect(models.map((m) => m.modelId)).toEqual(FALLBACK_IDS);
       expect(models.map((m) => m.modelName)).toEqual([
@@ -108,7 +127,7 @@ describe('AISDKService.getModels', () => {
     it('falls back when the request itself fails', async () => {
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
 
-      const models = await new AISDKService('anthropic').getModels();
+      const models = await new AISDKService('anthropic').getModels(withKey);
 
       expect(models.map((m) => m.modelId)).toEqual(FALLBACK_IDS);
     });
@@ -154,14 +173,13 @@ describe('AISDKService.getModels', () => {
 
   describe('groq and cerebras (unchanged)', () => {
     it('keeps the id as the name when the route gives no name', async () => {
-      localStorage.setItem('GROQ_API_KEY', 'gsk-test');
       mockFetch({
         ok: true,
         json: () =>
           Promise.resolve({ models: [{ id: 'llama-3.3-70b-versatile', ownedBy: 'Meta' }] }),
       });
 
-      const models = await new AISDKService('groq').getModels();
+      const models = await new AISDKService('groq').getModels({ apiKey: 'gsk-test' });
 
       expect(models).toEqual([
         {
@@ -174,20 +192,18 @@ describe('AISDKService.getModels', () => {
     });
 
     it('falls back to the static Groq list on failure', async () => {
-      localStorage.setItem('GROQ_API_KEY', 'gsk-test');
       mockFetch({ ok: false, json: () => Promise.resolve({}) });
 
-      const models = await new AISDKService('groq').getModels();
+      const models = await new AISDKService('groq').getModels({ apiKey: 'gsk-test' });
 
       expect(models[0]).toMatchObject({ modelId: 'llama-3.3-70b-versatile' });
       expect(models).toHaveLength(5);
     });
 
     it('falls back to the static Cerebras list on failure', async () => {
-      localStorage.setItem('CEREBRAS_API_KEY', 'csk-test');
       mockFetch({ ok: false, json: () => Promise.resolve({}) });
 
-      const models = await new AISDKService('cerebras').getModels();
+      const models = await new AISDKService('cerebras').getModels({ apiKey: 'csk-test' });
 
       expect(models.map((m) => m.modelId)).toEqual(['llama-3.3-70b', 'llama3.1-8b']);
     });

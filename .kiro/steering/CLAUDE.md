@@ -40,10 +40,12 @@ make fix                 # format + lint:fix
 | `ollama.ts` | Ollama | `/api/ollama/api/tags` |
 | `lmstudio.ts` | LM Studio | `/api/lmstudio-sdk/models`, then `/api/lmstudio/v1/models` |
 | `bedrock.ts` | Amazon Bedrock | `/api/bedrock/models` |
-| `mantle.ts` | Bedrock Mantle | `/api/mantle/models` |
+| `mantle.ts` | Bedrock Mantle | `/api/mantle/models` with the key and the Region in `X-Mantle-Api-Key` and `X-Mantle-Region` |
 | `aisdk.ts` | Groq, Cerebras, Anthropic | `/api/aisdk/models?provider=…` with the key in `X-Api-Key`. Anthropic: a live list from Anthropic `GET /v1/models` (at most 5 pages, `display_name` as the name); each upstream call has a 10 s timeout. On any failure the browser uses a static fallback list (Anthropic: the 4 latest Claude models) |
 | `openrouter.ts` | OpenRouter | `/api/openrouter/models` |
 | `kiro.ts` | Kiro | `POST /api/kiro/models` (a POST: a load can start Kiro CLI), `POST /api/kiro/sessions` and `/open` (the Kiro sessions section), `/api/kiro/status`, sign-in and sign-out, `POST /api/kiro/usage` (account credits) |
+
+The provider API keys are only in the preferences (`local-llm-ui-preferences`). `useAllModels.ts` passes each key to `getModels({ apiKey })`; the services keep no copy. `src/utils/legacyApiKeys.ts` (`migrateLegacyApiKeys`, called in `src/main.tsx`) moves keys from the older `localStorage` entries once. Do not add another place that stores a key.
 
 ### Server Proxies (vite.config.ts → server/)
 
