@@ -63,6 +63,8 @@ function loadStoredPicks(
   stored: Pick<Conversation, 'kiro' | 'kiroPicks'> | undefined
 ): void {
   if (chatKey === NEW_CHAT_KEY || pendingInMemory.has(chatKey)) return;
+  // No record (not made yet, or deleted): nothing to read, so the chat is not marked as read
+  if (!stored) return;
   // Without Kiro's lists the stored picks cannot be checked: leave them in the record
   if (stored?.kiroPicks && !kiroService.getSessionOptions(stored.kiro?.sessionId)) return;
   const kept = storedPicks(stored);
