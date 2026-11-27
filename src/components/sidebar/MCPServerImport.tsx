@@ -33,7 +33,8 @@ interface MCPServerImportProps {
   onImport: (configs: MCPServerConfig[]) => void;
 }
 
-const BUTTON = 'h-11 sm:h-8 text-xs';
+// 44 px on a touch screen of any width, as the other touch targets of the app
+const BUTTON = 'h-8 text-xs pointer-coarse:h-11';
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 

@@ -118,6 +118,14 @@ describe('MCP import', () => {
     expect(scanMCPImport).toHaveBeenCalledTimes(1);
   });
 
+  it('makes Import and Not now 44 px on a touch screen of any width', async () => {
+    scanMCPImport.mockResolvedValue(BASE_SCAN);
+    render(<Harness />);
+    for (const name of ['Import', 'Not now']) {
+      expect(await screen.findByRole('button', { name })).toHaveClass('pointer-coarse:h-11');
+    }
+  });
+
   it('shows the line in the box of the empty tab', async () => {
     scanMCPImport.mockResolvedValue(BASE_SCAN);
     render(<Harness initialServers={{}} />);
