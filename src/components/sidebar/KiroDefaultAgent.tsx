@@ -64,7 +64,14 @@ export function KiroDefaultAgent({ value, onChange }: KiroDefaultAgentProps) {
       <Label id={labelId} htmlFor={fieldId} className="block text-xs font-normal">
         Default agent
       </Label>
-      <Popover open={open} onOpenChange={setOpen}>
+      {/* Opening the list loads Kiro's agents again, throttled for the app (D26) */}
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (next) void kiroService.refreshDefaultSessionOptions();
+        }}
+      >
         <PopoverTrigger asChild>
           <Button
             id={fieldId}

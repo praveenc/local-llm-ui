@@ -108,4 +108,15 @@ describe('KiroDefaultAgent', () => {
     expect(screen.getByRole('button', { name: /agent-a/ })).toBeInTheDocument();
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
+
+  it("opening the list asks for Kiro's agents again (D26, throttled by the service)", async () => {
+    const user = userEvent.setup();
+    const refresh = vi
+      .spyOn(kiroService, 'refreshDefaultSessionOptions')
+      .mockResolvedValue(undefined);
+    render(<KiroDefaultAgent value={undefined} onChange={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: /Default agent|Kiro's default/ }));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    refresh.mockRestore();
+  });
 });

@@ -8,7 +8,7 @@ import type { ChatModel } from '../useBedrockChat';
 import { useBedrockChat } from '../useBedrockChat';
 import {
   NEW_CHAT_KEY,
-  clearPendingSessionOptions,
+  forgetPendingSessionOptions,
   pendingSessionOptions,
   setPendingSessionOption,
 } from '../useSessionOptions';
@@ -33,7 +33,10 @@ const mutations = vi.hoisted(() => ({
   setTitleFromKiro: vi.fn(async () => {}),
 }));
 
-const service = vi.hoisted(() => ({ setKiroSessionOptions: vi.fn(async () => {}) }));
+const service = vi.hoisted(() => ({
+  setKiroSessionOptions: vi.fn(async () => {}),
+  setKiroPicks: vi.fn(async () => {}),
+}));
 
 vi.mock('../index', () => ({
   useConversation: () => ({ conversation: undefined, messages: undefined, isLoading: false }),
@@ -121,8 +124,7 @@ beforeEach(() => {
   db.conversation = undefined;
   db.messages = [];
   vi.clearAllMocks();
-  clearPendingSessionOptions(NEW_CHAT_KEY);
-  clearPendingSessionOptions('conv-1');
+  forgetPendingSessionOptions();
 });
 
 describe('useBedrockChat with Kiro session options', () => {
@@ -205,6 +207,67 @@ describe('useBedrockChat with Kiro session options', () => {
     expect(bodyOf(fetchMock).sessionOptions).toEqual({ mode: 'agent-b', autopilot: 'off' });
   });
 
+  it('does not replay a stored process-wide value to a new session, but sends a pick of it', async () => {
+    const lists: SessionOptionsSnapshot = {
+      ...snapshot('agent-b', 'off'),
+      options: [
+        ...snapshot('agent-b', 'off').options,
+        {
+          id: 'contentCollection',
+          name: 'Content Collection',
+          currentValue: 'enabled',
+          scope: 'process',
+          values: [
+            { value: 'enabled', name: 'enabled' },
+            { value: 'disabled', name: 'disabled' },
+          ],
+        },
+      ],
+    };
+    kiroService.rememberSessionOptions(SESSION, lists);
+    // A stale session: the request starts a new one
+    db.conversation = chatWith({
+      sessionId: SESSION,
+      seenMessages: 4,
+      options: { mode: 'agent-b', autopilot: 'off', contentCollection: 'disabled' },
+    });
+    db.messages = [dbMessage(1, 'user', 'first')];
+    let fetchMock = mockKiroFetch(['[DONE]']);
+    const { result } = renderHook(() => useBedrockChat(options('conv-1')));
+    await act(async () => {
+      await result.current.sendMessage('ping');
+    });
+    expect(bodyOf(fetchMock).sessionOptions).toEqual({ mode: 'agent-b', autopilot: 'off' });
+
+    setPendingSessionOption('conv-1', 'contentCollection', 'disabled', 'enabled');
+    fetchMock = mockKiroFetch(['[DONE]']);
+    await act(async () => {
+      await result.current.sendMessage('ping again');
+    });
+    expect(bodyOf(fetchMock).sessionOptions).toEqual({
+      mode: 'agent-b',
+      autopilot: 'off',
+      contentCollection: 'disabled',
+    });
+  });
+
+  it('keeps a pick that the snapshot does not show', async () => {
+    setPendingSessionOption(NEW_CHAT_KEY, 'mode', 'agent-b', 'agent-a');
+    setPendingSessionOption(NEW_CHAT_KEY, 'autopilot', 'off', 'on');
+    mockKiroFetch([
+      { session: { id: SESSION, created: true } },
+      // Kiro took the agent, but Autopilot still shows on
+      { sessionOptions: snapshot('agent-b', 'on') },
+      '[DONE]',
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options(null)));
+    await act(async () => {
+      await result.current.sendMessage('ping');
+    });
+    expect(pendingSessionOptions('conv-1')).toEqual({ autopilot: 'off' });
+    expect(service.setKiroPicks).toHaveBeenLastCalledWith('conv-1', { autopilot: 'off' });
+  });
+
   it('ignores a bad snapshot and keeps the picks', async () => {
     setPendingSessionOption(NEW_CHAT_KEY, 'autopilot', 'off', 'on');
     mockKiroFetch([
@@ -218,5 +281,38 @@ describe('useBedrockChat with Kiro session options', () => {
     });
     expect(service.setKiroSessionOptions).not.toHaveBeenCalled();
     expect(pendingSessionOptions('conv-1')).toEqual({ autopilot: 'off' });
+  });
+
+  it('stores the picks with the chat that the first message makes, and clears them (D27)', async () => {
+    setPendingSessionOption(NEW_CHAT_KEY, 'autopilot', 'off', 'on');
+    // A new chat has no record: its picks stay in memory
+    expect(service.setKiroPicks).not.toHaveBeenCalled();
+    mockKiroFetch([
+      { session: { id: SESSION, created: true } },
+      { sessionOptions: snapshot('agent-a', 'off') },
+      '[DONE]',
+    ]);
+    const { result } = renderHook(() => useBedrockChat(options(null)));
+    await act(async () => {
+      await result.current.sendMessage('ping');
+    });
+    expect(service.setKiroPicks).toHaveBeenNthCalledWith(1, 'conv-1', { autopilot: 'off' });
+    // Kiro applied them: the stored picks go too
+    expect(service.setKiroPicks).toHaveBeenLastCalledWith('conv-1', undefined);
+  });
+
+  it('sends the stored picks after a reload, before the chat view reads them (D27)', async () => {
+    kiroService.rememberSessionOptions(SESSION, snapshot('agent-a', 'on'));
+    db.conversation = {
+      ...chatWith({ sessionId: SESSION, seenMessages: 0, options: { mode: 'agent-a' } }),
+      kiroPicks: { mode: 'agent-b', autopilot: 'gone' },
+    };
+    const fetchMock = mockKiroFetch(['[DONE]']);
+    const { result } = renderHook(() => useBedrockChat(options('conv-1')));
+    await act(async () => {
+      await result.current.sendMessage('ping');
+    });
+    // A value that Kiro does not list any more is not sent
+    expect(bodyOf(fetchMock).sessionOptions).toEqual({ mode: 'agent-b' });
   });
 });

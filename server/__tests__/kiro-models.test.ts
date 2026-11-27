@@ -108,6 +108,57 @@ describe('createKiroModelList', () => {
     expect(c.statusReader.read).toHaveBeenLastCalledWith(true);
   });
 
+  it('refreshOptions loads the defaults again without a status re-read (D26)', async () => {
+    const c = setup();
+    await c.list.list();
+    expect(c.agent.newSession).toHaveBeenCalledTimes(1);
+    const agentOption = (agents: string[]): ConfigOption => ({
+      id: 'mode',
+      type: 'select',
+      category: 'mode',
+      currentValue: 'vibe',
+      options: agents.map((value) => ({ value, name: value })),
+    });
+    // An agent made in the terminal: the next new session lists it
+    c.state.options = [...modelOptions('auto'), agentOption(['vibe', 'new-agent'])];
+    const result = await c.list.list(false, { refreshOptions: true });
+    expect(c.agent.newSession).toHaveBeenCalledTimes(2);
+    expect(c.agent.deleteSession).toHaveBeenCalledTimes(2);
+    expect(c.statusReader.read).toHaveBeenLastCalledWith(false);
+    expect(result).toMatchObject({ state: 'ok' });
+    if (result.state !== 'ok') return;
+    expect(result.sessionOptions?.mode?.values.map((v) => v.value)).toEqual(['vibe', 'new-agent']);
+    // The cache has the new defaults
+    expect(await c.list.list()).toMatchObject({ sessionOptions: result.sessionOptions });
+    expect(c.agent.newSession).toHaveBeenCalledTimes(2);
+    // Concurrent calls share one load
+    await Promise.all([
+      c.list.list(false, { refreshOptions: true }),
+      c.list.list(false, { refreshOptions: true }),
+    ]);
+    expect(c.agent.newSession).toHaveBeenCalledTimes(3);
+  });
+
+  it('marks a process-wide option with scope process', async () => {
+    const c = setup();
+    const option = (id: string): ConfigOption => ({
+      id,
+      type: 'select',
+      currentValue: 'on',
+      options: [
+        { value: 'on', name: 'On' },
+        { value: 'off', name: 'Off' },
+      ],
+    });
+    c.state.options = [...modelOptions('auto'), option('autopilot'), option('contentCollection')];
+    const result = await c.list.list();
+    if (result.state !== 'ok') throw new Error('not ok');
+    expect(result.sessionOptions?.options.map((o) => [o.id, o.scope])).toEqual([
+      ['autopilot', undefined],
+      ['contentCollection', 'process'],
+    ]);
+  });
+
   it('shares one load between concurrent calls', async () => {
     const c = setup();
     const [a, b] = await Promise.all([c.list.list(), c.list.list(true)]);

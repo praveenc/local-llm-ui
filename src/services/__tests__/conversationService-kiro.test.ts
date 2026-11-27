@@ -145,6 +145,25 @@ describe('conversationService Kiro fields', () => {
     });
   });
 
+  it('setKiroPicks stores the picks at the top level, and removes them when empty (D27)', async () => {
+    const kiro = { sessionId: SESSION, seenMessages: 2, options: { mode: 'agent-a' } };
+    store.conversations.set('c1', { ...conversation({ kiro }) });
+    await conversationService.setKiroPicks('c1', { mode: 'agent-b' });
+    expect(store.conversations.get('c1')).toMatchObject({
+      kiro,
+      kiroPicks: { mode: 'agent-b' },
+      updatedAt: new Date('2026-11-02T00:00:00Z'),
+    });
+    // A new session record keeps the picks: they are not under `kiro`
+    await conversationService.setKiroSession('c1', { sessionId: 'sess_other', seenMessages: 0 });
+    expect(store.conversations.get('c1')?.kiroPicks).toEqual({ mode: 'agent-b' });
+
+    await conversationService.setKiroPicks('c1', {});
+    expect(store.conversations.get('c1')?.kiroPicks).toBeUndefined();
+    await conversationService.setKiroPicks('missing', { mode: 'agent-b' });
+    expect(store.conversations.has('missing')).toBe(false);
+  });
+
   it('setTitleFromKiro replaces an automatic title, trimmed and capped at 120 characters', async () => {
     store.conversations.set('c1', { ...conversation() });
     store.messages.push({ ...message(1, 'user'), content: '  What is   the weather ' });

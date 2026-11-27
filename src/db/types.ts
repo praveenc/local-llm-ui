@@ -77,6 +77,12 @@ export interface Conversation {
   titleEdited?: boolean;
   /** The title is Kiro's short title, so a later Kiro title may replace it */
   titleFromKiro?: boolean;
+  /**
+   * The agent and option picks that no Kiro reply has applied yet (K9, D27), so a reload keeps
+   * them. Not under `kiro`: a chat has no `kiro` before its first Kiro reply, and
+   * `setKiroSession` rewrites it. Not indexed, so no schema version.
+   */
+  kiroPicks?: SessionOptionValues;
 }
 
 /** Also Kiro's `updatedAt` and turn count at the last import or sync (K7) */

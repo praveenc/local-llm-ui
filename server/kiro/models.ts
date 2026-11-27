@@ -9,7 +9,8 @@
  *
  * The session options (the agent, Autopilot, …) of the load's new session are Kiro's defaults
  * for a new chat. Only a load sets them: a chat session holds the user's values, so `update()`
- * keeps them as they are.
+ * keeps them as they are. A running kiro-cli reads its agent files again for each new session,
+ * so `refreshOptions` loads again without a status re-read (D26); the browser throttles it.
  */
 import { parseKiroModels } from '../../src/utils/kiroModels.ts';
 import type { KiroModel } from '../../src/utils/kiroModels.ts';
@@ -35,8 +36,14 @@ export type KiroModelListResult =
 export const KIRO_MODELS_FAILED =
   'Kiro could not list its models. See the terminal that runs npm run dev.';
 
+export interface KiroModelListRequest {
+  /** Load again, to get Kiro's current agent list, without a status re-read (D26) */
+  refreshOptions?: boolean;
+}
+
 export interface KiroModelList {
-  list(refresh?: boolean): Promise<KiroModelListResult>;
+  /** `refresh` skips the status cache and the list cache; see also `refreshOptions` */
+  list(refresh?: boolean, request?: KiroModelListRequest): Promise<KiroModelListResult>;
   /** Replaces the cache with the models in these config options, when there are any */
   update(configOptions: unknown): void;
 }
@@ -85,7 +92,7 @@ export function createKiroModelList(options: KiroModelListOptions): KiroModelLis
   }
 
   return {
-    async list(refresh = false) {
+    async list(refresh = false, request = {}) {
       const status = await statusReader.read(refresh);
       if (status.state !== 'signed-in') {
         // A sign-out, or a Kiro CLI that is gone: the next account may have other models
@@ -110,7 +117,8 @@ export function createKiroModelList(options: KiroModelListOptions): KiroModelLis
         return { state: 'error', message: KIRO_MODELS_FAILED, models: [] };
       }
 
-      if (!refresh && !loading && cached && now() - cached.at < ttlMs) {
+      const reload = refresh || request.refreshOptions === true;
+      if (!reload && !loading && cached && now() - cached.at < ttlMs) {
         return {
           state: 'ok',
           models: cached.models,

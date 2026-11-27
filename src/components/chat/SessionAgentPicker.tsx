@@ -22,14 +22,30 @@ interface SessionAgentPickerProps {
   option: SessionOption;
   onChange: (value: string) => void;
   disabled?: boolean;
+  /**
+   * Called each time the list opens (D26: a new chat loads Kiro's list again). A new `option`
+   * then replaces the list in place: the popover stays open and the focus stays where it is.
+   */
+  onOpen?: () => void;
 }
 
-export function SessionAgentPicker({ option, onChange, disabled }: SessionAgentPickerProps) {
+export function SessionAgentPicker({
+  option,
+  onChange,
+  disabled,
+  onOpen,
+}: SessionAgentPickerProps) {
   const [open, setOpen] = useState(false);
   const current = currentValueName(option);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) onOpen?.();
+      }}
+    >
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>

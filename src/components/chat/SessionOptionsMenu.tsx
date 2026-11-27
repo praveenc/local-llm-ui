@@ -32,6 +32,9 @@ interface SessionOptionsMenuProps {
   disabled?: boolean;
 }
 
+/** The line under an option that the harness keeps per process (`scope: 'process'`) */
+const PROCESS_WIDE_NOTE = 'Applies to all Kiro chats until Kiro CLI stops.';
+
 /** "Autopilot: Supervised · Memory reflection: On": the current values in words */
 function sessionOptionsSummary(options: SessionOption[]): string {
   return options.map((o) => `${o.name}: ${currentValueName(o)}`).join(' · ');
@@ -78,6 +81,12 @@ export function SessionOptionsMenu({ options, onChange, disabled }: SessionOptio
               {option.description && (
                 <span className="text-xs font-normal text-muted-foreground">
                   {option.description}
+                </span>
+              )}
+              {/* The harness keeps this value per process: a change reaches every chat */}
+              {option.scope === 'process' && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  {PROCESS_WIDE_NOTE}
                 </span>
               )}
             </DropdownMenuLabel>
