@@ -13,7 +13,7 @@ import { handleLMStudioRequest } from './server/lmstudio-proxy.ts';
 import { handleMantleRequest } from './server/mantle-proxy.ts';
 import { createOllamaAISDKProxy } from './server/ollama-aisdk-proxy.ts';
 import { createOpenRouterAISDKProxy } from './server/openrouter-aisdk-proxy.ts';
-import { apiGuardPlugin } from './server/security.ts';
+import { PLAIN_PROXY_BODY_LIMIT, apiGuardPlugin, limitStreamedBody } from './server/security.ts';
 
 // No script-src or style-src: the dev server and the pre-paint script in index.html need inline code
 // img-src: public/ icons, models.dev provider logos, attachments as blob: and data: URLs
@@ -154,6 +154,8 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/lmstudio/, ''),
         configure: (proxy) => {
+          // SEC-07: the app sends only GETs here; refuse a body over 16 KB before it is forwarded
+          proxy.on('start', (req, res) => limitStreamedBody(req, res, PLAIN_PROXY_BODY_LIMIT));
           proxy.on('error', () => {
             // Silently ignore connection errors when LMStudio is not running
           });
@@ -164,6 +166,8 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/ollama/, ''),
         configure: (proxy) => {
+          // SEC-07: the app sends only GETs here; refuse a body over 16 KB before it is forwarded
+          proxy.on('start', (req, res) => limitStreamedBody(req, res, PLAIN_PROXY_BODY_LIMIT));
           proxy.on('error', () => {
             // Silently ignore connection errors when Ollama is not running
           });

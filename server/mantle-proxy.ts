@@ -7,7 +7,16 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 
 import { mantleReasoningEffort } from '../src/utils/thinkingEffort.ts';
-import { capMaxTokens, endStreamWithError, readBodyWithLimit, setCORSHeaders } from './security.ts';
+import {
+  abortOnClose,
+  capErrorText,
+  capMaxTokens,
+  endStreamWithError,
+  isAbortAfterClientLeft,
+  readChatRequest,
+  setCORSHeaders,
+  startEventStream,
+} from './security.ts';
 import { openAIUsage } from './usage.ts';
 
 // Supported Mantle regions
@@ -75,7 +84,8 @@ export async function handleMantleRequest(
     res.setHeader('Content-Type', 'application/json');
     res.end(
       JSON.stringify({
-        error: `Invalid region: ${region}`,
+        // The header value is not echoed: it is the caller's text, of any length
+        error: 'Invalid region',
         errorType: 'InvalidRegion',
         errorDetail: `Supported regions: ${MANTLE_REGIONS.join(', ')}`,
       })
@@ -93,6 +103,8 @@ export async function handleMantleRequest(
       res.end(JSON.stringify({ error: 'Not found' }));
     }
   } catch (error) {
+    // The browser left and the upstream call stopped: nothing to report
+    if (isAbortAfterClientLeft(error, res)) return;
     console.error('Mantle proxy error:', error);
     const err = error as Error;
 
@@ -116,7 +128,7 @@ export async function handleMantleRequest(
       JSON.stringify({
         error: errorMessage,
         errorType: err.name,
-        errorDetail: err.message,
+        errorDetail: capErrorText(err.message ?? ''),
       })
     );
   }
@@ -248,10 +260,10 @@ async function handleChat(
   apiKey: string,
   region: MantleRegion
 ): Promise<void> {
-  const body = await readBodyWithLimit(req, res);
-  if (body === null) return; // 413 already sent
-
-  const { model, messages, max_tokens, thinkingEffort } = JSON.parse(body);
+  // Size limit, JSON, and the fields of every chat request (SEC-07, SEC-22)
+  const request = await readChatRequest(req, res);
+  if (!request) return; // 413 or 400 already sent
+  const { model, messages, max_tokens, thinkingEffort } = request;
 
   const baseUrl = getMantleBaseUrl(region);
   // Sent only for models that take it (see utils/thinkingEffort)
@@ -268,18 +280,18 @@ async function handleChat(
     reasoning_effort?: string;
   } = {
     model,
-    messages: messages.map((msg: { role: string; content: string }) => ({
-      role: msg.role,
-      content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
-    })),
+    messages: messages.map((msg) => ({ role: msg.role, content: msg.content })),
     stream: true,
     stream_options: { include_usage: true },
     max_tokens: capMaxTokens(max_tokens),
     ...(reasoningEffort !== undefined && { reasoning_effort: reasoningEffort }),
   };
 
+  // Stop the upstream call when the browser closes the connection
+  const signal = abortOnClose(res);
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
+    signal,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
@@ -292,15 +304,16 @@ async function handleChat(
     throw new Error(`${response.status}: ${errorText}`);
   }
 
-  // Handle streaming response
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
   const reader = response.body?.getReader();
   if (!reader) {
     throw new Error('Response body is not readable');
   }
+  // Also stop reading a body whose source does not watch the signal
+  const cancel = () => void reader.cancel().catch(() => undefined);
+  signal.addEventListener('abort', cancel, { once: true });
+
+  // Handle streaming response
+  startEventStream(res);
 
   const decoder = new TextDecoder();
   let buffer = '';
@@ -317,10 +330,8 @@ async function handleChat(
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = line.slice(6).trim();
-          if (data === '[DONE]') {
-            res.write('data: [DONE]\n\n');
-            continue;
-          }
+          // The end of the handler writes the one [DONE]
+          if (data === '[DONE]') continue;
 
           try {
             const parsed = JSON.parse(data);
@@ -349,6 +360,7 @@ async function handleChat(
       }
     }
   } finally {
+    signal.removeEventListener('abort', cancel);
     reader.releaseLock();
   }
 

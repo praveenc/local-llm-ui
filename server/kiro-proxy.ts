@@ -101,6 +101,7 @@ const LOGIN_BODY_LIMIT = 16 * 1024;
 const CANCEL_BODY_LIMIT = 1024;
 const MODELS_BODY_LIMIT = 1024;
 const USAGE_BODY_LIMIT = 1024;
+const LOGOUT_BODY_LIMIT = 1024;
 const HEARTBEAT_MS = 15_000;
 
 type Res = Parameters<Connect.NextHandleFunction>[1];
@@ -401,8 +402,8 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
           sendJson(res, 200, { cancelled });
           return;
         }
-        // Logout takes no input. Read the body so that the connection is free.
-        req.resume();
+        // Logout takes no input. Read the body with a limit, so that the connection is free (SEC-07)
+        if ((await readBodyWithLimit(req, res, LOGOUT_BODY_LIMIT)) === null) return;
         try {
           sendJson(res, 200, await getLogin().logout());
         } catch (error) {
