@@ -1,6 +1,6 @@
 # UI and UX improvements
 
-Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Items 19 to 21 are done and ship in release 1.3.0. Last updated 2026-11-26. See [Progress](#progress) for the state of each item.
+Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Items 19 to 21 are done and ship in release 1.3.0. [Plan 3](#plan-3-mcp-servers) (items 22 to 25) is in progress. Its decisions D14 to D19 are made. Last updated 2026-11-26. See [Progress](#progress) for the state of each item.
 
 This document reviews the current chat UI and proposes changes, in order of impact. It also records the decisions made so far and the questions that are still open.
 
@@ -19,6 +19,7 @@ This document reviews the current chat UI and proposes changes, in order of impa
 - [Delivery plan](#delivery-plan)
 - [Open questions](#open-questions)
 - [Plan 2](#plan-2)
+- [Plan 3: MCP servers](#plan-3-mcp-servers)
 
 ## Decisions
 
@@ -37,6 +38,12 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | D11 | What happens with models that cannot call tools? | (a): Ollama models without the "tools" capability get no tools, and the globe and MCP buttons say "This model cannot use tools" | Item 17, PR 8 |
 | D12 | How do you start a rename in the header? | (a): click the title. A pencil button shows on hover and focus. | Item 18, PR 9 |
 | D13 | Does a rename move the chat to the top of the sidebar? | (a): no. A rename keeps the date of the last message. | Item 18, PR 9 |
+| D14 | When does the app start a local MCP server to check it? | (b) and (c): when Preferences closes and when you open the MCP popover, for complete servers only. Each server in Preferences also has a **Check** button. | Item 22, PR M1 |
+| D15 | Which commands can a local MCP server use? | (a): any program, by a name on `PATH` or by a full path (`/` or `~/`). No relative paths. | Item 24, PR M3 |
+| D16 | What does the form do with quotes in arguments and environment values? | (a): help text, and a warning under a field whose text starts and ends with the same quote. The value saves as typed. | Item 23, PR M2 |
+| D17 | Which configuration files does the import read? | (a): the JSON files with `mcpServers` in the home folder (Kiro, Pi, Claude Code user servers, and Cursor, Claude Desktop, Gemini CLI, and Windsurf when they exist). No TOML. | Item 25, PR M4 |
+| D18 | Are imported servers on or off? | (a): off | Item 25, PR M4 |
+| D19 | Where does the import show? | (a): a line at the top of the MCP Servers tab with **Import** and **Not now**, and the list in the tab | Item 25, PR M4 |
 
 ## Progress
 
@@ -63,6 +70,10 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 19 | Current provider first in the model picker | `fix/model-picker-order` ([#85](https://github.com/praveenc/local-llm-ui/pull/85)) | Done, merged ([#85](https://github.com/praveenc/local-llm-ui/pull/85)) |
 | 20 | Replies keep running in their own chat | `fix/background-replies` | Done, merged ([#88](https://github.com/praveenc/local-llm-ui/pull/88)) |
 | 21 | Totals of the whole chat in the context popover | `feat/chat-totals` ([#89](https://github.com/praveenc/local-llm-ui/pull/89)) | Done, merged ([#89](https://github.com/praveenc/local-llm-ui/pull/89)) |
+| 22 | MCP servers that fail say why, and recover | M1 `fix/mcp-npx-launch` (stacked on M2) | In progress |
+| 23 | Clearer Add MCP server form | M2 `fix/mcp-server-form` ([#92](https://github.com/praveenc/local-llm-ui/pull/92)) | Done, in review |
+| 24 | Local servers that are standalone programs | M3 `feat/mcp-standalone-commands` | Planned, waits on M1 and M2 |
+| 25 | Import MCP servers from other tools | M4 `feat/mcp-import` | Planned, waits on M3 |
 
 ### Found during the work
 
@@ -677,3 +688,177 @@ Conversations
 Merge order: 6, 7, 8, 9. PRs 6 and 7 can start at the same time. PRs 6 and 7 are merged (#70 and #71). PR 9 is stacked on PR 8: its branch starts from `feat/web-search-default`, and its PR targets that branch until PR 8 merges. Each PR updates `README.md` and `docs/CHANGELOG.md` where the behaviour changes: PR 7 for the groups ("Find a chat"), PR 8 for "Web search", and PR 9 for a new "Rename a chat" part.
 
 Each PR is tested as the guidelines say: headless Chromium with a real Bedrock reply, light and dark mode, 1440, 1024, and 390 px, no sideways scroll, and a reload. PR 7 also checks the contrast of the row time on the sidebar in all eight theme variants (muted text on the sidebar is 4.92:1 or more today).
+
+## Plan 3: MCP servers
+
+Plan 3 fixes MCP server bugs that users reported after release 1.3.0 and adds two features: local servers that are standalone programs, and an import from other tools. It is not part of the Kiro provider work.
+
+Evidence comes from `main` at `abb6c12`, `@ai-sdk/mcp` 2.0.91, two screenshots of 2026-11-26 (the MCP popover with "Attempted to send a request from a closed client", and a new local server in Preferences), probe scripts that use the app's own transport class and environment, and calls to the real `POST /api/bedrock-aisdk/mcp-status` route of a dev server on port 5174.
+
+### 22. MCP servers that fail say why, and recover
+
+- **Categories:** Core flows. **Effort:** M.
+- **Problem:** A local server that runs with `npx` shows "Attempted to send a request from a closed client" and 0 tools. The message does not tell the user what is wrong or what to do.
+- **What the reproduction found:**
+  - The app starts `npx` correctly. The probe ran `npx -y @praveenc/llmstxt-doc-search` with the app's environment. The child stopped after 355 ms with exit code 1 and `npm error code E401` ("your authentication token seems to be invalid"). The npm configuration of the test host uses a private registry, and its token had expired. The same command fails in a terminal.
+  - With `npm_config_registry=https://registry.npmjs.org/` in the server's environment variables, the same server connects through the real route in 1.8 to 4.2 s with 7 tools. `@modelcontextprotocol/server-filesystem` and `@playwright/mcp` connect too.
+  - So the defect is in the app's error handling, not in the start of `npx`. Four defects hide the cause or make a server stay broken.
+- **Evidence:**
+  - **The child's error output goes to the terminal only.** `mcp-manager.ts:294` to `:299` makes the transport with no `stderr` option. The SDK then uses `stderr: 'inherit'` (`@ai-sdk/mcp` `dist/mcp-stdio/index.js:343` to `:349`). The npm error shows in the terminal of `npm run dev`. The UI gets only the SDK's message (`dist/index.js:2659`). A quoted argument (`"-y"`) fails in the same way: npm says `EINVALIDTAGNAME` in the terminal, and the UI says "closed client".
+  - **A server that stops stays broken.** `getOrCreateClient` (`mcp-manager.ts:328` to `:347`) returns the cached client when the config is the same (`:332`), with no check that its process still runs. Through the real route: a check connected with 7 tools, the server process was stopped, and each check after that said "Attempted to send a request from a closed client". Only a config change or a restart of the dev server fixes it.
+  - **A timeout leaves the process running.** `createClientWithTimeout` (`mcp-manager.ts:268` to `:269`) uses `Promise.race`. When the timer wins, nothing closes the transport. The probe: the child still ran after the timeout. The SDK has `initializationOptions: { timeout }`, which closes the transport when the start fails (`dist/index.js:2433` to `:2480`).
+  - **Two requests can start two processes.** `getOrCreateClient` has no record of a start that is still running, so a status check and a chat at the same time each start the server. The second one replaces the cache entry, and the first process is never closed (code reading).
+  - **The app starts half-typed servers.** Each save of Preferences (700 ms after typing stops, `PreferencesDialog.tsx:59`) fires `PREFERENCES_CHANGED_EVENT` (`preferences.ts:87` to `:91`). The MCP button in the chat input then checks every enabled server again (`MCPToolsIndicator.tsx:62` to `:73` and `:83` to `:90`). A new config hash closes the old client and starts a new one. So while you type `@praveenc/llmstxt-doc-search`, the app can run `npx -y @praveenc/llm`, which downloads and runs whatever package has that name. The browser sends every enabled server, also one with no command (`MCPToolsIndicator.tsx:90`, `useBedrockChat.ts:378` to `:379`).
+- **Fix** (D14 (b) and (c)):
+  - Keep the last 4 KB of each child's error output (`stderr: 'pipe'`), and still copy it to the terminal with the server name in front. When a start fails, the error says what happened and shows the last 6 lines, cut to 400 characters. For example: "The server stopped before it answered (exit code 1): npm error code E401 Unable to authenticate, your authentication token seems to be invalid."
+  - When a server process stops, remove its client from the cache. The next check or chat starts it again. The app does not restart it by itself, so a broken server cannot loop.
+  - Use the SDK's `initializationOptions.timeout` instead of `Promise.race`, so a timeout closes the process. The error says "The server did not answer in 15 s" and shows the last output.
+  - Keep one start for each server. A second request waits for the start that runs.
+  - The browser sends only servers that pass `validateMCPServerConfig`, in the check and in the chat. The MCP button checks the servers when the page loads, when Preferences closes, and when you open its popover, not after each save.
+  - Each server in **Preferences → MCP Servers** has a **Check** button at the end of its form. It starts the server (or connects to a remote server) and shows the result under the button: "Connected · 7 tools" or the error. The button is off while the form has an error. A change of the command, the arguments, the environment, the URL, or the headers clears the result. Remote servers get the button too, because the same route checks them.
+  - The SEC-11 error (`mcp-manager.ts:205`) shows the server name and id only, not the config with its environment values and headers.
+  - README, Troubleshooting: a new part "An MCP server shows an error". It explains `E401` (log in to your npm registry again, or set `npm_config_registry` for that server) and where to read the full output.
+- **Trade-offs:** The status popover can show text that the server wrote to its error output. Only the app's own pages can read it (SEC-13). A server that writes a secret to its error output shows it in the popover, as it already does in the terminal.
+
+### 23. Clearer Add MCP server form
+
+- **Categories:** Core flows, Accessibility. **Effort:** S.
+- **Problem:** The form for a new local server starts with text that you must delete, does not say which commands to use, and does not say how to type arguments and environment values.
+- **Evidence:**
+  - **2a, Name.** `createDefaultStdioConfig` sets the name "New MCP Server" (`src/types/mcp.ts:71`). It is a value, not a placeholder, so a click in the field does not clear it. The field's placeholder "My MCP Server" (`MCPServerSettings.tsx:434`) never shows. The remote forms do the same ("New Remote Server", "New SSE Server").
+  - **2a, also.** A new server opens closed (`MCPServerSettings.tsx:281`, `useState(false)`), so after **Local** you must open it before you can type.
+  - **2b, Command.** The placeholder is "node, python, npx, etc." (`MCPServerSettings.tsx:551`). It does not name `uvx`. The help text is "The command to run the MCP server process" (`:556`).
+  - **2c, Arguments.** Each field has the placeholder "Argument N" (`:241`) and no help text (`:562`). The SDK starts the child with no shell (`dist/mcp-stdio/index.js:350`, `shell: false`), so the app passes each field as it is: quotes become part of the argument, and `~` and `$HOME` are not expanded. Through the real route, `"-y"` made npm fail with `EINVALIDTAGNAME`.
+  - **2d, Environment variables.** The placeholders are "VARIABLE_NAME" and "value" (`:575` to `:576`), with no help text (`:569`). Values have the same rules: no quotes, no `$VAR`, no `~`.
+- **Fix** (D16 (a)):
+  - New servers start with an empty name. The header shows "New local server" or "New remote server" in muted text until the name has text (today "Untitled", `:378`). The name placeholder is an example, `my-server`. The error "Server name is required" shows after you leave the field, as today for new servers (`:649`, `:665`).
+  - A new server opens, and the Name field gets the focus.
+  - Command placeholder: "npx, uvx, node, python, etc." Help text: "The program that starts the server. Put its arguments in the fields below."
+  - Help text under **Arguments**: "One argument in each field, with no quotes. The app does not use a shell, so it passes each field as you type it." The first two placeholders are `-y` and `package-name`, then "Argument N".
+  - Help text under **Environment Variables**: "One variable in each row, with no quotes. The app does not expand `$VAR` or `~`: type the full value." Placeholders: `NAME` and `value`.
+  - A field whose text starts and ends with the same quote shows a warning under it: "The quotes are part of this value. Remove them unless the server needs them." The value still saves as you typed it.
+- **Trade-offs:** The help text makes the local form about two lines taller.
+- **Done in M2:**
+  - `createDefaultStdioConfig`, `createDefaultHTTPConfig`, and `createDefaultSSEConfig` start with an empty name. A transport change keeps the name, also an empty one. Saved servers keep their names.
+  - A new server opens, and the Name field gets the focus once, when the form mounts. A collapse and an expand later do not move the focus. Saved servers start closed, as before.
+  - The help text under **Arguments** and **Environment Variables** is linked to each field with `aria-describedby`, so a screen reader reads it with the field. The headers editor has no help text and no quote warning, because its values are password fields.
+  - `hasOuterQuotes` (`src/utils/mcpFieldHints.ts`) holds the quote rule: two or more characters, and the same `"` or `'` at both ends after a trim. The warning uses `text-status-warn`, an icon, and words, and the value saves as typed.
+  - The warning is `text-xs`, the size of the field errors. The help text stays `text-[10px]`, as the other help text of this form.
+
+### 24. Local servers that are standalone programs
+
+- **Categories:** Core flows. **Effort:** M.
+- **Problem:** Many MCP servers are one program that you start by its name or its path, for example `github-mcp-server`. The app refuses them, so you cannot add them.
+- **Evidence:**
+  - `mcp-manager.ts:38` to `:49` and `:68`: only `node`, `npx`, `python`, `python3`, `uvx`, `uv`, `docker`, `deno`, `bun`, and `bunx` can start. `mcp-manager.ts:62`: a command with `/` is refused.
+  - Through the real route, a standalone server program on the test host was refused by name ("is not in the allowlist") and by full path ("Command paths are not allowed"). The probe started the same program with the app's transport and environment, by name and by full path: it connected in 1.1 to 1.3 s with 38 tools. So the allowlist is the only block.
+  - A Kiro config on the test host has 16 servers: 6 programs by name, 3 programs by full path, 5 that use `uv`, `uvx`, or `npx`, and 2 remote servers. A Pi config has 12 servers: 6 programs, 5 with `uv`, `uvx`, or `npx`, and 1 remote server. Today the app can run 7 of the 16 and 6 of the 12.
+  - The allowlist does not stop other code today. `npx -y <package>`, `uvx <package>`, and `docker run <image>` run any code. And the user's environment variables replace the safe ones (`mcp-manager.ts:297`, `{ ...getSafeEnv(), ...stdioConfig.env }`): the probe set `PATH` in a server's environment, and the command `npx` started a different program named `npx`. The checks that hold are SEC-13 (only the app's own pages can call the route), the loopback bind, and no shell.
+- **Fix** (D15 (a)):
+  - A command can be a name that the server finds on `PATH`, or a full path that starts with `/` or `~/` (the server expands `~/`). A relative path (`./server`, `bin/server`) is refused, because it depends on the folder where the dev server started.
+  - Before the start, the server finds the program on the same `PATH` that the child gets. The file must exist, be a regular file after links, and be executable. If not, the error says "Command not found: x" or "x is not a program".
+  - Unchanged: no shell, the shell-character check on arguments, and the safe environment (SEC-02).
+  - The form: command placeholder "npx, uvx, or the name or path of a program", and help text that says so.
+  - SECURITY-LEARNINGS: SEC-01 is updated, and a new SEC entry records why the allowlist goes.
+  - README: the "For safety" paragraph of "MCP servers" changes.
+- **Trade-offs:** Anyone who can open the app can start any program on the host as the user. That is true today through `npx` and `uvx`, so the new risk is small. Share the app only through an authenticated tunnel (SEC-13).
+
+### 25. Import MCP servers from other tools
+
+- **Categories:** Core flows. **Effort:** L.
+- **Problem:** Users already have MCP servers in other tools. They must type each server again in the app.
+- **Evidence:**
+  - On the test host: Kiro `~/.kiro/settings/mcp.json` (16 servers), Pi `~/.pi/agent/mcp.json` (12), Claude Code `~/.claude.json` (6 in `mcpServers`), and Codex `~/.codex/config.toml` (5, in TOML). Many servers are in more than one file under the same name.
+  - The JSON files use one shape: `mcpServers: { <name>: { command, args, env } }` for a local server, and `{ type: "http", url, headers }` or `{ url }` for a remote one. Kiro adds `disabled`, `autoApprove`, `timeout`, and `transport`. Pi adds `toolExposure` and `exposure`. Claude Code adds `type: "stdio"`.
+  - One Kiro environment value uses `${…}`. The app passes values as text (item 23), so that value would not work as it is.
+  - The app keeps MCP servers in the browser (`preferences.ts:34`). Only the server can read files on the host.
+- **Fix** (D17 (a), D18 (a), D19 (a)):
+  - A new server file, `server/mcp-import.ts`, reads a fixed list of files in the user's home folder (D17). The browser never sends a path. The server reads at most 4 MB of each file and skips a file that it cannot read or parse.
+  - `POST /api/mcp/import/scan` returns, for each file: the tool, the file as `~/…`, and each server with its name, transport, command, arguments, and the names of its environment variables and headers. It returns no environment values and no header values.
+  - `POST /api/mcp/import/read` with the keys of the selected servers reads the files again and returns those servers in the app's own shape, with their values.
+  - `src/utils/mcpImport.ts` maps one entry to `MCPServerConfig`, and has no DOM or Node imports. It drops the fields that the app does not use (`autoApprove`, `timeout`, `toolExposure`, `exposure`).
+  - The list groups the same server (name, command, and arguments) from several files into one row: "Found in Kiro and Pi". A server that the app already has (same command and arguments, or same URL) shows "Already added" and is not selected. A different server with a name that the app already uses gets the tool name after it, for example "slack (Pi)".
+  - A server that the app cannot run shows the reason and has no checkbox: a relative command, an argument with shell characters, or a remote URL that SEC-03 blocks.
+  - A value with `${…}` shows a note: "1 value uses ${…}. The app passes it as text. Type the real value after the import."
+  - Imported servers are off (D18). You turn on the ones that you want.
+  - In **Preferences → MCP Servers**, a line at the top says, for example, "12 servers in Kiro and Pi are not in this app" with **Import** and **Not now** (D19). The tab checks the files when it opens. **Not now** hides the line until a new server shows up in the files. **Import** opens the list in the tab, with a checkbox for each server, grouped by tool, and **Import N servers** and **Cancel**. The empty tab shows the same line in its box.
+  - A new SEC entry: fixed files only, a read limit, values only for the servers that you select, and `POST` routes behind the same-origin guard.
+  - README: a new part "Import servers from other tools" under "MCP servers".
+- **Trade-offs:** Imported values (API keys, tokens) are kept in the browser, as values that you type. The import reads files only when the tab opens and when you import. It does not follow changes in the other tools.
+
+### Decisions for Plan 3
+
+#### D14: When the app checks a server
+
+Decided: (b) and (c).
+
+A check starts each enabled local server and asks for its tools.
+
+- **(a)** As today: after each save of Preferences (700 ms after typing stops), for every enabled server, also one that you are still typing.
+- **(b)** When Preferences closes and when you open the MCP popover in the chat input, for complete servers only. **Recommended**: the app never starts a half-typed command, and the popover still shows the state.
+- **(c)** As (b), and a **Check** button on each local server in Preferences that shows the result under the server.
+
+#### D15: Which commands a local server can use
+
+Decided: (a).
+
+- **(a)** Any program: a name on `PATH` or a full path (`/` or `~/`). No relative paths. **Recommended**: the runners already run any code (item 24), and the checks that hold (SEC-13, loopback, no shell) stay.
+- **(b)** The runners, and programs that you add to a file on the host (`~/.local-llm-ui/mcp-commands.json`). The browser cannot change the file. Each new program needs a change of the file by hand.
+- **(c)** The runners, and full paths in the home folder only.
+
+#### D16: Quotes in arguments and values
+
+Decided: (a).
+
+- **(a)** Help text, and a warning under a field whose text starts and ends with the same quote. The value saves as typed. **Recommended**: no silent change, and the user learns the rule.
+- **(b)** Help text, and the app removes one pair of outer quotes when it saves.
+- **(c)** Help text only.
+
+#### D17: Which files the import reads
+
+Decided: (a).
+
+- **(a)** The JSON files with `mcpServers` in the home folder: Kiro, Pi, Claude Code (user servers only, not the servers of each project), and Cursor, Claude Desktop, Gemini CLI, and Windsurf when their file exists. Nothing in `~/.aws`. **Recommended**: one shape, no new dependency. The paths of the four tools that are not on the test host are checked in their docs during the work.
+- **(b)** As (a), and Codex (`~/.codex/config.toml`). This needs a TOML parser as a new dependency.
+- **(c)** Kiro and Pi only.
+
+#### D18: Imported servers on or off
+
+Decided: (a).
+
+- **(a)** Off. **Recommended**: the Kiro and Pi files on the test host hold about 20 different servers. All on at once start about 20 processes on each check and send all their tools to the model with each message (one server alone has 38 tools).
+- **(b)** As in the source file: on, unless the file says `disabled: true`.
+- **(c)** On.
+
+#### D19: Where the import shows
+
+Decided: (a).
+
+- **(a)** A line at the top of the MCP Servers tab when the files have servers that the app does not have, with **Import** and **Not now**, and the list in the tab. **Recommended**: the app finds the servers by itself, and the list does not open a second dialog over Preferences.
+- **(b)** An **Import** button next to **Local** and **Remote** only. The files are read when you click it.
+- **(c)** As (a), and a hint in the MCP popover of the chat input.
+
+### Found during the planning
+
+- **The SEC-11 error shows secrets.** `mcp-manager.ts:205` puts the first 200 characters of the config in the error, with its environment values and headers. The status route returns it, and the server log prints it. Fixed in M1.
+- **Environment values are plain text.** Header values are password fields (`MCPServerSettings.tsx`, `valueType="password"`), but environment values are not (`:571` to `:577`). Environment variables often hold API keys. Not in the plan.
+- **A server in the popover shows no output.** The popover shows `server.error` only (`MCPToolsIndicator.tsx:207`). With item 22 the error has the last lines of output, so no new UI is necessary.
+- **Other tools keep servers running.** On the test host, Pi still runs the same `npx` server that it started before the npm token expired. A restart of Pi would fail in the same way. This is why the server works in Pi and not in the app.
+
+### Delivery plan for Plan 3
+
+| PR | Branch | Items | Waits on |
+|---|---|---|---|
+| M2 | `fix/mcp-server-form` | 23, and the Plan 3 text of this document | Nothing |
+| M1 | `fix/mcp-npx-launch` | 22, the SEC-11 error text | M2 merged: M1 is stacked on M2 |
+| M3 | `feat/mcp-standalone-commands` | 24 | M1 merged (M1 changes `mcp-manager.ts`, M2 changes the command field) |
+| M4 | `feat/mcp-import` | 25 | M3 merged (M3 decides which imported servers can run) |
+
+Merge order: M2, M1, M3, M4. M1 and M2 both change `MCPServerSettings.tsx` (the form and the **Check** button), `docs/CHANGELOG.md`, and the Progress table, so M1 is stacked on M2: its branch has M2 merged in, and its PR targets `fix/mcp-server-form` until M2 merges. Each PR has its own worktree under `local-llm-ui-wt/`, runs its dev server on port 5174 with the tunnel `local-llm-ui-bugs`, one PR at a time, and is trial-merged on the latest `main` before it opens, because `docs/CHANGELOG.md` also changes in the Kiro PRs. The SEC numbers are taken when each PR opens, because the Kiro PRs also add SEC entries.
+
+Tests:
+
+- M1: fake stdio servers in `server/__tests__/fixtures/` that stop with error output, stop after they connect, or never answer. Each needs a test that fails before the fix. With the real dev server: the `npx` server with the host's npm settings shows the E401 text, with `npm_config_registry` it connects, and after its process stops the next check connects again. No server process is left after a timeout.
+- M2: component tests for the empty name, the focus, the help text, and the quote warning. Screenshots of the form in light and dark mode at 1440, 1024, and 390 px.
+- M3: tests for a name on `PATH`, a full path, `~/`, a relative path, a missing file, a folder, and a file that is not executable. With the real dev server: a standalone server program by name and by full path.
+- M4: tests of the mapping and the grouping with fixture files in a temporary home folder. Screenshots use the fixture home folder, so that no real server names show in the PR.

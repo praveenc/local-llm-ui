@@ -68,7 +68,7 @@ export function generateMCPServerId(): string {
 export function createDefaultStdioConfig(name?: string): MCPStdioConfig {
   return {
     id: generateMCPServerId(),
-    name: name || 'New MCP Server',
+    name: name || '',
     enabled: true,
     transport: 'stdio',
     command: '',
@@ -83,7 +83,7 @@ export function createDefaultStdioConfig(name?: string): MCPStdioConfig {
 export function createDefaultHTTPConfig(name?: string): MCPHTTPConfig {
   return {
     id: generateMCPServerId(),
-    name: name || 'New Remote Server',
+    name: name || '',
     enabled: true,
     transport: 'http',
     url: '',
@@ -97,7 +97,7 @@ export function createDefaultHTTPConfig(name?: string): MCPHTTPConfig {
 export function createDefaultSSEConfig(name?: string): MCPSSEConfig {
   return {
     id: generateMCPServerId(),
-    name: name || 'New SSE Server',
+    name: name || '',
     enabled: true,
     transport: 'sse',
     url: '',
