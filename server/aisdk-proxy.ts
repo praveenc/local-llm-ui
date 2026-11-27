@@ -1,5 +1,6 @@
 /**
  * AI SDK Proxy - Server-side streaming for Groq and Cerebras
+ * (the models route also lists the models of Anthropic; its chat has its own proxy)
  *
  * Handles chat requests using Vercel AI SDK with SSE streaming format.
  * API keys are passed from client via headers (stored in localStorage).
@@ -16,7 +17,16 @@ import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { errorMessageOr } from '../src/utils/errorMessage.ts';
 import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
-import { capMaxTokens, endStreamWithError, readBodyWithLimit } from './security.ts';
+import {
+  abortOnClose,
+  capErrorText,
+  capMaxTokens,
+  endStreamWithError,
+  isAbortAfterClientLeft,
+  readChatRequest,
+  sendJsonError,
+  startEventStream,
+} from './security.ts';
 import { noAnswerNotice, toolErrorEvent, toolLoopOptions } from './tool-loop.ts';
 import { usageEvent } from './usage.ts';
 import {
@@ -55,22 +65,139 @@ function createProvider(providerType: AISDKProvider, apiKey: string) {
   }
 }
 
-function getModelsEndpoint(provider: AISDKProvider): string {
+/** The providers that the models route lists. Anthropic only lists; its chat has its own proxy. */
+type ModelsProvider = AISDKProvider | 'anthropic';
+
+const MODELS_PROVIDERS: readonly ModelsProvider[] = ['groq', 'cerebras', 'anthropic'];
+
+/** Anthropic pages: `limit` is at most 1000, and the cap stops a loop of `has_more` */
+const ANTHROPIC_PAGE_LIMIT = 1000;
+const ANTHROPIC_MAX_PAGES = 5;
+const ANTHROPIC_VERSION = '2023-06-01';
+
+/** Longest wait for one upstream models call (each page of Anthropic is one call) */
+const MODELS_TIMEOUT_MS = 10_000;
+
+function getModelsEndpoint(provider: ModelsProvider): string {
   switch (provider) {
     case 'groq':
       return 'https://api.groq.com/openai/v1/models';
     case 'cerebras':
       return 'https://api.cerebras.ai/v1/models';
+    case 'anthropic':
+      return 'https://api.anthropic.com/v1/models';
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }
+}
+
+/** Hide the key, in case an upstream echoes it, then cut the text to the shared cap */
+const capModelsError = (text: string, apiKey: string): string =>
+  capErrorText(text.split(apiKey).join('[redacted]'));
+
+// By name: a DOMException is not always an `Error` in every runtime
+const isTimeoutError = (error: unknown): boolean =>
+  typeof error === 'object' &&
+  error !== null &&
+  (error as { name?: unknown }).name === 'TimeoutError';
+
+/** The status and text that go to the browser for an error that was thrown, not answered */
+function thrownErrorAnswer(error: unknown, provider: string, apiKey: string) {
+  if (isTimeoutError(error)) {
+    return { status: 504, message: `${provider} did not answer in time` };
+  }
+  return { status: 500, message: capModelsError(errorMessageOr(error, 'Unknown error'), apiKey) };
+}
+
+/** Thrown when the upstream answers with an error status; the route passes the status on */
+class UpstreamError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** One page of the Anthropic model list, after the shape check */
+interface AnthropicPage {
+  models: Array<{ id: string; name: string }>;
+  hasMore: boolean;
+  lastId: string | undefined;
+}
+
+function parseAnthropicPage(payload: unknown): AnthropicPage {
+  const body = payload as { data?: unknown; has_more?: unknown; last_id?: unknown } | null;
+  if (!body || typeof body !== 'object' || !Array.isArray(body.data)) {
+    throw new UpstreamError(502, 'Invalid response from Anthropic');
+  }
+  const models: AnthropicPage['models'] = [];
+  for (const item of body.data as unknown[]) {
+    const model = item as { id?: unknown; display_name?: unknown } | null;
+    if (!model || typeof model !== 'object' || typeof model.id !== 'string' || !model.id) continue;
+    const name =
+      typeof model.display_name === 'string' && model.display_name.trim()
+        ? model.display_name
+        : model.id;
+    models.push({ id: model.id, name });
+  }
+  return {
+    models,
+    hasMore: body.has_more === true,
+    lastId: typeof body.last_id === 'string' && body.last_id ? body.last_id : undefined,
+  };
+}
+
+/** Anthropic `GET /v1/models`, following `has_more` with `after_id` for a few pages */
+async function fetchAnthropicModels(apiKey: string): Promise<Array<{ id: string; name: string }>> {
+  const models: Array<{ id: string; name: string }> = [];
+  let afterId: string | undefined;
+
+  for (let page = 0; page < ANTHROPIC_MAX_PAGES; page++) {
+    const query = new URLSearchParams({ limit: String(ANTHROPIC_PAGE_LIMIT) });
+    if (afterId) query.set('after_id', afterId);
+
+    const response = await fetch(`${getModelsEndpoint('anthropic')}?${query}`, {
+      method: 'GET',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': ANTHROPIC_VERSION },
+      signal: AbortSignal.timeout(MODELS_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new UpstreamError(
+        response.status,
+        capModelsError(text || 'Failed to fetch anthropic models', apiKey)
+      );
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      // A timeout while the body is read is not a bad body
+      if (isTimeoutError(error)) throw error;
+      throw new UpstreamError(502, 'Invalid response from Anthropic');
+    }
+    const result = parseAnthropicPage(payload);
+    models.push(...result.models);
+    if (!result.hasMore || !result.lastId) break;
+    afterId = result.lastId;
+  }
+
+  return models;
+}
+
+function sendModelsJson(res: ServerResponse, status: number, body: unknown) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
 }
 
 async function handleModelsRequest(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || '', 'http://localhost');
   const provider = url.searchParams.get('provider');
 
-  if (!provider || !['groq', 'cerebras'].includes(provider)) {
+  if (!provider || !(MODELS_PROVIDERS as readonly string[]).includes(provider)) {
     res.statusCode = 400;
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Invalid or missing provider' }));
@@ -85,19 +212,39 @@ async function handleModelsRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  if (provider === 'anthropic') {
+    try {
+      sendModelsJson(res, 200, { provider, models: await fetchAnthropicModels(apiKey) });
+    } catch (error) {
+      if (error instanceof UpstreamError) {
+        sendModelsJson(res, error.status, { error: error.message });
+        return;
+      }
+      const answer = thrownErrorAnswer(error, provider, apiKey);
+      console.error(`AI SDK models proxy error (${provider}):`, answer.message);
+      sendModelsJson(res, answer.status, { error: answer.message });
+    }
+    return;
+  }
+
   try {
     const response = await fetch(getModelsEndpoint(provider as AISDKProvider), {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },
+      signal: AbortSignal.timeout(MODELS_TIMEOUT_MS),
     });
 
     if (!response.ok) {
       const text = await response.text();
       res.statusCode = response.status;
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: text || `Failed to fetch ${provider} models` }));
+      res.end(
+        JSON.stringify({
+          error: capModelsError(text, apiKey) || `Failed to fetch ${provider} models`,
+        })
+      );
       return;
     }
 
@@ -119,10 +266,11 @@ async function handleModelsRequest(req: IncomingMessage, res: ServerResponse) {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ provider, models }));
   } catch (error) {
-    console.error(`AI SDK models proxy error (${provider}):`, error);
-    res.statusCode = 500;
+    const answer = thrownErrorAnswer(error, provider, apiKey);
+    console.error(`AI SDK models proxy error (${provider}):`, answer.message);
+    res.statusCode = answer.status;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: errorMessageOr(error, 'Unknown error') }));
+    res.end(JSON.stringify({ error: answer.message }));
   }
 }
 
@@ -139,43 +287,28 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       return next();
     }
 
-    // Parse request body (SEC-07: size-limited)
-    const rawBody = await readBodyWithLimit(req, res);
-    if (rawBody === null) return; // 413 already sent
+    // Size limit, JSON, and the fields of every chat request (SEC-07, SEC-22)
+    const body = await readChatRequest(req, res);
+    if (!body) return; // 413 or 400 already sent
 
-    let request: ChatRequest;
-    try {
-      request = JSON.parse(rawBody);
-    } catch {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+    // Validate provider
+    if (body.provider !== 'groq' && body.provider !== 'cerebras') {
+      sendJsonError(res, 400, 'Invalid provider');
       return;
     }
+    const request: ChatRequest = { ...body, provider: body.provider };
 
     // Get API key from header
     const apiKey = req.headers['x-api-key'] as string;
     if (!apiKey) {
-      res.statusCode = 401;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: `API key required for ${request.provider}` }));
-      return;
-    }
-
-    // Validate provider
-    if (!['groq', 'cerebras'].includes(request.provider)) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: `Invalid provider: ${request.provider}` }));
+      sendJsonError(res, 401, `API key required for ${request.provider}`);
       return;
     }
 
     // Web search API keys and the order to try the providers in
     const webSearchProviders = getWebSearchProviders(req.headers);
     if (request.enableWebSearch && webSearchProviders.length === 0) {
-      res.statusCode = 401;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: WEB_SEARCH_KEY_REQUIRED_ERROR }));
+      sendJsonError(res, 401, WEB_SEARCH_KEY_REQUIRED_ERROR);
       return;
     }
 
@@ -183,11 +316,6 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
     try {
       const provider = createProvider(request.provider, apiKey);
       const startTime = Date.now();
-
-      // Set up SSE response
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
 
       // Get MCP tools if configured
       let mcpTools: Record<string, unknown> = {};
@@ -204,11 +332,8 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       }
       const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 
-      // Create abort controller to cancel streamText when client disconnects
-      const abortController = new AbortController();
-      req.on('close', () => {
-        abortController.abort();
-      });
+      // Cancel streamText when the browser closes the connection
+      const abortSignal = abortOnClose(res);
 
       const result = await streamText({
         model: provider(request.model),
@@ -217,12 +342,15 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
         messages: request.messages,
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
-        abortSignal: abortController.signal,
+        abortSignal,
         // Send the thinking effort only for models that accept it (gpt-oss on Groq)
         ...buildReasoningParams(request.provider, request.model, request.thinkingEffort),
         // Tool loop that always ends with an answer (see tool-loop.ts)
         ...toolLoopOptions(tools, { maxSteps: request.maxToolSteps }),
       });
+
+      // Set up SSE response
+      startEventStream(res);
 
       // Stream text chunks and handle tool calls
       for await (const part of result.stream) {
@@ -253,7 +381,7 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
             })}\n\n`
           );
         } else if (part.type === 'error') {
-          const streamError = errorMessageOr(part.error, 'Unknown error');
+          const streamError = capErrorText(errorMessageOr(part.error, 'Unknown error'));
           res.write(`data: ${JSON.stringify({ error: streamError })}\n\n`);
         }
       }
@@ -278,6 +406,8 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       if (mcpCleanup) {
         mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
       }
+      // The browser left and the call stopped: not a proxy error, and no one to answer
+      if (isAbortAfterClientLeft(error, res)) return;
       console.error(`AI SDK Proxy error (${request.provider}):`, error);
 
       const errorMessage = errorMessageOr(error, 'Unknown error');
@@ -285,9 +415,7 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
       // The stream has started: report the error as an SSE event, so the chat shows it
       if (endStreamWithError(res, errorMessage)) return;
 
-      res.statusCode = 500;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: errorMessage }));
+      sendJsonError(res, 500, errorMessage);
     }
   };
 }

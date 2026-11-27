@@ -22,7 +22,18 @@ import {
 } from '../src/utils/thinkingEffort.ts';
 import type { ReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
-import { capMaxTokens, endStreamWithError, readBodyWithLimit, setCORSHeaders } from './security.ts';
+import {
+  abortOnClose,
+  capErrorText,
+  capMaxTokens,
+  endStreamWithError,
+  isAbortAfterClientLeft,
+  readBodyWithLimit,
+  readChatRequest,
+  sendJsonError,
+  setCORSHeaders,
+  startEventStream,
+} from './security.ts';
 import {
   noAnswerNotice,
   streamErrorMessage,
@@ -41,27 +52,6 @@ const bedrock = createAmazonBedrock({
   region: process.env.AWS_REGION || process.env.VITE_AWS_REGION || 'us-west-2',
   credentialProvider: fromNodeProviderChain(),
 });
-
-interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  files?: Array<{
-    name: string;
-    format: string;
-    bytes: string; // base64 encoded
-  }>;
-}
-
-interface ChatRequest {
-  model: string;
-  messages: ChatMessage[];
-  max_tokens?: number;
-  enableWebSearch?: boolean;
-  mcpServers?: MCPServerConfig[];
-  thinkingEffort?: unknown;
-  /** Most model calls in one reply when tools are on */
-  maxToolSteps?: unknown;
-}
 
 /** Share of the model's max output tokens that each effort uses as a thinking budget */
 const THINKING_BUDGET_SHARE: Record<Exclude<ReasoningLevel, 'none'>, number> = {
@@ -138,6 +128,8 @@ export async function handleBedrockAISDKRequest(
       res.end(JSON.stringify({ error: 'Not found' }));
     }
   } catch (error) {
+    // The browser left and the call stopped: not a proxy error, and no one to answer
+    if (isAbortAfterClientLeft(error, res)) return;
     console.error('Bedrock AI SDK proxy error:', error);
     const err = error as Error;
 
@@ -186,9 +178,9 @@ export async function handleBedrockAISDKRequest(
     res.setHeader('Content-Type', 'application/json');
     res.end(
       JSON.stringify({
-        error: errorMessage,
+        error: capErrorText(errorMessage),
         errorType: err.name,
-        errorDetail: err.message,
+        errorDetail: capErrorText(err.message ?? ''),
       })
     );
   }
@@ -222,26 +214,17 @@ async function handleMCPStatus(req: IncomingMessage, res: ServerResponse): Promi
 }
 
 async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = await readBodyWithLimit(req, res);
-  if (body === null) return; // 413 already sent
-
-  const {
-    model,
-    messages,
-    max_tokens,
-    enableWebSearch,
-    mcpServers,
-    thinkingEffort,
-    maxToolSteps,
-  }: ChatRequest = JSON.parse(body);
+  // Size limit, JSON, and the fields of every chat request (SEC-07, SEC-22)
+  const request = await readChatRequest(req, res);
+  if (!request) return; // 413 or 400 already sent
+  const { model, messages, max_tokens, enableWebSearch, mcpServers, thinkingEffort, maxToolSteps } =
+    request;
 
   // Web search API keys and the order to try the providers in
   const webSearchProviders = getWebSearchProviders(req.headers);
 
   if (enableWebSearch && webSearchProviders.length === 0) {
-    res.statusCode = 401;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: WEB_SEARCH_KEY_REQUIRED_ERROR }));
+    sendJsonError(res, 401, WEB_SEARCH_KEY_REQUIRED_ERROR);
     return;
   }
 
@@ -286,29 +269,26 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     return { role: 'user' as const, content: msg.content };
   });
 
-  // Get MCP tools if configured
-  let mcpTools: Record<string, unknown> = {};
   let mcpCleanup: (() => Promise<void>) | undefined;
-  if (mcpServers && mcpServers.length > 0) {
-    const mcp = await getMCPTools(mcpServers);
-    mcpTools = mcp.tools;
-    mcpCleanup = mcp.cleanup;
-  }
-
-  // Configure tools - merge web search and MCP tools
-  const allTools: ToolSet = { ...mcpTools } as ToolSet;
-  if (enableWebSearch && webSearchProviders.length > 0) {
-    allTools.webSearch = createWebSearchTool(webSearchProviders);
-  }
-  const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
-
-  // Create abort controller to cancel streamText when client disconnects
-  const abortController = new AbortController();
-  req.on('close', () => {
-    abortController.abort();
-  });
-
   try {
+    // Get MCP tools if configured. Inside the try, so a failure after the start still cleans up
+    let mcpTools: Record<string, unknown> = {};
+    if (mcpServers && mcpServers.length > 0) {
+      const mcp = await getMCPTools(mcpServers);
+      mcpTools = mcp.tools;
+      mcpCleanup = mcp.cleanup;
+    }
+
+    // Configure tools - merge web search and MCP tools
+    const allTools: ToolSet = { ...mcpTools } as ToolSet;
+    if (enableWebSearch && webSearchProviders.length > 0) {
+      allTools.webSearch = createWebSearchTool(webSearchProviders);
+    }
+    const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
+
+    // Cancel streamText when the browser closes the connection
+    const abortSignal = abortOnClose(res);
+
     // Request options for a thinking effort (undefined: send none)
     const thinkingOptions = (reasoning: ReasoningLevel | undefined) => {
       const maxOutputTokens = capMaxTokens(max_tokens);
@@ -339,22 +319,20 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
         allowSystemInMessages: true,
         messages: transformedMessages,
         tools,
-        abortSignal: abortController.signal,
+        abortSignal,
         // Tool loop that always ends with an answer (see tool-loop.ts)
         ...toolLoopOptions(tools, { maxSteps: maxToolSteps, disableToolsOnLastStep: false }),
         ...thinkingOptions(reasoning),
       });
-
-    // Use SSE format to stream text and then send usage metadata
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
 
     const startTime = Date.now();
 
     let reasoning = reasoningParams.reasoning;
     let result = startStream(reasoning);
     let canRetry = reasoning !== undefined;
+
+    // Use SSE format to stream text and then send usage metadata
+    startEventStream(res);
 
     // Stream text chunks and handle tool calls
     for (;;) {
@@ -430,7 +408,8 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     if (mcpCleanup) {
       mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
     }
-    console.error('Bedrock AI SDK: Stream error:', error);
+    // The browser left and the call stopped: not a stream error
+    if (!isAbortAfterClientLeft(error, res)) console.error('Bedrock AI SDK: Stream error:', error);
     throw error;
   }
 }
