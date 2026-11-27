@@ -11,8 +11,11 @@ import type {
   CreateMessageInput,
   KiroConversationSession,
   Message,
+  MessageAttachment,
   MessageFeedback,
+  NewAttachment,
   Provider,
+  StoredAttachment,
 } from '../db';
 import type { SessionOptionValues } from '../utils/sessionOptions';
 
@@ -42,8 +45,76 @@ const generateTitle = (content: string, maxLength = 50): string => {
   return cleaned.substring(0, maxLength - 3) + '...';
 };
 
+/** Count a new message in its conversation's totals; run inside the message's transaction */
+async function addToTotals(input: CreateMessageInput): Promise<void> {
+  const conversation = await db.conversations.get(input.conversationId);
+  if (!conversation) return;
+  const updates: Partial<Conversation> = {
+    updatedAt: new Date(),
+    messageCount: conversation.messageCount + 1,
+  };
+
+  // Update title from first user message
+  if (conversation.messageCount === 0 && input.role === 'user') {
+    updates.title = generateTitle(input.content);
+  }
+
+  // Track unique providers
+  if (!conversation.providers.includes(input.provider)) {
+    updates.providers = [...conversation.providers, input.provider];
+  }
+
+  // Track unique models
+  if (!conversation.models.includes(input.modelId)) {
+    updates.models = [...conversation.models, input.modelId];
+  }
+
+  // Aggregate token usage
+  if (input.usage) {
+    updates.totalInputTokens = conversation.totalInputTokens + (input.usage.inputTokens || 0);
+    updates.totalOutputTokens = conversation.totalOutputTokens + (input.usage.outputTokens || 0);
+  }
+
+  await db.conversations.update(input.conversationId, updates);
+}
+
 /** The longest title that Kiro may set */
 const KIRO_TITLE_MAX = 120;
+
+/** The most bytes that the stored files of all chats may take, with the rest of the app (D-H) */
+export const ATTACHMENT_STORAGE_CAP = 500 * 1024 * 1024;
+
+/**
+ * Whether `bytes` more fit under the cap. The browser's estimate of the app's storage when it has
+ * one, else the sum of the stored files. Read before the write's transaction: the estimate is
+ * not a database promise.
+ */
+async function roomForFiles(bytes: number): Promise<boolean> {
+  try {
+    const storage = typeof navigator === 'undefined' ? undefined : navigator.storage;
+    const estimate = storage?.estimate ? await storage.estimate() : undefined;
+    if (estimate?.usage !== undefined) {
+      const after = estimate.usage + bytes;
+      return (
+        after <= ATTACHMENT_STORAGE_CAP && (estimate.quota === undefined || after <= estimate.quota)
+      );
+    }
+  } catch {
+    // No estimate: count the stored files
+  }
+  // The sizes in the messages' metadata, so no stored bytes are loaded
+  let used = 0;
+  await db.messages.each((message) => {
+    for (const file of message.attachments ?? []) if (file.kept) used += file.sizeBytes;
+  });
+  return used + bytes <= ATTACHMENT_STORAGE_CAP;
+}
+
+/** The name of an error, for a log line that never shows its value */
+function errorName(err: unknown): string {
+  const name = err && typeof err === 'object' ? (err as { name?: unknown }).name : undefined;
+  return typeof name === 'string' && /^\w{1,64}$/.test(name) ? name : 'Error';
+}
 
 export const conversationService = {
   /**
@@ -199,60 +270,77 @@ export const conversationService = {
    * Permanently delete a conversation and its messages
    */
   async delete(id: string): Promise<void> {
-    await db.transaction('rw', [db.conversations, db.messages], async () => {
+    await db.transaction('rw', [db.conversations, db.messages, db.attachments], async () => {
       await db.messages.where('conversationId').equals(id).delete();
+      await db.attachments.where('conversationId').equals(id).delete();
       await db.conversations.delete(id);
     });
   },
 
   /**
-   * Add a message to a conversation
+   * Add a message to a conversation. The files of a user message go into the `attachments`
+   * table in the same transaction, and the message keeps their names, formats, and sizes (D-C).
+   * Over the storage cap, or when the write with the files fails for any reason, the message is
+   * saved with the metadata only (`kept: false`): the text is never lost.
    */
-  async addMessage(input: CreateMessageInput): Promise<Message> {
-    const message: Message = {
-      ...input,
-      id: generateId(),
+  async addMessage(input: CreateMessageInput, files?: NewAttachment[]): Promise<Message> {
+    const id = generateId();
+    // A file without bytes (one that was not kept before) keeps its metadata only
+    const entries = (files ?? []).map((file) => ({
+      file,
+      row: file.data && {
+        id: generateId(),
+        messageId: id,
+        conversationId: input.conversationId,
+        name: file.name,
+        mediaType: file.mediaType,
+        size: file.data.byteLength,
+        data: file.data,
+      },
+    }));
+    const rows = entries.flatMap(({ row }) => (row ? [row] : []));
+    const metadata = (keep: boolean): MessageAttachment[] =>
+      entries.map(({ file, row }) => ({
+        id: row?.id ?? generateId(),
+        name: file.name,
+        format: file.format,
+        sizeBytes: row?.size ?? file.size,
+        kept: keep && !!row,
+      }));
+
+    const write = async (keep: boolean): Promise<Message> => {
+      const message: Message = {
+        ...input,
+        id,
+        ...(entries.length > 0 && { attachments: metadata(keep) }),
+      };
+      await db.transaction('rw', [db.conversations, db.messages, db.attachments], async () => {
+        await db.messages.add(message);
+        if (keep && rows.length > 0) await db.attachments.bulkAdd(rows);
+        await addToTotals(input);
+      });
+      return message;
     };
 
-    await db.transaction('rw', [db.conversations, db.messages], async () => {
-      // Add the message
-      await db.messages.add(message);
+    if (rows.length === 0) return write(false);
+    const bytes = rows.reduce((n, row) => n + row.size, 0);
+    if (!(await roomForFiles(bytes))) return write(false);
+    try {
+      return await write(true);
+    } catch (err) {
+      // Any failure of the write with the files (the quota as a BulkError of the request or an
+      // AbortError at commit, a DataCloneError, …): the transaction stored nothing, so store
+      // the message again without the bytes. The text is never lost for the files' sake.
+      console.error(
+        `Could not keep the attached files (${errorName(err)}); the message is saved without them`
+      );
+      return write(false);
+    }
+  },
 
-      // Update conversation metadata
-      const conversation = await db.conversations.get(input.conversationId);
-      if (conversation) {
-        const updates: Partial<Conversation> = {
-          updatedAt: new Date(),
-          messageCount: conversation.messageCount + 1,
-        };
-
-        // Update title from first user message
-        if (conversation.messageCount === 0 && input.role === 'user') {
-          updates.title = generateTitle(input.content);
-        }
-
-        // Track unique providers
-        if (!conversation.providers.includes(input.provider)) {
-          updates.providers = [...conversation.providers, input.provider];
-        }
-
-        // Track unique models
-        if (!conversation.models.includes(input.modelId)) {
-          updates.models = [...conversation.models, input.modelId];
-        }
-
-        // Aggregate token usage
-        if (input.usage) {
-          updates.totalInputTokens = conversation.totalInputTokens + (input.usage.inputTokens || 0);
-          updates.totalOutputTokens =
-            conversation.totalOutputTokens + (input.usage.outputTokens || 0);
-        }
-
-        await db.conversations.update(input.conversationId, updates);
-      }
-    });
-
-    return message;
+  /** The stored file bytes of a conversation's messages */
+  async getAttachments(conversationId: string): Promise<StoredAttachment[]> {
+    return db.attachments.where('conversationId').equals(conversationId).toArray();
   },
 
   /**
@@ -332,7 +420,7 @@ export const conversationService = {
    * Used for regeneration to remove old responses and subsequent messages
    */
   async deleteMessagesFromSequence(conversationId: string, fromSequence: number): Promise<number> {
-    return db.transaction('rw', [db.conversations, db.messages], async () => {
+    return db.transaction('rw', [db.conversations, db.messages, db.attachments], async () => {
       // Get messages to delete
       const messagesToDelete = await db.messages
         .where('[conversationId+sequence]')
@@ -346,6 +434,10 @@ export const conversationService = {
         await db.messages
           .where('[conversationId+sequence]')
           .between([conversationId, fromSequence], [conversationId, Dexie.maxKey])
+          .delete();
+        await db.attachments
+          .where('messageId')
+          .anyOf(messagesToDelete.map((m) => m.id))
           .delete();
 
         // The totals of the messages that stay
@@ -371,7 +463,7 @@ export const conversationService = {
    * messages (by sequence) of the source conversation. The source is not changed.
    */
   async fork(sourceId: string, messageCount: number): Promise<Conversation> {
-    return db.transaction('rw', [db.conversations, db.messages], async () => {
+    return db.transaction('rw', [db.conversations, db.messages, db.attachments], async () => {
       const source = await db.conversations.get(sourceId);
       if (!source) {
         throw new Error(`Conversation ${sourceId} not found`);
@@ -390,10 +482,35 @@ export const conversationService = {
         // opens a new session and sends the copied messages as context (D12).
       };
 
+      // The copies get new ids; their files are copied with them (D-G)
+      const messageIds = new Map(sourceMessages.map((m) => [m.id, generateId()]));
+      const sourceRows = await db.attachments
+        .where('messageId')
+        .anyOf([...messageIds.keys()])
+        .toArray();
+      const rowIds = new Map(sourceRows.map((row) => [row.id, generateId()]));
+
       await db.conversations.add(conversation);
       await db.messages.bulkAdd(
-        sourceMessages.map((m) => ({ ...m, id: generateId(), conversationId: conversation.id }))
+        sourceMessages.map((m) => ({
+          ...m,
+          id: messageIds.get(m.id)!,
+          conversationId: conversation.id,
+          ...(m.attachments && {
+            attachments: m.attachments.map((a) => ({ ...a, id: rowIds.get(a.id) ?? a.id })),
+          }),
+        }))
       );
+      if (sourceRows.length > 0) {
+        await db.attachments.bulkAdd(
+          sourceRows.map((row) => ({
+            ...row,
+            id: rowIds.get(row.id)!,
+            messageId: messageIds.get(row.messageId)!,
+            conversationId: conversation.id,
+          }))
+        );
+      }
       return conversation;
     });
   },
@@ -415,8 +532,9 @@ export const conversationService = {
    * Clear all conversations and messages
    */
   async clearAll(): Promise<void> {
-    await db.transaction('rw', [db.conversations, db.messages], async () => {
+    await db.transaction('rw', [db.conversations, db.messages, db.attachments], async () => {
       await db.messages.clear();
+      await db.attachments.clear();
       await db.conversations.clear();
     });
   },

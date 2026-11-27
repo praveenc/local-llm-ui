@@ -73,8 +73,8 @@ Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort
 
 ### Data Persistence (Dexie.js/IndexedDB)
 
-- `src/db/schema.ts` - Database schema (conversations, messages, savedPrompts). Version 3 adds the index `kiro.sessionId` on conversations (K7)
-- `src/services/conversationService.ts` - Conversation CRUD
+- `src/db/schema.ts` - Database schema (conversations, messages, savedPrompts). Version 3 adds the index `kiro.sessionId` on conversations (K7). Version 4 adds the table `attachments` (`id, messageId, conversationId`) with the bytes of attached files; a message keeps only the file metadata (`name`, `format`, `sizeBytes`, `kept`)
+- `src/services/conversationService.ts` - Conversation CRUD. `addMessage(input, files)` writes the message and its file rows in one transaction; when the file write fails or the 500 MB cap is reached, it saves the message with the metadata only (`kept: false`), so the text is never lost. Delete and fork delete or copy the file rows
 - `src/services/kiroImport.ts` - Import a Kiro session as a conversation, and add the turns that were made in the terminal
 - `src/services/kiroSyncs.ts` - The sync of one chat with Kiro: `prepareKiroSend` (before each Kiro send, also with the section off, it asks the open route with `ifUpdatedAfter` and adds the new turns first) and the open check, queued per chat with `trackKiroSync`. A chat with no turn count gets one count-only recount on open
 - `src/services/promptsService.ts` - Saved prompts operations

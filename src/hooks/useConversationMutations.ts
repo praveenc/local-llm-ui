@@ -9,6 +9,7 @@ import type {
   KiroConversationSession,
   Message,
   MessageFeedback,
+  NewAttachment,
 } from '../db';
 import { conversationService } from '../services';
 
@@ -17,7 +18,8 @@ interface UseConversationMutationsResult {
   archiveConversation: (id: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
   updateConversationTitle: (id: string, title: string) => Promise<void>;
-  addMessage: (input: CreateMessageInput) => Promise<Message>;
+  /** `files`: the bytes of a user message's attachments, stored with it */
+  addMessage: (input: CreateMessageInput, files?: NewAttachment[]) => Promise<Message>;
   getNextSequence: (conversationId: string) => Promise<number>;
   deleteMessagesFromSequence: (conversationId: string, fromSequence: number) => Promise<number>;
   clearAllConversations: () => Promise<void>;
@@ -48,8 +50,8 @@ export function useConversationMutations(): UseConversationMutationsResult {
     return conversationService.rename(id, title);
   }, []);
 
-  const addMessage = useCallback(async (input: CreateMessageInput) => {
-    return conversationService.addMessage(input);
+  const addMessage = useCallback(async (input: CreateMessageInput, files?: NewAttachment[]) => {
+    return conversationService.addMessage(input, files);
   }, []);
 
   const getNextSequence = useCallback(async (conversationId: string) => {
