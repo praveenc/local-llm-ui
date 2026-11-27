@@ -23,7 +23,6 @@ import {
 } from '../services/aisdk';
 import { openrouterService } from '../services/openrouter';
 import type { KiroModelMeta } from '../services/types';
-import { loadPreferences } from '../utils/preferences';
 import type { Provider, UserPreferences } from '../utils/preferences';
 import { kiroStatusQueryOptions } from './useKiroStatus';
 
@@ -119,13 +118,10 @@ function shouldLogProviderError(provider: Provider, err: unknown): boolean {
   return true;
 }
 
-function getProvidersToFetch(
-  preferences: UserPreferences,
-  storedPreferences: UserPreferences = preferences
-): Provider[] {
+function getProvidersToFetch(preferences: UserPreferences): Provider[] {
   const providersToFetch: Provider[] = ['bedrock'];
 
-  if (hasConfiguredValue(storedPreferences.bedrockMantleApiKey)) {
+  if (hasConfiguredValue(preferences.bedrockMantleApiKey)) {
     providersToFetch.push('bedrock-mantle');
   }
 
@@ -158,10 +154,9 @@ function configureServices(preferences: UserPreferences) {
     preferences.cerebrasApiKey,
     preferences.anthropicApiKey
   );
-  const currentPrefs = loadPreferences();
-  mantleService.setApiKey(currentPrefs.bedrockMantleApiKey || null);
-  mantleService.setRegion(currentPrefs.bedrockMantleRegion || 'us-west-2');
-  openrouterService.setApiKey(currentPrefs.openrouterApiKey || null);
+  mantleService.setApiKey(preferences.bedrockMantleApiKey || null);
+  mantleService.setRegion(preferences.bedrockMantleRegion || 'us-west-2');
+  openrouterService.setApiKey(preferences.openrouterApiKey || null);
 }
 
 // A function, not a module-level object: importing the hooks barrel must not read the services,
@@ -242,7 +237,7 @@ export function useAllModels(preferences: UserPreferences): UseAllModelsResult {
     ]
   );
 
-  const providersToFetch = getProvidersToFetch(preferences, loadPreferences());
+  const providersToFetch = getProvidersToFetch(preferences);
 
   const queries = useQueries({
     queries: providersToFetch.map((provider) => ({

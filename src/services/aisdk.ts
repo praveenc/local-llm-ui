@@ -1,5 +1,6 @@
 /**
- * Model discovery for the AI SDK providers: Groq, Cerebras, and Anthropic.
+ * Model discovery for the AI SDK providers: Groq, Cerebras, and Anthropic. Each lists its models
+ * through /api/aisdk/models, with a static list when that fails.
  *
  * The chat itself goes through the server proxies (see server/aisdk-proxy.ts and
  * server/anthropic-aisdk-proxy.ts). The browser only lists models here.
@@ -22,11 +23,12 @@ const CEREBRAS_MODELS = [
   { id: 'llama3.1-8b', name: 'Llama 3.1 8B' },
 ];
 
-const ANTHROPIC_MODELS = [
-  { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5' },
-  { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5' },
-  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
-  { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4 (Legacy)' },
+// The 4 latest models, used when Anthropic's own list cannot be fetched
+const ANTHROPIC_MODELS_FALLBACK = [
+  { id: 'claude-fable-5-2', name: 'Claude Fable 5.2' },
+  { id: 'claude-opus-5-5', name: 'Claude Opus 5.5' },
+  { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' },
+  { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5' },
 ];
 
 // API key storage keys (used directly in localStorage for runtime access)
@@ -62,6 +64,8 @@ export function syncApiKeysFromPreferences(
 interface ProviderModelResponse {
   models?: Array<{
     id: string;
+    /** Display name, when the provider gives one (Anthropic) */
+    name?: string;
     ownedBy?: string;
   }>;
 }
@@ -114,7 +118,7 @@ export class AISDKService {
 
     return data.models.map((model) => ({
       modelId: model.id,
-      modelName: model.id,
+      modelName: model.name?.trim() ? model.name : model.id,
       provider: this.provider,
       ownedBy: model.ownedBy,
     }));
@@ -129,13 +133,11 @@ export class AISDKService {
       return [];
     }
 
-    // Groq and Cerebras support runtime model discovery via proxy
-    if (this.provider === 'groq' || this.provider === 'cerebras') {
-      try {
-        return await this.fetchRemoteModels();
-      } catch (error) {
-        console.warn(`Failed to fetch ${this.provider} models remotely, using fallback:`, error);
-      }
+    // All three providers list their models at runtime through the proxy
+    try {
+      return await this.fetchRemoteModels();
+    } catch (error) {
+      console.warn(`Failed to fetch ${this.provider} models remotely, using fallback:`, error);
     }
 
     let models: Array<{ id: string; name: string }>;
@@ -147,7 +149,7 @@ export class AISDKService {
         models = CEREBRAS_MODELS;
         break;
       case 'anthropic':
-        models = ANTHROPIC_MODELS;
+        models = ANTHROPIC_MODELS_FALLBACK;
         break;
       default:
         models = [];
