@@ -11,12 +11,21 @@ import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Connect } from 'vite';
 
-import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { errorMessageOr, extractErrorMessage } from '../src/utils/errorMessage.ts';
 import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { WEB_SEARCH_HEADER_NAMES } from '../src/utils/webSearch.ts';
 import { getMCPTools } from './mcp-manager.ts';
-import { capMaxTokens, endStreamWithError, readBodyWithLimit, setCORSHeaders } from './security.ts';
+import {
+  abortOnClose,
+  capErrorText,
+  capMaxTokens,
+  endStreamWithError,
+  isAbortAfterClientLeft,
+  readChatRequest,
+  sendJsonError,
+  setCORSHeaders,
+  startEventStream,
+} from './security.ts';
 import { noAnswerNotice, toolErrorEvent, toolLoopOptions } from './tool-loop.ts';
 import { usageEvent } from './usage.ts';
 import {
@@ -27,21 +36,8 @@ import {
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
-interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-}
-
-interface ChatRequest {
-  model: string;
-  messages: ChatMessage[];
-  max_tokens?: number;
-  enableWebSearch?: boolean;
-  mcpServers?: MCPServerConfig[];
-  thinkingEffort?: unknown;
-  /** Most model calls in one reply when tools are on */
-  maxToolSteps?: unknown;
-}
+/** OpenRouter model ids: `vendor/model`, with an optional `:variant` (Q8: stricter than other proxies) */
+const MODEL_ID_PATTERN = /^[a-zA-Z0-9._\-/:@]+$/;
 
 interface OpenRouterModelsResponse {
   data?: Array<{
@@ -54,23 +50,6 @@ interface OpenRouterModelsResponse {
       completion: number;
     };
   }>;
-}
-
-function isChatMessage(value: unknown): value is ChatMessage {
-  if (!value || typeof value !== 'object') return false;
-
-  const message = value as Record<string, unknown>;
-  return (
-    (message.role === 'user' || message.role === 'assistant' || message.role === 'system') &&
-    typeof message.content === 'string'
-  );
-}
-
-function isChatRequest(value: unknown): value is ChatRequest {
-  if (!value || typeof value !== 'object') return false;
-
-  const request = value as Record<string, unknown>;
-  return typeof request.model === 'string' && Array.isArray(request.messages);
 }
 
 function parseJsonSafely(value: string): unknown | null {
@@ -183,7 +162,9 @@ async function handleModelsRequest(req: IncomingMessage, res: ServerResponse): P
       res.setHeader('Content-Type', 'application/json');
       res.end(
         JSON.stringify({
-          error: errorMessageOr(parsed ?? bodyText, 'Failed to fetch OpenRouter models'),
+          error: capErrorText(
+            errorMessageOr(parsed ?? bodyText, 'Failed to fetch OpenRouter models')
+          ),
         })
       );
       return;
@@ -208,7 +189,7 @@ async function handleModelsRequest(req: IncomingMessage, res: ServerResponse): P
     res.setHeader('Content-Type', 'application/json');
     res.end(
       JSON.stringify({
-        error: getSafeErrorMessage(error, 'Failed to fetch OpenRouter models'),
+        error: capErrorText(getSafeErrorMessage(error, 'Failed to fetch OpenRouter models')),
       })
     );
   }
@@ -239,100 +220,25 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
       return next();
     }
 
-    const rawBody = await readBodyWithLimit(req, res);
-    if (rawBody === null) return;
-
-    let parsedRequest: unknown;
-    try {
-      parsedRequest = JSON.parse(rawBody);
-    } catch {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
-      return;
-    }
-
-    if (!isChatRequest(parsedRequest)) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Invalid chat request' }));
-      return;
-    }
-
-    const request = parsedRequest;
-
-    const MODEL_ID_MAX = 256;
-    const MODEL_ID_PATTERN = /^[a-zA-Z0-9._\-/:@]+$/;
-
-    if (!request.model.trim()) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Model is required' }));
-      return;
-    }
-
-    if (request.model.length > MODEL_ID_MAX) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Model ID too long' }));
-      return;
-    }
+    // Size limit, JSON, and the fields of every chat request (SEC-07, SEC-22)
+    const request = await readChatRequest(req, res);
+    if (!request) return; // 413 or 400 already sent
 
     if (!MODEL_ID_PATTERN.test(request.model)) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Invalid model ID format' }));
-      return;
-    }
-
-    if (!request.messages.every(isChatMessage)) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Invalid messages array' }));
-      return;
-    }
-
-    if (request.max_tokens !== undefined) {
-      if (
-        typeof request.max_tokens !== 'number' ||
-        !Number.isInteger(request.max_tokens) ||
-        request.max_tokens < 1
-      ) {
-        res.statusCode = 400;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'max_tokens must be a positive integer' }));
-        return;
-      }
-    }
-
-    if (request.enableWebSearch !== undefined && typeof request.enableWebSearch !== 'boolean') {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'enableWebSearch must be a boolean' }));
-      return;
-    }
-
-    if (request.mcpServers !== undefined && !Array.isArray(request.mcpServers)) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'mcpServers must be an array' }));
+      sendJsonError(res, 400, 'Invalid model ID format');
       return;
     }
 
     const apiKey = req.headers['x-api-key'] as string | undefined;
     if (!apiKey) {
-      res.statusCode = 401;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'OpenRouter API key required' }));
+      sendJsonError(res, 401, 'OpenRouter API key required');
       return;
     }
 
     // Web search API keys and the order to try the providers in
     const webSearchProviders = getWebSearchProviders(req.headers);
     if (request.enableWebSearch && webSearchProviders.length === 0) {
-      res.statusCode = 401;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: WEB_SEARCH_KEY_REQUIRED_ERROR }));
+      sendJsonError(res, 401, WEB_SEARCH_KEY_REQUIRED_ERROR);
       return;
     }
 
@@ -345,10 +251,6 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
         includeUsage: true,
       });
       const startTime = Date.now();
-
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
 
       let mcpTools: Record<string, unknown> = {};
       if (request.mcpServers && request.mcpServers.length > 0) {
@@ -363,37 +265,24 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
       }
       const tools = Object.keys(allTools).length > 0 ? allTools : undefined;
 
-      const abortController = new AbortController();
-      req.on('close', () => {
-        abortController.abort();
-      });
-
-      const filteredMessages = request.messages.filter(
-        (message) => message.content.trim().length > 0
-      );
-      if (filteredMessages.length === 0) {
-        if (mcpCleanup) {
-          mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
-        }
-        res.statusCode = 400;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'At least one non-empty message is required' }));
-        return;
-      }
+      // Cancel streamText when the browser closes the connection
+      const abortSignal = abortOnClose(res);
 
       const result = await streamText({
         model: openrouter(request.model),
         // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
         allowSystemInMessages: true,
-        messages: filteredMessages,
+        messages: request.messages,
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
-        abortSignal: abortController.signal,
+        abortSignal,
         // Sent to OpenRouter as reasoning_effort, only for models that accept it
         ...buildReasoningParams('openrouter', request.model, request.thinkingEffort),
         // Tool loop that always ends with an answer (see tool-loop.ts)
         ...toolLoopOptions(tools, { maxSteps: request.maxToolSteps }),
       });
+
+      startEventStream(res);
 
       for await (const part of result.stream) {
         if (part.type === 'text-delta') {
@@ -425,7 +314,7 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
         } else if (part.type === 'error') {
           res.write(
             `data: ${JSON.stringify({
-              error: getSafeErrorMessage(part.error, 'OpenRouter streaming error'),
+              error: capErrorText(getSafeErrorMessage(part.error, 'OpenRouter streaming error')),
             })}\n\n`
           );
         }
@@ -450,6 +339,8 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
         mcpCleanup().catch((err: unknown) => console.warn('[MCP] Cleanup error:', err));
       }
 
+      // The browser left and the call stopped: not a proxy error, and no one to answer
+      if (isAbortAfterClientLeft(error, res)) return;
       console.error('OpenRouter AI SDK Proxy error:', error);
 
       const errorMessage = getSafeErrorMessage(error, 'OpenRouter request failed');
@@ -457,9 +348,7 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
       // The stream has started: report the error as an SSE event, so the chat shows it
       if (endStreamWithError(res, errorMessage)) return;
 
-      res.statusCode = 500;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: errorMessage }));
+      sendJsonError(res, 500, errorMessage);
     }
   };
 }

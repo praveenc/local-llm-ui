@@ -1,7 +1,8 @@
 // Starts real Vite servers for api-guard.test.ts and prints one line:
 //   API_GUARD_READY {"dev":…,"preview":…,"app":…,"order":[…]}
 // - dev and preview: api-guard.vite.config.ts, the guard with a test upstream.
-// - app: the app's own vite.config.ts, with no HMR and no dependency scan.
+// - app: the app's own vite.config.ts, with no HMR and no dependency scan. Its plain /api/ollama
+//   proxy keeps its own options but points at the test upstream.
 // - order: the plugins with configureServer, in the order Vite runs them.
 // Vite cannot start inside the Vitest VM pool, so the test runs this file with node. It stops when
 // stdin closes or on SIGTERM.
@@ -19,7 +20,13 @@ const app = await createServer({
   configFile: appConfig,
   logLevel: 'silent',
   clearScreen: false,
-  server: { host: '127.0.0.1', port: 0, strictPort: true, hmr: false },
+  server: {
+    host: '127.0.0.1',
+    port: 0,
+    strictPort: true,
+    hmr: false,
+    proxy: { '/api/ollama': { target: process.env.API_GUARD_UPSTREAM } },
+  },
   optimizeDeps: { noDiscovery: true, include: [] },
 });
 await app.listen();

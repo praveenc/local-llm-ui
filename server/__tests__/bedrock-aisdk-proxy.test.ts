@@ -5,23 +5,29 @@ import { createServer } from 'http';
 import type { AddressInfo } from 'net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { mockModel, statusSpy } = vi.hoisted(() => ({
+const { mockModel, statusSpy, mcpSpy } = vi.hoisted(() => ({
   mockModel: { current: undefined as unknown },
   statusSpy: vi.fn(async () => [] as unknown[]),
+  mcpSpy: vi.fn(async () => ({ tools: {}, cleanup: async () => undefined })),
 }));
 
 // Use a mock model instead of Amazon Bedrock
 vi.mock('@ai-sdk/amazon-bedrock', () => ({
-  createAmazonBedrock: () => () => mockModel.current,
+  createAmazonBedrock: () => () => {
+    if (mockModel.current instanceof Error) throw mockModel.current;
+    return mockModel.current;
+  },
 }));
 vi.mock('@aws-sdk/credential-providers', () => ({ fromNodeProviderChain: () => async () => ({}) }));
 // The status route only: no MCP server starts in these tests
 vi.mock('../mcp-manager.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../mcp-manager.ts')>()),
   getMCPServerStatus: statusSpy,
+  getMCPTools: mcpSpy,
 }));
 
 const { handleBedrockAISDKRequest } = await import('../bedrock-aisdk-proxy');
+const harness = await import('./fixtures/chat-proxy-harness');
 
 /** Send one request to the proxy. Returns the status and the body text. */
 async function post(path: string, body: unknown) {
@@ -69,6 +75,57 @@ async function chat(extra: Record<string, unknown> = {}) {
 describe('Bedrock AI SDK proxy errors', () => {
   afterEach(() => {
     mockModel.current = undefined;
+    mcpSpy.mockClear();
+  });
+
+  it.each(harness.BAD_BODIES)('answers 400 JSON for %s, with no MCP start', async (_name, bad) => {
+    const reply = await harness.post(handleBedrockAISDKRequest, '/api/bedrock-aisdk/chat', bad);
+    expect(reply.status).toBe(400);
+    expect(reply.headers.get('content-type')).toBe('application/json');
+    expect(typeof (JSON.parse(reply.body) as { error: unknown }).error).toBe('string');
+    expect(mcpSpy).not.toHaveBeenCalled();
+  });
+
+  it('takes the body that the browser sends, with files on every message', async () => {
+    mockModel.current = harness.textModel(['Hi']);
+    const { status, body } = await chat({
+      messages: [
+        { role: 'user', content: 'Hello', files: [] },
+        { role: 'assistant', content: 'Hi', files: [] },
+        { role: 'user', content: 'Again', files: [] },
+      ],
+      max_tokens: 4096,
+      maxToolSteps: 10,
+      enableWebSearch: false,
+      thinkingEffort: 'default',
+    });
+    expect(status).toBe(200);
+    expect(body).toContain('"content":"Hi"');
+  });
+
+  it('cleans up MCP and caps the JSON error when a step after the MCP start throws', async () => {
+    const cleanup = vi.fn(async () => undefined);
+    mcpSpy.mockImplementationOnce(async () => ({ tools: {}, cleanup }));
+    mockModel.current = new Error('e'.repeat(5000));
+    const { status, body } = await chat({
+      mcpServers: [{ id: 's1', name: 'files', type: 'stdio', command: 'npx', enabled: true }],
+    });
+    expect(status).toBe(500);
+    expect(mcpSpy).toHaveBeenCalledTimes(1);
+    expect(cleanup).toHaveBeenCalled();
+    const { error, errorDetail } = JSON.parse(body) as { error: string; errorDetail: string };
+    expect(error.length).toBeLessThanOrEqual(500);
+    expect(errorDetail).toBe('e'.repeat(500));
+  });
+
+  it('aborts the model call when the browser closes the connection', async () => {
+    const seen: { signal?: AbortSignal } = {};
+    mockModel.current = harness.hangingModel(seen);
+    await harness.postAndLeave(handleBedrockAISDKRequest, '/api/bedrock-aisdk/chat', {
+      model: 'global.anthropic.claude-test',
+      messages: [{ role: 'user', content: 'Hello' }],
+    });
+    expect(seen.signal?.aborted).toBe(true);
   });
 
   it('reports a model error in the stream and does not throw', async () => {
@@ -185,5 +242,26 @@ describe('MCP status route', () => {
     expect(status).toBe(200);
     expect(JSON.parse(body)).toEqual({ servers: [] });
     expect(statusSpy).toHaveBeenCalledWith(mcpServers, { closeOthers: expected });
+  });
+});
+
+describe('Bedrock chat proxy after the browser left', () => {
+  it('does not log an AbortError as a proxy error', async () => {
+    mcpSpy.mockImplementationOnce(harness.abortedMcpStart);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      await harness.postAndLeaveEarly(handleBedrockAISDKRequest, '/api/bedrock-aisdk/chat', {
+        ...{
+          model: 'global.anthropic.claude-test',
+          messages: [{ role: 'user', content: 'Hello' }],
+        },
+        mcpServers: [harness.MCP_SERVER],
+      });
+      expect(mcpSpy).toHaveBeenCalledTimes(1);
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+      mcpSpy.mockClear();
+    }
   });
 });

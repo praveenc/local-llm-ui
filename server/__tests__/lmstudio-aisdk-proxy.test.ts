@@ -4,12 +4,26 @@ import { createServer } from 'http';
 import type { AddressInfo } from 'net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { mockModel } = vi.hoisted(() => ({ mockModel: { current: undefined as unknown } }));
+import {
+  BAD_BODIES,
+  MCP_SERVER,
+  abortedMcpStart,
+  hangingModel,
+  post,
+  postAndLeave,
+  postAndLeaveEarly,
+} from './fixtures/chat-proxy-harness';
+
+const { mockModel, mcpSpy } = vi.hoisted(() => ({
+  mockModel: { current: undefined as unknown },
+  mcpSpy: vi.fn(async () => ({ tools: {}, cleanup: async () => undefined })),
+}));
 
 // Use a mock model instead of LM Studio
 vi.mock('@ai-sdk/openai-compatible', () => ({
   createOpenAICompatible: () => () => mockModel.current,
 }));
+vi.mock('../mcp-manager.ts', () => ({ getMCPTools: mcpSpy }));
 
 const { createLMStudioAISDKProxy } = await import('../lmstudio-aisdk-proxy');
 
@@ -74,6 +88,30 @@ const events = (body: string): Array<Record<string, unknown>> =>
 describe('LM Studio AI SDK proxy', () => {
   afterEach(() => {
     mockModel.current = undefined;
+    mcpSpy.mockClear();
+  });
+
+  it.each(BAD_BODIES)('answers 400 JSON for %s, with no MCP start', async (_name, bad) => {
+    const reply = await post(createLMStudioAISDKProxy(), '/api/lmstudio-aisdk/chat', bad);
+    expect(reply.status).toBe(400);
+    expect(reply.headers.get('content-type')).toBe('application/json');
+    expect(mcpSpy).not.toHaveBeenCalled();
+  });
+
+  it('takes a model id that is a file path', async () => {
+    mockModel.current = textModel(['ok']);
+    const { status } = await chat({ model: 'lmstudio-community/Qwen3 8B (Q4_K_M)/model.gguf' });
+    expect(status).toBe(200);
+  });
+
+  it('aborts the model call when the browser closes the connection', async () => {
+    const seen: { signal?: AbortSignal } = {};
+    mockModel.current = hangingModel(seen);
+    await postAndLeave(createLMStudioAISDKProxy(), '/api/lmstudio-aisdk/chat', {
+      model: 'qwen3-8b',
+      messages: [{ role: 'user', content: 'Hello' }],
+    });
+    expect(seen.signal?.aborted).toBe(true);
   });
 
   it('streams text as content and ends with usage and [DONE]', async () => {
@@ -131,5 +169,23 @@ describe('LM Studio AI SDK proxy', () => {
     expect(model.doStreamCalls).toHaveLength(1);
     const toolNames = (model.doStreamCalls[0].tools ?? []).map((t) => t.name);
     expect(toolNames).toContain('webSearch');
+  });
+});
+
+describe('LM Studio chat proxy after the browser left', () => {
+  it('does not log an AbortError as a proxy error', async () => {
+    mcpSpy.mockImplementationOnce(abortedMcpStart);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      await postAndLeaveEarly(createLMStudioAISDKProxy(), '/api/lmstudio-aisdk/chat', {
+        ...{ model: 'qwen3-8b', messages: [{ role: 'user', content: 'Hello' }] },
+        mcpServers: [MCP_SERVER],
+      });
+      expect(mcpSpy).toHaveBeenCalledTimes(1);
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+      mcpSpy.mockClear();
+    }
   });
 });
