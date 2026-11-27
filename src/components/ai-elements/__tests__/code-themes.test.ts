@@ -1,5 +1,5 @@
-import { act, renderHook } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, cleanup, renderHook } from '@testing-library/react';
+import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useColorTheme } from '../../../hooks/useColorTheme';
 import { COLOR_THEMES } from '../../../utils/colorThemes';
@@ -10,8 +10,23 @@ const themeName = (theme: unknown) =>
   typeof theme === 'string' ? theme : (theme as { name?: string }).name;
 
 describe('code block themes', () => {
-  afterEach(() => {
+  let consoleError: MockInstance<typeof console.error>;
+
+  beforeEach(() => {
+    consoleError = vi.spyOn(console, 'error');
+  });
+
+  afterEach(async () => {
+    // Unmount first: the next line changes the attribute that useColorTheme observes
+    cleanup();
     delete document.documentElement.dataset.theme;
+    // The MutationObserver callback runs in a microtask, so wait for it before the check
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const actWarnings = consoleError.mock.calls.filter((call) =>
+      String(call[0]).includes('not wrapped in act')
+    );
+    consoleError.mockRestore();
+    expect(actWarnings).toHaveLength(0);
   });
 
   it('has a light and a dark code theme for every color theme', () => {
