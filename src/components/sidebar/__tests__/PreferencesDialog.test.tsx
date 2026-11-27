@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { KiroSignInOptions, KiroSignInPhase } from '../../../hooks/useKiroSignIn';
 import { kiroService } from '../../../services/kiro';
@@ -385,13 +385,23 @@ describe('PreferencesDialog Kiro', () => {
       await kiroService.getModels();
     };
 
+    let consoleError: MockInstance<typeof console.error>;
+
     beforeEach(async () => {
+      consoleError = vi.spyOn(console, 'error');
       await loadLists(lists);
     });
 
     afterEach(async () => {
+      // Unmount first: the next call changes the store that KiroDefaultAgent reads
+      cleanup();
       await loadLists(undefined);
       vi.unstubAllGlobals();
+      const actWarnings = consoleError.mock.calls.filter((call) =>
+        String(call[0]).includes('not wrapped in act')
+      );
+      consoleError.mockRestore();
+      expect(actWarnings).toHaveLength(0);
     });
 
     it('shows the folder and the default agent in the signed-in Kiro row', () => {
