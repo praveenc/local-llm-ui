@@ -305,10 +305,11 @@ ollama list
 # Development mode with hot reload
 npm run dev
 
-# Production build
+# Type check and production build
 npm run build
-npm run preview
 ```
+
+Always run the app with `npm run dev`. The provider proxies run inside the Vite development server. `npm run preview` serves only the static files, so chats do not work there.
 
 ## Questions?
 

@@ -4,12 +4,17 @@ import { db } from '../../db';
 import { conversationService } from '../conversationService';
 
 vi.mock('../../db', () => ({
-  db: { messages: { update: vi.fn() }, conversations: { update: vi.fn() } },
+  db: {
+    messages: { get: vi.fn(), update: vi.fn() },
+    conversations: { update: vi.fn() },
+    transaction: vi.fn((_mode: string, _tables: unknown, work: () => Promise<unknown>) => work()),
+  },
 }));
 
 describe('conversationService.setMessageFeedback', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(db.messages.get).mockResolvedValue({ id: 'm1' } as never);
     vi.mocked(db.messages.update).mockResolvedValue(1);
   });
 
@@ -21,6 +26,18 @@ describe('conversationService.setMessageFeedback', () => {
   it('clears the rating when given null', async () => {
     await conversationService.setMessageFeedback('m1', null);
     expect(db.messages.update).toHaveBeenCalledWith('m1', { feedback: undefined });
+  });
+
+  it('fails when the message has no row', async () => {
+    vi.mocked(db.messages.get).mockResolvedValue(undefined);
+    vi.mocked(db.messages.update).mockResolvedValue(0);
+    await expect(conversationService.setMessageFeedback('gone', 'helpful')).rejects.toThrow();
+    expect(db.messages.update).not.toHaveBeenCalled();
+  });
+
+  it('does not fail when the value is already stored (update counts 0)', async () => {
+    vi.mocked(db.messages.update).mockResolvedValue(0);
+    await expect(conversationService.setMessageFeedback('m1', 'helpful')).resolves.toBeUndefined();
   });
 });
 
