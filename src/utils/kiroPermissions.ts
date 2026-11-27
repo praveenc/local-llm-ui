@@ -31,8 +31,10 @@ export interface KiroPermissionQuestion {
   relatedToolCallIds?: string[];
   /** True for "Review changes" (`_meta.kiro.type: 'turn_approval'`) */
   review?: boolean;
-  /** The shell command (`_meta.kiro.command`) */
+  /** The shell command (`_meta.kiro.command`), cut at 2,000 characters */
   command?: string;
+  /** True when the command was longer than 2,000 characters and `command` is only its start */
+  commandCut?: boolean;
   /** The path or other resource of the question (`_meta.kiro.consent.resource`) */
   resource?: string;
 }
@@ -77,6 +79,8 @@ export interface ToolApproval {
   /** Open questions only */
   title?: string;
   command?: string;
+  /** True when `command` is only the start of a longer command */
+  commandCut?: boolean;
   resource?: string;
   options?: KiroPermissionOption[];
 }
@@ -146,6 +150,11 @@ export function parseKiroPermissionQuestion(value: unknown): KiroPermissionQuest
     ...(related.length > 0 && { relatedToolCallIds: related }),
     ...(value.review === true && { review: true }),
     ...(command && { command }),
+    ...(command &&
+      typeof value.command === 'string' &&
+      value.command.length > MAX_TEXT && {
+        commandCut: true,
+      }),
     ...(resource && { resource }),
   };
 }
@@ -175,6 +184,7 @@ export function openApproval(question: KiroPermissionQuestion): ToolApproval {
     options: question.options,
     ...(question.review && { review: true }),
     ...(question.command && { command: question.command }),
+    ...(question.command && question.commandCut && { commandCut: true }),
     ...(question.resource && { resource: question.resource }),
   };
 }
@@ -267,19 +277,60 @@ export function openQuestion(
   return approvals?.find((a) => a.state === 'open');
 }
 
+type QuestionSource = Pick<
+  ToolApproval,
+  'title' | 'command' | 'commandCut' | 'resource' | 'review'
+>;
+
+/** The question in two pieces: the words, and the whole command when Kiro wants to run one */
+export interface QuestionParts {
+  /** For example "Kiro wants to run" or "Kiro wants to use Write File · notes.txt" */
+  before: string;
+  /**
+   * The shell command, with its line breaks and without trailing line breaks. Up to 2,000
+   * characters (`MAX_TEXT`); `codeCut` says when the command was longer.
+   */
+  code?: string;
+  /** True when the command was longer than 2,000 characters and `code` is only its start */
+  codeCut?: boolean;
+}
+
 /**
- * The work row's line for an open question: "Kiro wants to run `echo hi > hello.txt`",
- * "Kiro wants you to review the changes", or "Kiro wants to use Write File · notes.txt".
+ * The open question in pieces, for the screen: the command is not cut, so the user sees all of
+ * what they allow. Use `questionLine` where one plain line is needed.
  */
-export function questionLine(
-  approval: Pick<ToolApproval, 'title' | 'command' | 'resource' | 'review'>
-): string {
-  const shorten = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
-  if (approval.review) return 'Kiro wants you to review the changes';
-  if (approval.command) return `Kiro wants to run \`${shorten(approval.command)}\``;
-  const title = approval.title ? shorten(approval.title) : '';
-  const resource = approval.resource ? shorten(approval.resource) : '';
-  if (title && resource) return `Kiro wants to use ${title} · ${resource}`;
-  if (title || resource) return `Kiro wants to use ${title || resource}`;
-  return 'Waiting for your answer';
+export function questionParts(approval: QuestionSource): QuestionParts {
+  if (approval.review) return { before: 'Kiro wants you to review the changes' };
+  if (approval.command) {
+    // Trailing line breaks are for display only; the stored command does not change
+    const code = approval.command.replace(/\n+$/, '');
+    return {
+      before: 'Kiro wants to run',
+      code,
+      ...(approval.commandCut && { codeCut: true }),
+    };
+  }
+  const { title, resource } = approval;
+  if (title && resource) return { before: `Kiro wants to use ${title} · ${resource}` };
+  if (title || resource) return { before: `Kiro wants to use ${title || resource}` };
+  return { before: 'Waiting for your answer' };
+}
+
+const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
+const shorten = (text: string, max = 80) => {
+  const flat = oneLine(text);
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+};
+
+/**
+ * One plain line for an open question, for an aria-label or any place with one line of text:
+ * "Kiro wants to run echo hi > hello.txt" (a command is cut at 80 characters and has no line
+ * breaks), "Kiro wants you to review the changes", or "Kiro wants to use Write File · notes.txt".
+ * It has no backticks.
+ */
+export function questionLine(approval: QuestionSource): string {
+  const { before, code } = questionParts(approval);
+  if (code) return `${before} ${shorten(code)}`;
+  // A long title or resource is cut, so that the line stays one line
+  return shorten(before, 160);
 }

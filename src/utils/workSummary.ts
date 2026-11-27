@@ -5,7 +5,7 @@
  */
 import type { Provider } from '../db/types';
 import type { ToolCallPart } from '../types/ai-messages';
-import { approvalOutcome, openQuestion, questionLine } from './kiroPermissions';
+import { approvalOutcome, openQuestion } from './kiroPermissions';
 import { argsSummary } from './toolCallSummary';
 import { isToolCallFailed, isWebSearchTool, parseSearchResults, toolLabel } from './toolResults';
 
@@ -98,7 +98,8 @@ export function currentStep({
 }): string | undefined {
   for (const t of toolCalls) {
     const open = openQuestion(t.approvals);
-    if (open) return questionLine(open);
+    // The question with its command shows once, under the tool's line (permission-question.tsx)
+    if (open) return 'Waiting for your answer';
   }
   const pending = [...toolCalls].reverse().find((t) => t.status === 'pending');
   if (pending) {
