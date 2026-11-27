@@ -4,6 +4,7 @@
  * Defines the data model for MCP (Model Context Protocol) server configurations.
  * Supports three transport types: stdio (local), sse, and http (remote).
  */
+import { COMMAND_SHAPE_ERROR, classifyCommand } from '../utils/mcpCommand.ts';
 
 /** Transport type for MCP server connections */
 export type MCPTransportType = 'stdio' | 'sse' | 'http';
@@ -106,6 +107,17 @@ export function createDefaultSSEConfig(name?: string): MCPSSEConfig {
 }
 
 /**
+ * The form text for a command that the app cannot start, or null. It starts with "Command", so
+ * the form shows it under the command field. Only the server can look a name up on PATH.
+ */
+function commandShapeMessage(command: string): string | null {
+  const shape = classifyCommand(command);
+  if (shape.kind !== 'invalid') return null;
+  if (shape.error === COMMAND_SHAPE_ERROR) return `Command is not valid. ${COMMAND_SHAPE_ERROR}.`;
+  return shape.error;
+}
+
+/**
  * Validate an MCP server config
  * Returns null if valid, or an error message string
  */
@@ -115,7 +127,7 @@ export function validateMCPServerConfig(config: MCPServerConfig): string | null 
   switch (config.transport) {
     case 'stdio':
       if (!config.command.trim()) return 'Command is required';
-      return null;
+      return commandShapeMessage(config.command);
     case 'sse':
     case 'http':
       if (!config.url.trim()) return 'URL is required';
