@@ -5,15 +5,42 @@ import { createServer } from 'http';
 import type { AddressInfo } from 'net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { mockModel } = vi.hoisted(() => ({ mockModel: { current: undefined as unknown } }));
+const { mockModel, statusSpy } = vi.hoisted(() => ({
+  mockModel: { current: undefined as unknown },
+  statusSpy: vi.fn(async () => [] as unknown[]),
+}));
 
 // Use a mock model instead of Amazon Bedrock
 vi.mock('@ai-sdk/amazon-bedrock', () => ({
   createAmazonBedrock: () => () => mockModel.current,
 }));
 vi.mock('@aws-sdk/credential-providers', () => ({ fromNodeProviderChain: () => async () => ({}) }));
+// The status route only: no MCP server starts in these tests
+vi.mock('../mcp-manager.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../mcp-manager.ts')>()),
+  getMCPServerStatus: statusSpy,
+}));
 
 const { handleBedrockAISDKRequest } = await import('../bedrock-aisdk-proxy');
+
+/** Send one request to the proxy. Returns the status and the body text. */
+async function post(path: string, body: unknown) {
+  const server = createServer((req, res) => {
+    void handleBedrockAISDKRequest(req, res);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, body: await response.text() };
+  } finally {
+    server.close();
+  }
+}
 
 /** Send one chat request to the proxy. Returns the response body and the handler's promise. */
 async function chat(extra: Record<string, unknown> = {}) {
@@ -139,3 +166,24 @@ function textModel() {
     }),
   });
 }
+
+describe('MCP status route', () => {
+  afterEach(() => statusSpy.mockClear());
+
+  it.each([
+    ['true', true, true],
+    ['the string "true"', 'true', false],
+    ['1', 1, false],
+    ['no value', undefined, false],
+  ])('passes closeOthers %s as %s', async (_label, closeOthers, expected) => {
+    const mcpServers = [{ id: 's1', name: 'One' }];
+    const { status, body } = await post('/api/bedrock-aisdk/mcp-status', {
+      mcpServers,
+      closeOthers,
+    });
+
+    expect(status).toBe(200);
+    expect(JSON.parse(body)).toEqual({ servers: [] });
+    expect(statusSpy).toHaveBeenCalledWith(mcpServers, { closeOthers: expected });
+  });
+});

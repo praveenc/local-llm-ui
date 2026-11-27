@@ -1,16 +1,32 @@
 // Test fixture: a minimal stdio MCP server that answers its first request late.
 //
-// Usage: node slow-mcp-server.mjs <delayMs> <modern|legacy>
+// Usage: node slow-mcp-server.mjs <delayMs> <modern|legacy> [pidFile] [option] [markerFile]
 //
 // modern: like the Python MCP SDK 2.x. The first request selects the protocol. After
 //         `server/discover`, it rejects `initialize` with error -32022.
 // legacy: like a 2025-11-25 server. It answers `server/discover` with "Method not found"
 //         and accepts `initialize`.
+// pidFile: the server appends its pid to this file when it starts.
+// exit-after-list: the server exits 100 ms after it answers `tools/list`.
+// exit-after-connect: the server exits as soon as it has answered the first request (the
+//                     connect), so it never answers `tools/list`.
+// no-list: the server never answers `tools/list`.
+// slow-list: the server answers at once, but `tools/list` only after <delayMs>. When the
+//            `tools/list` request comes, it writes <markerFile>.
+import { appendFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
 const delayMs = Number(process.argv[2] ?? 0);
 const mode = process.argv[3] ?? 'modern';
-const ready = new Promise((resolve) => setTimeout(resolve, delayMs));
+const pidFile = process.argv[4];
+const exitAfterList = process.argv[5] === 'exit-after-list';
+const exitAfterConnect = process.argv[5] === 'exit-after-connect';
+const noList = process.argv[5] === 'no-list';
+const slowList = process.argv[5] === 'slow-list';
+const markerFile = process.argv[6];
+if (pidFile) appendFileSync(pidFile, `${process.pid}\n`);
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const ready = slowList ? Promise.resolve() : wait(delayMs);
 const tools = [{ name: 'echo', inputSchema: { type: 'object' } }];
 // 2026-07-28 results carry these fields (copied from a real Python MCP SDK 2.3 server)
 const MODERN_RESULT = {
@@ -19,8 +35,8 @@ const MODERN_RESULT = {
 };
 let era;
 
-const send = (message) =>
-  process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
+const send = (message, done) =>
+  process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`, done);
 
 function answer({ id, method }) {
   if (mode === 'legacy') {
@@ -64,5 +80,17 @@ createInterface({ input: process.stdin }).on('line', async (line) => {
   const message = JSON.parse(line);
   if (message.id === undefined) return; // notifications
   await ready;
+  if (message.method === 'tools/list') {
+    if (noList) return;
+    if (slowList) {
+      appendFileSync(markerFile, 'tools/list\n');
+      await wait(delayMs);
+    }
+  }
+  if (exitAfterConnect) {
+    send({ id: message.id, ...answer(message) }, () => process.exit(0));
+    return;
+  }
   send({ id: message.id, ...answer(message) });
+  if (exitAfterList && message.method === 'tools/list') setTimeout(() => process.exit(0), 100);
 });
