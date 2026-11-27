@@ -49,6 +49,10 @@ npm run lint
 npm run build
 ```
 
+### Agent instructions
+
+Coding agents read `AGENTS.md` at the root. It is the one copy of the project overview, commands, and conventions. `CLAUDE.md` only imports it, and `.kiro/steering/` keeps only rules for one Kiro scope.
+
 ### Agent skills (optional)
 
 The coding agents in `.pi/agents/` use the `ai-elements` skill. The skill files are not in Git. `skills-lock.json` pins them. To restore them:
