@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { useState } from 'react';
 
@@ -451,5 +451,66 @@ describe('MCPServerSettings accessibility', () => {
       const saved = (onChange.mock.calls.at(-1)![0] as MCPServersMap).s1 as MCPStdioConfig;
       expect(saved.env).toEqual({ TOKEN: "'abc'" });
     });
+  });
+});
+
+describe('MCPServerSettings Check button', () => {
+  const Harness = ({ initial }: { initial: MCPServersMap }) => {
+    const [value, setValue] = useState<MCPServersMap>(initial);
+    return <MCPServerSettings servers={value} onChange={setValue} />;
+  };
+  const answer = (tools: string[]) =>
+    Promise.resolve({
+      ok: true,
+      json: () =>
+        Promise.resolve({ servers: [{ name: 'x', id: 's1', status: 'connected', tools }] }),
+    } as Response);
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('shows a Check button at the end of a local and of a remote server', async () => {
+    const { user } = setup();
+    expect(screen.queryByRole('button', { name: 'Check' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Local one' }));
+    await user.click(screen.getByRole('button', { name: 'Remote one' }));
+    expect(screen.getAllByRole('button', { name: 'Check' })).toHaveLength(2);
+  });
+
+  it('checks only the server whose button is clicked', async () => {
+    const fetchMock = vi.fn().mockReturnValue(answer(['a', 'b']));
+    vi.stubGlobal('fetch', fetchMock);
+    const { user } = setup();
+    await user.click(screen.getByRole('button', { name: 'Local one' }));
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+    expect(await screen.findByText('Connected · 2 tools')).toBeInTheDocument();
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string) as {
+      mcpServers: Array<{ id: string }>;
+    };
+    expect(body.mcpServers.map((server) => server.id)).toEqual(['s1']);
+  });
+
+  it('clears the result when an argument changes, and keeps it when the name changes', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(answer(['a', 'b'])));
+    render(<Harness initial={servers} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Local one' }));
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+    await screen.findByText('Connected · 2 tools');
+
+    await user.type(screen.getByLabelText('Name'), 'x');
+    expect(screen.getByText('Connected · 2 tools')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Argument 2'), 'x');
+    expect(screen.queryByText('Connected · 2 tools')).not.toBeInTheDocument();
+  });
+
+  it('disables Check for a server that is not filled in, and says why', async () => {
+    const { user } = setup({ s2: { ...remote, url: '' } });
+    await user.click(screen.getByRole('button', { name: 'Remote one' }));
+    const button = screen.getByRole('button', { name: 'Check' });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveAccessibleDescription('Fill in the form to check this server.');
   });
 });

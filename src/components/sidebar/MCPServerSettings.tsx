@@ -54,6 +54,7 @@ import {
   validateMCPServerConfig,
 } from '../../types/mcp';
 import { hasOuterQuotes } from '../../utils/mcpFieldHints';
+import { MCPServerCheck } from './MCPServerCheck';
 
 // ─── Quote warning ────────────────────────────────────────────────────────────
 
@@ -559,6 +560,8 @@ function ServerConfigForm({
               fieldError={fieldError}
             />
           )}
+
+          <MCPServerCheck config={config} />
         </div>
       )}
     </div>

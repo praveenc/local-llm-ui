@@ -70,7 +70,7 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 19 | Current provider first in the model picker | `fix/model-picker-order` ([#85](https://github.com/praveenc/local-llm-ui/pull/85)) | Done, merged ([#85](https://github.com/praveenc/local-llm-ui/pull/85)) |
 | 20 | Replies keep running in their own chat | `fix/background-replies` | Done, merged ([#88](https://github.com/praveenc/local-llm-ui/pull/88)) |
 | 21 | Totals of the whole chat in the context popover | `feat/chat-totals` ([#89](https://github.com/praveenc/local-llm-ui/pull/89)) | Done, merged ([#89](https://github.com/praveenc/local-llm-ui/pull/89)) |
-| 22 | MCP servers that fail say why, and recover | M1 `fix/mcp-npx-launch` (stacked on M2) | In progress |
+| 22 | MCP servers that fail say why, and recover | M1 `fix/mcp-npx-launch` ([#93](https://github.com/praveenc/local-llm-ui/pull/93), stacked on [#92](https://github.com/praveenc/local-llm-ui/pull/92)) | Done, in review |
 | 23 | Clearer Add MCP server form | M2 `fix/mcp-server-form` ([#92](https://github.com/praveenc/local-llm-ui/pull/92)) | Done, in review |
 | 24 | Local servers that are standalone programs | M3 `feat/mcp-standalone-commands` | Planned, waits on M1 and M2 |
 | 25 | Import MCP servers from other tools | M4 `feat/mcp-import` | Planned, waits on M3 |
@@ -719,6 +719,13 @@ Evidence comes from `main` at `abb6c12`, `@ai-sdk/mcp` 2.0.91, two screenshots o
   - The SEC-11 error (`mcp-manager.ts:205`) shows the server name and id only, not the config with its environment values and headers.
   - README, Troubleshooting: a new part "An MCP server shows an error". It explains `E401` (log in to your npm registry again, or set `npm_config_registry` for that server) and where to read the full output.
 - **Trade-offs:** The status popover can show text that the server wrote to its error output. Only the app's own pages can read it (SEC-13). A server that writes a secret to its error output shows it in the popover, as it already does in the terminal.
+- **Done in M1:**
+  - The error texts: "The server stopped before it answered (exit code N): …", "… It wrote no error output.", "Command not found: x", "The server did not answer in 15 s.", and "The server did not list its tools in 15 s." The output part is the last 6 lines of stderr without ANSI codes, cut to 400 characters.
+  - The starts are keyed by server id and config hash. Each cached client has a lease count: a status check holds it while it lists the tools, and a chat holds it until its cleanup runs, so a cleanup never closes a client that another request uses. A listing on a client that another path closed starts once more.
+  - A status check closes a disabled server after it lists its tools. The MCP popover sends `closeOthers: true` with the full list. When Preferences closes and no server is left, it sends an empty list, so the server closes the last deleted server.
+  - The **Check** button (`MCPServerCheck.tsx`) uses `aria-disabled`, so it keeps the focus while it runs and while the form has an error. The result is in an `aria-live` region and wraps.
+  - The error line in the MCP popover wraps (`break-words`).
+  - Tested with the real dev server on port 5174: `npx -y @praveenc/llmstxt-doc-search` with the host's npm settings shows the npm error, with `npm_config_registry` it connects with 7 tools, after its process is stopped the next check connects with a new process, a config change and a check of a disabled server and an empty `closeOthers` check leave no `npm exec` process, a server that never answers fails after 15 s and its process is gone, and a command that is not on `PATH` says "Command not found". In headless Chromium (light and dark, 1440, 1024, and 390 px), typing in the form made no check, closing Preferences made one, the popover made one, and **Check** showed "Connected · 7 tools". React StrictMode runs the page-load check twice in dev; the two calls share one start.
 
 ### 23. Clearer Add MCP server form
 
@@ -843,6 +850,9 @@ Decided: (a).
 - **The SEC-11 error shows secrets.** `mcp-manager.ts:205` puts the first 200 characters of the config in the error, with its environment values and headers. The status route returns it, and the server log prints it. Fixed in M1.
 - **Environment values are plain text.** Header values are password fields (`MCPServerSettings.tsx`, `valueType="password"`), but environment values are not (`:571` to `:577`). Environment variables often hold API keys. Not in the plan.
 - **A server in the popover shows no output.** The popover shows `server.error` only (`MCPToolsIndicator.tsx:207`). With item 22 the error has the last lines of output, so no new UI is necessary.
+- **Security errors echo values (M1 review).** `Argument contains shell metacharacters: '<arg>'` and `Invalid URL: '<url>'` (`mcp-manager.ts`, SEC-01 and SEC-03) show the value, which can hold a token. The status route returns them. M3 changes these checks, so M3 shows the argument number and the URL without its query and user info.
+- **A wrapper that does not pass SIGTERM on (M1 review).** The SDK spawns with no process group, so the app signals only its direct child. `npx` passes SIGTERM on, and no process stays. A wrapper that does not pass it on leaves the server running. A test records this. A process-group kill needs an own spawn; it is not in the plan.
+- **The npm error changes (M1 testing).** With the same expired registry token, npm first said `E401`, and later `EALLOWREMOTE` ("Fetching packages of type remote have been disabled") for the tarball URL in its cache. The app shows whichever npm writes.
 - **Other tools keep servers running.** On the test host, Pi still runs the same `npx` server that it started before the npm token expired. A restart of Pi would fail in the same way. This is why the server works in Pi and not in the app.
 
 ### Delivery plan for Plan 3
