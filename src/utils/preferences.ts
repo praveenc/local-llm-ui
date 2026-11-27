@@ -40,6 +40,12 @@ export interface UserPreferences extends WebSearchPreferences {
   showKiroSessions?: boolean;
   /** The id of the agent that a new Kiro chat starts with (D9). Absent: Kiro's own default. */
   kiroDefaultAgent?: string;
+  /**
+   * Short hashes (`shortHash`, never the key text) of the "same server" keys of the import rows
+   * that were in the files when you clicked **Not now** (item 25). The import line shows again
+   * only when a new key appears.
+   */
+  mcpImportDismissed?: string[];
 }
 
 export interface KiroSignInPreference {
@@ -58,6 +64,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   contentDensity: 'comfortable',
   avatarInitials: '',
   bedrockMantleRegion: 'us-west-2',
+  mcpImportDismissed: [],
 };
 
 /**

@@ -365,12 +365,14 @@ describe('the guard on real Vite servers', () => {
       expect(ready.order[0]).toBe('api-guard');
     });
 
-    it.each(['/api/bedrock-aisdk/mcp-status', '/api/ollama/api/pull'])(
-      'blocks a cross-site form post to %s',
-      async (path) => {
-        expect((await send(ready.app, 'POST', path, CROSS_SITE_FORM, '{}')).status).toBe(403);
-      }
-    );
+    it.each([
+      '/api/bedrock-aisdk/mcp-status',
+      '/api/ollama/api/pull',
+      '/api/mcp/import/scan',
+      '/api/mcp/import/read',
+    ])('blocks a cross-site form post to %s', async (path) => {
+      expect((await send(ready.app, 'POST', path, CROSS_SITE_FORM, '{}')).status).toBe(403);
+    });
 
     it('refuses a body over 16 KB to the plain Ollama proxy with 413', async () => {
       const reply = await send(
@@ -411,6 +413,24 @@ describe('the guard on real Vite servers', () => {
         ready.app,
         'POST',
         '/api/bedrock-aisdk/mcp-status',
+        { 'sec-fetch-site': 'same-origin', 'content-type': 'text/plain' },
+        '{}'
+      );
+      expect(reply.status).toBe(415);
+    });
+
+    it('wires the MCP import routes: a GET gets 405 and reads no file', async () => {
+      const reply = await send(ready.app, 'GET', '/api/mcp/import/scan', {
+        'sec-fetch-site': 'same-origin',
+      });
+      expect([reply.status, reply.headers.allow]).toEqual([405, 'POST']);
+    });
+
+    it('rejects a text/plain post to the MCP import with 415', async () => {
+      const reply = await send(
+        ready.app,
+        'POST',
+        '/api/mcp/import/read',
         { 'sec-fetch-site': 'same-origin', 'content-type': 'text/plain' },
         '{}'
       );

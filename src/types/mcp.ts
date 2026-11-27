@@ -4,7 +4,12 @@
  * Defines the data model for MCP (Model Context Protocol) server configurations.
  * Supports three transport types: stdio (local), sse, and http (remote).
  */
-import { COMMAND_SHAPE_ERROR, classifyCommand } from '../utils/mcpCommand.ts';
+import {
+  COMMAND_SHAPE_ERROR,
+  argumentError,
+  classifyCommand,
+  findDisallowedArgument,
+} from '../utils/mcpCommand.ts';
 
 /** Transport type for MCP server connections */
 export type MCPTransportType = 'stdio' | 'sse' | 'http';
@@ -125,9 +130,14 @@ export function validateMCPServerConfig(config: MCPServerConfig): string | null 
   if (!config.name.trim()) return 'Server name is required';
 
   switch (config.transport) {
-    case 'stdio':
+    case 'stdio': {
       if (!config.command.trim()) return 'Command is required';
-      return commandShapeMessage(config.command);
+      const commandError = commandShapeMessage(config.command);
+      if (commandError) return commandError;
+      // The same rule as the server (SEC-01): the text names the argument, never its value
+      const badArgument = findDisallowedArgument(config.args);
+      return badArgument === null ? null : argumentError(badArgument);
+    }
     case 'sse':
     case 'http':
       if (!config.url.trim()) return 'URL is required';

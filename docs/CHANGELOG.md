@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Attached files stay with the chat. The app keeps each file in your browser, so the file is still there after a reload, and the model gets it again on later turns, after **Regenerate**, and in a fork from **Send to Fork**. When the files are too large to send again in one request, the app sends the oldest ones as a line with their name, and a line under the reply says, for example, **1 earlier file was not sent again**. The app keeps at most 500 MB of data. When it cannot keep a file, it saves the message without that file, and the file says **File not kept**. Before, the app kept only the file names, so the files were gone after a reload, and **Regenerate** and **Send to Fork** sent the message without them (#102) ([#143])
 - Your message shows its files above the text. An image shows as a thumbnail that opens full size in a new tab. Each other file shows its name, its type, and its size. Before, the transcript did not show the files (#101) ([#143])
+- **Import** for MCP servers: **Preferences → MCP Servers** reads the MCP config files of Kiro, Pi, Claude Code, Cursor, Claude Desktop, Gemini CLI, Devin Desktop, and Windsurf. When the files have servers that the app does not have, the tab shows a line, for example "3 servers in Kiro and Pi are not in this app", with **Import** and **Not now**. **Import** lists the servers by tool, with **Select all** and **Import N servers**. A server that two tools have shows once, with "Found in Kiro and Pi". A server that the app has shows **Already added**. A server that the app cannot start shows **Cannot run** and the reason. A row with `${…}` in an environment value, a URL, or a header has a note that says to type the real value after the import. The app adds the servers off. **Not now** hides the line until a new server shows up in the files, and then the line counts only the new servers. The app reads only these files, and the list shows no secret value: the app sends the values of a server to the browser only when you import it ([#145])
 
 #### Changed
 
@@ -21,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The **Anthropic** group of the model picker now shows the models that your key can use, with Anthropic's names, for example **Claude Opus 5.5**. The app gets the list from the Anthropic Models API through `GET /api/aisdk/models?provider=anthropic`. If the list does not load, the picker shows Claude Fable 5.2, Claude Opus 5.5, Claude Sonnet 5.5, and Claude Haiku 5.5. Before, the app showed a fixed list of older models, for example Claude Sonnet 4.5 (#107) ([#139])
 - Each model list call of `/api/aisdk/models` (Anthropic, Groq, and Cerebras) stops after 10 seconds, and its error text is at most 500 characters, with no API key in it ([#139])
 - A local MCP server can now start any program. In **Command**, type a program name that is on `PATH`, for example `github-mcp-server`, or a full path that starts with `/` or `~/`. Before, only `node`, `npx`, `python`, `python3`, `uv`, `uvx`, `docker`, `deno`, `bun`, and `bunx` could start, and a path was refused. A relative path such as `./server` or `bin/server` is still refused, with "Use a program name or a full path that starts with / or ~/". The placeholder and the help text of the field say what to type. A name that the app cannot find says "Command not found: x", and a path that does not go to a program says "x is not a program" ([#140])
+- The value fields of **Environment Variables** in **Preferences → MCP Servers** are now password fields, as the header values already were. Before, the values of environment variables, for example an API key, showed as text ([#145])
+- The form of **Preferences → MCP Servers** now also refuses an argument with shell characters, for example `;` or `|`, and says "Argument 2 contains characters that the app does not allow". Before, the form accepted it, and the server refused it later, when the app started the server ([#145])
 
 #### Removed
 
@@ -313,6 +316,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#145]: https://github.com/praveenc/local-llm-ui/pull/145
 [#144]: https://github.com/praveenc/local-llm-ui/pull/144
 [#143]: https://github.com/praveenc/local-llm-ui/pull/143
 [#141]: https://github.com/praveenc/local-llm-ui/pull/141

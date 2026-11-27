@@ -256,6 +256,8 @@ export function PreferencesDialog({
               <MCPServerSettings
                 servers={preferences.mcpServers || {}}
                 onChange={(mcpServers) => updatePreference('mcpServers', mcpServers)}
+                importDismissed={preferences.mcpImportDismissed}
+                onImportDismissedChange={(keys) => updatePreference('mcpImportDismissed', keys)}
               />
             </TabsContent>
 

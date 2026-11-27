@@ -60,3 +60,16 @@ export function findDisallowedArgument(args: readonly string[]): number | null {
 export function argumentError(n: number): string {
   return `Argument ${n} contains characters that the app does not allow`;
 }
+
+/**
+ * The tool name prefix of a server: lower case, each run of other characters than a to z and 0
+ * to 9 becomes one `_`, no `_` at the ends. The chat names each tool `prefix__tool`
+ * (`server/mcp-manager.ts`), so two servers with the same prefix (`my-server`, `my_server`)
+ * would share tool names. The import compares names with this rule.
+ */
+export function sanitizeServerName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}

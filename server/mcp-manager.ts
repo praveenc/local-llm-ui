@@ -29,7 +29,12 @@ import type {
   MCPServerConfig,
   MCPStdioConfig,
 } from '../src/types/mcp.ts';
-import { argumentError, classifyCommand, findDisallowedArgument } from '../src/utils/mcpCommand.ts';
+import {
+  argumentError,
+  classifyCommand,
+  findDisallowedArgument,
+  sanitizeServerName,
+} from '../src/utils/mcpCommand.ts';
 import { resolveCommand } from './mcp-command.ts';
 
 /** Separator used to namespace tool names: serverName__toolName */
@@ -95,7 +100,7 @@ function getSafeEnv(): Record<string, string> {
  * SEC-03: Validate HTTP/SSE URLs to prevent SSRF attacks.
  * Blocks cloud metadata endpoints, private IPs, and localhost.
  */
-function validateUrlSecurity(urlString: string): void {
+export function validateUrlSecurity(urlString: string): void {
   let url: URL;
   try {
     url = new URL(urlString);
@@ -760,7 +765,7 @@ export async function getMCPTools(
       releases.push(listed.release);
 
       // Namespace each tool with the server name
-      const prefix = sanitizeName(config.name);
+      const prefix = sanitizeServerName(config.name);
       for (const [toolName, tool] of Object.entries(listed.tools)) {
         tools[`${prefix}${TOOL_NS_SEP}${toolName}`] = tool;
       }
@@ -862,15 +867,4 @@ export async function closeAllMCPClients(): Promise<void> {
   const entries = [...clientCache.entries()];
   clientCache.clear();
   await Promise.allSettled(entries.map(([id, entry]) => dropClient(id, entry)));
-}
-
-/**
- * Sanitize a server name for use as a tool namespace prefix.
- * Converts to lowercase, replaces non-alphanumeric chars with underscores.
- */
-function sanitizeName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
 }
