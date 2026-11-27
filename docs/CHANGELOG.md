@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-11
+
+#### Changed
+
+- The **Anthropic** group of the model picker now shows the models that your key can use, with Anthropic's names, for example **Claude Opus 5.5**. The app gets the list from the Anthropic Models API through `GET /api/aisdk/models?provider=anthropic`. If the list does not load, the picker shows Claude Fable 5.2, Claude Opus 5.5, Claude Sonnet 5.5, and Claude Haiku 5.5. Before, the app showed a fixed list of older models, for example Claude Sonnet 4.5 (#107) ([#139])
+- Each model list call of `/api/aisdk/models` (Anthropic, Groq, and Cerebras) stops after 10 seconds, and its error text is at most 500 characters, with no API key in it ([#139])
+
+#### Fixed
+
+- The model list no longer reads the saved preferences from browser storage on each render and each fetch. It uses the preferences that the app already has (#108, #119) ([#139])
+- The Ollama and LM Studio model lists always use the app's `/api` routes. Before, a build that was not the development build called `localhost` directly for these two lists only (#113) ([#139])
+
 ## [1.4.0] - 2026-11-27
 
 PR numbers link to GitHub.
@@ -274,6 +286,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#139]: https://github.com/praveenc/local-llm-ui/pull/139
 [#97]: https://github.com/praveenc/local-llm-ui/pull/97
 [#96]: https://github.com/praveenc/local-llm-ui/pull/96
 [#95]: https://github.com/praveenc/local-llm-ui/pull/95
