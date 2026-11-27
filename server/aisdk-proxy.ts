@@ -70,9 +70,6 @@ type ModelsProvider = AISDKProvider | 'anthropic';
 
 const MODELS_PROVIDERS: readonly ModelsProvider[] = ['groq', 'cerebras', 'anthropic'];
 
-/** Longest upstream error text that goes back to the browser */
-const MAX_ERROR_TEXT = 500;
-
 /** Anthropic pages: `limit` is at most 1000, and the cap stops a loop of `has_more` */
 const ANTHROPIC_PAGE_LIMIT = 1000;
 const ANTHROPIC_MAX_PAGES = 5;
@@ -94,9 +91,9 @@ function getModelsEndpoint(provider: ModelsProvider): string {
   }
 }
 
-/** Cut the text to the cap. With the key, hide it first, in case an upstream echoes it. */
-const capErrorText = (text: string, apiKey?: string): string =>
-  (apiKey ? text.split(apiKey).join('[redacted]') : text).slice(0, MAX_ERROR_TEXT);
+/** Hide the key, in case an upstream echoes it, then cut the text to the shared cap */
+const capModelsError = (text: string, apiKey: string): string =>
+  capErrorText(text.split(apiKey).join('[redacted]'));
 
 // By name: a DOMException is not always an `Error` in every runtime
 const isTimeoutError = (error: unknown): boolean =>
@@ -109,7 +106,7 @@ function thrownErrorAnswer(error: unknown, provider: string, apiKey: string) {
   if (isTimeoutError(error)) {
     return { status: 504, message: `${provider} did not answer in time` };
   }
-  return { status: 500, message: capErrorText(errorMessageOr(error, 'Unknown error'), apiKey) };
+  return { status: 500, message: capModelsError(errorMessageOr(error, 'Unknown error'), apiKey) };
 }
 
 /** Thrown when the upstream answers with an error status; the route passes the status on */
@@ -169,7 +166,7 @@ async function fetchAnthropicModels(apiKey: string): Promise<Array<{ id: string;
       const text = await response.text();
       throw new UpstreamError(
         response.status,
-        capErrorText(text || 'Failed to fetch anthropic models', apiKey)
+        capModelsError(text || 'Failed to fetch anthropic models', apiKey)
       );
     }
 
@@ -245,7 +242,7 @@ async function handleModelsRequest(req: IncomingMessage, res: ServerResponse) {
       res.setHeader('Content-Type', 'application/json');
       res.end(
         JSON.stringify({
-          error: capErrorText(text, apiKey) || `Failed to fetch ${provider} models`,
+          error: capModelsError(text, apiKey) || `Failed to fetch ${provider} models`,
         })
       );
       return;
