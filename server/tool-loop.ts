@@ -11,6 +11,7 @@ import { isStepCount } from 'ai';
 import type { FinishReason, PrepareStepFunction, StopCondition, ToolSet } from 'ai';
 
 import { clampToolSteps } from '../src/utils/toolSteps.ts';
+import { capErrorText } from './security.ts';
 
 export const FINAL_STEP_PROMPT =
   'You cannot call more tools in this reply. Answer my question now. Use the information from the tool results above. If that information is not sufficient, tell me what is missing.';
@@ -67,7 +68,7 @@ export function toolErrorEvent(part: {
 /** A safe, short message for a stream error part */
 export function streamErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  return message.slice(0, 500) || 'The model stream failed.';
+  return capErrorText(message) || 'The model stream failed.';
 }
 
 /**

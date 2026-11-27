@@ -786,6 +786,14 @@ describe('/api/kiro login routes', () => {
     expect(response.status).toBe(413);
   });
 
+  it('answers 413 for a sign-out body over 1 KB and does not run kiro-cli logout', async () => {
+    s.status.current = SIGNED_IN;
+    const response = await post('/api/kiro/logout', { x: 'a'.repeat(3000) });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: 'Request body too large' });
+    expect(await runs(s.log)).toEqual([]);
+  });
+
   it('answers 405 with Allow: POST for other methods', async () => {
     for (const route of ['/api/kiro/login', '/api/kiro/login/cancel', '/api/kiro/logout']) {
       const response = await fetch(`${base}${route}`);
