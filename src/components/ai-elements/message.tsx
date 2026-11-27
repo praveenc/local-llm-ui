@@ -173,7 +173,7 @@ export function MessageAttachment({
   const thumbnail = (
     <img
       alt={filename || 'attachment'}
-      className="size-full object-cover"
+      className="size-full bg-muted object-contain"
       height={100}
       src={data.url}
       width={100}
@@ -194,7 +194,7 @@ export function MessageAttachment({
           {onOpen ? (
             <button
               aria-label={`Open ${attachmentLabel}`}
-              className="size-full rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+              className="size-full rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:outline-hidden"
               onClick={onOpen}
               title={attachmentLabel}
               type="button"

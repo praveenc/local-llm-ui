@@ -44,5 +44,10 @@ describe('MessageAttachment', () => {
     screen.getByRole('button', { name: 'Open a.png' }).click();
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('img', { name: 'a.png' })).toBeInTheDocument();
+    // The whole image shows, also a wide one, and the focus ring is not cut off by the frame
+    expect(screen.getByRole('img', { name: 'a.png' })).toHaveClass('object-contain');
+    expect(screen.getByRole('button', { name: 'Open a.png' })).toHaveClass(
+      'focus-visible:ring-inset'
+    );
   });
 });
