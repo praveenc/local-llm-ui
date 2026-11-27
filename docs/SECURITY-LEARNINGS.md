@@ -131,23 +131,23 @@ env: { ...getSafeEnv(), ...config.env }
 | Non-http/https schemes | `file://`, `ftp://`, etc. |
 | HTTP redirects | AI SDK 7 MCP transports default to `redirect: 'error'`, so a validated URL cannot redirect to a blocked target |
 
-### SEC-10: Connection Timeout (LOW)
+### SEC-10: Connection Timeout and Process Cleanup (LOW)
 
-**Risk**: Unresponsive MCP servers block chat requests indefinitely.
+**Risk**: An MCP server that does not answer blocks a chat request. A server process that the app does not close keeps running, with the user's rights, after nothing uses it.
 
-**Hardening**: 15-second timeout via `Promise.race`:
-```typescript
-const MCP_CONNECT_TIMEOUT_MS = 15_000;
+**Hardening** (`server/mcp-manager.ts`):
 
-async function createClientWithTimeout(config): Promise<MCPClient> {
-  return Promise.race([
-    createClient(config),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Connection timeout')), MCP_CONNECT_TIMEOUT_MS)
-    ),
-  ]);
-}
-```
+- The AI SDK's `initializationOptions.timeout` limits the start to 15 s. On a timeout or any other failed start, the SDK closes the transport, which ends the child process. (Before Plan 3, a `Promise.race` timer rejected the start and left the child running.)
+- The tool listing has the same 15 s limit (`listTools` with `options.timeout`). A timeout there closes the client.
+- A child that ignores SIGTERM gets SIGKILL after 2 s.
+- One start for each server id and config. A second request waits for the same start, so two requests cannot start two processes.
+- When a stdio process stops, its client leaves the cache. The next check or chat starts it again. The app never restarts a server by itself.
+- A status check closes the client of a disabled server after it lists its tools (the **Check** button can check a disabled server). With `closeOthers: true` (the MCP popover sends it with the full list of servers), the check also closes the servers that are no longer in the list. Leases stop a cleanup from closing a client that another request uses.
+- The browser starts no server while the user types: it checks on page load, when Preferences closes, when the MCP popover opens, and with **Check**. It sends only servers that pass `validateMCPServerConfig`.
+
+**Limit**: the SDK spawns with no process group, so the app can signal only its direct child. `npx` (`npm exec`) passes SIGTERM on to the server, so no process stays. A wrapper that does not pass it on leaves the server running. A test records both cases.
+
+**Error output in the UI**: the app keeps the last 4 KB of each child's stderr and puts its last 6 lines (at most 400 characters) in the error that the status route returns. The terminal still gets each line, with `[MCP <name>]` in front (control characters removed). Only the app's own pages can read the route (SEC-13). A server that writes a secret to stderr shows it in the popover, as it already did in the terminal.
 
 ### SEC-11: Runtime Config Validation (LOW)
 
@@ -157,6 +157,7 @@ async function createClientWithTimeout(config): Promise<MCPClient> {
 - Checks `id`, `name`, `transport` are strings
 - Validates transport-specific fields: `command`/`args` for stdio, `url` for http/sse
 - Then runs SEC-01/02/03 security checks per transport type
+- The error names only the server and its id: `Invalid MCP config for server "<name>" (<id>)`. Before Plan 3, it put the first 200 characters of the config in the error, with environment values and headers, and the status route returned it.
 
 ---
 
