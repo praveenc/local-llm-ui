@@ -9,14 +9,18 @@ import {
   realpath,
   rm,
   stat,
+  symlink,
   writeFile,
 } from 'fs/promises';
+import { createServer } from 'http';
+import type { AddressInfo } from 'net';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { SessionUpdate } from '../acp/types.ts';
+import { createKiroProxy } from '../kiro-proxy.ts';
 import {
   KiroAgent,
   KiroBusyError,
@@ -32,6 +36,7 @@ import {
   shutdownKiroAgent,
 } from '../kiro/agent.ts';
 import type { KiroAgentOptions, PermissionEnd, PermissionQuestion } from '../kiro/agent.ts';
+import type { KiroEnvironment } from '../kiro/binary.ts';
 import { KIRO_FOLDER_UNAVAILABLE, KiroFolderError } from '../kiro/settings.ts';
 
 const FAKE = path.join(
@@ -707,6 +712,95 @@ describe('KiroAgent review fixes', () => {
     const info = await stat(workspaceDir);
     expect(info.mode & 0o777).toBe(0o700);
     expect(info.uid).toBe(process.getuid?.());
+  });
+
+  it('follows a symlinked workspace folder but keeps the mode of its target (D28)', async () => {
+    const target = path.join(root, `ws-target-${counter + 1}`);
+    await mkdir(target, { recursive: true });
+    await chmod(target, 0o755);
+    const workspaceDir = path.join(root, `ws-link-${counter + 1}`);
+    await symlink(target, workspaceDir);
+    const c = await setup({}, { workspaceDir });
+    await c.agent.newSession();
+    expect((await stat(target)).mode & 0o777).toBe(0o755);
+    const created = (await c.log()).find((l) => l.msg.method === 'session/new')!.msg.params;
+    expect(created).toEqual({ cwd: workspaceDir, mcpServers: [] });
+  });
+
+  it('keeps the mode of a symlinked ~/.local-llm-ui and makes kiro in it with 0700', async () => {
+    const d = await caseDir();
+    const target = path.join(d.home, 'dotfiles', 'lli');
+    await mkdir(target, { recursive: true });
+    await chmod(target, 0o755);
+    await symlink(target, path.join(d.home, '.local-llm-ui'));
+    const agent = new KiroAgent({
+      environment: { env: d.env, home: d.home, platform: 'linux' },
+      settings: { workspaceDir: async () => undefined },
+      stopTimings: { graceMs: 200, killMs: 1000 },
+    });
+    agents.push(agent);
+    await agent.newSession();
+    expect((await stat(target)).mode & 0o777).toBe(0o755);
+    expect((await stat(path.join(target, 'kiro'))).mode & 0o777).toBe(0o700);
+  });
+
+  it('fails with an error, not a crash, for a dangling workspace folder link (D28)', async () => {
+    const workspaceDir = path.join(root, `ws-dangling-${counter + 1}`);
+    await symlink(path.join(root, `ws-missing-${counter + 1}`), workspaceDir);
+    const c = await setup({}, { workspaceDir });
+    await expect(c.agent.newSession()).rejects.toThrow();
+    expect(c.agent.state().pid).toBeUndefined();
+    expect(await c.log()).toEqual([]);
+  });
+
+  it('fails for a workspace folder that is a file, and the error names the folder (terminal only)', async () => {
+    const workspaceDir = path.join(root, `ws-file-${counter + 1}`);
+    await writeFile(workspaceDir, 'x');
+    const c = await setup({}, { workspaceDir });
+    await expect(c.agent.newSession()).rejects.toThrow(workspaceDir);
+    expect(c.agent.state().pid).toBeUndefined();
+  });
+
+  it('uses the folder saved through a proxy with the same environment (S11)', async () => {
+    const d = await caseDir();
+    const chosen = path.join(d.home, 'projects', 'demo');
+    await mkdir(chosen, { recursive: true });
+    const environment: KiroEnvironment = { env: d.env, home: d.home, platform: 'linux' };
+    const agent = new KiroAgent({ environment, stopTimings: { graceMs: 200, killMs: 1000 } });
+    agents.push(agent);
+    // The agent reads the setting first: the default folder, cached
+    await agent.newSession();
+    const proxy = createKiroProxy({
+      environment,
+      agent,
+      reader: { read: async () => ({ state: 'not-installed' }) },
+    });
+    const server = createServer((req, res) => void proxy(req, res, () => res.end()));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const port = (server.address() as AddressInfo).port;
+      const res = await fetch(`http://127.0.0.1:${port}/api/kiro/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceDir: '~/projects/demo' }),
+      });
+      expect(res.status).toBe(200);
+    } finally {
+      proxy.close();
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+    await agent.newSession();
+    const created = (await readFile(d.logFile, 'utf8'))
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { msg: Record<string, unknown> })
+      .filter((l) => l.msg.method === 'session/new')
+      .map((l) => l.msg.params);
+    expect(created).toEqual([
+      { cwd: path.join(d.home, '.local-llm-ui', 'kiro'), mcpServers: [] },
+      { cwd: await realpath(chosen), mcpServers: [] },
+    ]);
   });
 
   // minor: ensureSession

@@ -13,6 +13,7 @@ const kiro = vi.hoisted(() => ({
   status: undefined as KiroStatus | undefined,
   refresh: vi.fn(),
   isRefreshing: false,
+  setFolder: vi.fn(),
 }));
 vi.mock('../../../hooks/useKiroStatus', () => ({
   useKiroStatus: () => kiro,
@@ -425,6 +426,45 @@ describe('PreferencesDialog Kiro', () => {
       fireEvent.click(screen.getByRole('button', { name: /Default agent/ }));
       fireEvent.click(await screen.findByRole('option', { name: /Kiro's default/ }));
       await waitFor(() => expect(stored()).not.toHaveProperty('kiroDefaultAgent'));
+    });
+
+    it('says Saved in the footer when the folder saves (S12)', async () => {
+      kiro.status = signedIn();
+      const save = vi
+        .spyOn(kiroService, 'setWorkspaceDir')
+        .mockResolvedValue({ path: '~/work', isDefault: false });
+      try {
+        renderDialog({});
+        const footer = screen.getByText('Changes save automatically.');
+        const folder = screen.getByRole('textbox', { name: 'Folder for new Kiro chats' });
+        fireEvent.change(folder, { target: { value: '~/work' } });
+        fireEvent.keyDown(folder, { key: 'Enter' });
+        await waitFor(() => expect(footer).toHaveTextContent('Saved'));
+        expect(save).toHaveBeenCalledWith('~/work');
+      } finally {
+        save.mockRestore();
+      }
+    });
+
+    it('does not say Saved or Not saved in the footer when the folder is refused', async () => {
+      kiro.status = signedIn();
+      const save = vi
+        .spyOn(kiroService, 'setWorkspaceDir')
+        .mockRejectedValue(new Error('This folder does not exist.'));
+      try {
+        renderDialog({});
+        const footer = screen.getByText('Changes save automatically.');
+        const folder = screen.getByRole('textbox', { name: 'Folder for new Kiro chats' });
+        fireEvent.change(folder, { target: { value: '~/missing' } });
+        fireEvent.keyDown(folder, { key: 'Enter' });
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'Not saved. This folder does not exist.'
+        );
+        expect(footer).toHaveTextContent('Changes save automatically.');
+        expect(footer).not.toHaveTextContent('Saved');
+      } finally {
+        save.mockRestore();
+      }
     });
 
     it('names a stored agent that Kiro does not list any more', () => {

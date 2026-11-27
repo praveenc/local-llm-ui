@@ -18,6 +18,8 @@ PR numbers link to GitHub.
 #### Fixed
 
 - A Kiro tool question now shows the whole command, up to 2,000 characters, as code that keeps its line breaks, wraps on a narrow screen, and scrolls after about 10 lines. Before, the question cut the command at 80 characters and showed backticks as text, so the end of a long command was hidden. When Kiro sends a longer command, a line under it says that only the start shows. While the question is open, the line above the answer says **Waiting for your answer**, so the question shows only once ([#94])
+- When `~/.local-llm-ui` or the Kiro work folder is a symlink, for example from a dotfiles manager, the app no longer changes the mode of the linked folder. It still checks that you own it. A folder that the app makes, or a real folder, still gets mode 0700, and the settings file stays 0600 ([#95])
+- The Preferences footer now says **Saved** when the folder for new Kiro chats saves, as it does for the other settings ([#95])
 - MCP servers that fail say why: the popover and **Check** show, for example, "The server stopped before it answered (exit code 1): npm error code E401 …" or "Command not found: uvx", not "Attempted to send a request from a closed client". A server whose process stops starts again at the next check or chat, a timeout ends the process, and two requests start one process. The app checks the servers when the page loads, when Preferences closes, and when the MCP popover opens, not after each change in the form, and it sends only complete servers. The status route `POST /api/bedrock-aisdk/mcp-status` accepts `closeOthers: true`, and closes servers that are off or that left the list ([#93])
 - Clearer **Add MCP server** form: a new server opens with an empty name and the cursor in **Name**, the command placeholder names `uvx`, and help text under **Arguments** and **Environment Variables** says to type one value in each field, with no quotes. The app does not use a shell, so a value that starts and ends with a quote shows a warning ([#92])
 
@@ -264,6 +266,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#95]: https://github.com/praveenc/local-llm-ui/pull/95
 [#94]: https://github.com/praveenc/local-llm-ui/pull/94
 [#93]: https://github.com/praveenc/local-llm-ui/pull/93
 [#92]: https://github.com/praveenc/local-llm-ui/pull/92

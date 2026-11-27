@@ -57,7 +57,7 @@ import type { KiroModelList } from './kiro/models.ts';
 import { createKiroPermissionHandler } from './kiro/permission-route.ts';
 import { createKiroSessionsHandler } from './kiro/sessions.ts';
 import type { KiroSessionsAgent } from './kiro/sessions.ts';
-import { createKiroSettings, getKiroSettings } from './kiro/settings.ts';
+import { kiroSettingsFor } from './kiro/settings.ts';
 import type { KiroSettings } from './kiro/settings.ts';
 import { createKiroStatusReader } from './kiro/status.ts';
 import { createKiroUsage } from './kiro/usage.ts';
@@ -135,14 +135,8 @@ export function createKiroProxy(options: KiroProxyOptions = {}): KiroProxy {
   };
 
   let settings = options.settings;
-  // The same settings as the shared agent's harness: both use getKiroSettings() by default
-  const getSettings = (): KiroSettings =>
-    (settings ??= options.environment
-      ? createKiroSettings({
-          home: options.environment.home,
-          platform: options.environment.platform,
-        })
-      : getKiroSettings());
+  // The same settings object as the harness of the same environment (kiroSettingsFor)
+  const getSettings = (): KiroSettings => (settings ??= kiroSettingsFor(options.environment));
 
   const getReader = (): KiroStatusSource =>
     (reader ??= createKiroStatusReader({ environment: options.environment }));

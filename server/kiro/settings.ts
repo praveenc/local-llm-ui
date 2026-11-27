@@ -41,6 +41,7 @@ import {
 } from '../../src/utils/kiroSettings.ts';
 import type { KiroFolderSetting } from '../../src/utils/kiroSettings.ts';
 import { defaultKiroEnvironment } from './binary.ts';
+import type { KiroEnvironment } from './binary.ts';
 import { KiroSessionError } from './errors.ts';
 
 /** The message when a stored folder can no longer be used */
@@ -77,6 +78,45 @@ export const defaultKiroDir = (home: string): string => path.join(home, SETTINGS
 
 const errorCode = (error: unknown) =>
   error && typeof error === 'object' && 'code' in error ? String(error.code) : undefined;
+
+/** The app's folder is not a folder, or belongs to another user */
+export class KiroPrivateDirError extends Error {
+  // No parameter property: the server also runs with `node --experimental-strip-types`
+  readonly reason: 'not-folder' | 'not-owned';
+  constructor(reason: 'not-folder' | 'not-owned') {
+    super(reason === 'not-owned' ? 'belongs to another user' : 'is not a folder');
+    this.reason = reason;
+  }
+}
+
+/**
+ * Makes a folder of the app with mode 0700, and checks that the user owns it (D28, SEC-21).
+ *
+ * A symlink is followed (a dotfile manager can link `~/.local-llm-ui`), but the app never changes
+ * the mode of a folder that it reached through a link: it sets 0700 only on a folder that it
+ * creates now, or on a real folder that is already there (this repairs a loose mode). The owner
+ * check follows the link, so a link to a folder of another user is still refused. A dangling link
+ * makes `mkdir` fail; the caller turns that into its own plain error.
+ */
+export async function ensurePrivateDir(dir: string, owner: number | undefined): Promise<void> {
+  // Only a missing path counts as new; any other error (EACCES, ELOOP, ENOTDIR) is thrown
+  const before = await lstat(dir).catch((error: unknown) => {
+    if (errorCode(error) === 'ENOENT') return undefined;
+    throw error;
+  });
+  // Not atomic: a process of the same user can swap the path for a link between these calls.
+  // SEC-21 accepts this race (the same user can already change the folder and its files).
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const info = await stat(dir);
+  if (!info.isDirectory()) throw new KiroPrivateDirError('not-folder');
+  if (owner !== undefined && info.uid !== owner) {
+    throw new KiroPrivateDirError('not-owned');
+  }
+  // mkdir sets the mode only on a folder that it creates, and a real folder can have a loose mode
+  if (before === undefined || (before.isDirectory() && !before.isSymbolicLink())) {
+    await chmod(dir, 0o700);
+  }
+}
 
 export function createKiroSettings(options: KiroSettingsOptions): KiroSettings {
   const { home } = options;
@@ -169,14 +209,7 @@ export function createKiroSettings(options: KiroSettingsOptions): KiroSettings {
 
   /** Writes the settings file: a temp file 0600 in the same folder, then a rename */
   async function write(workspaceDir: string | null): Promise<void> {
-    await mkdir(settingsDir, { recursive: true, mode: 0o700 });
-    const info = await stat(settingsDir);
-    const owner = uid();
-    if (!info.isDirectory() || (owner !== undefined && info.uid !== owner)) {
-      throw new Error('the settings folder belongs to another user');
-    }
-    // mkdir sets the mode only on a folder that it creates
-    await chmod(settingsDir, 0o700);
+    await ensurePrivateDir(settingsDir, uid());
     const temp = path.join(settingsDir, `.${SETTINGS_FILE}.${process.pid}.${Date.now()}.tmp`);
     try {
       await writeFile(temp, `${JSON.stringify({ workspaceDir })}\n`, { mode: 0o600, flag: 'wx' });
@@ -250,4 +283,21 @@ export function getKiroSettings(): KiroSettings {
     instance = createKiroSettings({ home: environment.home, platform: environment.platform });
   }
   return instance;
+}
+
+const byEnvironment = new WeakMap<KiroEnvironment, KiroSettings>();
+
+/**
+ * The one settings object for an environment (S11): the shared one without an environment, else
+ * one per environment object, so that the proxy and the harness of the same environment share
+ * the stored folder.
+ */
+export function kiroSettingsFor(environment?: KiroEnvironment): KiroSettings {
+  if (!environment) return getKiroSettings();
+  let settings = byEnvironment.get(environment);
+  if (!settings) {
+    settings = createKiroSettings({ home: environment.home, platform: environment.platform });
+    byEnvironment.set(environment, settings);
+  }
+  return settings;
 }

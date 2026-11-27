@@ -67,6 +67,58 @@ describe('KiroFolderSetting', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Saved');
   });
 
+  it('calls onSaved when a save ends with Saved, and not when it fails (S12)', async () => {
+    const onSaved = vi.fn();
+    render(<KiroFolderSetting onSaved={onSaved} />);
+    const user = await typeInto('~/work');
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('status')).toHaveTextContent('Saved');
+    expect(onSaved).toHaveBeenCalledTimes(1);
+
+    mocks.setWorkspaceDir.mockRejectedValue(new Error('This folder does not exist.'));
+    await user.clear(field());
+    await user.type(field(), '~/missing');
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not saved.');
+    expect(onSaved).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call onSaved for a stale save', async () => {
+    let finish: (value: FolderSetting) => void = () => undefined;
+    mocks.setWorkspaceDir.mockImplementationOnce(
+      () => new Promise<FolderSetting>((resolve) => (finish = resolve))
+    );
+    const onSaved = vi.fn();
+    render(<KiroFolderSetting onSaved={onSaved} />);
+    const user = await typeInto('~/one');
+    await user.keyboard('{Enter}');
+    // Typing again makes the running save stale
+    await user.type(field(), 'x');
+    await act(async () => finish({ path: '~/one', isDefault: false }));
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it('calls onSaved without an error when the save ends after the row closed', async () => {
+    let finish: (value: FolderSetting) => void = () => undefined;
+    mocks.setWorkspaceDir.mockImplementationOnce(
+      () => new Promise<FolderSetting>((resolve) => (finish = resolve))
+    );
+    const onSaved = vi.fn();
+    const error = vi.spyOn(console, 'error');
+    const warn = vi.spyOn(console, 'warn');
+    const { unmount } = render(<KiroFolderSetting onSaved={onSaved} />);
+    await typeInto('~/later');
+    // Closed while the value waits for its delay: the unmount saves it
+    unmount();
+    expect(mocks.setWorkspaceDir).toHaveBeenCalledWith('~/later');
+    await act(async () => finish({ path: '~/later', isDefault: false }));
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(error).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+    error.mockRestore();
+    warn.mockRestore();
+  });
+
   it('saves on Enter and on blur without waiting', async () => {
     render(<KiroFolderSetting />);
     const user = await typeInto('~/one');
