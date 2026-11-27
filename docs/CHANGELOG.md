@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The pager of **Saved Prompts** works with the keyboard. Tab goes to **Previous**, to each page number, and to **Next**, with a visible focus ring, and Enter or Space opens the page. A line above the pager says, for example, **Page 2 of 5**, and screen readers hear the current page. At the first and the last page, **Previous** or **Next** is dimmed but keeps the focus. On a touch screen, each button is 44 px. A page change scrolls the list to the top. Before, the page numbers were links with no target, so the keyboard could not reach them (#105) ([#136])
 - When you delete the last prompt on the last page of **Saved Prompts**, the list shows the page before it. Before, the list said **No saved prompts** although the other pages had prompts ([#136])
 - **Saved Prompts** reads the prompts once, and the category filter comes from the same read. Before, the app read all the prompts a second time only to make the category list (#118) ([#136])
+- When you open a different chat, the chat shows only the messages of that chat. An empty chat is empty. Before, an empty chat kept the messages of the chat that you had open before, and a switch to a different chat could show the old messages until the new ones loaded (#98, #99) ([#137])
+- A rating (thumbs up or thumbs down) that the app cannot save goes back to its earlier value, and only the error toast shows. When you click several times quickly, the last click wins. Before, a rating that failed stayed on screen, and a rating of a reply that had no saved message said **Feedback saved** (#103, #130) ([#137])
+- **Stop** right after **Send to Fork** in **Quote and Ask** now stops the reply of the fork. Before, Stop could go to the original chat, and the reply of the fork continued (#128) ([#137])
+- After **Stop** in a Kiro chat, the next message waits, at most 5 seconds, until the stopped reply is saved. Then Kiro gets the correct messages. Before, a message right after Stop could send messages that Kiro already had ([#137])
+- After **Regenerate**, the stored totals of the chat (the message count, the tokens, the providers, and the models) come from the messages that are left. Before, they kept the values of the deleted reply (#114) ([#137])
 - The model list no longer reads the saved preferences from browser storage on each render and each fetch. It uses the preferences that the app already has (#108, #119) ([#139])
 - The Ollama and LM Studio model lists always use the app's `/api` routes. Before, a build that was not the development build called `localhost` directly for these two lists only (#113) ([#139])
 
@@ -296,6 +301,7 @@ PR numbers link to GitHub.
 
 [#141]: https://github.com/praveenc/local-llm-ui/pull/141
 [#139]: https://github.com/praveenc/local-llm-ui/pull/139
+[#137]: https://github.com/praveenc/local-llm-ui/pull/137
 [#136]: https://github.com/praveenc/local-llm-ui/pull/136
 [#97]: https://github.com/praveenc/local-llm-ui/pull/97
 [#96]: https://github.com/praveenc/local-llm-ui/pull/96
