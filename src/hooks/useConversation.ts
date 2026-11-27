@@ -5,11 +5,16 @@ import Dexie from 'dexie';
 import { useLiveQuery } from 'dexie-react-hooks';
 
 import { db } from '../db';
-import type { Conversation, Message } from '../db';
+import type { Conversation, Message, StoredAttachment } from '../db';
 
 interface UseConversationResult {
   conversation: Conversation | undefined;
   messages: Message[] | undefined;
+  /**
+   * The stored bytes of the chat's attached files (D-C). Set when `messages` is set, so a file
+   * never shows as not kept while its bytes load.
+   */
+  attachments: StoredAttachment[] | undefined;
   isLoading: boolean;
 }
 
@@ -37,7 +42,23 @@ export function useConversation(conversationId: string | null): UseConversationR
     [conversationId],
     undefined
   );
-  const messages = result?.conversationId === conversationId ? result.messages : undefined;
+
+  // The bytes in their own query: a message write (each reply) does not read them again
+  const files = useLiveQuery(
+    async () => {
+      if (!conversationId) return undefined;
+      const attachments = await db.attachments
+        .where('conversationId')
+        .equals(conversationId)
+        .toArray();
+      return { conversationId, attachments };
+    },
+    [conversationId],
+    undefined
+  );
+  const attachments = files?.conversationId === conversationId ? files.attachments : undefined;
+  const messages =
+    result?.conversationId === conversationId && attachments ? result.messages : undefined;
 
   const isLoading =
     conversationId !== null && (conversation === undefined || messages === undefined);
@@ -45,6 +66,7 @@ export function useConversation(conversationId: string | null): UseConversationR
   return {
     conversation,
     messages,
+    attachments: messages ? attachments : undefined,
     isLoading,
   };
 }

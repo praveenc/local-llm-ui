@@ -22,10 +22,39 @@ export type ConversationStatus = 'active' | 'archived';
 /** The user's thumbs up or thumbs down on an assistant message */
 export type MessageFeedback = 'helpful' | 'not-helpful';
 
+/**
+ * A file of a user message, as the message row keeps it (D-C). The bytes are in the
+ * `attachments` table under the same `id`; `kept` is false when they could not be stored.
+ */
 export interface MessageAttachment {
+  id: string;
   name: string;
   format: string;
   sizeBytes: number;
+  kept: boolean;
+}
+
+/**
+ * The bytes of one attached file (schema version 4). `data` is an ArrayBuffer: IndexedDB stores
+ * it as it is, and the test database (`fake-indexeddb`) cannot clone a Blob.
+ */
+export interface StoredAttachment {
+  id: string;
+  messageId: string;
+  conversationId: string;
+  name: string;
+  mediaType: string;
+  size: number;
+  data: ArrayBuffer;
+}
+
+/** A file to store with a new user message; without `data` only its metadata is kept */
+export interface NewAttachment {
+  name: string;
+  format: string;
+  mediaType: string;
+  size: number;
+  data?: ArrayBuffer;
 }
 
 export interface MessageParameters {
@@ -53,6 +82,11 @@ export interface Message {
   /** About how long the model thought before and between its answer steps */
   reasoningMs?: number;
   attachments?: MessageAttachment[];
+  /**
+   * An assistant reply: how many files of earlier messages went as a text line, not as bytes,
+   * because the request had no room for them (D-E). Not indexed, so no schema version.
+   */
+  filesNotResent?: number;
   /** Set when the user rates the message; absent until then */
   feedback?: MessageFeedback;
 }

@@ -306,25 +306,82 @@ export type MessageAttachmentProps = HTMLAttributes<HTMLDivElement> & {
   data: FileUIPart;
   className?: string;
   onRemove?: () => void;
+  /** Size of the file in bytes, shown in words on a file chip */
+  size?: number;
+  /** The app did not keep the bytes: the tile says "File not kept" */
+  notKept?: boolean;
+  /** Opens the image full size; the thumbnail then is a button */
+  onOpen?: () => void;
 };
 
-export function MessageAttachment({ data, className, onRemove, ...props }: MessageAttachmentProps) {
+/** The size of a file in words, for example "340 KB" or "1.2 MB" */
+function fileSizeText(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** The type of a file in words: the extension of the name, else the media type's subtype */
+function fileTypeText(filename: string, mediaType: string): string {
+  const extension = /\.([a-z0-9]{1,8})$/i.exec(filename)?.[1];
+  if (extension) return extension.toUpperCase();
+  const subtype = mediaType.split('/')[1];
+  return subtype && !subtype.includes('.') && subtype.length <= 8 ? subtype.toUpperCase() : 'File';
+}
+
+export function MessageAttachment({
+  data,
+  className,
+  onRemove,
+  size,
+  notKept = false,
+  onOpen,
+  ...props
+}: MessageAttachmentProps) {
   const filename = data.filename || '';
-  const mediaType = data.mediaType?.startsWith('image/') && data.url ? 'image' : 'file';
+  const mediaType = data.mediaType?.startsWith('image/') && data.url && !notKept ? 'image' : 'file';
   const isImage = mediaType === 'image';
   const attachmentLabel = filename || (isImage ? 'Image' : 'Attachment');
+  const details = notKept
+    ? 'File not kept'
+    : [fileTypeText(filename, data.mediaType || ''), size !== undefined && fileSizeText(size)]
+        .filter(Boolean)
+        .join(' · ');
+
+  const thumbnail = (
+    <img
+      alt={filename || 'attachment'}
+      className="size-full object-cover"
+      height={100}
+      src={data.url}
+      width={100}
+    />
+  );
 
   return (
-    <div className={cn('group relative size-24 overflow-hidden rounded-lg', className)} {...props}>
+    <div
+      className={cn(
+        'group relative overflow-hidden rounded-lg',
+        isImage ? 'size-24' : 'flex max-w-64 items-center gap-2 bg-muted py-2 pr-2 pl-3',
+        className
+      )}
+      {...props}
+    >
       {isImage ? (
         <>
-          <img
-            alt={filename || 'attachment'}
-            className="size-full object-cover"
-            height={100}
-            src={data.url}
-            width={100}
-          />
+          {onOpen ? (
+            <button
+              aria-label={`Open ${attachmentLabel}`}
+              className="size-full rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+              onClick={onOpen}
+              title={attachmentLabel}
+              type="button"
+            >
+              {thumbnail}
+            </button>
+          ) : (
+            thumbnail
+          )}
           {onRemove && (
             <Button
               aria-label="Remove attachment"
@@ -343,16 +400,13 @@ export function MessageAttachment({ data, className, onRemove, ...props }: Messa
         </>
       ) : (
         <>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex size-full shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                <PaperclipIcon className="size-4" />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{attachmentLabel}</p>
-            </TooltipContent>
-          </Tooltip>
+          <PaperclipIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+          <div className="flex min-w-0 flex-col text-left">
+            <span className="truncate text-sm text-foreground" title={attachmentLabel}>
+              {attachmentLabel}
+            </span>
+            <span className="text-xs text-muted-foreground tabular-nums">{details}</span>
+          </div>
           {onRemove && (
             <Button
               aria-label="Remove attachment"
