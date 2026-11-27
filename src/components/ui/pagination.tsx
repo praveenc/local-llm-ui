@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import * as React from 'react';
 
@@ -32,21 +32,41 @@ PaginationItem.displayName = 'PaginationItem';
 type PaginationLinkProps = {
   isActive?: boolean;
   size?: ButtonSize;
-} & React.ComponentProps<'a'>;
+} & React.ComponentProps<'button'>;
 
-const PaginationLink = ({ className, isActive, size = 'icon', ...props }: PaginationLinkProps) => (
-  <a
-    aria-current={isActive ? 'page' : undefined}
-    className={cn(
-      buttonVariants({
-        variant: isActive ? 'outline' : 'ghost',
-        size,
-      }),
-      className
-    )}
-    {...props}
-  />
-);
+/**
+ * A page control. It is a real button, so it is in the tab order and Enter and Space work.
+ * `aria-disabled` keeps it in the tab order (a real `disabled` would drop the focus of the
+ * button that was just pressed) and makes the click do nothing.
+ */
+const PaginationLink = ({
+  className,
+  isActive,
+  size = 'icon',
+  onClick,
+  ...props
+}: PaginationLinkProps) => {
+  const ariaDisabled = props['aria-disabled'];
+  const disabled = ariaDisabled === true || ariaDisabled === 'true';
+  return (
+    <button
+      type="button"
+      aria-current={isActive ? 'page' : undefined}
+      onClick={disabled ? undefined : onClick}
+      className={cn(
+        buttonVariants({
+          variant: isActive ? 'outline' : 'ghost',
+          size,
+        }),
+        // 44 px touch target on a coarse pointer
+        'pointer-coarse:min-h-11 pointer-coarse:min-w-11',
+        'aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-inherit',
+        className
+      )}
+      {...props}
+    />
+  );
+};
 PaginationLink.displayName = 'PaginationLink';
 
 const PaginationPrevious = ({
@@ -85,22 +105,9 @@ const PaginationNext = ({
 );
 PaginationNext.displayName = 'PaginationNext';
 
-const PaginationEllipsis = ({ className, ...props }: React.ComponentProps<'span'>) => (
-  <span
-    aria-hidden
-    className={cn('flex h-9 w-9 items-center justify-center', className)}
-    {...props}
-  >
-    <MoreHorizontal className="h-4 w-4" />
-    <span className="sr-only">More pages</span>
-  </span>
-);
-PaginationEllipsis.displayName = 'PaginationEllipsis';
-
 export {
   Pagination,
   PaginationContent,
-  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,

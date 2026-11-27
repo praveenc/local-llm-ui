@@ -23,17 +23,21 @@ export function useConversation(conversationId: string | null): UseConversationR
     undefined
   );
 
-  const messages = useLiveQuery(
+  // The live query keeps its last result when the id changes, until the new query returns. The
+  // result carries its id, so the previous chat's messages never show for the new id.
+  const result = useLiveQuery(
     async () => {
       if (!conversationId) return undefined;
-      return db.messages
+      const messages = await db.messages
         .where('[conversationId+sequence]')
         .between([conversationId, Dexie.minKey], [conversationId, Dexie.maxKey])
         .toArray();
+      return { conversationId, messages };
     },
     [conversationId],
     undefined
   );
+  const messages = result?.conversationId === conversationId ? result.messages : undefined;
 
   const isLoading =
     conversationId !== null && (conversation === undefined || messages === undefined);
