@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 2026-11
 
+#### Removed
+
+- UI code that the app does not use: the `MessageBranch` parts and `MessageToolbar` of the message component, `ModelSelectorDialog`, `ModelSelectorShortcut`, and `ModelSelectorLogoGroup` of the model picker, `PromptInputSpeechButton` with its speech code and `PromptInputCommandSeparator` of the chat input, `PaginationEllipsis`, `TableFooter`, `TableCaption`, the button group component (`src/components/ui/button-group.tsx`), and the unused file `src/components/ui/index.ts`. Nothing changes on screen. `MessageAttachment` and `MessageAttachments` stay for the attachment work (#122, #123) ([#141])
+- The direct dependency `@radix-ui/react-use-controllable-state`. Nothing in the app imports it. The Radix packages still install it for their own use (#121) ([#141])
+
 #### Fixed
 
 - The pager of **Saved Prompts** works with the keyboard. Tab goes to **Previous**, to each page number, and to **Next**, with a visible focus ring, and Enter or Space opens the page. A line above the pager says, for example, **Page 2 of 5**, and screen readers hear the current page. At the first and the last page, **Previous** or **Next** is dimmed but keeps the focus. On a touch screen, each button is 44 px. A page change scrolls the list to the top. Before, the page numbers were links with no target, so the keyboard could not reach them (#105) ([#136])
@@ -282,6 +287,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#141]: https://github.com/praveenc/local-llm-ui/pull/141
 [#136]: https://github.com/praveenc/local-llm-ui/pull/136
 [#97]: https://github.com/praveenc/local-llm-ui/pull/97
 [#96]: https://github.com/praveenc/local-llm-ui/pull/96
