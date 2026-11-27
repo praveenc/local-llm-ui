@@ -3,37 +3,36 @@
  */
 import { useLiveQuery } from 'dexie-react-hooks';
 
+import { useMemo } from 'react';
+
 import { db } from '../db';
 import type { SavedPrompt } from '../db';
 
 interface UseSavedPromptsResult {
   prompts: SavedPrompt[];
   categories: string[];
+  /** True until the first read of the database has returned */
   isLoading: boolean;
 }
 
+// One stable empty list, so a consumer's memo does not re-run on each render while loading
+const NO_PROMPTS: SavedPrompt[] = [];
+
 export function useSavedPrompts(): UseSavedPromptsResult {
-  const prompts = useLiveQuery(
+  // No default result: `undefined` means that the first read has not returned yet
+  const result = useLiveQuery(
     async () => db.savedPrompts.orderBy('createdAt').reverse().toArray(),
-    [],
     []
   );
 
-  const categories = useLiveQuery(
-    async () => {
-      const allPrompts = await db.savedPrompts.toArray();
-      const cats = new Set(allPrompts.map((p) => p.category));
-      return Array.from(cats).sort();
-    },
-    [],
-    []
+  const categories = useMemo(
+    () => Array.from(new Set((result ?? NO_PROMPTS).map((p) => p.category))).sort(),
+    [result]
   );
-
-  const isLoading = prompts === undefined || categories === undefined;
 
   return {
-    prompts: prompts ?? [],
-    categories: categories ?? [],
-    isLoading,
+    prompts: result ?? NO_PROMPTS,
+    categories,
+    isLoading: result === undefined,
   };
 }
