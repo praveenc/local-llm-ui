@@ -162,6 +162,83 @@ describe('replyStore', () => {
     expect(store.isRunning(null)).toBe(false);
   });
 
+  it('aborts the run that start replaces, and keeps its finished promise for stop', async () => {
+    const store = createReplyStore();
+    const first = store.start('a', []);
+    const second = store.start('a', []);
+    expect(first.signal.aborted).toBe(true);
+    expect(second.signal.aborted).toBe(false);
+    // The replaced run has not finished its writes yet
+    let firstDone = false;
+    void store.whenFinished('a').then(() => {
+      firstDone = true;
+    });
+    await Promise.resolve();
+    expect(firstDone).toBe(false);
+    first.finish();
+    second.finish();
+    await vi.waitFor(() => expect(firstDone).toBe(true));
+  });
+
+  it('waits in whenFinished for the runs of the chat that exist at the call', async () => {
+    const store = createReplyStore();
+    await expect(store.whenFinished('a')).resolves.toBeUndefined();
+
+    const old = store.start('a', []);
+    void store.stop('a');
+    const wait = store.whenFinished('a');
+    // A run that starts after the call does not count
+    const next = store.start('a', []);
+    let resolved = false;
+    void wait.then(() => {
+      resolved = true;
+    });
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+    old.finish();
+    await wait;
+    expect(resolved).toBe(true);
+    // A run of another chat does not count either
+    await expect(store.whenFinished('b')).resolves.toBeUndefined();
+    next.finish();
+    await expect(store.whenFinished('a')).resolves.toBeUndefined();
+  });
+
+  it('waits for a run that was dismissed or removed before it finished', async () => {
+    const store = createReplyStore();
+    const run = store.start('a', []);
+    void store.stop('a');
+    store.dismiss('a');
+    expect(store.get('a')).toBeUndefined();
+    let resolved = false;
+    const wait = store.whenFinished('a').then(() => {
+      resolved = true;
+    });
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+    run.finish();
+    await wait;
+    expect(resolved).toBe(true);
+  });
+
+  it('stops waiting in whenFinished after the time limit', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = createReplyStore();
+      store.start('a', []);
+      let resolved = false;
+      void store.whenFinished('a', 100).then(() => {
+        resolved = true;
+      });
+      await vi.advanceTimersByTimeAsync(99);
+      expect(resolved).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(resolved).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('knows which statuses run', () => {
     expect(isRunningStatus('submitted')).toBe(true);
     expect(isRunningStatus('streaming')).toBe(true);

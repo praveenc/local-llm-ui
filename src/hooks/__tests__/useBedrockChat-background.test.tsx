@@ -10,6 +10,9 @@ import { useBedrockChat } from '../useBedrockChat';
 const db = vi.hoisted(() => ({ messages: {} as Record<string, Message[]> }));
 const addMessageMock = vi.hoisted(() => vi.fn());
 const notifyReply = vi.hoisted(() => vi.fn(async () => {}));
+const setMessageFeedbackMock = vi.hoisted(() => vi.fn(async () => {}));
+const forkConversationMock = vi.hoisted(() => vi.fn());
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 
 vi.mock('../index', () => ({
   useConversation: (id: string | null) => ({
@@ -22,10 +25,12 @@ vi.mock('../index', () => ({
     addMessage: addMessageMock,
     getNextSequence: vi.fn(async (id: string) => (db.messages[id]?.length ?? 0) + 1),
     deleteMessagesFromSequence: vi.fn(async () => 0),
-    forkConversation: vi.fn(),
-    setMessageFeedback: vi.fn(),
+    forkConversation: forkConversationMock,
+    setMessageFeedback: setMessageFeedbackMock,
   }),
 }));
+
+vi.mock('sonner', () => ({ toast: toastMock }));
 
 vi.mock('../../services', () => ({ mantleService: { getApiKey: () => '', getRegion: () => '' } }));
 vi.mock('../../services/replyNotices', () => ({ notifyReply }));
@@ -122,6 +127,11 @@ beforeEach(() => {
     return saved;
   });
   notifyReply.mockClear();
+  setMessageFeedbackMock.mockReset();
+  setMessageFeedbackMock.mockResolvedValue(undefined);
+  forkConversationMock.mockReset();
+  toastMock.success.mockClear();
+  toastMock.error.mockClear();
   // A frame runs on the next task, so the stream loop can keep going between frames
   vi.spyOn(window, 'requestAnimationFrame').mockImplementation(
     (cb) => setTimeout(() => cb(0), 0) as unknown as number
@@ -193,6 +203,8 @@ describe('useBedrockChat with replies in the background', () => {
 
     rerender({ conversationId: 'A' });
     expect(result.current.status).toBe('streaming');
+    // The reply's list, not the cleared one: the store entry wins over the switch
+    expect(result.current.messages).toBe(replyStore.get('A')!.messages);
     expect(lastAssistant(result.current.messages)).toBe('while away');
 
     act(() => streams[0].end());
@@ -309,5 +321,240 @@ describe('useBedrockChat with replies in the background', () => {
     rerender({ conversationId: 'B' });
     expect(replyStore.get('A')).toBeUndefined();
     expect(result.current.error).toBeNull();
+  });
+
+  it('shows no messages in an empty chat after another chat', () => {
+    db.messages.E = [];
+    // A live query has no result in the first render: open A after it
+    const { result, rerender } = renderChat(null);
+    rerender({ conversationId: 'A' });
+    expect(result.current.messages).toHaveLength(2);
+    rerender({ conversationId: 'E' });
+    expect(result.current.messages).toEqual([]);
+  });
+
+  it('shows no messages of the previous chat while the next one loads', () => {
+    const { result, rerender } = renderChat(null);
+    rerender({ conversationId: 'A' });
+    expect(result.current.messages).toHaveLength(2);
+    // L has no result yet (the live query is loading)
+    rerender({ conversationId: 'L' });
+    expect(result.current.messages).toEqual([]);
+    db.messages.L = [dbMessage('L', 1, 'user', 'loaded')];
+    rerender({ conversationId: 'L' });
+    expect(result.current.messages.map((m) => getTextContent(m))).toEqual(['loaded']);
+  });
+
+  it('rolls a rating back when it cannot be saved, with no saved toast', async () => {
+    setMessageFeedbackMock.mockRejectedValue(new Error('Message not found'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result, rerender } = renderChat(null);
+    rerender({ conversationId: 'A' });
+    await act(async () => {
+      await result.current.rateMessage('A-2', 'helpful');
+    });
+    expect(setMessageFeedbackMock).toHaveBeenCalledWith('A-2', 'helpful');
+    expect(result.current.messages[1].feedback).toBeUndefined();
+    expect(toastMock.success).not.toHaveBeenCalled();
+    expect(toastMock.error).toHaveBeenCalledWith('Could not save feedback');
+  });
+
+  it('keeps a later rating when an earlier one fails', async () => {
+    let failFirst!: (err: Error) => void;
+    setMessageFeedbackMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          failFirst = reject;
+        })
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result, rerender } = renderChat(null);
+    rerender({ conversationId: 'A' });
+    let first!: Promise<void>;
+    act(() => {
+      first = result.current.rateMessage('A-2', 'helpful');
+    });
+    expect(result.current.messages[1].feedback).toBe('helpful');
+    await act(async () => {
+      await result.current.rateMessage('A-2', 'not-helpful');
+    });
+    await act(async () => {
+      failFirst(new Error('write failed'));
+      await first;
+    });
+    expect(result.current.messages[1].feedback).toBe('not-helpful');
+  });
+
+  it('keeps the last rating when an older call fails after it (A-B-A)', async () => {
+    const pending: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
+    setMessageFeedbackMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          pending.push({ resolve, reject });
+        })
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result, rerender } = renderChat(null);
+    rerender({ conversationId: 'A' });
+    // Helpful, Helpful again (removes it), Helpful again: three calls in flight
+    const calls: Promise<void>[] = [];
+    act(() => {
+      calls.push(result.current.rateMessage('A-2', 'helpful'));
+    });
+    act(() => {
+      calls.push(result.current.rateMessage('A-2', 'helpful'));
+    });
+    expect(result.current.messages[1].feedback).toBeUndefined();
+    act(() => {
+      calls.push(result.current.rateMessage('A-2', 'helpful'));
+    });
+    expect(result.current.messages[1].feedback).toBe('helpful');
+    expect(setMessageFeedbackMock.mock.calls.map((c) => (c as unknown[])[1])).toEqual([
+      'helpful',
+      null,
+      'helpful',
+    ]);
+    await act(async () => {
+      pending[1].resolve();
+      // The first call fails after the third call set the same value
+      pending[0].reject(new Error('write failed'));
+      await calls[0];
+      await calls[1];
+    });
+    expect(result.current.messages[1].feedback).toBe('helpful');
+    await act(async () => {
+      pending[2].resolve();
+      await calls[2];
+    });
+    expect(result.current.messages[1].feedback).toBe('helpful');
+  });
+
+  it('rolls back the last call for a message when it fails', async () => {
+    const pending: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
+    setMessageFeedbackMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          pending.push({ resolve, reject });
+        })
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result, rerender } = renderChat(null);
+    rerender({ conversationId: 'A' });
+    const calls: Promise<void>[] = [];
+    act(() => {
+      calls.push(result.current.rateMessage('A-2', 'helpful'));
+    });
+    act(() => {
+      calls.push(result.current.rateMessage('A-2', 'not-helpful'));
+    });
+    await act(async () => {
+      pending[0].resolve();
+      pending[1].reject(new Error('write failed'));
+      await calls[0];
+      await calls[1];
+    });
+    // Back to the value before the last call
+    expect(result.current.messages[1].feedback).toBe('helpful');
+  });
+
+  it('rolls a rating back on a reply that the chat shows from the store', async () => {
+    const { result } = renderChat('A');
+    let send!: Promise<void>;
+    act(() => {
+      send = result.current.sendMessage('q');
+    });
+    await waitFor(() => expect(streams).toHaveLength(1));
+    act(() => {
+      streams[0].push('answer');
+      streams[0].end();
+    });
+    await act(async () => {
+      await send;
+    });
+    const shown = result.current.messages.at(-1)!;
+    setMessageFeedbackMock.mockRejectedValue(new Error('Message not found'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await act(async () => {
+      await result.current.rateMessage(shown.id, 'helpful');
+    });
+    expect(replyStore.get('A')?.messages.at(-1)?.feedback).toBeUndefined();
+    expect(result.current.messages.at(-1)?.feedback).toBeUndefined();
+  });
+
+  it('stops the reply of the fork when Stop comes right after a fork', async () => {
+    forkConversationMock.mockResolvedValue({ id: 'fork-1' });
+    db.messages['fork-1'] = [dbMessage('fork-1', 1, 'user', 'earlier in A')];
+    const { result } = renderChat('A');
+    // The closure of the render before the fork
+    const stop = result.current.stopGeneration;
+    let fork!: Promise<void>;
+    act(() => {
+      fork = result.current.forkAndSend(0, 'in the fork');
+    });
+    await waitFor(() => expect(streams).toHaveLength(1));
+    act(() => stop());
+    try {
+      await waitFor(() => expect(streams[0].signal.aborted).toBe(true), { timeout: 500 });
+      expect(replyStore.isRunning('fork-1')).toBe(false);
+    } finally {
+      act(() => streams[0].end());
+      await act(async () => {
+        await fork;
+      });
+    }
+  });
+
+  it('stops the reply that it started, also when the store has another chat on screen', async () => {
+    forkConversationMock.mockResolvedValue({ id: 'fork-1' });
+    db.messages['fork-1'] = [dbMessage('fork-1', 1, 'user', 'earlier in A')];
+    const { result } = renderChat('A');
+    let fork!: Promise<void>;
+    act(() => {
+      fork = result.current.forkAndSend(0, 'in the fork');
+    });
+    await waitFor(() => expect(streams).toHaveLength(1));
+    // Something else marks another chat as on screen
+    replyStore.setOnScreen('B');
+    act(() => result.current.stopGeneration());
+    try {
+      await waitFor(() => expect(streams[0].signal.aborted).toBe(true), { timeout: 500 });
+      expect(replyStore.isRunning('fork-1')).toBe(false);
+    } finally {
+      act(() => streams[0].end());
+      await act(async () => {
+        await fork;
+      });
+    }
+  });
+
+  it('stops the open chat after the user leaves the chat that it started', async () => {
+    const { result, rerender } = renderChat(null);
+    let send!: Promise<void>;
+    act(() => {
+      send = result.current.sendMessage('q');
+    });
+    await waitFor(() => expect(streams).toHaveLength(1));
+    // The user opens A while the new chat's reply runs, and starts a reply there
+    rerender({ conversationId: 'A' });
+    let sendA!: Promise<void>;
+    act(() => {
+      sendA = result.current.sendMessage('in A');
+    });
+    await waitFor(() => expect(streams).toHaveLength(2));
+    act(() => result.current.stopGeneration());
+    try {
+      await waitFor(() => expect(streams[1].signal.aborted).toBe(true), { timeout: 500 });
+      expect(streams[0].signal.aborted).toBe(false);
+      expect(replyStore.isRunning('new-1')).toBe(true);
+    } finally {
+      act(() => {
+        streams[0].end();
+        streams[1].end();
+      });
+      await act(async () => {
+        await send;
+        await sendA;
+      });
+    }
   });
 });
