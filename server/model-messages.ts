@@ -12,9 +12,11 @@ import type { ServerResponse } from 'node:http';
 import type { Provider } from '../src/db/types.ts';
 import {
   BEDROCK_TEXT_DOCUMENT_FORMATS,
+  PROVIDER_NAMES,
   acceptsKind,
   fileAccepts,
   kindOfFormat,
+  quoteFileName,
 } from '../src/utils/attachments.ts';
 import type { FileKind } from '../src/utils/attachments.ts';
 import { lookupMediaType } from '../src/utils/mediaTypes.ts';
@@ -39,18 +41,6 @@ const KIND_NAMES: Record<FileKind, string> = {
   office: 'Office files',
   text: 'Text files',
   unsupported: 'Files of this type',
-};
-
-const PROVIDER_NAMES: Record<Provider, string> = {
-  bedrock: 'Amazon Bedrock',
-  anthropic: 'Anthropic',
-  openrouter: 'OpenRouter',
-  ollama: 'Ollama',
-  lmstudio: 'LM Studio',
-  groq: 'Groq',
-  cerebras: 'Cerebras',
-  'bedrock-mantle': 'Bedrock Mantle',
-  kiro: 'Kiro',
 };
 
 /**
@@ -87,7 +77,8 @@ function escapeAttribute(text: string): string {
 }
 
 /** The line for a file that does not decode as text */
-export const notReadableLine = (name: string): string => `[File not readable as text: ${name}]`;
+export const notReadableLine = (name: string): string =>
+  `[File not readable as text: ${quoteFileName(name)}]`;
 
 /**
  * The text block of a text file. A NUL byte or many replacement characters mean that the file
@@ -105,8 +96,8 @@ export function textFileBlock(name: string, base64: string): string {
   if (text.includes('\u0000') || (replacements > 0 && replacements > text.length / 100)) {
     return notReadableLine(name);
   }
-  // A file cannot close its own block
-  const safe = text.replace(/<\/file/gi, (match) => `<\\/${match.slice(2)}`);
+  // A file cannot close its own block or open a fake one: `</file` and `<file` get a backslash
+  const safe = text.replace(/<(?=\/?file)/gi, '<\\');
   return `<file name="${escapeAttribute(name)}">\n${safe}\n</file>`;
 }
 
@@ -167,7 +158,8 @@ export function toModelMessages(
       if (goesAsFilePart(provider, kind, file.format)) {
         fileParts.push({
           type: 'file',
-          data: new Uint8Array(Buffer.from(file.bytes, 'base64')),
+          // A Buffer is a Uint8Array: no second copy of the bytes
+          data: Buffer.from(file.bytes, 'base64'),
           mediaType: lookupMediaType(file.format) ?? 'application/octet-stream',
           filename: provider === 'bedrock' ? bedrockDocumentName(file.name, used) : file.name,
         });

@@ -1,16 +1,17 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { UnifiedModel } from '../../../hooks/useAllModels';
+import type { UIMessage } from '../../../types/ai-messages';
 import ChatContainer from '../ChatContainer';
 
-const chat = vi.hoisted(() => ({ sendMessage: vi.fn() }));
+const chat = vi.hoisted(() => ({ sendMessage: vi.fn(), messages: [] as unknown[] }));
 
 vi.mock('../../../hooks/useBedrockChat', () => ({
   useBedrockChat: () => ({
-    messages: [],
+    messages: chat.messages,
     status: 'idle',
     error: null,
     wasInterrupted: false,
@@ -37,7 +38,7 @@ const bedrock = model('bedrock');
 const groq = model('groq');
 const mantle = model('bedrock-mantle');
 
-const chatElement = (selectedModel: UnifiedModel, client: QueryClient) => (
+const chatElement = (selectedModel: UnifiedModel | null, client: QueryClient) => (
   <QueryClientProvider client={client}>
     <ChatContainer
       providers={[]}
@@ -70,6 +71,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   chat.sendMessage.mockReset();
+  chat.messages = [];
   vi.restoreAllMocks();
 });
 
@@ -189,5 +191,96 @@ describe('ChatContainer files', () => {
     await user.click(screen.getAllByRole('button', { name: /Remove/ })[0]);
     await waitFor(() => expect(fileError()).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled();
+  });
+
+  const form = () => screen.getByRole('textbox', { name: 'Message' }).closest('form')!;
+
+  it('refuses a dropped PDF for Groq with the reason', async () => {
+    render(chatElement(groq, client));
+    fireEvent.drop(form(), {
+      dataTransfer: { types: ['Files'], files: [file('report.pdf', 'application/pdf')] },
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Groq models read text files only. report.pdf is a PDF.'
+    );
+    expect(screen.queryByText('report.pdf')).not.toBeInTheDocument();
+  });
+
+  it('refuses a pasted SVG with the reason', async () => {
+    render(chatElement(bedrock, client));
+    const svg = file('logo.svg', 'image/svg+xml');
+    fireEvent.paste(screen.getByRole('textbox', { name: 'Message' }), {
+      clipboardData: { items: [{ kind: 'file', getAsFile: () => svg }] },
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'logo.svg is not a PNG, JPEG, GIF, or WebP image. Convert it to one of these.'
+    );
+    expect(screen.queryByText('logo.svg')).not.toBeInTheDocument();
+  });
+
+  it('with no model selected, a drop says the same words as the block line', async () => {
+    render(chatElement(null, client));
+    fireEvent.drop(form(), {
+      dataTransfer: { types: ['Files'], files: [file('report.pdf', 'application/pdf')] },
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'With no model selected, the chat cannot read report.pdf. Pick a model to send it.'
+    );
+  });
+
+  it.each([
+    ['a line separator', 'a\u2028b.pdf'],
+    ['a paragraph separator', 'a\u2029b.pdf'],
+    ['a bidi override', 'report\u202Efdp.txt'],
+    ['a bidi isolate', 'a\u2066b.pdf'],
+  ])('refuses a name with %s, with the reason in words', async (_name, name) => {
+    const user = userEvent.setup({ applyAccept: false });
+    render(chatElement(bedrock, client));
+    await user.upload(upload(), file(name, 'application/pdf'));
+    expect(fileError()).toHaveTextContent(
+      'A file name has a hidden or control character, so the file was not added. Rename the file and add it again.'
+    );
+  });
+
+  it('the blocked-send line replaces the earlier refusal line, so the alert shows one message', async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    const { rerender } = render(chatElement(bedrock, client));
+    await user.upload(upload(), file('report.pdf', 'application/pdf'));
+    await user.upload(upload(), file('logo.svg', 'image/svg+xml'));
+    expect(fileError()).toHaveTextContent(/logo\.svg is not a PNG/);
+
+    rerender(chatElement(groq, client));
+    await screen.findByText(/This model cannot read report.pdf/);
+    expect(fileError()).not.toHaveTextContent(/logo\.svg/);
+    expect(fileError()).toHaveTextContent(
+      /^File ErrorThis model cannot read report\.pdf\. Remove it or pick a different model to send\.$/
+    );
+  });
+
+  it('shows the files of an only-files user message and no empty text bubble', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        parts: [
+          { type: 'text', text: '' },
+          {
+            type: 'file',
+            filename: 'report.pdf',
+            mediaType: 'application/pdf',
+            size: 4,
+            data: 'AAAA',
+          },
+        ],
+      },
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'hello' }] },
+    ];
+    chat.messages = messages;
+    const { container } = render(chatElement(bedrock, client));
+    const onlyFiles = container.querySelector('[data-message-index="0"]')!;
+    expect(onlyFiles).toHaveTextContent('report.pdf');
+    expect(onlyFiles.querySelector('.reply-text')).toBeNull();
+    const withText = container.querySelector('[data-message-index="1"]')!;
+    expect(withText.querySelector('.reply-text')).toHaveTextContent('hello');
   });
 });

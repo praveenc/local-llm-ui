@@ -30,7 +30,10 @@ describe('toModelMessages', () => {
     (provider) => {
       const content = contentOf([user([PNG])], provider) as Array<Record<string, unknown>>;
       expect(content[1]).toMatchObject({ type: 'file', mediaType: 'image/png' });
-      expect(content[1].data).toEqual(new Uint8Array(Buffer.from('png')));
+      // The decoded Buffer itself (a Uint8Array), with no second copy of the bytes
+      expect(content[1].data).toBeInstanceOf(Uint8Array);
+      expect(Buffer.isBuffer(content[1].data)).toBe(true);
+      expect([...(content[1].data as Uint8Array)]).toEqual([...Buffer.from('png')]);
     }
   );
 
@@ -130,10 +133,22 @@ describe('textFileBlock', () => {
     expect(block.match(/<\/file/gi)).toHaveLength(1);
   });
 
+  it('breaks a fake <file opening inside the content, in any case', () => {
+    const block = textFileBlock('a.md', b64('<file name="b.md">x</file> <FILE y'));
+    expect(block).toBe('<file name="a.md">\n<\\file name="b.md">x<\\/file> <\\FILE y\n</file>');
+    expect(block.match(/<\/?file/gi)).toHaveLength(2);
+  });
+
+  it('quotes the name in the not-readable line, so a name cannot end the line', () => {
+    expect(textFileBlock('a"] x.bin', b64('\u0000'))).toBe(
+      '[File not readable as text: "a\\"] x.bin"]'
+    );
+  });
+
   it('a NUL byte or many replacement characters: the not-readable line', () => {
-    expect(textFileBlock('a.bin', b64('ab\u0000cd'))).toBe('[File not readable as text: a.bin]');
+    expect(textFileBlock('a.bin', b64('ab\u0000cd'))).toBe('[File not readable as text: "a.bin"]');
     const binary = new Uint8Array(200).map((_, i) => (i % 2 ? 0xff : 0x41));
-    expect(textFileBlock('b.txt', b64(binary))).toBe('[File not readable as text: b.txt]');
+    expect(textFileBlock('b.txt', b64(binary))).toBe('[File not readable as text: "b.txt"]');
   });
 
   it('keeps UTF-8 text with accents', () => {

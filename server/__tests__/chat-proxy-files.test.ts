@@ -219,7 +219,7 @@ describe('chat proxies with files', () => {
       ]);
     });
 
-    it('a PDF for a model with file input sends no plugin', async () => {
+    it('a PDF for a model with file input sends the native parser, never paid OCR', async () => {
       stubModelList(['text', 'image', 'file']);
       const reply = await post(
         createOpenRouterAISDKProxy(),
@@ -228,7 +228,54 @@ describe('chat proxies with files', () => {
         KEY
       );
       expect(reply.status).toBe(200);
-      expect(calls.at(-1)?.providerOptions).toBeUndefined();
+      expect(calls.at(-1)?.providerOptions).toEqual({
+        openrouter: { plugins: [{ id: 'file-parser', pdf: { engine: 'native' } }] },
+      });
+    });
+
+    /** OpenRouter's model list fails; other URLs go out as usual */
+    const stubFailingList = () => {
+      const realFetch = globalThis.fetch;
+      const listCalls = vi.fn();
+      vi.stubGlobal('fetch', (url: string | URL, init?: RequestInit) => {
+        if (String(url).startsWith('https://openrouter.ai/')) {
+          listCalls(String(url));
+          return Promise.reject(new TypeError('fetch failed'));
+        }
+        return realFetch(url, init);
+      });
+      return listCalls;
+    };
+
+    it('the list fetch fails, so the request sends cloudflare-ai', async () => {
+      stubFailingList();
+      const reply = await post(
+        createOpenRouterAISDKProxy(),
+        '/api/openrouter/chat',
+        body([PDF]),
+        KEY
+      );
+      expect(reply.status).toBe(200);
+      expect(calls.at(-1)?.providerOptions).toEqual({
+        openrouter: { plugins: [{ id: 'file-parser', pdf: { engine: 'cloudflare-ai' } }] },
+      });
+    });
+
+    it('a failed list fetch is remembered: a second PDF request within 60 s makes no fetch', async () => {
+      const listCalls = stubFailingList();
+      for (let i = 0; i < 2; i++) {
+        const reply = await post(
+          createOpenRouterAISDKProxy(),
+          '/api/openrouter/chat',
+          body([PDF]),
+          KEY
+        );
+        expect(reply.status).toBe(200);
+        expect(calls.at(-1)?.providerOptions).toEqual({
+          openrouter: { plugins: [{ id: 'file-parser', pdf: { engine: 'cloudflare-ai' } }] },
+        });
+      }
+      expect(listCalls).toHaveBeenCalledTimes(1);
     });
 
     it('keeps the model list: a second PDF request does not fetch it again', async () => {

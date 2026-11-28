@@ -28,8 +28,15 @@ import {
   getTextContent,
   toUIMessages,
 } from '../types/ai-messages';
-import { acceptsKind, classifyFile, fileAccepts } from '../utils/attachments';
-import type { FileAccepts } from '../utils/attachments';
+import {
+  acceptsKind,
+  classifyFile,
+  fileAccepts,
+  listNames,
+  messageLimitReason,
+  quoteFileName,
+} from '../utils/attachments';
+import type { FileAccepts, FileKind } from '../utils/attachments';
 import { extractErrorMessage } from '../utils/errorMessage';
 import {
   type KiroChatRequest,
@@ -997,6 +1004,17 @@ export function useBedrockChat({
       // The same files go again (D-G)
       const userFiles = filesOf(messages[userMessageIndex]);
       const history = messages.slice(0, userMessageIndex);
+      // Decide before the delete: a send that cannot run must not lose the turn
+      const blocked = resendBlockReason(
+        selectedModel,
+        userContent,
+        messages[userMessageIndex],
+        'regenerate this reply'
+      );
+      if (blocked) {
+        toast.error(blocked);
+        return;
+      }
 
       // Drop the user message and everything after it (DB sequences are 1-based): sendMessage
       // adds the user message again, so the chat holds it once and sends it once
@@ -1029,6 +1047,17 @@ export function useBedrockChat({
     const content = getTextContent(messages[lastUserIndex]);
     const files = filesOf(messages[lastUserIndex]);
     const history = messages.slice(0, lastUserIndex);
+    // Decide before the delete: a send that cannot run must not lose the turn
+    const blocked = resendBlockReason(
+      selectedModel,
+      content,
+      messages[lastUserIndex],
+      'send this message again'
+    );
+    if (blocked) {
+      toast.error(blocked);
+      return;
+    }
     // Drop the failed turn (DB sequences are 1-based) so it is not sent twice
     await deleteMessagesFromSequence(activeConversationId, lastUserIndex + 1);
     replyStore.dismiss(activeConversationId);
@@ -1208,6 +1237,33 @@ function filesOf(message: UIMessage): ChatFile[] {
   });
 }
 
+/**
+ * Why a stored user message cannot be sent again with `model` (regenerate, retry), or null when
+ * it can. The same rule as the composer: the files that `filesOf` keeps must be ones that the
+ * model reads, and the message must have text or a file to send.
+ */
+export function resendBlockReason(
+  model: { provider: string; accepts?: FileAccepts },
+  content: string,
+  message: UIMessage,
+  action: string
+): string | null {
+  const files = fileParts(message).filter((p) => formatOf(p) !== undefined);
+  if (!content.trim() && files.length === 0) {
+    return 'This message has no text and no file that the app can send.';
+  }
+  const accepts = model.accepts ?? fileAccepts(model.provider);
+  const unreadable = files
+    .filter(
+      (p) => !acceptsKind(accepts, classifyFile(p.filename || 'file', p.mediaType || '').kind)
+    )
+    .map((p) => p.filename || 'file');
+  if (unreadable.length > 0) {
+    return `This model cannot read ${listNames(unreadable)}. Pick a different model to ${action}.`;
+  }
+  return null;
+}
+
 /** A file of the chat input as the database stores it */
 function toNewAttachment(file: ChatFile): NewAttachment {
   return {
@@ -1238,10 +1294,10 @@ function withFilesNotKept(messages: UIMessage[], id: string, kept: boolean[]): U
 }
 
 /** The line that stands for a file that the request does not carry (D-E) */
-export const earlierFileLine = (name: string): string => `[Earlier file: ${name}]`;
+export const earlierFileLine = (name: string): string => `[Earlier file: ${quoteFileName(name)}]`;
 
 /** The line for a file of the new message whose bytes the app did not keep */
-export const notKeptFileLine = (name: string): string => `[File not kept: ${name}]`;
+export const notKeptFileLine = (name: string): string => `[File not kept: ${quoteFileName(name)}]`;
 
 const utf8 = new TextEncoder();
 /** The bytes of a value in the request's JSON */
@@ -1286,6 +1342,21 @@ export function buildChatMessages(
   const newFiles = last >= 0 ? fileParts(sent[last]).filter((p) => p.data !== undefined) : [];
   for (const p of newFiles) room -= jsonSize(fileOf(p)) + 1;
 
+  // An earlier message keeps, newest first, the files that fit the limits of one message (D-H:
+  // 20 images, 5 documents, 7.5 MB raw); a chat from before the limits can hold more
+  const overLimit = new Set<FilePart>();
+  sent.forEach((m, index) => {
+    if (index === last) return;
+    const kept: Array<{ kind: FileKind; size: number }> = [];
+    for (const p of [...fileParts(m)].reverse()) {
+      if (p.data === undefined || !readable(p)) continue;
+      const kind = classifyFile(p.filename || 'file', p.mediaType || '').kind;
+      const next = [...kept, { kind, size: base64Size(p.data) }];
+      if (messageLimitReason(next)) overLimit.add(p);
+      else kept.push(next[next.length - 1]);
+    }
+  });
+
   let full = false;
   let filesNotResent = 0;
   const chatMessages = sent
@@ -1304,6 +1375,12 @@ export function buildChatMessages(
         const cost = p.data === undefined ? 0 : jsonSize(fileOf(p)) + 1;
         if (!readable(p)) {
           // The current model cannot read it: a line, also before the budget is full
+          const line = earlierFileLine(name);
+          room -= utf8.encode(line).length + 2;
+          lines.push(line);
+          filesNotResent += 1;
+        } else if (overLimit.has(p)) {
+          // Over the limits of one message: a line, and the budget stays for the other files
           const line = earlierFileLine(name);
           room -= utf8.encode(line).length + 2;
           lines.push(line);

@@ -221,7 +221,8 @@ export function acceptList(accepts: FileAccepts): string {
   return items.join(',');
 }
 
-const PROVIDER_NAMES: Partial<Record<Provider, string>> = {
+/** The provider names in the file reasons and the server's 400 texts */
+export const PROVIDER_NAMES: Readonly<Record<Provider, string>> = {
   bedrock: 'Amazon Bedrock',
   anthropic: 'Anthropic',
   openrouter: 'OpenRouter',
@@ -259,6 +260,7 @@ export function notAcceptedReason(
   // A rule that depends on the model list is about this model, not every model of the provider
   const dependsOnModel = !!row && Object.values(row).includes('vision');
   const what = `${name} is ${KIND_WORDS[kind]}.`;
+  if (!provider) return noModelReason([name]);
   if (!acceptsAnyFile(accepts)) {
     return providerName && !dependsOnModel
       ? `${providerName} models do not take files. ${what}`
@@ -290,3 +292,42 @@ export function messageLimitReason(files: Array<{ kind: FileKind; size: number }
 /** The reason for a file over `MAX_FILE_BYTES` */
 export const fileTooLargeReason = (name: string): string =>
   `${name} is over 4.5 MB and was not added.`;
+
+/** "a", "a and b", "a, b, and c" */
+export function listNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')}${names.length > 2 ? ',' : ''} and ${names.at(-1)}`;
+}
+
+/**
+ * The reason for files with no model selected. The composer uses it both for a refused add and
+ * for the blocked send, so both say the same.
+ */
+export function noModelReason(names: string[]): string {
+  return `With no model selected, the chat cannot read ${listNames(names)}. Pick a model to send ${names.length === 1 ? 'it' : 'them'}.`;
+}
+
+/**
+ * A file name in a plain line of the prompt (`[Earlier file: "a.pdf"]`), quoted as a JSON
+ * string, so a name cannot end the line or the bracket early.
+ */
+export const quoteFileName = (name: string): string => JSON.stringify(name);
+
+/**
+ * True when a file name has a character that hides or reorders text: C0 and C1 controls, the
+ * line and paragraph separators (U+2028, U+2029), and the bidi controls (U+202A to U+202E,
+ * U+2066 to U+2069). The server refuses such a name; the composer says why.
+ */
+export function hasUnsafeNameCharacter(name: string): boolean {
+  for (let i = 0; i < name.length; i++) {
+    const code = name.charCodeAt(i);
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
+    if (code === 0x2028 || code === 0x2029) return true;
+    if ((code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069)) return true;
+  }
+  return false;
+}
+
+/** The reason for a name with a hidden or control character (the name is not shown) */
+export const UNSAFE_NAME_REASON =
+  'A file name has a hidden or control character, so the file was not added. Rename the file and add it again.';

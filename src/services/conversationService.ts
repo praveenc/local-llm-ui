@@ -38,6 +38,9 @@ const totalsOf = (
   models: [...new Set(messages.map((m) => m.modelId))],
 });
 
+/** The title of a chat before its first message with text */
+const DEFAULT_TITLE = 'New Conversation';
+
 // Generate title from first message content
 const generateTitle = (content: string, maxLength = 50): string => {
   const cleaned = content.trim().replace(/\s+/g, ' ');
@@ -54,9 +57,25 @@ async function addToTotals(input: CreateMessageInput): Promise<void> {
     messageCount: conversation.messageCount + 1,
   };
 
-  // Update title from first user message (a message with only files has no text: keep the title)
-  if (conversation.messageCount === 0 && input.role === 'user' && input.content.trim()) {
-    updates.title = generateTitle(input.content);
+  // The title comes from the first user message with text. A message with only files has no
+  // text: the chat keeps its title until a later message has text.
+  if (input.role === 'user' && input.content.trim()) {
+    if (conversation.messageCount === 0) {
+      updates.title = generateTitle(input.content);
+    } else if (
+      conversation.title === DEFAULT_TITLE &&
+      conversation.titleEdited !== true &&
+      conversation.titleFromKiro !== true
+    ) {
+      const earlier = await db.messages
+        .where('conversationId')
+        .equals(input.conversationId)
+        .toArray();
+      const hadText = earlier.some(
+        (m) => m.role === 'user' && m.sequence < input.sequence && m.content.trim().length > 0
+      );
+      if (!hadText) updates.title = generateTitle(input.content);
+    }
   }
 
   // Track unique providers
@@ -124,7 +143,7 @@ export const conversationService = {
     const now = new Date();
     const conversation: Conversation = {
       id: generateId(),
-      title: title || 'New Conversation',
+      title: title || DEFAULT_TITLE,
       createdAt: now,
       updatedAt: now,
       status: 'active',

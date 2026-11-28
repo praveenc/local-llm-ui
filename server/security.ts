@@ -15,6 +15,7 @@ import {
   ALLOWED_FORMATS,
   MAX_FILES_PER_MESSAGE,
   MAX_FILE_BYTES,
+  hasUnsafeNameCharacter,
   kindOfFormat,
   messageLimitReason,
 } from '../src/utils/attachments.ts';
@@ -418,7 +419,7 @@ function isChatFile(value: unknown): value is ChatRequestFile {
     typeof value.name === 'string' &&
     value.name.length >= 1 &&
     value.name.length <= FILE_NAME_MAX &&
-    !hasControlCharacter(value.name) &&
+    !hasUnsafeNameCharacter(value.name) &&
     typeof value.format === 'string' &&
     ALLOWED_FORMATS.includes(value.format) &&
     typeof value.bytes === 'string' &&

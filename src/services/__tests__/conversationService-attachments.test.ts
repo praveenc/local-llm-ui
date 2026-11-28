@@ -271,4 +271,34 @@ describe('conversationService attachments', () => {
       'photo.png',
     ]);
   });
+
+  it('a chat whose first message has only files gets its title from the first message with text', async () => {
+    const { id } = await conversationService.create();
+    await conversationService.addMessage(userMessage(id, 1, ''), [
+      file('report.pdf', 'pdf', 'application/pdf', PDF),
+    ]);
+    expect((await conversationService.get(id))?.title).toBe('New Conversation');
+    await conversationService.addMessage({
+      ...userMessage(id, 2, 'ok'),
+      role: 'assistant',
+    });
+    expect((await conversationService.get(id))?.title).toBe('New Conversation');
+
+    await conversationService.addMessage(userMessage(id, 3, 'Summarize the report'));
+    expect((await conversationService.get(id))?.title).toBe('Summarize the report');
+
+    // Later messages do not change it
+    await conversationService.addMessage(userMessage(id, 4, 'And the next part'));
+    expect((await conversationService.get(id))?.title).toBe('Summarize the report');
+  });
+
+  it('a renamed chat keeps its title when the first text message comes after only files', async () => {
+    const { id } = await conversationService.create();
+    await conversationService.addMessage(userMessage(id, 1, ''), [
+      file('report.pdf', 'pdf', 'application/pdf', PDF),
+    ]);
+    await conversationService.rename(id, 'New Conversation');
+    await conversationService.addMessage(userMessage(id, 2, 'Summarize the report'));
+    expect((await conversationService.get(id))?.title).toBe('New Conversation');
+  });
 });

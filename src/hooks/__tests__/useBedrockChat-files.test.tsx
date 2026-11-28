@@ -4,6 +4,7 @@
  */
 import { act, renderHook, waitFor } from '@testing-library/react';
 import 'fake-indexeddb/auto';
+import { toast } from 'sonner';
 import { afterAll, afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { db } from '../../db';
@@ -195,7 +196,7 @@ describe('useBedrockChat files', () => {
     });
     expect(bodies[1][0]).toEqual({
       role: 'user',
-      content: 'read\n\n[Earlier file: a.pdf]',
+      content: 'read\n\n[Earlier file: "a.pdf"]',
       files: [],
     });
     await waitFor(() => expect(result.current.messages).toHaveLength(4));
@@ -281,7 +282,7 @@ describe('useBedrockChat files', () => {
 
       const [first, , second, , third] = bodies[0];
       expect(first.files).toEqual([]);
-      expect(first.content).toBe('first\n\n[Earlier file: old.pdf]');
+      expect(first.content).toBe('first\n\n[Earlier file: "old.pdf"]');
       expect(second.files.map((f) => f.name)).toEqual(['new.pdf']);
       expect(second.content).toBe('second');
       expect(third.content).toBe('third');
@@ -323,7 +324,7 @@ describe('useBedrockChat files', () => {
     });
     expect(bodies[0][0]).toEqual({
       role: 'user',
-      content: 'look\n\n[Earlier file: lost.png]',
+      content: 'look\n\n[Earlier file: "lost.png"]',
       files: [],
     });
   });
@@ -412,13 +413,204 @@ describe('useBedrockChat files', () => {
       expect(new TextEncoder().encode(body).length).toBeLessThan(REQUEST_LIMIT);
       const { messages } = JSON.parse(body) as { messages: SentMessage[] };
       expect(messages[0].files).toEqual([]);
-      expect(messages[0].content.endsWith('\n\n[Earlier file: old.pdf]')).toBe(true);
+      expect(messages[0].content.endsWith('\n\n[Earlier file: "old.pdf"]')).toBe(true);
       // The new message's own file always goes
       expect(messages[1].files.map((f) => f.name)).toEqual(['new.pdf']);
       expect(result.current.messages.at(-1)?.filesNotResent).toBe(1);
     },
     LARGE_FILE_TIMEOUT
   );
+});
+
+describe('regenerate and retry that cannot send', () => {
+  type TestModel = { id: string; name: string; provider: 'bedrock' | 'groq' | 'kiro' };
+  const KIRO: TestModel = { id: 'claude-haiku', name: 'Claude Haiku', provider: 'kiro' };
+  const GROQ: TestModel = { id: 'gpt-oss', name: 'gpt-oss', provider: 'groq' };
+
+  /** A stored turn: a user message with one file, and a Bedrock reply */
+  async function storedTurn(
+    text: string,
+    file: { name: string; format: string; mediaType: string }
+  ): Promise<string> {
+    const { id } = await conversationService.create();
+    const base = {
+      conversationId: id,
+      createdAt: new Date(),
+      provider: 'bedrock' as const,
+      modelId: model.id,
+      modelName: model.name,
+    };
+    await conversationService.addMessage({ ...base, role: 'user', content: text, sequence: 1 }, [
+      { ...file, size: 4, data: new Uint8Array([1, 2, 3, 4]).buffer as ArrayBuffer },
+    ]);
+    await conversationService.addMessage({
+      ...base,
+      role: 'assistant',
+      content: 'ok',
+      sequence: 2,
+    });
+    return id;
+  }
+
+  function renderWith(id: string, selectedModel: TestModel) {
+    return renderHook(() =>
+      useBedrockChat({
+        conversationId: id,
+        selectedModel,
+        maxTokens: 1024,
+        maxToolSteps: 10,
+        thinkingEffort: 'default',
+      })
+    );
+  }
+
+  const PDF_FILE = { name: 'report.pdf', format: 'pdf', mediaType: 'application/pdf' };
+
+  it.each([
+    [
+      'an only-files message and a Kiro model',
+      '',
+      PDF_FILE,
+      KIRO,
+      'This model cannot read report.pdf. Pick a different model to regenerate this reply.',
+    ],
+    [
+      'an only-files message whose only file is an old SVG',
+      '',
+      { name: 'old.svg', format: 'svg', mediaType: 'image/svg+xml' },
+      { ...model } as TestModel,
+      'This message has no text and no file that the app can send.',
+    ],
+    [
+      'a PDF message and a Groq model',
+      'read this',
+      PDF_FILE,
+      GROQ,
+      'This model cannot read report.pdf. Pick a different model to regenerate this reply.',
+    ],
+  ])('regenerate: %s keeps the rows and sends nothing', async (_name, text, file, m, reason) => {
+    vi.mocked(toast.error).mockClear();
+    const id = await storedTurn(text, file);
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as never;
+    const { result } = renderWith(id, m);
+    await waitFor(() => expect(result.current.messages).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.regenerate(1);
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await conversationService.getMessages(id)).toHaveLength(2);
+    expect(await conversationService.getAttachments(id)).toHaveLength(1);
+    expect(result.current.messages).toHaveLength(2);
+    expect(toast.error).toHaveBeenCalledWith(reason);
+  });
+
+  it('retry: an only-files message and a Kiro model keeps the rows and sends nothing', async () => {
+    vi.mocked(toast.error).mockClear();
+    const id = await storedTurn('', PDF_FILE);
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as never;
+    const { result } = renderWith(id, KIRO);
+    await waitFor(() => expect(result.current.messages).toHaveLength(2));
+
+    await act(async () => {
+      await result.current.retryLast();
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await conversationService.getMessages(id)).toHaveLength(2);
+    expect(await conversationService.getAttachments(id)).toHaveLength(1);
+    expect(toast.error).toHaveBeenCalledWith(
+      'This model cannot read report.pdf. Pick a different model to send this message again.'
+    );
+  });
+});
+
+describe('an earlier message over the limits of one message', () => {
+  type ReadChatRequest = (
+    req: AsyncIterable<string>,
+    res: unknown
+  ) => Promise<{ messages: SentMessage[] } | null>;
+  // The server's own check, on the body that the hook built (a path, so the browser tsconfig
+  // does not type-check the server)
+  const SECURITY = '../../../server/security.ts';
+
+  it('sends the newest 5 of 6 earlier PDFs, the 6th as a line, and the server takes it', async () => {
+    const { readChatRequest } = (await import(/* @vite-ignore */ SECURITY)) as {
+      readChatRequest: ReadChatRequest;
+    };
+    const rawBodies: string[] = [];
+    const bodies = mockReplies();
+    const replies = globalThis.fetch as unknown as (url: string, init: { body: string }) => unknown;
+    globalThis.fetch = vi.fn(async (url: string, init: { body: string }) => {
+      rawBodies.push(init.body);
+      return replies(url, init);
+    }) as never;
+
+    const { id } = await conversationService.create();
+    const base = {
+      conversationId: id,
+      createdAt: new Date(),
+      provider: 'bedrock' as const,
+      modelId: model.id,
+      modelName: model.name,
+    };
+    // A chat from before the limits: 6 small PDFs in one message
+    await conversationService.addMessage(
+      { ...base, role: 'user', content: 'six', sequence: 1 },
+      Array.from({ length: 6 }, (_, i) => ({
+        name: `p${i + 1}.pdf`,
+        format: 'pdf',
+        mediaType: 'application/pdf',
+        size: 4,
+        data: new Uint8Array([37, 80, 68, 70]).buffer as ArrayBuffer,
+      }))
+    );
+    await conversationService.addMessage({
+      ...base,
+      role: 'assistant',
+      content: 'ok',
+      sequence: 2,
+    });
+
+    const { result } = renderChat(id);
+    await waitFor(() => expect(result.current.messages).toHaveLength(2));
+    await act(async () => {
+      await result.current.sendMessage('next');
+    });
+
+    const [first] = bodies[0];
+    expect(first.files.map((f) => f.name)).toEqual([
+      'p2.pdf',
+      'p3.pdf',
+      'p4.pdf',
+      'p5.pdf',
+      'p6.pdf',
+    ]);
+    expect(first.content).toBe('six\n\n[Earlier file: "p1.pdf"]');
+    await waitFor(() => expect(result.current.messages).toHaveLength(4));
+    expect(result.current.messages[3].filesNotResent).toBe(1);
+
+    const sent: string[] = [];
+    const res = {
+      headersSent: false,
+      setHeader: () => undefined,
+      getHeader: () => undefined,
+      removeHeader: () => undefined,
+      writeHead: () => res,
+      end: (text?: string) => {
+        if (text) sent.push(text);
+      },
+    };
+    const checked = await readChatRequest(
+      (async function* () {
+        yield rawBodies[0];
+      })(),
+      res
+    );
+    expect(sent).toEqual([]);
+    expect(checked?.messages[0].files).toHaveLength(5);
+  });
 });
 
 describe('buildChatMessages', () => {
@@ -446,7 +638,7 @@ describe('buildChatMessages', () => {
       user('u2', 'z'.repeat(3 * 1024 * 1024), [{ filename: 'b.pdf', data: b64(1) }]),
     ]);
     expect(chatMessages[0].files).toEqual([]);
-    expect(chatMessages[0].content.endsWith('[Earlier file: a.pdf]')).toBe(true);
+    expect(chatMessages[0].content.endsWith('[Earlier file: "a.pdf"]')).toBe(true);
     expect(chatMessages[2].files).toHaveLength(1);
     expect(filesNotResent).toBe(1);
     expect(bodySize(chatMessages)).toBeLessThanOrEqual(REQUEST_BUDGET);
@@ -473,7 +665,7 @@ describe('buildChatMessages', () => {
     ]);
     expect(chatMessages[0]).toEqual({
       role: 'user',
-      content: 'again\n\n[File not kept: lost.png]',
+      content: 'again\n\n[File not kept: "lost.png"]',
       files: [],
     });
     expect(filesNotResent).toBe(0);
@@ -493,7 +685,7 @@ describe('buildChatMessages', () => {
     );
     expect(chatMessages[0]).toEqual({
       role: 'user',
-      content: 'read this\n\n[Earlier file: a.pdf]',
+      content: 'read this\n\n[Earlier file: "a.pdf"]',
       files: [],
     });
     expect(chatMessages[2].files).toEqual([{ name: 'notes.md', format: 'md', bytes: 'eA==' }]);

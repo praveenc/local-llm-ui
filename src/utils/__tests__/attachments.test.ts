@@ -9,8 +9,11 @@ import {
   acceptsAnyFile,
   classifyFile,
   fileAccepts,
+  hasUnsafeNameCharacter,
   messageLimitReason,
+  noModelReason,
   notAcceptedReason,
+  quoteFileName,
 } from '../attachments';
 
 describe('classifyFile', () => {
@@ -135,5 +138,42 @@ describe('messageLimitReason', () => {
         { kind: 'text', size: 4 * 1024 * 1024 },
       ])
     ).toBe('The files of a message can be at most 7.5 MB together.');
+  });
+});
+
+describe('file names', () => {
+  it.each([
+    ['a C0 control', 'a\nb.pdf'],
+    ['a C1 control', 'a\u0085b.pdf'],
+    ['U+2028', 'a\u2028b.pdf'],
+    ['U+2029', 'a\u2029b.pdf'],
+    ['U+202A', 'a\u202Ab.pdf'],
+    ['U+202E', 'a\u202Eb.pdf'],
+    ['U+2066', 'a\u2066b.pdf'],
+    ['U+2069', 'a\u2069b.pdf'],
+  ])('refuses %s in a name', (_name, name) => {
+    expect(hasUnsafeNameCharacter(name)).toBe(true);
+  });
+
+  it('takes a plain name, accents, and other Unicode', () => {
+    expect(hasUnsafeNameCharacter('Café report (2) €.pdf')).toBe(false);
+    expect(hasUnsafeNameCharacter('a\u2027b\u206Ac.pdf')).toBe(false);
+  });
+
+  it('quotes a name as a JSON string', () => {
+    expect(quoteFileName('a.pdf')).toBe('"a.pdf"');
+    expect(quoteFileName('a"] b.pdf')).toBe('"a\\"] b.pdf"');
+  });
+
+  it('says the same words with no model, for one file and for several', () => {
+    expect(noModelReason(['a.pdf'])).toBe(
+      'With no model selected, the chat cannot read a.pdf. Pick a model to send it.'
+    );
+    expect(noModelReason(['a.pdf', 'b.md'])).toBe(
+      'With no model selected, the chat cannot read a.pdf and b.md. Pick a model to send them.'
+    );
+    expect(notAcceptedReason(undefined, fileAccepts(undefined), 'a.pdf', 'pdf')).toBe(
+      noModelReason(['a.pdf'])
+    );
   });
 });

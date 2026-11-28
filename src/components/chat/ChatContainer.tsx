@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
@@ -38,13 +38,17 @@ import {
 } from '../../types/ai-messages';
 import {
   MAX_FILE_BYTES,
+  UNSAFE_NAME_REASON,
   acceptList,
   acceptsAnyFile,
   acceptsKind,
   classifyFile,
   fileAccepts,
   fileTooLargeReason,
+  hasUnsafeNameCharacter,
+  listNames,
   messageLimitReason,
+  noModelReason,
   notAcceptedReason,
 } from '../../utils/attachments';
 import type { FileAccepts, FileKind } from '../../utils/attachments';
@@ -206,6 +210,7 @@ function fileRefusal(
   name: string,
   mediaType: string
 ): { reason: string } | { kind: FileKind } {
+  if (hasUnsafeNameCharacter(name)) return { reason: UNSAFE_NAME_REASON };
   const info = classifyFile(name, mediaType);
   if (info.kind === 'unsupported') return { reason: info.reason ?? `${name} cannot be sent.` };
   if (!acceptsKind(accepts, info.kind)) {
@@ -268,13 +273,9 @@ function unreadableFiles(
 
 /** The message that blocks the send, naming the files */
 function blockedFilesMessage(model: UnifiedModel | null, names: string[]): string {
-  const list =
-    names.length === 1
-      ? names[0]
-      : `${names.slice(0, -1).join(', ')}${names.length > 2 ? ',' : ''} and ${names.at(-1)}`;
+  if (!model) return noModelReason(names);
   const it = names.length === 1 ? 'it' : 'them';
-  const who = model ? 'This model' : 'With no model selected, the chat';
-  return `${who} cannot read ${list}. Remove ${it} or pick a different model to send.`;
+  return `This model cannot read ${listNames(names)}. Remove ${it} or pick a different model to send.`;
 }
 
 const ChatContainer = ({
@@ -454,6 +455,14 @@ const ChatContainer = ({
   // One timer at a time, so an older timer cannot clear a newer error early
   const fileErrorTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(fileErrorTimerRef.current), []);
+  // The blocked-send line replaces an earlier refusal line, so the alert shows one message
+  const handleBlockedFiles = useCallback((names: string[]) => {
+    setBlockedFiles(names);
+    if (names.length > 0) {
+      clearTimeout(fileErrorTimerRef.current);
+      setFileError(null);
+    }
+  }, []);
   const handleFileError = (err: { code: string; message: string }) => {
     setFileError(err.message);
     clearTimeout(fileErrorTimerRef.current);
@@ -554,6 +563,11 @@ const ChatContainer = ({
                       );
 
                       const files = message.parts.filter((p): p is FilePart => p.type === 'file');
+                      // A user message with only files shows its files, and no empty text bubble
+                      const onlyFiles =
+                        message.role === 'user' &&
+                        files.length > 0 &&
+                        getTextContent(message).trim().length === 0;
                       const switchedTo = modelSwitches.get(index);
                       return (
                         <Fragment key={message.id}>
@@ -562,7 +576,7 @@ const ChatContainer = ({
                             {message.role === 'user' && files.length > 0 && (
                               <MessageFiles files={files} />
                             )}
-                            {showAvatar ? (
+                            {onlyFiles ? null : showAvatar ? (
                               <div className="flex items-start justify-end gap-2">
                                 {content}
                                 <MessageAvatar initials={avatarInitials} className="mt-0.5" />
@@ -689,7 +703,7 @@ const ChatContainer = ({
             className="@container w-full max-w-3xl mx-auto"
             inputGroupClassName={composerCard}
           >
-            <BlockedFilesWatch model={selectedModel} onChange={setBlockedFiles} />
+            <BlockedFilesWatch model={selectedModel} onChange={handleBlockedFiles} />
             <PromptInputHeader className="px-3 pb-0 pt-3 empty:hidden">
               <PromptInputAttachments className="p-0">
                 {(attachment) => (

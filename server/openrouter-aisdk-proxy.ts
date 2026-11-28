@@ -73,26 +73,43 @@ function storeModalities(payload: OpenRouterModelsResponse): void {
   modalitiesCache = { at: Date.now(), byModel };
 }
 
-/** For tests: forget the kept model list */
+/** How long a failed list fetch is remembered: no new fetch, and the free parser, in that time */
+const LIST_FAILURE_TTL_MS = 60 * 1000;
+let listFailedAt: number | null = null;
+
+/** For tests: forget the kept model list and a failed fetch */
 export function clearOpenRouterModalitiesCache(): void {
   modalitiesCache = null;
+  listFailedAt = null;
 }
 
 /**
  * The input modalities of `modelId` from the server's own copy of OpenRouter's model list
- * (fetched again after an hour). Empty when the list cannot load or has no such model.
+ * (fetched again after an hour). Empty when the list cannot load or has no such model. A failed
+ * fetch is remembered for 60 s, so later requests do not wait on the list again.
  */
 async function modelInputModalities(modelId: string, apiKey: string): Promise<string[]> {
+  if (listFailedAt !== null && Date.now() - listFailedAt < LIST_FAILURE_TTL_MS) return [];
   if (!modalitiesCache || Date.now() - modalitiesCache.at > MODALITIES_TTL_MS) {
+    let loaded = false;
     try {
       const response = await fetch(`${OPENROUTER_BASE_URL}/models`, {
         headers: { Authorization: `Bearer ${apiKey}` },
         signal: AbortSignal.timeout(10_000),
       });
-      if (response.ok) storeModalities((await response.json()) as OpenRouterModelsResponse);
+      if (response.ok) {
+        storeModalities((await response.json()) as OpenRouterModelsResponse);
+        loaded = true;
+      }
     } catch {
       // No list: the model counts as one that cannot read files, so the free parser runs
     }
+    if (!loaded) {
+      listFailedAt = Date.now();
+      modalitiesCache = null;
+      return [];
+    }
+    listFailedAt = null;
   }
   return modalitiesCache?.byModel.get(modelId) ?? [];
 }
@@ -101,17 +118,16 @@ async function modelInputModalities(modelId: string, apiKey: string): Promise<st
  * The provider options for a PDF. OpenRouter parses a PDF for a model that cannot read files,
  * and its default parser is paid OCR. The app never starts a paid parser by itself: a model
  * without `file` in its input modalities gets the free `cloudflare-ai` engine; a model with it
- * reads the PDF natively and gets no plugin.
+ * gets the `native` engine, so a route that cannot read the PDF fails instead of falling back
+ * to paid OCR.
  */
 export async function pdfProviderOptions(
   modelId: string,
   apiKey: string
-): Promise<
-  { openrouter: { plugins: Array<{ id: string; pdf: { engine: string } }> } } | undefined
-> {
+): Promise<{ openrouter: { plugins: Array<{ id: string; pdf: { engine: string } }> } }> {
   const modalities = await modelInputModalities(modelId, apiKey);
-  if (modalities.includes('file')) return undefined;
-  return { openrouter: { plugins: [{ id: 'file-parser', pdf: { engine: 'cloudflare-ai' } }] } };
+  const engine = modalities.includes('file') ? 'native' : 'cloudflare-ai';
+  return { openrouter: { plugins: [{ id: 'file-parser', pdf: { engine } }] } };
 }
 
 function parseJsonSafely(value: string): unknown | null {
