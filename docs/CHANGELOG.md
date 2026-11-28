@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Removed
 
-- The Kiro agents (`.kiro/agents/`) and Kiro hooks (`.kiro/hooks/`), and `skills-lock.json`, which pinned the `ai-elements` skill for the agents. `.kiro/` keeps only the steering files in `.kiro/steering/`. `.agents/` is now in `.gitignore`, as `.claude/` and `.pi/` are ([#PR-RAC])
+- The Kiro agents (`.kiro/agents/`) and Kiro hooks (`.kiro/hooks/`), and `skills-lock.json`, which pinned the `ai-elements` skill for the agents. `.kiro/` keeps only the steering files in `.kiro/steering/`. `.agents/` is now in `.gitignore`, as `.claude/` and `.pi/` are ([#154])
 - The agent folders of Claude Code (`.claude/`) and Pi (`.pi/`). They held old copies of the agents in `.kiro/agents/`, with model ids that no longer exist. Both folders are now in `.gitignore`, so the local settings of these tools stay out of Git ([#152])
 - UI code that the app does not use: the `MessageBranch` parts and `MessageToolbar` of the message component, `ModelSelectorDialog`, `ModelSelectorShortcut`, and `ModelSelectorLogoGroup` of the model picker, `PromptInputSpeechButton` with its speech code and `PromptInputCommandSeparator` of the chat input, `PaginationEllipsis`, `TableFooter`, `TableCaption`, the button group component (`src/components/ui/button-group.tsx`), and the unused file `src/components/ui/index.ts`. Nothing changes on screen. `MessageAttachment` and `MessageAttachments` stay for the attachment work (#122, #123) ([#141])
 - The direct dependency `@radix-ui/react-use-controllable-state`. Nothing in the app imports it. The Radix packages still install it for their own use (#121) ([#141])
@@ -325,6 +325,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#154]: https://github.com/praveenc/local-llm-ui/pull/154
 [#152]: https://github.com/praveenc/local-llm-ui/pull/152
 [#151]: https://github.com/praveenc/local-llm-ui/pull/151
 [#145]: https://github.com/praveenc/local-llm-ui/pull/145
