@@ -225,8 +225,9 @@ samconfig.toml
 # bv (beads viewer) local config and caches
 .bv/
 
-# Claude Code local settings (machine-specific permissions)
-.claude/settings.local.json
+# Local settings of other coding agents. The project agents are in .kiro/agents/
+.claude/
+.pi/
 
 # Agent skills: restored from skills-lock.json with `npx skills install`
 .agents/skills/
