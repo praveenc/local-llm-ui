@@ -36,8 +36,8 @@ This document captures security findings, hardening patterns, and best practices
 │  Full 3-category audit (OWASP LLM + Node + MCP) │
 │  Run when: new endpoints, MCP changes, auth     │
 ├─────────────────────────────────────────────────┤
-│  Layer 3: pre-pr-review chain (before merge)    │
-│  security-reviewer → github-pr pipeline         │
+│  Layer 3: before merge                          │
+│  security-reviewer, then github-pr              │
 │  Security findings appear in PR description     │
 └─────────────────────────────────────────────────┘
 ```
