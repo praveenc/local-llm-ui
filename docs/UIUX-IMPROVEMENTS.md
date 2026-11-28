@@ -1,6 +1,6 @@
 # UI and UX improvements
 
-Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Items 19 to 21 are done and ship in release 1.3.0. In [Plan 3](#plan-3-mcp-servers), items 22 and 23 are done and ship in release 1.4.0. Item 24 is done in M3 ([#140](https://github.com/praveenc/local-llm-ui/pull/140)). Item 25 is in review in M4. The decisions D14 to D19 are made. Last updated 2026-11-27. See [Progress](#progress) for the state of each item.
+Status: Plan 1 (items 1 to 14) and [Plan 2](#plan-2) (items 15 to 18) are done. Both ship in release 1.2.0. Items 19 to 21 are done and ship in release 1.3.0. In [Plan 3](#plan-3-mcp-servers), items 22 and 23 are done and ship in release 1.4.0. Item 24 is done in M3 ([#140](https://github.com/praveenc/local-llm-ui/pull/140)). Item 25 is done in M4 ([#145](https://github.com/praveenc/local-llm-ui/pull/145)). The decisions D14 to D19 are made. In [Plan 4](#plan-4-attached-files), item 26 is in review, with the decisions D-A to D-H. Last updated 2026-11-28. See [Progress](#progress) for the state of each item.
 
 This document reviews the current chat UI and proposes changes, in order of impact. It also records the decisions made so far and the questions that are still open.
 
@@ -20,6 +20,7 @@ This document reviews the current chat UI and proposes changes, in order of impa
 - [Open questions](#open-questions)
 - [Plan 2](#plan-2)
 - [Plan 3: MCP servers](#plan-3-mcp-servers)
+- [Plan 4: Attached files](#plan-4-attached-files)
 
 ## Decisions
 
@@ -73,7 +74,8 @@ This document reviews the current chat UI and proposes changes, in order of impa
 | 22 | MCP servers that fail say why, and recover | M1 `fix/mcp-npx-launch` ([#93](https://github.com/praveenc/local-llm-ui/pull/93), stacked on [#92](https://github.com/praveenc/local-llm-ui/pull/92)) | Done, merged ([#93](https://github.com/praveenc/local-llm-ui/pull/93)) |
 | 23 | Clearer Add MCP server form | M2 `fix/mcp-server-form` ([#92](https://github.com/praveenc/local-llm-ui/pull/92)) | Done, merged ([#92](https://github.com/praveenc/local-llm-ui/pull/92)) |
 | 24 | Local servers that are standalone programs | M3 `feat/mcp-standalone-commands` ([#140](https://github.com/praveenc/local-llm-ui/pull/140)) | Done, merged ([#140](https://github.com/praveenc/local-llm-ui/pull/140)) |
-| 25 | Import MCP servers from other tools | M4 `feat/mcp-import` ([#145](https://github.com/praveenc/local-llm-ui/pull/145)) | In review ([#145](https://github.com/praveenc/local-llm-ui/pull/145)) |
+| 25 | Import MCP servers from other tools | M4 `feat/mcp-import` ([#145](https://github.com/praveenc/local-llm-ui/pull/145)) | Done, merged ([#145](https://github.com/praveenc/local-llm-ui/pull/145)) |
+| 26 | Attached files for every provider that can read them | A1 `feat/attachment-storage` ([#143](https://github.com/praveenc/local-llm-ui/pull/143)), A2 `feat/attachment-providers` ([#151](https://github.com/praveenc/local-llm-ui/pull/151)) | A1 done, merged ([#143](https://github.com/praveenc/local-llm-ui/pull/143)). A2 in review ([#151](https://github.com/praveenc/local-llm-ui/pull/151)) |
 
 ### Found during the work
 
@@ -892,3 +894,42 @@ Tests:
 - M2: component tests for the empty name, the focus, the help text, and the quote warning. Screenshots of the form in light and dark mode at 1440, 1024, and 390 px.
 - M3: tests for a name on `PATH`, a full path, `~/`, a relative path, a missing file, a folder, and a file that is not executable. With the real dev server: a standalone server program by name and by full path.
 - M4: tests of the mapping and the grouping with fixture files in a temporary home folder. Screenshots use the fixture home folder, so that no real server names show in the PR.
+
+## Plan 4: Attached files
+
+Plan 4 makes attached files work for every provider that can read them. It comes from the issues #100, #101, and #102, which an audit of `main` at `6fba0e7` confirmed. The audit read the provider packages in `node_modules` and the AWS Converse and OpenRouter documentation.
+
+### 26. Attached files for every provider that can read them
+
+- **Categories:** Core flows. **Effort:** L.
+- **Problem:**
+  - The chat input offered files to every provider except Kiro, but only the Amazon Bedrock proxy read them. The other proxies dropped the files with no message (#100).
+  - The app kept only the file names, so the files were gone after a reload, and **Regenerate** and **Send to Fork** sent the message without them (#102).
+  - The transcript did not show the files (#101).
+- **Bedrock bugs found in the audit:**
+  - Every document reached the model as `document-1`, `document-2`.
+  - SVG, HEIC, BMP, and TIFF images went to Bedrock as text documents.
+  - The chat input allowed 20 files of 4.5 MB each. Bedrock allows 5 documents and 20 images for each message, and the server body limit is 10 MB.
+  - An only-files send stored the made-up text "Please analyze the attached file(s)." as the user's message.
+- **Done in A1** ([#143](https://github.com/praveenc/local-llm-ui/pull/143)): D-C, D-D, D-E, D-G, and the storage part of D-H. The Dexie table `attachments` (schema version 4), the files in the transcript, the files sent again on later turns within the request budget, and **File not kept** when the bytes are missing.
+- **Done in A2** (`feat/attachment-providers`): D-A, D-B, the rest of D-H, and the Bedrock bugs.
+  - `src/utils/attachments.ts`: the file kinds, the provider table, the limits, and the reasons in words, for the browser and the server.
+  - `server/model-messages.ts`: the messages for each provider, text files as `<file name="…">` blocks, and a `400` before the stream for a kind that the provider cannot take.
+  - `readChatRequest` checks each file: the name, the format, the base64, the size, and the limits of each message.
+  - The model lists keep `vision` (Ollama, LM Studio, OpenRouter), and each model gets `accepts`.
+  - The chat input refuses a file with the reason, blocks the send after a model change, and shows **Add photos or files** only for a model that reads files.
+  - **Regenerate** and **Retry** check the send before they remove the reply.
+  - OpenRouter always gets a `file-parser` plugin for a PDF, so it never runs its paid OCR.
+
+#### Decisions for Plan 4
+
+| # | Question | Decision |
+|---|---|---|
+| D-A | Which providers get which files | (c) Bedrock: all types. Anthropic: images and PDF. OpenRouter: PDF, and images for models whose list says `image`. Ollama and LM Studio: images for models whose list reports vision. Text and code files go into the message text for all these providers and for Groq and Cerebras. Mantle and Kiro: no files. |
+| D-B | What happens with a file that the model cannot read | The chat input refuses it when you add it, with the reason in words. **Add photos or files** is hidden only when the model takes no type. A change to a model that cannot read the files in the chat input blocks the send and names the files. |
+| D-C | Where the bytes are kept | (a) A Dexie table `attachments` (schema version 4). The message keeps the metadata only. |
+| D-D | How the transcript shows files | (b) An image thumbnail, or a chip with the name, the type, and the size. **File not kept** when the bytes are missing. |
+| D-E | Earlier files on later turns | (c) Sent again while the request stays under the body limit. After that, the oldest go as a text line, and a line under the reply says so. |
+| D-F | Kiro | (a) No files for now. Kiro keeps its own history, so it needs its own design. |
+| D-G | Regenerate, retry, and fork | They keep the files. |
+| D-H | Limits | 4.5 MB a file. 20 images, 5 other files, and 7.5 MB for each message. Images are png, jpeg, gif, and webp only. 500 MB for all stored files. |

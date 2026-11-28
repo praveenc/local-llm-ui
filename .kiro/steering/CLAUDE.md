@@ -117,7 +117,7 @@ Code shared by the browser and the server lives in `src/utils/` (`thinkingEffort
 ## Provider-Specific Notes
 
 - **Sampling parameters**: The app does not send `temperature` or `top_p` (UI or proxies). Claude 4.7+ rejects them ("`temperature` is deprecated for this model"); all models use their own defaults
-- **Bedrock document upload**: PDF, TXT, HTML, MD, CSV, DOC(X), XLS(X); max 4.5MB per file
+- **Attached files**: one rule in `src/utils/attachments.ts` for the browser and the server: the file kinds (images png, jpeg, gif, webp only; PDF; Office; text and code), which provider reads which kind (`PROVIDER_TABLE`, `fileAccepts`), the limits (4.5 MB a file, 20 images and 5 other files a message, 7.5 MB in total), and the reasons in words. Ollama, LM Studio, and OpenRouter read images only for models whose model list reports vision (`ModelInfo.vision` → `UnifiedModel.accepts`). `server/model-messages.ts` (`toModelMessages`) turns the request messages into AI SDK messages for one provider: native file parts where the provider reads them, text files as `<file name="…">` blocks in the message text, and a `400` before the stream for a file that the provider cannot take. Mantle and Kiro take no files. OpenRouter always gets a `file-parser` plugin for a PDF (`native` for a model with `file` in its modalities, else the free `cloudflare-ai`), so OpenRouter never runs its paid OCR
 - **LM Studio**: Turn on JIT Loading in the LM Studio server settings; the app does not load models itself
 
 ## Container Requirement

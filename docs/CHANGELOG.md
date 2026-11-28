@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Added
 
+- Attached files now go to every provider that can read them. Anthropic reads images and PDFs. OpenRouter reads PDFs, and images on models that read images. Ollama and LM Studio read images on models that read images. Groq and Cerebras read text files. Text and code files, for example `.md`, `.csv`, `.json`, or source code, go to all these providers as text in the message. Bedrock Mantle and Kiro take no files. Before, only Amazon Bedrock got the files, and the other providers dropped them with no message (#100) ([#151])
+- The chat input refuses a file that the selected model cannot read, or that goes over a limit, and says why, for example "Groq models read text files only. report.pdf is a PDF.". The limits for each message are 4.5 MB a file, 20 images, 5 other files, and 7.5 MB in total. When you change to a model that cannot read the files in the chat input, the send button is off, and a line names the files. **Add photos or files** shows only for a model that reads files ([#151])
 - Attached files stay with the chat. The app keeps each file in your browser, so the file is still there after a reload, and the model gets it again on later turns, after **Regenerate**, and in a fork from **Send to Fork**. When the files are too large to send again in one request, the app sends the oldest ones as a line with their name, and a line under the reply says, for example, **1 earlier file was not sent again**. The app keeps at most 500 MB of data. When it cannot keep a file, it saves the message without that file, and the file says **File not kept**. Before, the app kept only the file names, so the files were gone after a reload, and **Regenerate** and **Send to Fork** sent the message without them (#102) ([#143])
 - Your message shows its files above the text. An image shows as a thumbnail that opens full size in a new tab. Each other file shows its name, its type, and its size. Before, the transcript did not show the files (#101) ([#143])
 - **Import** for MCP servers: **Preferences → MCP Servers** reads the MCP config files of Kiro, Pi, Claude Code, Cursor, Claude Desktop, Gemini CLI, Devin Desktop, and Windsurf. When the files have servers that the app does not have, the tab shows a line, for example "3 servers in Kiro and Pi are not in this app", with **Import** and **Not now**. **Import** lists the servers by tool, with **Select all** and **Import N servers**. A server that two tools have shows once, with "Found in Kiro and Pi". A server that the app has shows **Already added**. A server that the app cannot start shows **Cannot run** and the reason. A row with `${…}` in an environment value, a URL, or a header has a note that says to type the real value after the import. The app adds the servers off. **Not now** hides the line until a new server shows up in the files, and then the line counts only the new servers. The app reads only these files, and the list shows no secret value: the app sends the values of a server to the browser only when you import it ([#145])
@@ -32,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- Amazon Bedrock gets the name of each document. Before, every document reached the model as `document-1`, `document-2`, so the model could not tell the files apart ([#151])
+- An SVG, HEIC, BMP, or TIFF image is refused with a reason. Before, the app sent it to Bedrock as a text document ([#151])
+- A message with only files stores no text. Before, the app stored "Please analyze the attached file(s)." as your message. A chat that starts with only files keeps its title until the first message with text ([#151])
+- **Regenerate** and **Retry** check that the selected model can send the message before they remove the reply. Before, an only-files message with a model that takes no files, or with a file type that the app no longer sends, lost its turn and sent nothing ([#151])
+- For a PDF on OpenRouter, the app always asks for the model's own PDF reader or OpenRouter's free parser. With no choice, OpenRouter uses its paid OCR for some models ([#151])
 - The pager of **Saved Prompts** works with the keyboard. Tab goes to **Previous**, to each page number, and to **Next**, with a visible focus ring, and Enter or Space opens the page. A line above the pager says, for example, **Page 2 of 5**, and screen readers hear the current page. At the first and the last page, **Previous** or **Next** is dimmed but keeps the focus. On a touch screen, each button is 44 px. A page change scrolls the list to the top. Before, the page numbers were links with no target, so the keyboard could not reach them (#105) ([#136])
 - When you delete the last prompt on the last page of **Saved Prompts**, the list shows the page before it. Before, the list said **No saved prompts** although the other pages had prompts ([#136])
 - **Saved Prompts** reads the prompts once, and the category filter comes from the same read. Before, the app read all the prompts a second time only to make the category list (#118) ([#136])
@@ -316,6 +323,7 @@ PR numbers link to GitHub.
 - TypeScript for type safety
 - ESLint for code quality
 
+[#151]: https://github.com/praveenc/local-llm-ui/pull/151
 [#145]: https://github.com/praveenc/local-llm-ui/pull/145
 [#144]: https://github.com/praveenc/local-llm-ui/pull/144
 [#143]: https://github.com/praveenc/local-llm-ui/pull/143
