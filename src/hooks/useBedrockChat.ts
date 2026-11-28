@@ -32,6 +32,7 @@ import {
   acceptsKind,
   classifyFile,
   fileAccepts,
+  hasUnsafeNameCharacter,
   listNames,
   messageLimitReason,
   quoteFileName,
@@ -1261,6 +1262,20 @@ export function resendBlockReason(
   if (unreadable.length > 0) {
     return `This model cannot read ${listNames(unreadable)}. Pick a different model to ${action}.`;
   }
+  // A message stored before the file checks can break them; the server would refuse it
+  const kept = files.filter((p) => p.data !== undefined);
+  if (kept.some((p) => hasUnsafeNameCharacter(p.filename || 'file'))) {
+    return `A file name in this message has a hidden or control character, so the app cannot ${action}. Send the message again with the file renamed.`;
+  }
+  const limit = messageLimitReason(
+    kept.map((p) => ({
+      kind: classifyFile(p.filename || 'file', p.mediaType || '').kind,
+      size: base64Size(p.data ?? ''),
+    }))
+  );
+  if (limit) {
+    return `${limit} This message was sent before that limit, so the app cannot ${action}. Send the message again with fewer files.`;
+  }
   return null;
 }
 
@@ -1308,9 +1323,9 @@ type SentFile = { name: string; format: string; bytes: string };
 /**
  * The messages of a request. The new message's files always go. Earlier files go again, newest
  * first, while the whole history (texts, file lines, and files) fits in `REQUEST_BUDGET`; the
- * older ones, and earlier files whose bytes were not kept, go as a line `[Earlier file: name]`
+ * older ones, and earlier files whose bytes were not kept, go as a line `[Earlier file: "name"]`
  * in their message's text (D-E). A file of the new message without bytes goes as
- * `[File not kept: name]` and is not an earlier file. With `accepts`, an earlier file that the
+ * `[File not kept: "name"]` and is not an earlier file. With `accepts`, an earlier file that the
  * current model cannot read goes as the same line and counts as not sent again (D-B).
  */
 export function buildChatMessages(
@@ -1331,9 +1346,15 @@ export function buildChatMessages(
     bytes: p.data ?? '',
   });
   // An earlier file that the request can carry for this model
+  // An earlier file with a hidden or control character in its name (a chat from before the name
+  // check) goes as a line too: the server refuses such a name
   const readable = (p: FilePart): boolean => {
     const info = classifyFile(p.filename || 'file', p.mediaType || '');
-    return info.format !== undefined && (!accepts || acceptsKind(accepts, info.kind));
+    return (
+      info.format !== undefined &&
+      !hasUnsafeNameCharacter(p.filename || 'file') &&
+      (!accepts || acceptsKind(accepts, info.kind))
+    );
   };
 
   // First the parts that always go: every text and the new message's own files
