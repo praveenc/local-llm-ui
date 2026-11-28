@@ -164,6 +164,15 @@ describe('AcpAgent session calls', () => {
     expect(updates).toHaveLength(2);
   });
 
+  it('ends the replay at the answer line, also when a later update is in the same read', async () => {
+    const c = setup({ FAKE_ACP_SESSIONS: '1', FAKE_ACP_LOAD_SAME_WRITE: '1' }, {}, { loadMeta });
+    const { updates, onUpdate } = collect();
+    const result = await c.agent.replaySession('old-1', '/tmp/fake-acp', onUpdate);
+    expect(result._meta).toEqual({ title: 'Old' });
+    expect(updates.map(chunkText)).toEqual(['earlier one', 'earlier two']);
+    expect(c.agent.isLive('old-1')).toBe(false);
+  });
+
   it('closes a live session before it replays it, and a later ensureSession loads it again', async () => {
     const c = sessionsSetup();
     const { sessionId } = await c.agent.newSession();

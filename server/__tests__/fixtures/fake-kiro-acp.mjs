@@ -391,8 +391,10 @@ async function runPrompt(id, { sessionId, prompt }) {
       sessionUpdate: 'agent_message_chunk',
       content: { type: 'text', text: 'part' },
     });
-    setTimeout(() => process.exit(3), 20);
-    return;
+    // Exit only after the app has read the update: an exit can close the connection before
+    // the app reads the rest of stdout. The app answers this unknown method with -32601.
+    await askAgent('_fake/sync', {});
+    process.exit(3);
   }
   if (text.includes('OPTIONUPDATE')) {
     // Like a change in Kiro during the reply
