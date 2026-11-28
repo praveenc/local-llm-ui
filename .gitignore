@@ -225,9 +225,7 @@ samconfig.toml
 # bv (beads viewer) local config and caches
 .bv/
 
-# Local settings of other coding agents. The project agents are in .kiro/agents/
+# Local files of coding agents. The project keeps only .kiro/steering/ in Git
 .claude/
 .pi/
-
-# Agent skills: restored from skills-lock.json with `npx skills install`
-.agents/skills/
+.agents/

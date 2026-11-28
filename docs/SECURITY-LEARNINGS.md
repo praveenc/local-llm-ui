@@ -24,24 +24,6 @@ This document captures security findings, hardening patterns, and best practices
 
 ## Architecture Security Model
 
-### Three-Layer Defense
-
-```
-┌─────────────────────────────────────────────────┐
-│  Layer 1: ui-implementer (every change)         │
-│  Lightweight checklist — 6 quick checks         │
-│  Flags concerns with ⚠️ SECURITY marker          │
-├─────────────────────────────────────────────────┤
-│  Layer 2: security-reviewer (on demand)         │
-│  Full 3-category audit (OWASP LLM + Node + MCP) │
-│  Run when: new endpoints, MCP changes, auth     │
-├─────────────────────────────────────────────────┤
-│  Layer 3: before merge                          │
-│  security-reviewer, then github-pr              │
-│  Security findings appear in PR description     │
-└─────────────────────────────────────────────────┘
-```
-
 ### Trust Boundaries
 
 ```
