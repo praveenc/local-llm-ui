@@ -49,16 +49,6 @@ npm run lint
 npm run build
 ```
 
-### Agent skills (optional)
-
-`skills-lock.json` pins the `ai-elements` skill for coding agents. The skill files are not in Git. To restore them:
-
-```bash
-npx skills install
-```
-
-This writes the skill to `.agents/skills/`. You need it only for a coding agent, not to build or run the app. The project agents are in `.kiro/agents/`.
-
 ### Project Structure
 
 ```
