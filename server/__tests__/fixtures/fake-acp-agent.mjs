@@ -5,6 +5,7 @@
 // FAKE_ACP_LOG: file; each received message is appended as one JSON line
 // FAKE_ACP_SESSIONS=1: the agent lists and closes sessions, and session/load without `_meta`
 //   replays the session: two updates before the answer and one after it
+// FAKE_ACP_LOAD_SAME_WRITE=1: that update after the answer comes in the same write as the answer
 // Prompt text: TOOL sends a tool_call and asks for a permission, WAIT waits for session/cancel.
 import { appendFileSync } from 'node:fs';
 
@@ -16,7 +17,9 @@ if (process.argv.slice(2).join(' ') !== '--fake-acp') {
 const mode = process.env.FAKE_ACP_MODE ?? 'ok';
 const withSessions = process.env.FAKE_ACP_SESSIONS === '1';
 const logFile = process.env.FAKE_ACP_LOG;
-const send = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
+const sameWrite = process.env.FAKE_ACP_LOAD_SAME_WRITE === '1';
+const encode = (msg) => `${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`;
+const send = (msg) => process.stdout.write(encode(msg));
 const update = (sessionId, u) =>
   send({ method: 'session/update', params: { sessionId, update: u } });
 const log = (msg) => logFile && appendFileSync(logFile, `${JSON.stringify(msg)}\n`);
@@ -108,8 +111,18 @@ process.stdin.on('data', (chunk) => {
         });
         update(params.sessionId, chunk('earlier one'));
         update(params.sessionId, chunk('earlier two'));
-        send({ id, result: { configOptions: OPTIONS, _meta: { title: 'Old' } } });
-        setTimeout(() => update(params.sessionId, chunk('after the answer')), 20);
+        const answer = { id, result: { configOptions: OPTIONS, _meta: { title: 'Old' } } };
+        if (sameWrite) {
+          // The answer and a later update in one write: the app reads them in one chunk
+          const late = {
+            method: 'session/update',
+            params: { sessionId: params.sessionId, update: chunk('after the answer') },
+          };
+          process.stdout.write([answer, late].map((m) => encode(m)).join(''));
+        } else {
+          send(answer);
+          setTimeout(() => update(params.sessionId, chunk('after the answer')), 20);
+        }
       } else {
         send({ id, result: { configOptions: OPTIONS } });
       }

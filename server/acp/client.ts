@@ -55,6 +55,18 @@ interface Pending {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timer?: NodeJS.Timeout;
+  onSettled?: () => void;
+}
+
+/** Runs the request's onSettled once; a throw there must not stop the read loop */
+function settled(entry: Pending): void {
+  const callback = entry.onSettled;
+  entry.onSettled = undefined;
+  try {
+    callback?.();
+  } catch {
+    // The caller's callback only clears its own state
+  }
 }
 
 interface Message {
@@ -118,17 +130,33 @@ export class AcpConnection {
     return this.closedInfo !== undefined;
   }
 
-  request<T>(method: string, params: unknown, options: { timeoutMs?: number } = {}): Promise<T> {
-    if (this.closedInfo)
+  /**
+   * `onSettled` runs synchronously when the request ends (the answer line is handled, a timeout,
+   * or the close), before the next line of the same read and before the promise settles.
+   */
+  request<T>(
+    method: string,
+    params: unknown,
+    options: { timeoutMs?: number; onSettled?: () => void } = {}
+  ): Promise<T> {
+    if (this.closedInfo) {
+      options.onSettled?.();
       return Promise.reject(new AcpClosedError(this.closedInfo.reason, this.name));
+    }
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
-      const entry: Pending = { method, resolve: resolve as (v: unknown) => void, reject };
+      const entry: Pending = {
+        method,
+        resolve: resolve as (v: unknown) => void,
+        reject,
+        onSettled: options.onSettled,
+      };
       if (options.timeoutMs !== undefined) {
         const timeoutMs = options.timeoutMs;
         entry.timer = setTimeout(() => {
           // A late answer is dropped; the connection stays open
           this.pending.delete(id);
+          settled(entry);
           reject(new AcpTimeoutError(method, timeoutMs));
         }, timeoutMs);
         entry.timer.unref();
@@ -171,6 +199,7 @@ export class AcpConnection {
     for (const [id, entry] of this.pending) {
       if (entry.timer) clearTimeout(entry.timer);
       this.pending.delete(id);
+      settled(entry);
       entry.reject(new AcpClosedError(reason, this.name));
     }
     for (const handler of this.closeHandlers.splice(0)) handler(this.closedInfo);
@@ -236,6 +265,8 @@ export class AcpConnection {
       if (!entry) return;
       this.pending.delete(message.id);
       if (entry.timer) clearTimeout(entry.timer);
+      // Before the next line of this read: that line may already belong to after the answer
+      settled(entry);
       if (message.error) {
         const { code = -32603, message: text = 'Unknown error', data } = message.error;
         entry.reject(new AcpError(code, text, data));

@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Fixed
 
+- When you open a Kiro session from the sidebar, the app ends the import at Kiro's answer. Before, an update that Kiro sent right after its answer, in the same read, could be added to the imported chat (#142) ([#153])
 - Amazon Bedrock gets the name of each document. Before, every document reached the model as `document-1`, `document-2`, so the model could not tell the files apart ([#151])
 - An SVG, HEIC, BMP, or TIFF image is refused with a reason. Before, the app sent it to Bedrock as a text document ([#151])
 - A message with only files stores no text. Before, the app stored "Please analyze the attached file(s)." as your message. A chat that starts with only files keeps its title until the first message with text ([#151])
@@ -326,6 +327,7 @@ PR numbers link to GitHub.
 - ESLint for code quality
 
 [#154]: https://github.com/praveenc/local-llm-ui/pull/154
+[#153]: https://github.com/praveenc/local-llm-ui/pull/153
 [#152]: https://github.com/praveenc/local-llm-ui/pull/152
 [#151]: https://github.com/praveenc/local-llm-ui/pull/151
 [#145]: https://github.com/praveenc/local-llm-ui/pull/145
