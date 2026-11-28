@@ -132,7 +132,7 @@ interface ActivePrompt<TInfo> {
 
 /** A session/load with replay that runs now */
 interface Replay<TInfo> {
-  /** The process that replays; cleared when the load answers */
+  /** The process that replays; cleared when the load's answer line is handled */
   gen: Generation<TInfo> | undefined;
   onUpdate: (update: SessionUpdate) => void;
   done: Promise<void>;
@@ -472,9 +472,9 @@ export class AcpAgent<TInfo extends object> {
   /**
    * Reads a session without opening it for prompts: session/load with no `_meta`, so the agent
    * replays the session as session/update notifications before it answers. Each update goes to
-   * `onUpdate` as it comes (not kept). Updates that come in the same read as the answer can
-   * also reach it: the harness tells replayed updates apart by its own fields. Then
-   * session/close. The session is not live afterwards.
+   * `onUpdate` as it comes (not kept). The replay ends when the answer line is handled, so
+   * an update after the answer never reaches it, also in the same read. Then session/close.
+   * The session is not live afterwards.
    *
    * `cwd` must come from the agent's own session list, never from the browser. Throws the
    * 'busy' error while a prompt, a load, or another replay runs in the session.
@@ -509,7 +509,9 @@ export class AcpAgent<TInfo extends object> {
           gen,
           'session/load',
           params,
-          this.timeouts.loadSession
+          this.timeouts.loadSession,
+          // When the answer line is handled: a later line of the same read is not replay
+          () => (replay.gen = undefined)
         );
       } finally {
         replay.gen = undefined;
@@ -752,12 +754,13 @@ export class AcpAgent<TInfo extends object> {
     gen: Generation<TInfo>,
     method: string,
     params: unknown,
-    timeoutMs: number
+    timeoutMs: number,
+    onSettled?: () => void
   ): Promise<T> {
     this.pendingRequests += 1;
     this.clearIdle();
     try {
-      return await gen.conn.request<T>(method, params, { timeoutMs });
+      return await gen.conn.request<T>(method, params, { timeoutMs, onSettled });
     } catch (error) {
       throw this.mapError(error);
     } finally {

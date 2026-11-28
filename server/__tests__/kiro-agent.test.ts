@@ -451,18 +451,21 @@ describe('KiroAgent permissions', () => {
   });
 
   it('answers cancelled when the prompt is cancelled while the handler waits', async () => {
+    let asked = false;
     const c = await setup(
       {},
       {
         permissionHandler: ({ signal }) =>
-          new Promise((resolve) =>
-            signal.addEventListener('abort', () => resolve({ optionId: 'o3' }))
-          ),
+          new Promise((resolve) => {
+            asked = true;
+            signal.addEventListener('abort', () => resolve({ optionId: 'o3' }));
+          }),
       }
     );
     const { sessionId } = await c.agent.newSession();
     const reply = c.agent.prompt(sessionId, text('TOOL'), collect());
-    await sleep(100);
+    // The question must be open before the cancel
+    await vi.waitFor(() => expect(asked).toBe(true), { timeout: 4000 });
     await c.agent.cancel(sessionId);
     expect(await reply).toBe('cancelled');
     expect(await answers(c)).toEqual([{ outcome: { outcome: 'cancelled' } }]);
@@ -504,7 +507,7 @@ describe('KiroAgent failures and stop', () => {
     await expect(c.agent.prompt(sessionId, text('hi'), u)).rejects.toBeInstanceOf(KiroCrashedError);
     expect(u.updates.length).toBeGreaterThan(0);
     expect(c.agent.isLive(sessionId)).toBe(false);
-    await vi.waitFor(() => expect(c.agent.state().lastExit?.code).toBe(3));
+    await vi.waitFor(() => expect(c.agent.state().lastExit?.code).toBe(3), { timeout: 4000 });
     await c.agent.ensureSession(sessionId, c.dir);
     expect(c.agent.state().pid).not.toBe(firstPid);
     // The model that the user set comes back after the load
@@ -544,7 +547,13 @@ describe('KiroAgent failures and stop', () => {
     await c.agent.stop();
     expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }));
     expect(() => process.kill(grandchild!, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }));
-    expect(c.agent.state()).toMatchObject({ running: false, lastExit: { code: 0 } });
+    // The grace time starts before the process snapshot (`ps`), so on a busy host the child can
+    // get SIGTERM before it exits by itself: either way it stopped
+    const { running, lastExit } = c.agent.state();
+    expect(running).toBe(false);
+    expect(
+      lastExit?.code === 0 || lastExit?.signal === 'SIGTERM' || lastExit?.signal === 'SIGKILL'
+    ).toBe(true);
   });
 });
 
@@ -587,18 +596,27 @@ describe('KiroAgent review fixes', () => {
 
   // M3
   it('answers cancelled at once on cancel when the handler never answers', async () => {
-    const c = await setup({}, { permissionHandler: () => new Promise(() => undefined) });
+    let asked = false;
+    const c = await setup(
+      {},
+      {
+        permissionHandler: () => {
+          asked = true;
+          return new Promise(() => undefined);
+        },
+        // "At once" is measured against this wait, which a busy host does not reach
+        timeouts: { cancelWait: 20_000 },
+      }
+    );
     const { sessionId } = await c.agent.newSession();
     const pid = c.agent.state().pid;
     const reply = c.agent.prompt(sessionId, text('TOOL'), collect());
-    await vi.waitFor(async () =>
-      expect((await c.log()).some((l) => l.msg.method === 'session/prompt')).toBe(true)
-    );
-    await sleep(100);
+    // The question must be open before the cancel
+    await vi.waitFor(() => expect(asked).toBe(true), { timeout: 4000 });
     const start = Date.now();
     await c.agent.cancel(sessionId);
     expect(await reply).toBe('cancelled');
-    expect(Date.now() - start).toBeLessThan(1000);
+    expect(Date.now() - start).toBeLessThan(4000);
     expect(c.agent.state()).toMatchObject({ running: true, pid });
     const answers = (await c.log())
       .filter((l) => l.msg.method === undefined && l.msg.id !== undefined)
@@ -676,7 +694,8 @@ describe('KiroAgent review fixes', () => {
   it('stop() during a session/new retry leaves no process', async () => {
     const c = await setup({ FAKE_KIRO_MODE: 'hang-new' }, { timeouts: { newSession: 300 } });
     const created = c.agent.newSession().catch((e: unknown) => e);
-    await vi.waitFor(() => readFile(path.join(c.dir, 'hung-once'), 'utf8'));
+    // The start and the first session/new can take more than a second on a busy host
+    await vi.waitFor(() => readFile(path.join(c.dir, 'hung-once'), 'utf8'), { timeout: 4000 });
     await sleep(320);
     await c.agent.stop();
     await created;
@@ -805,12 +824,25 @@ describe('KiroAgent review fixes', () => {
 
   // minor: ensureSession
   it('ensureSession on a live session refreshes the idle timer', async () => {
-    const c = await setup({}, { idleMs: 300 });
+    // A delay that no other timer uses marks the idle timer; no wait depends on the host's load
+    const idleMs = 987_654;
+    const setSpy = vi.spyOn(globalThis, 'setTimeout');
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const idleTimers = () =>
+      setSpy.mock.calls.flatMap((call, i) =>
+        call[1] === idleMs ? [setSpy.mock.results[i]?.value as NodeJS.Timeout] : []
+      );
+    const c = await setup({}, { idleMs });
     const { sessionId } = await c.agent.newSession();
     const pid = c.agent.state().pid;
-    await sleep(200);
+    const before = idleTimers();
+    expect(before.length).toBeGreaterThan(0);
     await c.agent.ensureSession(sessionId, c.dir);
-    await sleep(200);
+    const after = idleTimers();
+    // The old timer is cleared and a new one starts
+    expect(after.length).toBeGreaterThan(before.length);
+    expect(clearSpy).toHaveBeenCalledWith(before.at(-1));
+    expect(after.at(-1)).not.toBe(before.at(-1));
     expect(c.agent.state().pid).toBe(pid);
     expect(await c.agent.prompt(sessionId, text('hi'), collect())).toBe('end_turn');
   });

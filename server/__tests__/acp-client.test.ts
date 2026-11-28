@@ -141,6 +141,30 @@ describe('AcpConnection requests', () => {
     expect(sent[0]).toMatchObject({ id: 3, error: { code: -32601 } });
   });
 
+  it('runs onSettled when the answer line is handled, before the next line of the same chunk', async () => {
+    const { conn, fromAgent } = pair();
+    const order: string[] = [];
+    conn.onNotification((method) => order.push(method));
+    const answered = conn.request('a', {}, { onSettled: () => order.push('settled') });
+    fromAgent.write(line({ id: 1, result: { ok: true } }) + line({ method: 'late', params: {} }));
+    await expect(answered).resolves.toEqual({ ok: true });
+    expect(order).toEqual(['settled', 'late']);
+  });
+
+  it('runs onSettled once on a timeout and on a close', async () => {
+    const { conn, fromAgent } = pair();
+    let timedOut = 0;
+    let closed = 0;
+    const slow = conn.request('slow', {}, { timeoutMs: 10, onSettled: () => (timedOut += 1) });
+    await expect(slow).rejects.toBeInstanceOf(AcpTimeoutError);
+    // The late answer of a timed-out request runs nothing
+    fromAgent.write(line({ id: 1, result: {} }));
+    const open = conn.request('open', {}, { onSettled: () => (closed += 1) });
+    fromAgent.end();
+    await expect(open).rejects.toBeInstanceOf(AcpClosedError);
+    expect([timedOut, closed]).toEqual([1, 1]);
+  });
+
   it('rejects every pending request on stream end, emits close once, and writes nothing after', async () => {
     const { conn, fromAgent, sent } = pair();
     const closes: unknown[] = [];
@@ -184,8 +208,18 @@ describe('AcpConnection with the fake kiro-cli', () => {
     expect(created.sessionId).toMatch(/^sess_/);
     expect(notes).toContain('_kiro/mcp/status');
     expect(conn.ignoredLines).toBe(1);
-    await stopProcessTree(child, { graceMs: 500, killMs: 1000 });
-    expect(await closed).toMatchObject({ reason: expect.any(String) });
-    expect(child.exitCode).toBe(0);
+    // The fake exits with 0 when its stdin ends. Wait for that exit, with no grace time that a
+    // busy host can use up before the exit (stopProcessTree would then send SIGTERM).
+    const exited = new Promise<number | null>((resolve) =>
+      child.once('exit', (code) => resolve(code))
+    );
+    try {
+      child.stdin.end();
+      expect(await exited).toBe(0);
+      expect(await closed).toMatchObject({ reason: expect.any(String) });
+      expect(child.exitCode).toBe(0);
+    } finally {
+      await stopProcessTree(child, { graceMs: 0, killMs: 1000 });
+    }
   });
 });
