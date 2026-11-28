@@ -41,9 +41,28 @@ describe('OpenRouterService.getModels', () => {
       headers: { 'X-Api-Key': 'or-arg' },
     });
     expect(models).toEqual([
-      { modelId: 'openai/gpt-5', modelName: 'GPT-5', provider: 'openrouter' },
+      { modelId: 'openai/gpt-5', modelName: 'GPT-5', provider: 'openrouter', vision: false },
     ]);
     expect(getItem).not.toHaveBeenCalled();
+  });
+
+  it('reads images only for a model with the image input modality', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            models: [
+              { id: 'a/vision', name: 'V', inputModalities: ['text', 'image', 'file'] },
+              { id: 'a/text', name: 'T', inputModalities: ['text'] },
+              { id: 'a/none', name: 'N' },
+            ],
+          }),
+      })
+    );
+    const models = await new OpenRouterService().getModels({ apiKey: 'k' });
+    expect(models.map((m) => m.vision)).toEqual([true, false, false]);
   });
 
   it('keeps the connect error when the route fails', async () => {

@@ -143,6 +143,8 @@ async function handleListModels(res: ServerResponse): Promise<void> {
       maxContextLength: model.maxContextLength,
       architecture: model.architecture,
       paramsString: model.paramsString,
+      // LM Studio says whether the model reads images (D-A c)
+      vision: 'vision' in model && model.vision === true,
     }));
 
   console.log(`LMStudio SDK: Found ${models.length} LLM models`);

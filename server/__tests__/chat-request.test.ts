@@ -114,6 +114,71 @@ describe('readChatRequest', () => {
     ]);
   });
 
+  describe('files', () => {
+    const withFiles = (files: unknown[]) =>
+      JSON.stringify({ model: 'm', messages: [{ role: 'user', content: 'Hi', files }] });
+    const file = (over: Record<string, unknown> = {}) => ({
+      name: 'a.png',
+      format: 'png',
+      bytes: 'AA==',
+      ...over,
+    });
+    // Base64 of 4.5 MB + 3 bytes: one group over the limit
+    const overLimit = 'A'.repeat(((4.5 * 1024 * 1024 + 3) / 3) * 4);
+
+    it.each([
+      ['26 files', Array.from({ length: 26 }, () => file())],
+      ['an empty name', [file({ name: '' })]],
+      ['a 256-character name', [file({ name: `${'n'.repeat(252)}.png` })]],
+      ['a control character in the name', [file({ name: 'a\nb.png' })]],
+      ['a line separator in the name', [file({ name: 'a\u2028b.png' })]],
+      ['a paragraph separator in the name', [file({ name: 'a\u2029b.png' })]],
+      ['a bidi override in the name', [file({ name: 'gnp\u202Eb.png' })]],
+      ['a bidi isolate in the name', [file({ name: 'a\u2068b.png' })]],
+      ['a format that is not in the list', [file({ format: 'exe' })]],
+      ['an svg format', [file({ format: 'svg' })]],
+      ['bytes that are not base64', [file({ bytes: 'not base64!' })]],
+      ['bytes with a bad length', [file({ bytes: 'AAA' })]],
+      ['a file over 4.5 MB', [file({ bytes: overLimit })]],
+    ])('answers 400 for %s', async (_name, files) => {
+      const { status, request } = await read(withFiles(files), 12 * 1024 * 1024);
+      expect(status).toBe(400);
+      expect(request).toBeNull();
+    });
+
+    it.each([
+      ['21 images', Array.from({ length: 21 }, () => file()), 'at most 20 images'],
+      [
+        '6 documents',
+        Array.from({ length: 6 }, () => file({ name: 'a.md', format: 'md' })),
+        'at most 5 files that are not images',
+      ],
+      [
+        'more than 7.5 MB in total',
+        [
+          file({ bytes: overLimit.slice(0, 4 * 1024 * 1024) }),
+          file({ bytes: overLimit.slice(0, 4 * 1024 * 1024) }),
+          file({ bytes: overLimit.slice(0, 4 * 1024 * 1024) }),
+        ],
+        '7.5 MB',
+      ],
+    ])('names the limit for %s', async (_name, files, words) => {
+      const { status, text } = await read(withFiles(files), 20 * 1024 * 1024);
+      expect(status).toBe(400);
+      expect((JSON.parse(text) as { error: string }).error).toContain(words);
+    });
+
+    it('takes a 255-character name, a text format, and a file of exactly 4.5 MB', async () => {
+      const exact = 'A'.repeat(((4.5 * 1024 * 1024) / 3) * 4);
+      const files = [
+        file({ name: `${'n'.repeat(251)}.png` }),
+        file({ name: 'notes.ts', format: 'ts' }),
+        file({ name: 'big.pdf', format: 'pdf', bytes: exact }),
+      ];
+      expect((await read(withFiles(files), 12 * 1024 * 1024)).status).toBe(200);
+    });
+  });
+
   it('counts the body limit in bytes', async () => {
     // 400 euro signs: 400 characters, 1,200 bytes
     const body = JSON.stringify({

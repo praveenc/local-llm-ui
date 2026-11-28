@@ -28,8 +28,17 @@ import {
   getTextContent,
   toUIMessages,
 } from '../types/ai-messages';
+import {
+  acceptsKind,
+  classifyFile,
+  fileAccepts,
+  hasUnsafeNameCharacter,
+  listNames,
+  messageLimitReason,
+  quoteFileName,
+} from '../utils/attachments';
+import type { FileAccepts, FileKind } from '../utils/attachments';
 import { extractErrorMessage } from '../utils/errorMessage';
-import { normalizeMediaType } from '../utils/fileUtils';
 import {
   type KiroChatRequest,
   type KiroHistoryMessage,
@@ -43,7 +52,7 @@ import {
 } from '../utils/kiroPermissions';
 import { isKiroChatInSync, parseKiroSessionStamp } from '../utils/kiroSessions';
 import { checkableServers } from '../utils/mcpServers';
-import { getMediaTypeFromFormat, lookupFormat } from '../utils/mediaTypes';
+import { getMediaTypeFromFormat } from '../utils/mediaTypes';
 import { loadPreferences } from '../utils/preferences';
 import { isRunningStatus, replyStore } from '../utils/replyStore';
 import {
@@ -107,6 +116,8 @@ export interface ChatModel {
   supportsTools?: boolean;
   /** Kiro: the model's effort levels, for the Thinking choices */
   kiro?: KiroModelMeta;
+  /** The file types that the model reads; unset: the provider's table (D-A c) */
+  accepts?: FileAccepts;
 }
 
 interface UseBedrockChatOptions {
@@ -235,10 +246,12 @@ export function useBedrockChat({
       // Used by forkAndSend: send into a conversation that state does not show yet
       target?: { conversationId: string; history: UIMessage[] }
     ) => {
-      if (!content.trim() || !selectedModel || isRunningStatus(status)) return;
+      if (!selectedModel || isRunningStatus(status)) return;
 
       const { provider, id: modelId, name: modelName } = selectedModel;
       const isKiro = provider === 'kiro';
+      // A message with only files has no text (no made-up text is stored); Kiro takes no files
+      if (!content.trim() && (isKiro || !files?.length)) return;
       // A model that cannot use tools gets no web search and no MCP tools (Ollama rejects them)
       const useTools = selectedModel.supportsTools !== false;
 
@@ -410,7 +423,10 @@ export function useBedrockChat({
         // The history with the files that fit in the request (D-E); Kiro gets no files
         const outgoing = kiroRequest
           ? undefined
-          : buildChatMessages([...baseMessages, userMessage]);
+          : buildChatMessages(
+              [...baseMessages, userMessage],
+              selectedModel.accepts ?? fileAccepts(provider)
+            );
 
         // Create streaming assistant message
         const assistantMessage: UIMessage = {
@@ -989,6 +1005,17 @@ export function useBedrockChat({
       // The same files go again (D-G)
       const userFiles = filesOf(messages[userMessageIndex]);
       const history = messages.slice(0, userMessageIndex);
+      // Decide before the delete: a send that cannot run must not lose the turn
+      const blocked = resendBlockReason(
+        selectedModel,
+        userContent,
+        messages[userMessageIndex],
+        'regenerate this reply'
+      );
+      if (blocked) {
+        toast.error(blocked);
+        return;
+      }
 
       // Drop the user message and everything after it (DB sequences are 1-based): sendMessage
       // adds the user message again, so the chat holds it once and sends it once
@@ -1021,6 +1048,17 @@ export function useBedrockChat({
     const content = getTextContent(messages[lastUserIndex]);
     const files = filesOf(messages[lastUserIndex]);
     const history = messages.slice(0, lastUserIndex);
+    // Decide before the delete: a send that cannot run must not lose the turn
+    const blocked = resendBlockReason(
+      selectedModel,
+      content,
+      messages[lastUserIndex],
+      'send this message again'
+    );
+    if (blocked) {
+      toast.error(blocked);
+      return;
+    }
     // Drop the failed turn (DB sequences are 1-based) so it is not sent twice
     await deleteMessagesFromSequence(activeConversationId, lastUserIndex + 1);
     replyStore.dismiss(activeConversationId);
@@ -1174,12 +1212,9 @@ function isKiroSessionEvent(value: unknown): value is { id: string; created: boo
   return typeof v.id === 'string' && v.id.length > 0 && typeof v.created === 'boolean';
 }
 
-/** The format that the chat sends with a file. Text-like types map to txt; unknown types to bin. */
-function getFormatFromMediaType(mediaType: string): string {
-  // Normalize text-like MIME types (e.g. application/x-sh -> text/plain)
-  const normalized = normalizeMediaType(mediaType);
-  if (!normalized) return 'bin'; // truly unsupported binary
-  return lookupFormat(normalized) ?? 'txt';
+/** The format that the chat sends with a file, from its name and media type; undefined when the app cannot send it */
+function formatOf(p: FilePart): string | undefined {
+  return classifyFile(p.filename || 'file', p.mediaType || '').format;
 }
 
 /** The file parts of a message */
@@ -1189,11 +1224,59 @@ function fileParts(message: UIMessage): FilePart[] {
 
 /** A message's files, to send again (regenerate, retry) */
 function filesOf(message: UIMessage): ChatFile[] {
-  return fileParts(message).map((p) => ({
-    name: p.filename || 'file',
-    format: getFormatFromMediaType(p.mediaType || ''),
-    ...(p.data ? { bytes: p.data } : { size: p.size ?? 0 }),
-  }));
+  return fileParts(message).flatMap((p) => {
+    const format = formatOf(p);
+    // A file type that the app no longer sends (an SVG from before): not sent again
+    if (!format) return [];
+    return [
+      {
+        name: p.filename || 'file',
+        format,
+        ...(p.data ? { bytes: p.data } : { size: p.size ?? 0 }),
+      },
+    ];
+  });
+}
+
+/**
+ * Why a stored user message cannot be sent again with `model` (regenerate, retry), or null when
+ * it can. The same rule as the composer: the files that `filesOf` keeps must be ones that the
+ * model reads, and the message must have text or a file to send.
+ */
+export function resendBlockReason(
+  model: { provider: string; accepts?: FileAccepts },
+  content: string,
+  message: UIMessage,
+  action: string
+): string | null {
+  const files = fileParts(message).filter((p) => formatOf(p) !== undefined);
+  if (!content.trim() && files.length === 0) {
+    return 'This message has no text and no file that the app can send.';
+  }
+  const accepts = model.accepts ?? fileAccepts(model.provider);
+  const unreadable = files
+    .filter(
+      (p) => !acceptsKind(accepts, classifyFile(p.filename || 'file', p.mediaType || '').kind)
+    )
+    .map((p) => p.filename || 'file');
+  if (unreadable.length > 0) {
+    return `This model cannot read ${listNames(unreadable)}. Pick a different model to ${action}.`;
+  }
+  // A message stored before the file checks can break them; the server would refuse it
+  const kept = files.filter((p) => p.data !== undefined);
+  if (kept.some((p) => hasUnsafeNameCharacter(p.filename || 'file'))) {
+    return `A file name in this message has a hidden or control character, so the app cannot ${action}. Send the message again with the file renamed.`;
+  }
+  const limit = messageLimitReason(
+    kept.map((p) => ({
+      kind: classifyFile(p.filename || 'file', p.mediaType || '').kind,
+      size: base64Size(p.data ?? ''),
+    }))
+  );
+  if (limit) {
+    return `${limit} This message was sent before that limit, so the app cannot ${action}. Send the message again with fewer files.`;
+  }
+  return null;
 }
 
 /** A file of the chat input as the database stores it */
@@ -1226,10 +1309,10 @@ function withFilesNotKept(messages: UIMessage[], id: string, kept: boolean[]): U
 }
 
 /** The line that stands for a file that the request does not carry (D-E) */
-export const earlierFileLine = (name: string): string => `[Earlier file: ${name}]`;
+export const earlierFileLine = (name: string): string => `[Earlier file: ${quoteFileName(name)}]`;
 
 /** The line for a file of the new message whose bytes the app did not keep */
-export const notKeptFileLine = (name: string): string => `[File not kept: ${name}]`;
+export const notKeptFileLine = (name: string): string => `[File not kept: ${quoteFileName(name)}]`;
 
 const utf8 = new TextEncoder();
 /** The bytes of a value in the request's JSON */
@@ -1240,28 +1323,60 @@ type SentFile = { name: string; format: string; bytes: string };
 /**
  * The messages of a request. The new message's files always go. Earlier files go again, newest
  * first, while the whole history (texts, file lines, and files) fits in `REQUEST_BUDGET`; the
- * older ones, and earlier files whose bytes were not kept, go as a line `[Earlier file: name]`
+ * older ones, and earlier files whose bytes were not kept, go as a line `[Earlier file: "name"]`
  * in their message's text (D-E). A file of the new message without bytes goes as
- * `[File not kept: name]` and is not an earlier file.
+ * `[File not kept: "name"]` and is not an earlier file. With `accepts`, an earlier file that the
+ * current model cannot read goes as the same line and counts as not sent again (D-B).
  */
-export function buildChatMessages(messages: UIMessage[]): {
+export function buildChatMessages(
+  messages: UIMessage[],
+  accepts?: FileAccepts
+): {
   chatMessages: Array<{ role: UIMessage['role']; content: string; files: SentFile[] }>;
   filesNotResent: number;
 } {
-  // Messages with no text are left out, as before
-  const sent = messages.filter((m) => getTextContent(m).trim().length > 0);
+  // Messages with no text and no files are left out, as before
+  const sent = messages.filter(
+    (m) => getTextContent(m).trim().length > 0 || fileParts(m).length > 0
+  );
   const last = sent.length - 1;
   const fileOf = (p: FilePart): SentFile => ({
     name: p.filename || 'file',
-    format: getFormatFromMediaType(p.mediaType || ''),
+    format: formatOf(p) ?? '',
     bytes: p.data ?? '',
   });
+  // An earlier file that the request can carry for this model
+  // An earlier file with a hidden or control character in its name (a chat from before the name
+  // check) goes as a line too: the server refuses such a name
+  const readable = (p: FilePart): boolean => {
+    const info = classifyFile(p.filename || 'file', p.mediaType || '');
+    return (
+      info.format !== undefined &&
+      !hasUnsafeNameCharacter(p.filename || 'file') &&
+      (!accepts || acceptsKind(accepts, info.kind))
+    );
+  };
 
   // First the parts that always go: every text and the new message's own files
   let room = REQUEST_BUDGET;
   for (const m of sent) room -= jsonSize({ role: m.role, content: getTextContent(m), files: [] });
   const newFiles = last >= 0 ? fileParts(sent[last]).filter((p) => p.data !== undefined) : [];
   for (const p of newFiles) room -= jsonSize(fileOf(p)) + 1;
+
+  // An earlier message keeps, newest first, the files that fit the limits of one message (D-H:
+  // 20 images, 5 documents, 7.5 MB raw); a chat from before the limits can hold more
+  const overLimit = new Set<FilePart>();
+  sent.forEach((m, index) => {
+    if (index === last) return;
+    const kept: Array<{ kind: FileKind; size: number }> = [];
+    for (const p of [...fileParts(m)].reverse()) {
+      if (p.data === undefined || !readable(p)) continue;
+      const kind = classifyFile(p.filename || 'file', p.mediaType || '').kind;
+      const next = [...kept, { kind, size: base64Size(p.data) }];
+      if (messageLimitReason(next)) overLimit.add(p);
+      else kept.push(next[next.length - 1]);
+    }
+  });
 
   let full = false;
   let filesNotResent = 0;
@@ -1279,7 +1394,19 @@ export function buildChatMessages(messages: UIMessage[]): {
           continue;
         }
         const cost = p.data === undefined ? 0 : jsonSize(fileOf(p)) + 1;
-        if (p.data !== undefined && !full && cost <= room) {
+        if (!readable(p)) {
+          // The current model cannot read it: a line, also before the budget is full
+          const line = earlierFileLine(name);
+          room -= utf8.encode(line).length + 2;
+          lines.push(line);
+          filesNotResent += 1;
+        } else if (overLimit.has(p)) {
+          // Over the limits of one message: a line, and the budget stays for the other files
+          const line = earlierFileLine(name);
+          room -= utf8.encode(line).length + 2;
+          lines.push(line);
+          filesNotResent += 1;
+        } else if (p.data !== undefined && !full && cost <= room) {
           room -= cost;
           files.push(fileOf(p));
         } else {

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
@@ -36,10 +36,24 @@ import {
   getTextContent,
   hasReasoning,
 } from '../../types/ai-messages';
+import {
+  MAX_FILE_BYTES,
+  UNSAFE_NAME_REASON,
+  acceptList,
+  acceptsAnyFile,
+  acceptsKind,
+  classifyFile,
+  fileAccepts,
+  fileTooLargeReason,
+  hasUnsafeNameCharacter,
+  listNames,
+  messageLimitReason,
+  noModelReason,
+  notAcceptedReason,
+} from '../../utils/attachments';
+import type { FileAccepts, FileKind } from '../../utils/attachments';
 import { summarizeChatUsage } from '../../utils/chatUsage';
-import { normalizeMediaType } from '../../utils/fileUtils';
 import { formatCredits } from '../../utils/kiroModels';
-import { lookupFormat } from '../../utils/mediaTypes';
 import { getModelContextLimits } from '../../utils/modelContext';
 import { modelLabel } from '../../utils/modelLabel';
 import { formatQuoteMessage, quoteTagsToMarkdown } from '../../utils/quote';
@@ -150,9 +164,6 @@ const getToolCalls = (message: { parts: Array<{ type: string }> }): ToolCallPart
 /** Shown when files are added to a Kiro chat */
 const KIRO_NO_FILES = 'Kiro does not take files yet. Send the text without them.';
 
-// Bedrock file size limits
-const BEDROCK_DOC_MAX_SIZE = 4.5 * 1024 * 1024; // 4.5MB for documents
-
 interface BedrockChatContainerProps {
   // Model selection via ModelSelector
   providers: ProviderModels[];
@@ -187,12 +198,84 @@ interface BedrockChatContainerProps {
   autoSelectNote?: string;
 }
 
-// File format for a browser media type; null for an unsupported binary type
-function getFormatFromMediaType(mediaType: string): string | null {
-  // Normalize text-like MIME types to Bedrock-supported ones
-  const normalized = normalizeMediaType(mediaType);
-  if (!normalized) return null;
-  return lookupFormat(normalized) ?? 'txt';
+/** The file types that a model reads: from the model list, else from the provider table */
+function modelAccepts(model: UnifiedModel | null): FileAccepts {
+  return model?.accepts ?? fileAccepts(model?.provider);
+}
+
+/** Why a file cannot be added for this model, or null when it can (D-B, D-H) */
+function fileRefusal(
+  model: UnifiedModel | null,
+  accepts: FileAccepts,
+  name: string,
+  mediaType: string
+): { reason: string } | { kind: FileKind } {
+  if (hasUnsafeNameCharacter(name)) return { reason: UNSAFE_NAME_REASON };
+  const info = classifyFile(name, mediaType);
+  if (info.kind === 'unsupported') return { reason: info.reason ?? `${name} cannot be sent.` };
+  if (!acceptsKind(accepts, info.kind)) {
+    return model?.provider === 'kiro'
+      ? { reason: KIRO_NO_FILES }
+      : { reason: notAcceptedReason(model?.provider, accepts, name, info.kind) };
+  }
+  return { kind: info.kind };
+}
+
+/**
+ * The composer's check of added files: the type that the model reads, 4.5 MB a file, and the
+ * limits of a message (D-H). Each refused file has its reason in words.
+ */
+function checkComposerFiles(
+  model: UnifiedModel | null,
+  incoming: File[],
+  current: Array<{ filename?: string; mediaType?: string; size?: number }>
+): { accepted: File[]; errors: string[] } {
+  const accepts = modelAccepts(model);
+  const kept = current.map((f) => ({
+    kind: classifyFile(f.filename ?? '', f.mediaType ?? '').kind,
+    size: f.size ?? 0,
+  }));
+  const accepted: File[] = [];
+  const errors: string[] = [];
+  for (const file of incoming) {
+    const result = fileRefusal(model, accepts, file.name, file.type);
+    if ('reason' in result) {
+      if (!errors.includes(result.reason)) errors.push(result.reason);
+      continue;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      errors.push(fileTooLargeReason(file.name));
+      continue;
+    }
+    const next = [...kept, { kind: result.kind, size: file.size }];
+    const limit = messageLimitReason(next);
+    if (limit) {
+      const text = `${limit} ${file.name} was not added.`;
+      errors.push(text);
+      continue;
+    }
+    kept.push({ kind: result.kind, size: file.size });
+    accepted.push(file);
+  }
+  return { accepted, errors };
+}
+
+/** The files in the composer that this model cannot read (after a model switch) */
+function unreadableFiles(
+  model: UnifiedModel | null,
+  files: Array<{ filename?: string; mediaType?: string }>
+): string[] {
+  const accepts = modelAccepts(model);
+  return files
+    .filter((f) => 'reason' in fileRefusal(model, accepts, f.filename ?? '', f.mediaType ?? ''))
+    .map((f) => f.filename || 'file');
+}
+
+/** The message that blocks the send, naming the files */
+function blockedFilesMessage(model: UnifiedModel | null, names: string[]): string {
+  if (!model) return noModelReason(names);
+  const it = names.length === 1 ? 'it' : 'them';
+  return `This model cannot read ${listNames(names)}. Remove ${it} or pick a different model to send.`;
 }
 
 const ChatContainer = ({
@@ -229,6 +312,11 @@ const ChatContainer = ({
   const toolsSupported = selectedModel?.supportsTools !== false;
   // Kiro brings its own tools and takes no files, web search, MCP servers, or inference settings
   const isKiro = selectedModel?.provider === 'kiro';
+  // The file types that the selected model reads (D-A c); none: no "Add photos or files"
+  const accepts = modelAccepts(selectedModel);
+  const takesFiles = acceptsAnyFile(accepts);
+  // Files in the composer that the selected model cannot read: the send waits (D-B)
+  const [blockedFiles, setBlockedFiles] = useState<string[]>([]);
 
   const {
     messages,
@@ -338,47 +426,27 @@ const ChatContainer = ({
     if (!message.text.trim() && message.files.length === 0) return;
     if (isLoading) return;
 
-    // Kiro takes no files: send the text alone, and say that the files were left out
-    const droppedKiroFiles = isKiro && message.files.length > 0;
-    if (droppedKiroFiles) {
-      handleFileError({ code: 'accept', message: KIRO_NO_FILES });
-      if (!message.text.trim()) return;
-      message = { ...message, files: [] };
+    // Files that this model cannot read (a model switch): keep them and the text, and wait
+    const unreadable = unreadableFiles(selectedModel, message.files);
+    if (unreadable.length > 0) {
+      setBlockedFiles(unreadable);
+      // A rejected submit keeps the files in the composer
+      throw new Error('Files not readable by this model');
     }
 
     setInputValue('');
-    if (!droppedKiroFiles) setFileError(null);
+    setFileError(null);
 
     if (message.files.length > 0) {
-      const filesWithData = await Promise.all(
-        message.files.map(async (f) => {
-          if (f.url?.startsWith('data:')) {
-            const base64 = f.url.split(',')[1] || '';
-            const format = getFormatFromMediaType(f.mediaType || '');
-            if (!format) {
-              return null; // unsupported MIME type
-            }
-            return {
-              name: f.filename || 'file',
-              format,
-              bytes: base64,
-            };
-          }
-          return null;
-        })
-      );
-      const validFiles = filesWithData.filter(
-        (f): f is { name: string; format: string; bytes: string } => f !== null
-      );
-      if (validFiles.length === 0 && message.files.length > 0) {
-        setFileError(
-          'Unsupported file type. Supported: PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX, and images.'
-        );
-        return;
-      }
-      // Use default text if only files are provided
-      const text = message.text.trim() || 'Please analyze the attached file(s).';
-      await sendMessage(text, validFiles);
+      const files = message.files.flatMap((f) => {
+        if (!f.url?.startsWith('data:')) return [];
+        const name = f.filename || 'file';
+        const { format } = classifyFile(name, f.mediaType || '');
+        if (!format) return [];
+        return [{ name, format, bytes: f.url.split(',')[1] || '' }];
+      });
+      // Only files: the stored text is empty; the server adds a neutral text if a provider needs one
+      await sendMessage(message.text.trim(), files);
     } else {
       await sendMessage(message.text);
     }
@@ -387,8 +455,16 @@ const ChatContainer = ({
   // One timer at a time, so an older timer cannot clear a newer error early
   const fileErrorTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(fileErrorTimerRef.current), []);
+  // The blocked-send line replaces an earlier refusal line, so the alert shows one message
+  const handleBlockedFiles = useCallback((names: string[]) => {
+    setBlockedFiles(names);
+    if (names.length > 0) {
+      clearTimeout(fileErrorTimerRef.current);
+      setFileError(null);
+    }
+  }, []);
   const handleFileError = (err: { code: string; message: string }) => {
-    setFileError(isKiro && err.code === 'max_files' ? KIRO_NO_FILES : err.message);
+    setFileError(err.message);
     clearTimeout(fileErrorTimerRef.current);
     fileErrorTimerRef.current = setTimeout(() => setFileError(null), 5000);
   };
@@ -442,10 +518,13 @@ const ChatContainer = ({
           onChangeModel={() => setPickerOpen(true)}
         />
       )}
-      {fileError && (
+      {(fileError || blockedFiles.length > 0) && (
         <Alert variant="destructive" className="mb-4">
           <AlertTitle>File Error</AlertTitle>
-          <AlertDescription>{fileError}</AlertDescription>
+          {fileError && <AlertDescription>{fileError}</AlertDescription>}
+          {blockedFiles.length > 0 && (
+            <AlertDescription>{blockedFilesMessage(selectedModel, blockedFiles)}</AlertDescription>
+          )}
         </Alert>
       )}
       <StreamStatusAnnouncer isLoading={isLoading} hasError={Boolean(error)} />
@@ -484,6 +563,11 @@ const ChatContainer = ({
                       );
 
                       const files = message.parts.filter((p): p is FilePart => p.type === 'file');
+                      // A user message with only files shows its files, and no empty text bubble
+                      const onlyFiles =
+                        message.role === 'user' &&
+                        files.length > 0 &&
+                        getTextContent(message).trim().length === 0;
                       const switchedTo = modelSwitches.get(index);
                       return (
                         <Fragment key={message.id}>
@@ -492,7 +576,7 @@ const ChatContainer = ({
                             {message.role === 'user' && files.length > 0 && (
                               <MessageFiles files={files} />
                             )}
-                            {showAvatar ? (
+                            {onlyFiles ? null : showAvatar ? (
                               <div className="flex items-start justify-end gap-2">
                                 {content}
                                 <MessageAvatar initials={avatarInitials} className="mt-0.5" />
@@ -611,14 +695,15 @@ const ChatContainer = ({
           <PromptInput
             onSubmit={handleSubmit}
             onError={handleFileError}
-            accept="image/*,.pdf,.txt,.html,.md,.csv,.doc,.docx,.xls,.xlsx"
+            // The file dialog shows the types that the model reads; a drop or a paste of
+            // another type is refused with the reason in words (D-B)
+            accept={acceptList(accepts) || undefined}
             multiple
-            maxFileSize={BEDROCK_DOC_MAX_SIZE}
-            // Kiro takes no files: a drop or a paste shows KIRO_NO_FILES
-            maxFiles={isKiro ? 0 : 20}
+            checkFiles={(incoming, current) => checkComposerFiles(selectedModel, incoming, current)}
             className="@container w-full max-w-3xl mx-auto"
             inputGroupClassName={composerCard}
           >
+            <BlockedFilesWatch model={selectedModel} onChange={handleBlockedFiles} />
             <PromptInputHeader className="px-3 pb-0 pt-3 empty:hidden">
               <PromptInputAttachments className="p-0">
                 {(attachment) => (
@@ -652,11 +737,11 @@ const ChatContainer = ({
                 <PromptInputActionMenu modal={false}>
                   <PromptInputActionMenuTrigger
                     className={composerIconButton}
-                    // Kiro has no files: the menu holds only Save as prompt
-                    aria-label={isKiro ? 'More actions' : 'Add photos or files'}
+                    // A model that takes no file: the menu holds only Save as prompt
+                    aria-label={takesFiles ? 'Add photos or files' : 'More actions'}
                   />
                   <PromptInputActionMenuContent>
-                    {!isKiro && <PromptInputActionAddAttachments label="Add photos or files" />}
+                    {takesFiles && <PromptInputActionAddAttachments label="Add photos or files" />}
                     <PromptInputActionMenuItem
                       disabled={isLoading || !inputValue.trim()}
                       onSelect={() => setSavePromptOpen(true)}
@@ -744,6 +829,7 @@ const ChatContainer = ({
                 <PromptInputSubmitWithAttachments
                   inputValue={inputValue}
                   selectedModel={selectedModel}
+                  blocked={blockedFiles.length > 0}
                   isLoading={isLoading}
                   stopGeneration={stopGeneration}
                 />
@@ -944,15 +1030,37 @@ const KiroReplyUsage = ({ usage, model }: { usage: MessageUsage; model?: string 
   );
 };
 
+/**
+ * Reports the composer files that the selected model cannot read, each time the files or the
+ * model change: a removed file or a switch back clears the block (D-B)
+ */
+const BlockedFilesWatch = ({
+  model,
+  onChange,
+}: {
+  model: UnifiedModel | null;
+  onChange: (names: string[]) => void;
+}) => {
+  const { files } = usePromptInputAttachments();
+  const names = unreadableFiles(model, files).join('\u0000');
+  useEffect(() => {
+    onChange(names ? names.split('\u0000') : []);
+  }, [names, onChange]);
+  return null;
+};
+
 // Submit button that checks both text input and attachments
 const PromptInputSubmitWithAttachments = ({
   inputValue,
   selectedModel,
+  blocked,
   isLoading,
   stopGeneration,
 }: {
   inputValue: string;
   selectedModel: UnifiedModel | null;
+  /** Files that the model cannot read are in the composer */
+  blocked: boolean;
   isLoading: boolean;
   stopGeneration: () => void;
 }) => {
@@ -961,7 +1069,7 @@ const PromptInputSubmitWithAttachments = ({
 
   // When streaming, the stop button should always be enabled
   // When not streaming, require content and a selected model
-  const isDisabled = isLoading ? false : !hasContent || !selectedModel;
+  const isDisabled = isLoading ? false : !hasContent || !selectedModel || blocked;
 
   return (
     <PromptInputSubmit

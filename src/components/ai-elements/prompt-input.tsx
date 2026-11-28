@@ -435,6 +435,15 @@ export type PromptInputProps = Omit<HTMLAttributes<HTMLFormElement>, 'onSubmit' 
   // Classes for the bordered input group (the visible card) inside the form
   inputGroupClassName?: string;
   onError?: (err: { code: 'max_files' | 'max_file_size' | 'accept'; message: string }) => void;
+  /**
+   * The app's own check of added files (pick, drop, or paste). When set, it replaces `accept` and
+   * `maxFileSize` as the filter: it gets the new files and the files already in the input, and
+   * returns the files to add and the reasons for the others, in words.
+   */
+  checkFiles?: (
+    incoming: File[],
+    current: Array<FileUIPart & { size?: number }>
+  ) => { accepted: File[]; errors: string[] };
   onSubmit: (
     message: PromptInputMessage,
     event: FormEvent<HTMLFormElement>
@@ -451,6 +460,7 @@ export const PromptInput = ({
   maxFileSize,
   inputGroupClassName,
   onError,
+  checkFiles,
   onSubmit,
   children,
   ...props
@@ -464,7 +474,7 @@ export const PromptInput = ({
   const formRef = useRef<HTMLFormElement | null>(null);
 
   // ----- Local attachments (only used when no provider)
-  const [items, setItems] = useState<(FileUIPart & { id: string })[]>([]);
+  const [items, setItems] = useState<(FileUIPart & { id: string; size?: number })[]>([]);
   const files = usingProvider ? controller.attachments.files : items;
 
   // Keep a ref to files for cleanup on unmount (avoids stale closure)
@@ -510,6 +520,26 @@ export const PromptInput = ({
   const addLocal = useCallback(
     (fileList: File[] | FileList) => {
       const incoming = Array.from(fileList);
+      if (checkFiles) {
+        const checked = checkFiles(incoming, filesRef.current);
+        if (checked.errors.length) {
+          onError?.({ code: 'accept', message: checked.errors.join(' ') });
+        }
+        if (checked.accepted.length === 0) return;
+        setItems((prev) =>
+          prev.concat(
+            checked.accepted.map((file) => ({
+              id: nanoid(),
+              type: 'file' as const,
+              url: URL.createObjectURL(file),
+              mediaType: file.type,
+              filename: file.name,
+              size: file.size,
+            }))
+          )
+        );
+        return;
+      }
       const accepted = incoming.filter((f) => matchesAccept(f));
       const withinSize = (f: File) => (maxFileSize ? f.size <= maxFileSize : true);
       const sized = accepted.filter(withinSize);
@@ -562,7 +592,7 @@ export const PromptInput = ({
         return prev.concat(next);
       });
     },
-    [matchesAccept, maxFiles, maxFileSize, onError]
+    [matchesAccept, maxFiles, maxFileSize, onError, checkFiles]
   );
 
   const removeLocal = useCallback(

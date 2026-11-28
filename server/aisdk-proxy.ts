@@ -17,6 +17,7 @@ import type { MCPServerConfig } from '../src/types/mcp.ts';
 import { errorMessageOr } from '../src/utils/errorMessage.ts';
 import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
+import { modelMessagesOr400 } from './model-messages.ts';
 import {
   abortOnClose,
   capErrorText,
@@ -27,6 +28,7 @@ import {
   sendJsonError,
   startEventStream,
 } from './security.ts';
+import type { ChatRequestMessage } from './security.ts';
 import { noAnswerNotice, toolErrorEvent, toolLoopOptions } from './tool-loop.ts';
 import { usageEvent } from './usage.ts';
 import {
@@ -37,15 +39,10 @@ import {
 
 type AISDKProvider = 'groq' | 'cerebras';
 
-interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-}
-
 interface ChatRequest {
   provider: AISDKProvider;
   model: string;
-  messages: ChatMessage[];
+  messages: ChatRequestMessage[];
   max_tokens?: number;
   enableWebSearch?: boolean;
   mcpServers?: MCPServerConfig[];
@@ -298,6 +295,10 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
     }
     const request: ChatRequest = { ...body, provider: body.provider };
 
+    // Groq and Cerebras read text files only (D-A c); another type is a 400
+    const messages = modelMessagesOr400(res, request.messages, request.provider);
+    if (!messages) return; // 400 already sent
+
     // Get API key from header
     const apiKey = req.headers['x-api-key'] as string;
     if (!apiKey) {
@@ -339,7 +340,7 @@ export function createAISDKProxy(): Connect.NextHandleFunction {
         model: provider(request.model),
         // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
         allowSystemInMessages: true,
-        messages: request.messages,
+        messages,
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
         abortSignal,

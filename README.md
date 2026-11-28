@@ -45,7 +45,7 @@ Local LLM UI is a chat app for large language models. It runs on your computer a
 
 - Let the model search the web with Brave Search, Exa, or Tavily. When a search key is set, web search is on in each new chat.
 - Connect external tools with [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) servers. Import the servers that you already set up in Kiro, Pi, Claude Code, and other tools.
-- Attach documents and images to Bedrock models. The chat keeps them after a reload.
+- Attach images, PDFs, and text files to the models that can read them. The chat keeps them after a reload.
 
 **Your workflow**
 
@@ -495,14 +495,38 @@ The chat shows the quote as an indented block. **Send to Fork** needs a selected
 
 Under each reply, click the thumbs up or thumbs down icon to rate it. The app stores the rating with the message in your browser, so it stays when you open the chat again. Click the same icon again to remove the rating.
 
-### Documents and images (Bedrock only)
+### Documents and images
 
-1. Select an Amazon Bedrock model.
-2. Click **+** in the chat input, then click **Add photos or files**.
-3. Select one or more files. The maximum size is 4.5 MB for each file.
-4. Type your message and send it.
+1. Select a model that can read files. See the table below.
+2. Click **+** in the chat input, then click **Add photos or files**. You can also drop or paste files in the chat input.
+3. Select one or more files.
+4. Type your message, or leave it empty, and send it.
 
-Supported formats: PDF, TXT, HTML, MD, CSV, DOC, DOCX, XLS, XLSX, and images.
+Each provider reads these files:
+
+| Provider | Images | PDF | Word and Excel | Text and code files |
+|---|---|---|---|---|
+| Amazon Bedrock | Yes | Yes | Yes | Yes |
+| Anthropic | Yes | Yes | No | Yes |
+| OpenRouter | Models that read images | Yes | No | Yes |
+| Ollama, LM Studio | Models that read images | No | No | Yes |
+| Groq, Cerebras | No | No | No | Yes |
+| Bedrock Mantle, Kiro | No | No | No | No |
+
+- **Images** are PNG, JPEG, GIF, or WebP. Convert other images, for example SVG or HEIC, before you add them.
+- **Word and Excel** files are DOC, DOCX, XLS, and XLSX.
+- **Text and code files** are, for example, TXT, MD, CSV, HTML, JSON, YAML, and source code. For most providers, the app puts the text of the file into your message, so the model reads it as text.
+- For a PDF on OpenRouter, the app asks OpenRouter to use the model's own PDF reader, or OpenRouter's free PDF parser when the model has none. It never starts OpenRouter's paid OCR.
+
+The limits for each message are:
+
+- 4.5 MB for each file.
+- 20 images and 5 other files.
+- 7.5 MB for all the files together.
+
+When a file does not fit the selected model or a limit, the app does not add it. A line under the chat input says why, for example "Groq models read text files only. report.pdf is a PDF.". When **Add photos or files** is not in the **+** menu, the selected model reads no files.
+
+If you change to a model that cannot read the files in the chat input, the send button is off, and a line names the files. Remove the files, or select a different model.
 
 Your message shows its files above the text. An image shows as a thumbnail. Click the thumbnail to open the image full size in a new tab. Each other file shows its name, its type, and its size.
 
@@ -510,7 +534,7 @@ The app keeps the files with the chat in your browser:
 
 - The files stay after a reload.
 - The model gets the files of earlier messages again with each new message, as it gets the earlier text. **Regenerate** and **Send to Fork** also keep the files.
-- When the files are too large to send again in one request, the app sends the oldest files as a line with their name. A line under the reply says, for example, **1 earlier file was not sent again**.
+- When the files are too large to send again in one request, or the selected model cannot read them, the app sends those earlier files as a line with their name. A line under the reply says, for example, **1 earlier file was not sent again**.
 - The app keeps at most 500 MB of data in your browser. When it cannot keep a file, it saves the message without that file, and the file shows **File not kept**.
 
 ### Context window

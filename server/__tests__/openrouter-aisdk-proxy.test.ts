@@ -144,6 +144,29 @@ describe('OpenRouter models route', () => {
     }
   }
 
+  it('keeps the input modalities of each model, as strings only', async () => {
+    stubOpenRouter(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              { id: 'a/v', name: 'V', architecture: { input_modalities: ['text', 'image', 7] } },
+              { id: 'a/t', name: 'T' },
+            ],
+          }),
+          { status: 200 }
+        )
+    );
+    const reply = await getModels();
+    expect(reply.body).toEqual({
+      provider: 'openrouter',
+      models: [
+        { id: 'a/v', name: 'V', inputModalities: ['text', 'image'] },
+        { id: 'a/t', name: 'T', inputModalities: [] },
+      ],
+    });
+  });
+
   it('cuts a 5,000-character upstream error to 500 characters', async () => {
     stubOpenRouter(
       async () =>

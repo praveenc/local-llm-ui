@@ -12,6 +12,7 @@ import type { ToolSet } from 'ai';
 import type { Connect } from 'vite';
 
 import { getMCPTools } from './mcp-manager.ts';
+import { modelMessagesOr400 } from './model-messages.ts';
 import {
   abortOnClose,
   capMaxTokens,
@@ -67,6 +68,10 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
     const request = await readChatRequest(req, res);
     if (!request) return; // 413 or 400 already sent
 
+    // The files as this provider's parts (D-A c); a type that it cannot take is a 400
+    const messages = modelMessagesOr400(res, request.messages, 'lmstudio');
+    if (!messages) return; // 400 already sent
+
     // Web search API keys and the order to try the providers in
     const webSearchProviders = getWebSearchProviders(req.headers);
     if (request.enableWebSearch && webSearchProviders.length === 0) {
@@ -100,7 +105,7 @@ export function createLMStudioAISDKProxy(): Connect.NextHandleFunction {
         model: lmstudio(request.model),
         // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
         allowSystemInMessages: true,
-        messages: request.messages,
+        messages,
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
         abortSignal,

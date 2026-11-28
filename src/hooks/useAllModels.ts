@@ -19,6 +19,8 @@ import { anthropicService, cerebrasService, groqService } from '../services/aisd
 import type { MantleModelOptions } from '../services/mantle';
 import { openrouterService } from '../services/openrouter';
 import type { KiroModelMeta, ModelInfo } from '../services/types';
+import { fileAccepts } from '../utils/attachments';
+import type { FileAccepts } from '../utils/attachments';
 import { PROVIDER_API_KEY_FIELDS } from '../utils/preferences';
 import type { Provider, UserPreferences } from '../utils/preferences';
 import { kiroStatusQueryOptions } from './useKiroStatus';
@@ -35,6 +37,8 @@ export interface UnifiedModel {
   supportsTools?: boolean;
   /** Kiro: description, credit rate, and effort levels */
   kiro?: KiroModelMeta;
+  /** The file types that the model reads (D-A c) */
+  accepts?: FileAccepts;
 }
 
 export interface ProviderModels {
@@ -212,6 +216,7 @@ async function fetchProviderModels(
       }),
       ...(model.supportsTools !== undefined && { supportsTools: model.supportsTools }),
       ...(model.kiro && { kiro: model.kiro }),
+      accepts: fileAccepts(provider, { vision: model.vision }),
     }));
     return { provider, providerName: PROVIDER_NAMES[provider], models, status: 'success' };
   } catch (err) {

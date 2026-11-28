@@ -50,7 +50,7 @@ vi.mock('../../services', () => ({
     getModels: () =>
       Promise.resolve([
         { modelId: 'llama3.2', modelName: 'llama3.2' },
-        { modelId: 'gemma3', modelName: 'gemma3', supportsTools: false },
+        { modelId: 'gemma3', modelName: 'gemma3', supportsTools: false, vision: true },
       ]),
   },
   mantleService: { getModels: mantleGetModels },
@@ -84,6 +84,19 @@ describe('useAllModels', () => {
     // Tool support is copied only when the provider reports it
     expect(byProvider.ollama.models[0]).not.toHaveProperty('supportsTools');
     expect(byProvider.ollama.models[1].supportsTools).toBe(false);
+    // The file types from the provider table and the model's vision flag (D-A c)
+    expect(byProvider.ollama.models[0].accepts).toEqual({
+      images: false,
+      pdf: false,
+      office: false,
+      text: true,
+    });
+    expect(byProvider.ollama.models[1].accepts).toEqual({
+      images: true,
+      pdf: false,
+      office: false,
+      text: true,
+    });
     expect(byProvider.lmstudio.status).toBe('error');
     // Bedrock has not answered yet
     expect(byProvider.bedrock.status).toBe('loading');

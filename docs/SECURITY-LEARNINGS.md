@@ -452,7 +452,16 @@ The `sessionOptions` field of `POST /api/kiro/chat` sets the agent and the other
 **The field rules** (`checkChatRequest`):
 
 - `model`: a string that is not empty after a trim, at most 256 characters, with no control characters (U+0000 to U+001F, U+007F to U+009F). This rule is loose on purpose: an LM Studio model id can be a path with spaces and parentheses, and an Ollama id has a `:`. OpenRouter keeps its strict pattern `^[a-zA-Z0-9._\-/:@]+$` as an extra check, for OpenRouter only.
-- `messages`: an array of `{ role: 'user' | 'assistant' | 'system', content: string, files? }`. Each file is `{ name: string, format: string, bytes: string }` (Bedrock decodes `bytes` as base64). A `tool` role is refused.
+- `messages`: an array of `{ role: 'user' | 'assistant' | 'system', content: string, files? }`. A `tool` role is refused.
+- `files`: at most 25 for each message. Each file is `{ name, format, bytes }`:
+  - `name`: 1 to 255 characters, with no control characters and no line or paragraph separators or bidi controls (U+2028, U+2029, U+202A to U+202E, U+2066 to U+2069).
+  - `format`: one of `ALLOWED_FORMATS` (`src/utils/attachments.ts`).
+  - `bytes`: base64 (the alphabet, a length that is a multiple of 4, `=` only at the end), at most 4.5 MB decoded. The size comes from the length, with no decode.
+  - Each message keeps the limits of a Bedrock Converse message: at most 20 images, 5 other files, and 7.5 MB raw (`messageLimitReason`). A chat stored before these checks can hold more files or a name that the server now refuses. The browser sends such earlier files as a text line, and **Regenerate** and **Retry** refuse such a message with a reason before they delete the reply, so an old chat still sends.
+  - The server does not check that the bytes match `format`. A file with the wrong bytes goes to the provider, and the provider refuses it. A text file whose bytes have a NUL or more than 1% replacement characters goes as a "not readable as text" line.
+- After `readChatRequest`, `toModelMessages` (`server/model-messages.ts`) refuses a file kind that the provider cannot take, with a `400` that names the kind and the provider, not the file name. This runs before the key check, the MCP start, and the SSE headers. The Mantle proxy refuses any file, and the Kiro route has no `files` field.
+- A text file goes into the message text as `<file name="NAME">CONTENT</file>`. The name is escaped for an attribute, and `<file` and `</file` in the content (any case) are broken, so a file cannot close its block or open a new one. The content is still the user's own text, so a file that holds a prompt injection reaches the model as text.
+- OpenRouter: a request with a PDF always has a `file-parser` plugin. A model with `file` in its `input_modalities` gets `engine: 'native'`. Any other model, an unknown model, and a model list that does not load get `engine: 'cloudflare-ai'` (free). With no plugin, OpenRouter's default for a model without native file input is paid OCR. The model list is public, so its cache is shared by all keys and holds no key. A failed list fetch is remembered for 60 s.
 - Messages with no text and no files are left out. Then at least one message must be left (`At least one non-empty message is required`). A message with files and no text stays.
 - `max_tokens`: a positive integer, if present. SEC-09 still caps it.
 - `enableWebSearch`: a boolean, if present. `mcpServers`: an array, if present (SEC-11 checks each server).

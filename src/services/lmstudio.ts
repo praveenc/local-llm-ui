@@ -37,6 +37,7 @@ export class LMStudioService {
               maxContextLength?: number;
               architecture?: string;
               paramsString?: string;
+              vision?: boolean;
             }) => ({
               modelId: model.modelId,
               modelName: model.modelName,
@@ -45,6 +46,8 @@ export class LMStudioService {
               maxContextLength: model.maxContextLength,
               architecture: model.architecture,
               paramsString: model.paramsString,
+              // The SDK list says whether the model reads images (D-A c)
+              vision: model.vision === true,
             })
           );
         }
