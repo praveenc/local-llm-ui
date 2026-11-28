@@ -20,12 +20,46 @@ export const MEDIA_TYPE_BY_FORMAT: Readonly<Record<string, string>> = {
   jpeg: 'image/jpeg',
   gif: 'image/gif',
   webp: 'image/webp',
+  // Text files that go into the message text (src/utils/attachments.ts)
+  json: 'application/json',
+  js: 'text/javascript',
+  ts: 'text/x-typescript',
+  tsx: 'text/x-tsx',
+  jsx: 'text/x-jsx',
+  py: 'text/x-python',
+  java: 'text/x-java',
+  go: 'text/x-go',
+  rs: 'text/x-rust',
+  c: 'text/x-c',
+  h: 'text/x-c',
+  cpp: 'text/x-c++',
+  sh: 'application/x-sh',
+  yaml: 'application/yaml',
+  yml: 'application/yaml',
+  toml: 'application/toml',
+  xml: 'application/xml',
+  sql: 'application/sql',
 };
 
+/** The formats that a media type maps back to: one format for each media type */
+const REVERSE_FORMATS = [
+  'pdf',
+  'txt',
+  'html',
+  'md',
+  'csv',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'png',
+  'jpg', // jpg and jpeg share a media type; keep jpg
+  'gif',
+  'webp',
+];
+
 const FORMAT_BY_MEDIA_TYPE: Readonly<Record<string, string>> = Object.fromEntries(
-  Object.entries(MEDIA_TYPE_BY_FORMAT)
-    .filter(([format]) => format !== 'jpeg') // jpg and jpeg share a media type; keep jpg
-    .map(([format, mediaType]) => [mediaType, format])
+  REVERSE_FORMATS.map((format) => [MEDIA_TYPE_BY_FORMAT[format], format])
 );
 
 /** The media type for a format, or undefined for a format that is not in the map */

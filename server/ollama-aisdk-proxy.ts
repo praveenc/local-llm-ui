@@ -13,6 +13,7 @@ import type { Connect } from 'vite';
 import { ollamaThinkValue } from '../src/utils/thinkingEffort.ts';
 import type { OllamaThinkingInfo } from '../src/utils/thinkingEffort.ts';
 import { getMCPTools } from './mcp-manager.ts';
+import { modelMessagesOr400 } from './model-messages.ts';
 import {
   abortOnClose,
   capMaxTokens,
@@ -92,6 +93,10 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
     const request = await readChatRequest(req, res);
     if (!request) return; // 413 or 400 already sent
 
+    // The files as this provider's parts (D-A c); a type that it cannot take is a 400
+    const messages = modelMessagesOr400(res, request.messages, 'ollama');
+    if (!messages) return; // 400 already sent
+
     // Web search API keys and the order to try the providers in
     const webSearchProviders = getWebSearchProviders(req.headers);
     if (request.enableWebSearch && webSearchProviders.length === 0) {
@@ -143,10 +148,7 @@ export function createOllamaAISDKProxy(): Connect.NextHandleFunction {
         model,
         // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
         allowSystemInMessages: true,
-        messages: request.messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
+        messages,
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
         abortSignal,

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -268,7 +268,7 @@ describe('ChatContainer with Kiro', () => {
     expect(screen.getByText('Starting Kiro…')).toBeInTheDocument();
   });
 
-  it('says that Kiro takes no files when files attached before the switch are left out', async () => {
+  it('blocks the send when files attached before a switch to Kiro are in the composer', async () => {
     const user = userEvent.setup();
     const createObjectURL = vi
       .spyOn(URL, 'createObjectURL')
@@ -283,10 +283,24 @@ describe('ChatContainer with Kiro', () => {
     rerender(chatElement(kiroModel, client));
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'hello{Enter}');
 
-    await waitFor(() => expect(chat.sendMessage).toHaveBeenCalledWith('hello'));
+    expect(
+      await screen.findByText(
+        'This model cannot read a.txt. Remove it or pick a different model to send.'
+      )
+    ).toBeInTheDocument();
+    expect(chat.sendMessage).not.toHaveBeenCalled();
+    createObjectURL.mockRestore();
+  });
+
+  it('says that Kiro takes no files when a file is dropped on a Kiro chat', async () => {
+    const user = userEvent.setup({ applyAccept: false });
+    renderChat(kiroModel);
+    await user.upload(
+      screen.getByLabelText('Upload files'),
+      new File(['x'], 'a.txt', { type: 'text/plain' })
+    );
     expect(
       screen.getByText('Kiro does not take files yet. Send the text without them.')
     ).toBeInTheDocument();
-    createObjectURL.mockRestore();
   });
 });

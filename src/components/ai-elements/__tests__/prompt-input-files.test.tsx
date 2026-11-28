@@ -178,8 +178,10 @@ describe('ChatContainer file error', () => {
     act(() => vi.advanceTimersByTime(3000));
     pick([file('second.zip', 'application/zip')]);
     act(() => vi.advanceTimersByTime(2500));
-    expect(screen.getByText('second.zip is not a supported file type.')).toBeInTheDocument();
+    expect(
+      screen.getByText('second.zip is not a file type that the app can send.')
+    ).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(2500));
-    expect(screen.queryByText('second.zip is not a supported file type.')).toBeNull();
+    expect(screen.queryByText('second.zip is not a file type that the app can send.')).toBeNull();
   });
 });

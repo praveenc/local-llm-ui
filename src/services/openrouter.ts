@@ -12,6 +12,8 @@ interface OpenRouterModelsResponse {
   models?: Array<{
     id: string;
     name: string;
+    /** OpenRouter `architecture.input_modalities`, for example ['text', 'image', 'file'] */
+    inputModalities?: string[];
   }>;
 }
 
@@ -38,6 +40,8 @@ export class OpenRouterService {
         modelId: model.id,
         modelName: model.name,
         provider: 'openrouter',
+        // Images only for a model that lists the image input (D-A c)
+        vision: Array.isArray(model.inputModalities) && model.inputModalities.includes('image'),
       }));
     } catch (error) {
       const err = error as Error;

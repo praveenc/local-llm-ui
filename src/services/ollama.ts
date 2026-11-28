@@ -28,6 +28,8 @@ export class OllamaService {
           supportsThinking: model.capabilities?.includes('thinking') ?? false,
           // Unknown when Ollama does not list capabilities: then the app sends tools as before
           supportsTools: model.capabilities ? model.capabilities.includes('tools') : undefined,
+          // Only a model that lists "vision" gets images (D-A c)
+          vision: model.capabilities?.includes('vision') ?? false,
         }));
     } catch (error) {
       console.error('Ollama: Failed to fetch models:', error);

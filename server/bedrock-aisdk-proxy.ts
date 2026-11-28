@@ -13,7 +13,6 @@ import type { ToolSet } from 'ai';
 import type { IncomingMessage, ServerResponse } from 'http';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
-import { lookupMediaType } from '../src/utils/mediaTypes.ts';
 import {
   buildReasoningParams,
   fallbackReasoningLevel,
@@ -22,6 +21,7 @@ import {
 } from '../src/utils/thinkingEffort.ts';
 import type { ReasoningLevel } from '../src/utils/thinkingEffort.ts';
 import { getMCPServerStatus, getMCPTools } from './mcp-manager.ts';
+import { modelMessagesOr400 } from './model-messages.ts';
 import {
   abortOnClose,
   capErrorText,
@@ -220,6 +220,10 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
   const { model, messages, max_tokens, enableWebSearch, mcpServers, thinkingEffort, maxToolSteps } =
     request;
 
+  // The files as Bedrock parts: images and documents, other text files in the text (D-A c)
+  const transformedMessages = modelMessagesOr400(res, messages, 'bedrock');
+  if (!transformedMessages) return; // 400 already sent
+
   // Web search API keys and the order to try the providers in
   const webSearchProviders = getWebSearchProviders(req.headers);
 
@@ -230,44 +234,6 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
 
   // Send the thinking effort only for models that accept it
   const reasoningParams = buildReasoningParams('bedrock', model, thinkingEffort);
-
-  // Transform messages to AI SDK format with file support
-  const transformedMessages = messages.map((msg) => {
-    // If message has files, convert to multipart content (user messages only)
-    if (msg.role === 'user' && msg.files && msg.files.length > 0) {
-      const content: Array<
-        { type: 'text'; text: string } | { type: 'file'; data: Uint8Array; mediaType: string }
-      > = [];
-
-      // Add text content first
-      if (msg.content) {
-        content.push({ type: 'text', text: msg.content });
-      }
-
-      // Add file parts
-      for (const file of msg.files) {
-        const mediaType = getMediaType(file.format);
-        content.push({
-          type: 'file',
-          data: new Uint8Array(Buffer.from(file.bytes, 'base64')),
-          mediaType,
-        });
-      }
-
-      return {
-        role: 'user' as const,
-        content,
-      };
-    }
-
-    // Simple text message
-    if (msg.role === 'system') {
-      return { role: 'system' as const, content: msg.content };
-    } else if (msg.role === 'assistant') {
-      return { role: 'assistant' as const, content: msg.content };
-    }
-    return { role: 'user' as const, content: msg.content };
-  });
 
   let mcpCleanup: (() => Promise<void>) | undefined;
   try {
@@ -412,15 +378,4 @@ async function handleChat(req: IncomingMessage, res: ServerResponse): Promise<vo
     if (!isAbortAfterClientLeft(error, res)) console.error('Bedrock AI SDK: Stream error:', error);
     throw error;
   }
-}
-
-/** Media type for a file format. Throws for a format that the proxy cannot send. */
-function getMediaType(format: string): string {
-  const mediaType = lookupMediaType(format);
-  if (!mediaType) {
-    throw new Error(
-      `Unsupported file format "${format}". Supported: pdf, txt, html, md, csv, doc, docx, xls, xlsx, and images.`
-    );
-  }
-  return mediaType;
 }

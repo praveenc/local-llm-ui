@@ -31,6 +31,16 @@ describe('OllamaService.getModels', () => {
     ]);
   });
 
+  it('reads images only for a model that lists vision', async () => {
+    mockTags([
+      { name: 'gemma3:4b', capabilities: ['completion', 'vision'] },
+      { name: 'qwen3:8b', capabilities: ['completion', 'tools'] },
+      { name: 'llama3.2' },
+    ]);
+    const models = await new OllamaService('/ollama').getModels();
+    expect(models.map((m) => m.vision)).toEqual([true, false, false]);
+  });
+
   it('leaves tool support unknown when Ollama lists no capabilities', async () => {
     mockTags([{ name: 'llama3.2' }]);
     const [model] = await new OllamaService('/ollama').getModels();

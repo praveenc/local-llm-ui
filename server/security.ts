@@ -11,6 +11,13 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import type { Plugin } from 'vite';
 
 import type { MCPServerConfig } from '../src/types/mcp.ts';
+import {
+  ALLOWED_FORMATS,
+  MAX_FILES_PER_MESSAGE,
+  MAX_FILE_BYTES,
+  kindOfFormat,
+  messageLimitReason,
+} from '../src/utils/attachments.ts';
 
 // ─── SEC-05: CORS ────────────────────────────────────────────────────────────
 
@@ -353,7 +360,7 @@ export interface ChatRequestFile {
 export interface ChatRequestMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
-  /** Amazon Bedrock only; the browser sends an empty list on every message */
+  /** The files of a user message; each proxy turns them into its provider's parts (model-messages.ts) */
   files?: ChatRequestFile[];
 }
 
@@ -392,12 +399,32 @@ function hasControlCharacter(text: string): boolean {
   return false;
 }
 
+const FILE_NAME_MAX = 255;
+const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
+
+/** The decoded size of a base64 string */
+function base64DecodedSize(text: string): number {
+  const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0;
+  return Math.floor((text.length * 3) / 4) - padding;
+}
+
+/**
+ * A file of a chat message: a name of 1 to 255 characters with no control character, a format
+ * from the allowed list, and base64 bytes of at most 4.5 MB decoded (D-H)
+ */
 function isChatFile(value: unknown): value is ChatRequestFile {
   return (
     isRecord(value) &&
     typeof value.name === 'string' &&
+    value.name.length >= 1 &&
+    value.name.length <= FILE_NAME_MAX &&
+    !hasControlCharacter(value.name) &&
     typeof value.format === 'string' &&
-    typeof value.bytes === 'string'
+    ALLOWED_FORMATS.includes(value.format) &&
+    typeof value.bytes === 'string' &&
+    value.bytes.length % 4 === 0 &&
+    BASE64_PATTERN.test(value.bytes) &&
+    base64DecodedSize(value.bytes) <= MAX_FILE_BYTES
   );
 }
 
@@ -406,7 +433,10 @@ function isChatMessage(value: unknown): value is ChatRequestMessage {
   return (
     (value.role === 'user' || value.role === 'assistant' || value.role === 'system') &&
     typeof value.content === 'string' &&
-    (value.files === undefined || (Array.isArray(value.files) && value.files.every(isChatFile)))
+    (value.files === undefined ||
+      (Array.isArray(value.files) &&
+        value.files.length <= MAX_FILES_PER_MESSAGE &&
+        value.files.every(isChatFile)))
   );
 }
 
@@ -420,6 +450,15 @@ function checkChatRequest(body: unknown): ChatRequest | string {
   if (model.length > MODEL_ID_MAX) return 'Model ID too long';
   if (hasControlCharacter(model)) return 'Invalid model ID format';
   if (!messages.every(isChatMessage)) return 'Invalid messages array';
+  // The limits of one message (D-H): 20 images, 5 documents, about 7.5 MB raw
+  for (const message of messages) {
+    const files = (message.files ?? []).map((file) => ({
+      kind: kindOfFormat(file.format),
+      size: base64DecodedSize(file.bytes),
+    }));
+    const reason = messageLimitReason(files);
+    if (reason) return reason;
+  }
   if (
     max_tokens !== undefined &&
     (typeof max_tokens !== 'number' || !Number.isInteger(max_tokens) || max_tokens < 1)

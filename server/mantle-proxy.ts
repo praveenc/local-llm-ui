@@ -7,6 +7,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 
 import { mantleReasoningEffort } from '../src/utils/thinkingEffort.ts';
+import { refuseFilesOr400 } from './model-messages.ts';
 import {
   abortOnClose,
   capErrorText,
@@ -263,6 +264,8 @@ async function handleChat(
   // Size limit, JSON, and the fields of every chat request (SEC-07, SEC-22)
   const request = await readChatRequest(req, res);
   if (!request) return; // 413 or 400 already sent
+  // Mantle takes no files (D-A c)
+  if (!refuseFilesOr400(res, request.messages, 'bedrock-mantle')) return;
   const { model, messages, max_tokens, thinkingEffort } = request;
 
   const baseUrl = getMantleBaseUrl(region);

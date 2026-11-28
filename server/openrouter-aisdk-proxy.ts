@@ -15,6 +15,7 @@ import { errorMessageOr, extractErrorMessage } from '../src/utils/errorMessage.t
 import { buildReasoningParams } from '../src/utils/thinkingEffort.ts';
 import { WEB_SEARCH_HEADER_NAMES } from '../src/utils/webSearch.ts';
 import { getMCPTools } from './mcp-manager.ts';
+import { hasPdf, modelMessagesOr400 } from './model-messages.ts';
 import {
   abortOnClose,
   capErrorText,
@@ -49,7 +50,68 @@ interface OpenRouterModelsResponse {
       prompt: number;
       completion: number;
     };
+    architecture?: { input_modalities?: unknown };
   }>;
+}
+
+/** The input modalities of a model, as strings only */
+function inputModalitiesOf(model: { architecture?: { input_modalities?: unknown } }): string[] {
+  const list = model.architecture?.input_modalities;
+  return Array.isArray(list) ? list.filter((m): m is string => typeof m === 'string') : [];
+}
+
+/** How long the server keeps OpenRouter's model list for the PDF choice */
+const MODALITIES_TTL_MS = 60 * 60 * 1000;
+let modalitiesCache: { at: number; byModel: Map<string, string[]> } | null = null;
+
+function storeModalities(payload: OpenRouterModelsResponse): void {
+  if (!Array.isArray(payload.data)) return;
+  const byModel = new Map<string, string[]>();
+  for (const model of payload.data) {
+    if (typeof model.id === 'string') byModel.set(model.id, inputModalitiesOf(model));
+  }
+  modalitiesCache = { at: Date.now(), byModel };
+}
+
+/** For tests: forget the kept model list */
+export function clearOpenRouterModalitiesCache(): void {
+  modalitiesCache = null;
+}
+
+/**
+ * The input modalities of `modelId` from the server's own copy of OpenRouter's model list
+ * (fetched again after an hour). Empty when the list cannot load or has no such model.
+ */
+async function modelInputModalities(modelId: string, apiKey: string): Promise<string[]> {
+  if (!modalitiesCache || Date.now() - modalitiesCache.at > MODALITIES_TTL_MS) {
+    try {
+      const response = await fetch(`${OPENROUTER_BASE_URL}/models`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (response.ok) storeModalities((await response.json()) as OpenRouterModelsResponse);
+    } catch {
+      // No list: the model counts as one that cannot read files, so the free parser runs
+    }
+  }
+  return modalitiesCache?.byModel.get(modelId) ?? [];
+}
+
+/**
+ * The provider options for a PDF. OpenRouter parses a PDF for a model that cannot read files,
+ * and its default parser is paid OCR. The app never starts a paid parser by itself: a model
+ * without `file` in its input modalities gets the free `cloudflare-ai` engine; a model with it
+ * reads the PDF natively and gets no plugin.
+ */
+export async function pdfProviderOptions(
+  modelId: string,
+  apiKey: string
+): Promise<
+  { openrouter: { plugins: Array<{ id: string; pdf: { engine: string } }> } } | undefined
+> {
+  const modalities = await modelInputModalities(modelId, apiKey);
+  if (modalities.includes('file')) return undefined;
+  return { openrouter: { plugins: [{ id: 'file-parser', pdf: { engine: 'cloudflare-ai' } }] } };
 }
 
 function parseJsonSafely(value: string): unknown | null {
@@ -171,12 +233,14 @@ async function handleModelsRequest(req: IncomingMessage, res: ServerResponse): P
     }
 
     const payload = (await response.json()) as OpenRouterModelsResponse;
+    storeModalities(payload);
     const models = Array.isArray(payload.data)
       ? payload.data
           .filter((model) => typeof model.id === 'string' && model.id.length > 0)
           .map((model) => ({
             id: model.id,
             name: model.name || model.id,
+            inputModalities: inputModalitiesOf(model),
           }))
       : [];
 
@@ -224,6 +288,10 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
     const request = await readChatRequest(req, res);
     if (!request) return; // 413 or 400 already sent
 
+    // The files as this provider's parts (D-A c); a type that it cannot take is a 400
+    const messages = modelMessagesOr400(res, request.messages, 'openrouter');
+    if (!messages) return; // 400 already sent
+
     if (!MODEL_ID_PATTERN.test(request.model)) {
       sendJsonError(res, 400, 'Invalid model ID format');
       return;
@@ -268,11 +336,17 @@ export function createOpenRouterAISDKProxy(): Connect.NextHandleFunction {
       // Cancel streamText when the browser closes the connection
       const abortSignal = abortOnClose(res);
 
+      // A PDF for a model that cannot read files: the free parser, never the paid default
+      const providerOptions = hasPdf(request.messages)
+        ? await pdfProviderOptions(request.model, apiKey)
+        : undefined;
+
       const result = await streamText({
         model: openrouter(request.model),
+        ...(providerOptions && { providerOptions }),
         // AI SDK 7 rejects system messages in `messages` by default; the local user owns the whole prompt
         allowSystemInMessages: true,
-        messages: request.messages,
+        messages,
         maxOutputTokens: capMaxTokens(request.max_tokens),
         tools,
         abortSignal,

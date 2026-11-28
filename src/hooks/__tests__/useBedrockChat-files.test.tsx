@@ -4,7 +4,7 @@
  */
 import { act, renderHook, waitFor } from '@testing-library/react';
 import 'fake-indexeddb/auto';
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { db } from '../../db';
 import { conversationService } from '../../services/conversationService';
@@ -142,6 +142,64 @@ describe('useBedrockChat files', () => {
     });
     expect(bodies[1][0].files).toEqual([{ name: 'photo.png', format: 'png', bytes: PNG }]);
     expect(bodies[1][2]).toMatchObject({ content: 'and now?', files: [] });
+  });
+
+  it('an only-files send stores and sends empty text, with the file', async () => {
+    const bodies = mockReplies();
+    const { id } = await conversationService.create();
+    const { result } = renderChat(id);
+
+    await act(async () => {
+      await result.current.sendMessage('', [{ name: 'photo.png', format: 'png', bytes: PNG }]);
+    });
+    expect(bodies[0][0]).toEqual({
+      role: 'user',
+      content: '',
+      files: [{ name: 'photo.png', format: 'png', bytes: PNG }],
+    });
+    const stored = await db.messages.where('conversationId').equals(id).sortBy('sequence');
+    expect(stored[0].content).toBe('');
+    expect((await conversationService.get(id))?.title).toBe('New Conversation');
+  });
+
+  it('sends an earlier PDF as a text line to a Groq model and counts it', async () => {
+    const bodies = mockReplies();
+    localStorage.setItem('local-llm-ui-preferences', JSON.stringify({ groqApiKey: 'test-key' }));
+    onTestFinished(() => localStorage.clear());
+    const { id } = await conversationService.create();
+    const { result, rerender } = renderHook(
+      ({
+        selectedModel,
+      }: {
+        selectedModel: { id: string; name: string; provider: 'bedrock' | 'groq' };
+      }) =>
+        useBedrockChat({
+          conversationId: id,
+          selectedModel,
+          maxTokens: 1024,
+          maxToolSteps: 10,
+          thinkingEffort: 'default',
+        }),
+      {
+        initialProps: {
+          selectedModel: model as { id: string; name: string; provider: 'bedrock' | 'groq' },
+        },
+      }
+    );
+    await act(async () => {
+      await result.current.sendMessage('read', [{ name: 'a.pdf', format: 'pdf', bytes: PNG }]);
+    });
+    rerender({ selectedModel: { id: 'gpt-oss', name: 'gpt-oss', provider: 'groq' } });
+    await act(async () => {
+      await result.current.sendMessage('and now?');
+    });
+    expect(bodies[1][0]).toEqual({
+      role: 'user',
+      content: 'read\n\n[Earlier file: a.pdf]',
+      files: [],
+    });
+    await waitFor(() => expect(result.current.messages).toHaveLength(4));
+    expect(result.current.messages[3].filesNotResent).toBe(1);
   });
 
   it('regenerate sends the file of the user message again and keeps it stored', async () => {
@@ -419,5 +477,48 @@ describe('buildChatMessages', () => {
       files: [],
     });
     expect(filesNotResent).toBe(0);
+  });
+
+  it('sends an earlier PDF as a text line when the current model cannot read it', () => {
+    const groq = { images: false, pdf: false, office: false, text: true };
+    const { chatMessages, filesNotResent } = buildChatMessages(
+      [
+        user('u1', 'read this', [{ filename: 'a.pdf', data: 'AAAA' }]),
+        reply('a1'),
+        user('u2', 'and this', [
+          { filename: 'notes.md', mediaType: 'text/markdown', data: 'eA==' },
+        ]),
+      ],
+      groq
+    );
+    expect(chatMessages[0]).toEqual({
+      role: 'user',
+      content: 'read this\n\n[Earlier file: a.pdf]',
+      files: [],
+    });
+    expect(chatMessages[2].files).toEqual([{ name: 'notes.md', format: 'md', bytes: 'eA==' }]);
+    expect(filesNotResent).toBe(1);
+  });
+
+  it('sends an earlier image as bytes when the model reads images', () => {
+    const { chatMessages, filesNotResent } = buildChatMessages(
+      [
+        user('u1', 'look', [{ filename: 'p.png', mediaType: 'image/png', data: 'AAAA' }]),
+        reply('a1'),
+        user('u2', 'again'),
+      ],
+      { images: true, pdf: true, office: false, text: true }
+    );
+    expect(chatMessages[0].files).toEqual([{ name: 'p.png', format: 'png', bytes: 'AAAA' }]);
+    expect(filesNotResent).toBe(0);
+  });
+
+  it('keeps a message with only files', () => {
+    const { chatMessages } = buildChatMessages([
+      user('u1', '', [{ filename: 'a.pdf', data: 'AAAA' }]),
+    ]);
+    expect(chatMessages).toEqual([
+      { role: 'user', content: '', files: [{ name: 'a.pdf', format: 'pdf', bytes: 'AAAA' }] },
+    ]);
   });
 });

@@ -54,8 +54,8 @@ async function addToTotals(input: CreateMessageInput): Promise<void> {
     messageCount: conversation.messageCount + 1,
   };
 
-  // Update title from first user message
-  if (conversation.messageCount === 0 && input.role === 'user') {
+  // Update title from first user message (a message with only files has no text: keep the title)
+  if (conversation.messageCount === 0 && input.role === 'user' && input.content.trim()) {
     updates.title = generateTitle(input.content);
   }
 
